@@ -365,10 +365,6 @@
  },
  {
   "category": "product",
-  "url": "https://www.amazon.in/dp/B0BDJ4Z7XH"
- },
- {
-  "category": "product",
   "url": "https://www.flipkart.com/"
  },
  {
@@ -710,5 +706,125 @@
  {
   "category": "negative",
   "url": "https://motherfuckingwebsite.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/Boat-Rockerz-550-Headphone-Aesthetics/dp/B0856HNLDK"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/Boat-Rockerz-450-Lightweight-Compatibility/dp/B08667772G"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-425-Bluetooth-Headphones/dp/B09QL2WWC4"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-430-Assistant-Headphones/dp/B0DGTSTQWL"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Cancelling-Bluetooth-Headphones-Immersive/dp/B09MTQ23X4"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-480-Bluetooth-Headphones/dp/B0DGTSRX3R"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-450-Pro-Headphones/dp/B08XY16Y6J"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-460-Headphones-Assistant/dp/B0CC2G8L22"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/Logitech-Superlight-Lightspeed-Lightweight-Programmable/dp/B0CGDZC2FK"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/Samsung-Galaxy-Storage-Snapdragon-Battery/dp/B0CJ2FZ2L3"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/toit"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/vidyarthi-bhavan-since-1943-basavanagudi-bangalore/order"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/truffles-1"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/meghana-foods-marathahalli-bangalore/order?disableOpenApp=1&fsc=1"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/nagarjuna-since-1984"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/the-fatty-bao"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-jayanagar-bangalore"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-banashankari"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-malleshwaram"
+ },
+ {
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-hennur-bangalore"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/home/bengaluru"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/multi-language-action-movies-bengaluru"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/multi-language-period-experimental-bengaluru"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/play-zones-bengaluru"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/head-out-this-weekend-bengaluru?daygroups=this-weekend&priceGroup=1001.0to1500.0&tags=outdoor-events"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/cinemas/bengaluru/inox-megaplex-mall-of-asia-bangalore/buytickets/IMMO/20260930"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/the-paradise/et00436633"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/drishyam-3/ET00501169"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/drishyam-3/buytickets/ET00499251/"
+ },
+ {
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/the-paradise/buytickets/ET00436621/20260928"
  }
 ]
