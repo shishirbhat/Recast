@@ -1,0 +1,80 @@
+split dev: 22 pages with targets, 25 targets, 3181 random elements
+
+RECALL (pointing at a labelled thing)
+  Person.name        target element found 92% (11/12); right offer 91% (10/11) of found (83% (10/12) of all)
+  Location.name      target element found 100% (10/10); right offer 60% (6/10) of found (60% (6/10) of all)
+  Location.address   target element found 100% (3/3); right offer 100% (3/3) of found (100% (3/3) of all)
+
+FALSE POSITIVES (pointing at ordinary text)
+  offers anything: 61% (1941/3181); offers something at confidence >= 0.5: 1% (18/3181)
+  by type: {"Location":1863,"Person":461,"Event":56,"Product":32}
+
+MISSES
+  person-0d2946e9 Person.name offered ["Location"]: A. P. J. Abdul Kalam
+  person-e8c3e40f Person.name TARGET NOT FOUND: Paul Graham
+  place-11e74139 Location.name offered []: Katz's Delicatessen
+  place-44c3a0e9 Location.name offered []: Restaurant Daniel
+  place-597d7ee6 Location.name offered []: The Fat Duck
+  place-bbc3dc56 Location.name offered ["Location"]: National Gallery
+
+CONFIDENT (>= 0.5) FALSE POSITIVES
+  event-76d39902 ["Event"] 0.6 "May 18, 2025"
+  event-76d39902 ["Event"] 0.6 "May 19 - May 22, 2025"
+  paper-570701e0 ["Product"] 0.6 "$199.00 per year"
+  person-93976018 ["Location"] 0.5 "reality"
+  place-0cd8ccf9 ["Location"] 0.5 "El Capitan rises over 3,000 feet above the floor of Yosemite"
+  place-5ee8b120 ["Location"] 0.5 "Rosselli, John (1974). Lord William Bentinck: The Making of "
+  place-bbc3dc56 ["Location"] 0.5 "Entrance via Sainsbury Wing. Trafalgar Square, London WC2N 5"
+  product-341ec9f2 ["Location"] 0.5 "AB Dnam, LLC (d/b/a Allbirds) 8484 Wilshire Blvd. Beverly Hi"
+  product-8496bf8d ["Product"] 0.6 "£51.77"
+  product-ae463193 ["Product"] 0.6 "From ₹164900.00 Footnote ±"
+  product-de6a6679 ["Product"] 0.6 "₹ 8,995"
+  product-de6a6679 ["Location"] 0.5 "6 sizes"
+  product-de6a6679 ["Product"] 0.6 "₹ 16,995"
+  product-f37c3947 ["Product"] 0.6 "Sale price $70"
+  product-f37c3947 ["Product"] 0.6 "$22"
+  product-f37c3947 ["Product"] 0.6 "$30"
+  product-f37c3947 ["Product"] 0.6 "$20"
+  product-f37c3947 ["Product"] 0.6 "Sale price"
+
+FALSE POSITIVE EXAMPLES (any confidence, first 40)
+  event-0485c024 ["Location"] 0.4 "Mindfulness Through Art - Watercolour Workshops"
+  event-0485c024 ["Location"] 0.4 "Payments"
+  event-0485c024 ["Location"] 0.4 "Eventbrite"
+  event-0485c024 ["Person","Location"] 0.4 "Use Eventbrite"
+  event-0485c024 ["Location"] 0.4 "Blog"
+  event-0485c024 ["Location"] 0.4 "CA Privacy Notice"
+  event-0485c024 ["Location"] 0.4 "Charity & Causes"
+  event-0485c024 ["Person","Location"] 0.4 "Eventbrite Sales Number"
+  event-0485c024 ["Location"] 0.4 "Classes & Workshops"
+  event-0485c024 ["Location"] 0.4 "Find Events"
+  event-0485c024 ["Location"] 0.4 "Sign in"
+  event-0485c024 ["Location"] 0.4 "Help Centre"
+  event-0485c024 ["Location"] 0.4 "Browse Online Events"
+  event-0485c024 ["Location"] 0.4 "Tools & Features"
+  event-0485c024 ["Location"] 0.4 "Food & Beverage"
+  event-0485c024 ["Location"] 0.4 "Industry"
+  event-0485c024 ["Location"] 0.4 "Music"
+  event-0485c024 ["Location"] 0.4 "Help Centre"
+  event-0485c024 ["Location"] 0.4 "Good to know"
+  event-0485c024 ["Location"] 0.4 "Online Event Registration"
+  event-0485c024 ["Location"] 0.4 "Create Events"
+  event-0485c024 ["Location"] 0.4 "Blog"
+  event-0485c024 ["Location"] 0.4 "Walking"
+  event-0485c024 ["Location"] 0.4 "Get the Eventbrite App"
+  event-0485c024 ["Location"] 0.4 "Contact Sales"
+  event-0485c024 ["Location"] 0.4 "Updates"
+  event-0485c024 ["Location"] 0.4 "Concerts"
+  event-0485c024 ["Location"] 0.4 "Industry"
+  event-0485c024 ["Location"] 0.4 "Industry"
+  event-0485c024 ["Location"] 0.4 "Highlights"
+  event-118b9efa ["Location"] 0.4 "Coney Island · 3027 W 15th St"
+  event-118b9efa ["Location"] 0.4 "AEREA"
+  event-118b9efa ["Person","Location"] 0.4 "Hong Kong"
+  event-118b9efa ["Person","Location"] 0.4 "Disco Tehran Anniversary Party"
+  event-118b9efa ["Location"] 0.4 "Price"
+  event-118b9efa ["Person","Location"] 0.4 "Event Registration Software"
+  event-118b9efa ["Location"] 0.4 "I LOVE R&B WEDNESDAY CONEY ISLAND SEASON FINALE"
+  event-118b9efa ["Person","Location"] 0.4 "Event Marketing Platform"
+  event-118b9efa ["Location"] 0.4 "Williamsburg · Refuge"
+  event-118b9efa ["Person","Location"] 0.4 "Product Updates"

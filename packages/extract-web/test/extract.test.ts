@@ -172,3 +172,14 @@ describe("hostile pages", () => {
     expect(r.diagnostics.microdataItems).toBe(1000);
   });
 });
+
+describe("cssPath", () => {
+  it("produces a valid, unique selector for ids that start with a digit or contain punctuation", async () => {
+    const { cssPath } = await import("../src/dom-util.js");
+    document.documentElement.innerHTML = `<body><div id="6abd2780"><p id="a:b.c">x</p></div><div id="6abd2780b"></div></body>`;
+    for (const sel of ["#\\36 abd2780 > p", "p"]) void sel;
+    const p = document.querySelector("p")!;
+    expect(document.querySelector(cssPath(p))).toBe(p);
+    expect(document.querySelector(cssPath(document.getElementById("6abd2780")!))).toBe(document.getElementById("6abd2780"));
+  });
+});

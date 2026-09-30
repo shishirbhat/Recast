@@ -1,7 +1,8 @@
 export const norm = (s: string) => s.normalize("NFC").replace(/\s+/g, " ").trim();
 export const tokens = (s: string) => norm(s).toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
-const esc = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, (c) => "\\" + c);
+/** CSS identifier escape (like CSS.escape): a leading digit must be written as a code point escape, e.g. "6a" -> "\\36 a". */
+const esc = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, (c) => "\\" + c).replace(/^(-?)(\d)/, (_m, dash: string, d: string) => `${dash}\\3${d} `);
 
 /** A short CSS path that uniquely finds `el` in its document. */
 export function cssPath(el: Element): string {
