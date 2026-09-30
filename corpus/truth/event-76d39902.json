@@ -1,0 +1,13 @@
+{
+ "objects": [
+  {
+   "type": "Event",
+   "properties": {
+    "title": "PyCon US 2025",
+    "start": "2025-05-14",
+    "end": "2025-05-22",
+    "location": "David L. Lawrence Convention Center"
+   }
+  }
+ ]
+}

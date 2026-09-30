@@ -1,0 +1,18 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+    "authorsFirst": [
+     "Alexey Dosovitskiy",
+     "Lucas Beyer",
+     "Alexander Kolesnikov",
+     "Dirk Weissenborn",
+     "Xiaohua Zhai"
+    ],
+    "year": 2020
+   }
+  }
+ ]
+}

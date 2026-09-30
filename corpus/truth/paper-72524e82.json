@@ -1,0 +1,17 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "GloVe: Global Vectors for Word Representation",
+    "authors": [
+     "Jeffrey Pennington",
+     "Richard Socher",
+     "Christopher Manning"
+    ],
+    "year": 2014,
+    "doi": "10.3115/v1/D14-1162"
+   }
+  }
+ ]
+}

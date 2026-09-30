@@ -29,7 +29,8 @@ function addressOf(v: unknown): string | undefined {
   return parts.length ? parts.join(", ") : undefined;
 }
 const num = (v: unknown): number | undefined => { const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN; return Number.isFinite(n) ? n : undefined; };
-const LOCATION_TYPES = new Set(["Place", "LocalBusiness", "Restaurant", "CafeOrCoffeeShop", "Hotel", "Store", "TouristAttraction", "Museum", "Park"]);
+const PLACE_TYPE = /^(Place|LocalBusiness|Landmark|LandmarksOrHistoricalBuildings|TouristAttraction|CivicStructure|Residence|AdministrativeArea|City|Country|.*(Restaurant|Establishment|Store|Shop|Hotel|Motel|Hostel|Resort|Museum|Gallery|Park|Garden|Zoo|Aquarium|Library|Airport|Bar|Pub|Bakery|Cafe|CafeOrCoffeeShop|Winery|Brewery|Distillery|Stadium|ArtGallery|Hospital|School|Theater|Theatre|Cinema|NightClub|Casino|Spa|Salon|Gym|HealthClub|Campground|Church|Temple|Mosque|Synagogue|Cemetery|Beach|Mountain|Volcano))$/;
+const PRODUCT_TYPES = new Set(["Product", "ProductGroup", "ProductModel", "IndividualProduct"]);
 const PAPER_TYPES = new Set(["ScholarlyArticle", "MedicalScholarlyArticle"]);
 const doiFrom = (v: unknown): string | undefined => {
   for (const x of asArray(v)) {
@@ -53,7 +54,7 @@ function fromNode(n: Obj, ptr: string): { type: ObjectType; b: Builder } | undef
     b.set("url", str(n["url"]), "/url"); b.set("image", urlOf(n["image"]), "/image");
     return { type: "Person", b };
   }
-  if (ts.some((t) => t.endsWith("Event"))) {
+  if (ts.some((t) => t.endsWith("Event") || t === "Festival" || t === "Hackathon")) {
     b.set("title", str(n["name"]), "/name");
     b.set("start", str(n["startDate"]), "/startDate"); b.set("end", str(n["endDate"]), "/endDate");
     const loc = n["location"]; const l = isObj(loc) ? nameOf(loc) ?? addressOf(loc["address"]) : str(loc);
@@ -61,7 +62,8 @@ function fromNode(n: Obj, ptr: string): { type: ObjectType; b: Builder } | undef
     b.set("url", str(n["url"]), "/url"); b.set("description", str(n["description"]), "/description");
     return { type: "Event", b };
   }
-  if (ts.some((t) => LOCATION_TYPES.has(t))) {
+  // An Organization is NOT a place: on the dev corpus every Organization-with-address was a company home page.
+  if (ts.some((t) => PLACE_TYPE.test(t))) {
     b.set("name", str(n["name"]), "/name");
     b.set("address", addressOf(n["address"]), "/address", CONF.derived);
     const geo = isObj(n["geo"]) ? n["geo"] : undefined;
@@ -80,13 +82,30 @@ function fromNode(n: Obj, ptr: string): { type: ObjectType; b: Builder } | undef
     b.set("abstract", str(n["abstract"]), "/abstract"); b.set("url", str(n["url"]), "/url");
     return { type: "ResearchPaper", b };
   }
-  if (ts.includes("Product")) {
+  if (ts.some((t) => PRODUCT_TYPES.has(t))) {
     b.set("name", str(n["name"]), "/name");
     b.set("brand", nameOf(n["brand"]), "/brand"); b.set("sku", str(n["sku"]), "/sku");
     b.set("url", str(n["url"]), "/url"); b.set("image", urlOf(asArray(n["image"])[0]), "/image");
-    const offer = asArray(n["offers"]).find(isObj);
-    const amount = offer && num(offer["price"]), cur = offer && str(offer["priceCurrency"]);
-    if (amount !== undefined && cur) b.set("price", { amount, currency: cur.toUpperCase() }, "/offers/price", CONF.derived);
+    const priced = (x: unknown) => isObj(x) && (num(x["price"]) !== undefined || num(x["lowPrice"]) !== undefined);
+    const find = (v: unknown, base: string, want: (x: unknown) => boolean = isObj): { o: Obj; ptr: string } | undefined => {
+      const arr = Array.isArray(v) ? v : v === undefined ? [] : [v];
+      const i = arr.findIndex(want);
+      return i >= 0 ? { o: arr[i] as Obj, ptr: Array.isArray(v) ? `${base}/${i}` : base } : undefined;
+    };
+    let offer = find(n["offers"], "/offers", priced);
+    if (!offer) {
+      const variants = Array.isArray(n["hasVariant"]) ? n["hasVariant"] : [];
+      for (let vi = 0; vi < variants.length && !offer; vi++) {
+        const v = variants[vi];
+        if (isObj(v)) offer = find(v["offers"], `/hasVariant/${vi}/offers`, priced);
+      }
+    }
+    if (offer) {
+      const amount = num(offer.o["price"]) ?? num(offer.o["lowPrice"]);
+      const cur = str(offer.o["priceCurrency"]);
+      const key = offer.o["price"] !== undefined ? "price" : "lowPrice";
+      if (amount !== undefined && cur && /^[A-Za-z]{3}$/.test(cur)) b.set("price", { amount, currency: cur.toUpperCase() }, `${offer.ptr}/${key}`, CONF.derived);
+    }
     const rating = isObj(n["aggregateRating"]) ? num(n["aggregateRating"]["ratingValue"]) : undefined;
     b.set("rating", rating, "/aggregateRating/ratingValue");
     return { type: "Product", b };
@@ -94,15 +113,30 @@ function fromNode(n: Obj, ptr: string): { type: ObjectType; b: Builder } | undef
   return undefined;
 }
 
+function* withMain(n: Obj, ptr: string): Generator<{ n: Obj; ptr: string }> {
+  yield { n, ptr };
+  // ProfilePage / AboutPage / WebPage wrap the real subject in mainEntity.
+  const main = n["mainEntity"];
+  if (isObj(main)) yield { n: main, ptr: `${ptr}/mainEntity` };
+}
 function* nodes(docs: unknown[]): Generator<{ n: Obj; ptr: string }> {
   for (let i = 0; i < docs.length; i++) {
     const d = docs[i];
     if (isObj(d) && Array.isArray(d["@graph"])) {
-      for (let j = 0; j < d["@graph"].length; j++) { const g = d["@graph"][j]; if (isObj(g)) yield { n: g, ptr: `/${i}/@graph/${j}` }; }
+      for (let j = 0; j < d["@graph"].length; j++) { const g = d["@graph"][j]; if (isObj(g)) yield* withMain(g, `/${i}/@graph/${j}`); }
     } else if (Array.isArray(d)) {
-      for (let j = 0; j < d.length; j++) { const g = d[j]; if (isObj(g)) yield { n: g, ptr: `/${i}/${j}` }; }
-    } else if (isObj(d)) yield { n: d, ptr: `/${i}` };
+      for (let j = 0; j < d.length; j++) { const g = d[j]; if (isObj(g)) yield* withMain(g, `/${i}/${j}`); }
+    } else if (isObj(d)) yield* withMain(d, `/${i}`);
   }
+}
+
+const NAME_SUFFIX = /^(jr|sr|ii|iii|iv|phd|md)\.?$/i;
+/** Metadata often says "Last, First"; people read "First Last". Flip only when EVERY name in the list is
+ *  exactly "X, Y" (a consistent convention) and Y is not a suffix like "Jr.". Otherwise leave the list alone. */
+export function displayNames(names: string[]): string[] {
+  const parts = names.map((n) => /^([^,]+),\s*([^,]+)$/.exec(n));
+  if (!parts.length || parts.some((m) => !m || NAME_SUFFIX.test(m[2]!.trim()))) return names;
+  return parts.map((m) => `${m![2]!.trim()} ${m![1]!.trim()}`);
 }
 
 function metaPaper(tags: { name: string; content: string }[]): { type: ObjectType; b: Builder } | undefined {
@@ -119,7 +153,7 @@ function metaPaper(tags: { name: string; content: string }[]): { type: ObjectTyp
   };
   put("title", title.v, "citation_title");
   const authors = all("citation_author");
-  if (authors.length) put("authors", authors.map((a) => a.content.trim()), "citation_author", authors.map((_, i) => i));
+  if (authors.length) put("authors", displayNames(authors.map((a) => a.content.trim())), "citation_author", authors.map((_, i) => i));
   const doi = first("citation_doi"); if (doi) put("doi", doi.v, doi.n);
   const date = first("citation_publication_date", "citation_date", "citation_online_date");
   const y = date?.v.match(/\d{4}/)?.[0]; if (date && y) put("year", Number(y), date.n, 0, CONF.derived);
@@ -130,11 +164,68 @@ function metaPaper(tags: { name: string; content: string }[]): { type: ObjectTyp
   return { type: "ResearchPaper", b };
 }
 
+/** OpenGraph: weaker than JSON-LD (og:title often carries a site suffix), so confidence is lower. */
+const OG_CONF = 0.75;
+function openGraph(tags: { name: string; content: string }[]): { type: ObjectType; b: Builder } | undefined {
+  const idx = new Map<string, number>();
+  tags.forEach((t, i) => { const k = t.name.toLowerCase(); if (t.content.trim() && !idx.has(k)) idx.set(k, i); });
+  const get = (...names: string[]) => { for (const n of names) { const i = idx.get(n); if (i !== undefined) return { v: tags[i]!.content.trim(), n }; } return undefined; };
+  const type = get("og:type")?.v.toLowerCase();
+  if (!type) return undefined;
+  const b = new Builder("");
+  const put = (key: string, value: unknown, name: string, confidence: number = OG_CONF) => {
+    if (value === undefined) return;
+    b.props[key] = value; b.fields[key] = { confidence, evidence: [{ locator: { kind: "meta", value: `${name}[0]` } }] };
+  };
+  const title = get("og:title");
+  if (type === "product" || type === "og:product" || type === "product.item") {
+    if (!title) return undefined;
+    put("name", title.v, title.n); const u = get("og:url"); if (u) put("url", u.v, u.n);
+    const im = get("og:image", "og:image:url"); if (im) put("image", im.v, im.n);
+    const amt = get("product:price:amount", "og:price:amount"), cur = get("product:price:currency", "og:price:currency");
+    const a = amt && num(amt.v);
+    if (amt && a !== undefined && cur && /^[A-Za-z]{3}$/.test(cur.v)) { put("price", { amount: a, currency: cur.v.toUpperCase() }, amt.n); }
+    const br = get("product:brand", "og:brand"); if (br) put("brand", br.v, br.n);
+    return { type: "Product", b };
+  }
+  if (type === "profile") {
+    const f = get("profile:first_name"), l = get("profile:last_name");
+    if (f && l) { b.props["name"] = `${f.v} ${l.v}`; b.fields["name"] = { confidence: 0.85, evidence: [f, l].map((x) => ({ locator: { kind: "meta" as const, value: `${x.n}[0]` } })) }; }
+    else if (title) put("name", title.v, title.n);
+    else return undefined;
+    const u = get("og:url"); if (u) put("url", u.v, u.n);
+    const im = get("og:image"); if (im) put("image", im.v, im.n);
+    return { type: "Person", b };
+  }
+  if (type === "place" || type === "business.business" || type === "restaurant.restaurant") {
+    if (title) put("name", title.v, title.n);
+    const lat = get("place:location:latitude", "og:latitude"), lng = get("place:location:longitude", "og:longitude");
+    const la = lat && num(lat.v), lo = lng && num(lng.v);
+    if (lat && lng && la !== undefined && lo !== undefined) { put("lat", la, lat.n, 0.85); put("lng", lo, lng.n, 0.85); }
+    const street = get("business:contact_data:street_address", "og:street-address"), city = get("business:contact_data:locality", "og:locality");
+    const addr = [street?.v, city?.v, get("business:contact_data:region", "og:region")?.v, get("business:contact_data:postal_code", "og:postal-code")?.v].filter(Boolean).join(", ");
+    if (addr && (street || city)) put("address", addr, (street ?? city)!.n, 0.8);
+    const u = get("og:url"); if (u) put("url", u.v, u.n);
+    return Object.keys(b.props).length ? { type: "Location", b } : undefined;
+  }
+  if (type === "event") {
+    const st = get("event:start_time", "og:start_time");
+    if (!title || !st) return undefined;
+    put("title", title.v, title.n); put("start", st.v, st.n);
+    const en = get("event:end_time", "og:end_time"); if (en) put("end", en.v, en.n);
+    const u = get("og:url"); if (u) put("url", u.v, u.n);
+    return { type: "Event", b };
+  }
+  return undefined; // article, website, video, book...: too generic to call an object
+}
+
 export function perceive(input: PerceptionInput): Candidate[] {
   const prov = (adapter: string): Candidate["provenance"] => ({ source: input.source, capture: { method: "structured", adapter, at: input.at } });
   const found: { type: ObjectType; b: Builder; adapter: string }[] = [];
   if (input.kind === "jsonld") {
-    for (const { n, ptr } of nodes(input.docs)) { const r = fromNode(n, ptr); if (r) found.push({ ...r, adapter: "jsonld" }); }
+    for (const { n, ptr } of nodes(input.docs)) { const r = fromNode(n, ptr); if (r) found.push({ ...r, adapter: input.adapter ?? "jsonld" }); }
+  } else if (input.kind === "opengraph") {
+    const r = openGraph(input.tags); if (r) found.push({ ...r, adapter: "opengraph" });
   } else {
     const r = metaPaper(input.tags); if (r) found.push({ ...r, adapter: "meta-citation" });
   }

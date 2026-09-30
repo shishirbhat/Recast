@@ -1,0 +1,16 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Array programming with NumPy",
+    "authorsFirst": [
+     "Charles R. Harris",
+     "K. Jarrod Millman",
+     "Stéfan J. van der Walt"
+    ],
+    "year": 2020
+   }
+  }
+ ]
+}

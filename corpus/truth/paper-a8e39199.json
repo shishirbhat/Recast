@@ -1,0 +1,21 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Attention is All you Need",
+    "authors": [
+     "Ashish Vaswani",
+     "Noam Shazeer",
+     "Niki Parmar",
+     "Jakob Uszkoreit",
+     "Llion Jones",
+     "Aidan N Gomez",
+     "Łukasz Kaiser",
+     "Illia Polosukhin"
+    ],
+    "year": 2017
+   }
+  }
+ ]
+}

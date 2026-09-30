@@ -1,0 +1,10 @@
+{
+ "objects": [
+  {
+   "type": "Person",
+   "properties": {
+    "name": "Geoffrey E. Hinton"
+   }
+  }
+ ]
+}

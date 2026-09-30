@@ -1,0 +1,16 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "U-Net: Convolutional Networks for Biomedical Image Segmentation",
+    "authors": [
+     "Olaf Ronneberger",
+     "Philipp Fischer",
+     "Thomas Brox"
+    ],
+    "year": 2015
+   }
+  }
+ ]
+}

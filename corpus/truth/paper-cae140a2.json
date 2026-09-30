@@ -1,0 +1,21 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+    "authors": [
+     "Edward J. Hu",
+     "Yelong Shen",
+     "Phillip Wallis",
+     "Zeyuan Allen-Zhu",
+     "Yuanzhi Li",
+     "Shean Wang",
+     "Lu Wang",
+     "Weizhu Chen"
+    ],
+    "year": 2021
+   }
+  }
+ ]
+}

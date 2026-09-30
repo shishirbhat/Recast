@@ -1,0 +1,15 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Auto-Encoding Variational Bayes",
+    "authors": [
+     "Diederik P Kingma",
+     "Max Welling"
+    ],
+    "year": 2013
+   }
+  }
+ ]
+}

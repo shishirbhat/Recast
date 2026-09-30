@@ -1,0 +1,14 @@
+{
+ "objects": [
+  {
+   "type": "Product",
+   "properties": {
+    "name": "Women's Tree Runner",
+    "price": {
+     "amount": 100,
+     "currency": "USD"
+    }
+   }
+  }
+ ]
+}

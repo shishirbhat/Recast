@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deserialize, identityOf, perceive, resolve, serialize, RecastError } from "../src/index.js";
+import { deserialize, displayNames, identityOf, perceive, resolve, serialize, RecastError } from "../src/index.js";
 import { AT, SRC, candidate, obj } from "./helpers.js";
 
 const ld = (docs: unknown[]) => perceive({ kind: "jsonld", docs, source: SRC, at: AT });
@@ -40,7 +40,7 @@ describe("perceive: citation_* meta", () => {
   ];
   it("builds a ResearchPaper and records one evidence entry per author", () => {
     const [c] = perceive({ kind: "meta", tags, source: SRC, at: AT });
-    expect(c!.properties).toMatchObject({ title: "Deep Residual Learning", authors: ["He, Kaiming", "Zhang, Xiangyu"], year: 2016, venue: "CVPR" });
+    expect(c!.properties).toMatchObject({ title: "Deep Residual Learning", authors: ["Kaiming He", "Xiangyu Zhang"], year: 2016, venue: "CVPR" });
     expect(c!.fields["authors"]!.evidence.map((e) => e.locator.value)).toEqual(["citation_author[0]", "citation_author[1]"]);
     const o = resolve(c!);
     expect(o.properties["doi"]).toBe("10.1109/cvpr.2016.90");
@@ -101,5 +101,63 @@ describe("resolve", () => {
     const o = obj("Person", { name: "x", email: ["a@b.co"] });
     expect(() => deserialize(serialize(o).replace(o.id, "rc_" + "0".repeat(32)))).toThrowError(/id does not match/);
     expect(() => deserialize("{")).toThrow(RecastError);
+  });
+});
+
+describe("perceive: OpenGraph", () => {
+  const og = (pairs: [string, string][]) => perceive({ kind: "opengraph", tags: pairs.map(([name, content]) => ({ name, content })), source: SRC, at: AT });
+  it("turns a product page into a Product with lower confidence than JSON-LD", () => {
+    const [c] = og([["og:type", "product"], ["og:title", "Stagg EKG"], ["og:url", "https://x.example/p"], ["product:price:amount", "195.00"], ["product:price:currency", "usd"]]);
+    expect(c!.type).toBe("Product");
+    expect(c!.properties).toMatchObject({ name: "Stagg EKG", price: { amount: 195, currency: "USD" } });
+    expect(c!.fields["name"]!.confidence).toBeLessThan(0.95);
+    expect(() => resolve(c!)).not.toThrow();
+  });
+  it("builds a Person from profile first/last name, and a Location with coordinates", () => {
+    expect(og([["og:type", "profile"], ["profile:first_name", "Meera"], ["profile:last_name", "Iyer"]])[0]!.properties["name"]).toBe("Meera Iyer");
+    const [l] = og([["og:type", "place"], ["og:title", "Cubbon Park"], ["place:location:latitude", "12.976"], ["place:location:longitude", "77.593"]]);
+    expect(l!.properties).toMatchObject({ name: "Cubbon Park", lat: 12.976, lng: 77.593 });
+  });
+  it("ignores generic types and pages without og:type", () => {
+    expect(og([["og:type", "article"], ["og:title", "x"]])).toEqual([]);
+    expect(og([["og:title", "x"]])).toEqual([]);
+  });
+  it("does not invent a price from a non-numeric amount", () => {
+    expect(og([["og:type", "product"], ["og:title", "x"], ["product:price:amount", "free"], ["product:price:currency", "USD"]])[0]!.properties["price"]).toBeUndefined();
+  });
+});
+
+describe("perceive: real-world JSON-LD shapes", () => {
+  it("recognises Festival as an Event", () => {
+    expect(ld([{ "@type": "Festival", name: "Navratri", startDate: "2026-10-12" }])[0]!.type).toBe("Event");
+  });
+  it("reads a ProductGroup, taking the price from the first variant's offer with a correct pointer", () => {
+    const [c] = ld([{ "@type": "ProductGroup", name: "Tree Runner", hasVariant: [{ "@type": "Product", offers: [{ "@type": "Offer", price: "98.00", priceCurrency: "USD" }] }] }]);
+    expect(c!.type).toBe("Product");
+    expect(c!.properties["price"]).toEqual({ amount: 98, currency: "USD" });
+    expect(c!.fields["price"]!.evidence[0]!.locator.value).toBe("/0/hasVariant/0/offers/0/price");
+  });
+  it("points at the right element when offers is an array", () => {
+    const [c] = ld([{ "@type": "Product", name: "K", offers: [{ "@type": "Offer" }, { "@type": "Offer", price: 12, priceCurrency: "EUR" }] }]);
+    expect(c!.fields["price"]!.evidence[0]!.locator.value).toBe("/0/offers/1/price");
+  });
+  it("treats a Museum or Cafe as a Location, but never a bare Organization (a company home page is not a place)", () => {
+    expect(ld([{ "@type": "Museum", name: "Tate Modern" }])[0]!.type).toBe("Location");
+    expect(ld([{ "@type": "CafeOrCoffeeShop", name: "Blue Tokai" }])[0]!.type).toBe("Location");
+    expect(ld([{ "@type": "Organization", name: "Acme", address: { streetAddress: "1 Main St", addressLocality: "Pune" } }])).toEqual([]);
+  });
+  it("finds a Person inside a ProfilePage's mainEntity", () => {
+    const [c] = ld([{ "@type": "ProfilePage", mainEntity: { "@type": "Person", name: "Meera Iyer", jobTitle: "Editor" } }]);
+    expect(c!.properties["name"]).toBe("Meera Iyer");
+    expect(c!.fields["name"]!.evidence[0]!.locator.value).toBe("/0/mainEntity/name");
+  });
+});
+
+describe("displayNames", () => {
+  it("flips a consistent 'Last, First' list", () => expect(displayNames(["He, Kaiming", "Zhang, Xiangyu"])).toEqual(["Kaiming He", "Xiangyu Zhang"]));
+  it("leaves lists alone that are mixed, or contain a suffix", () => {
+    expect(displayNames(["He, Kaiming", "Xiangyu Zhang"])).toEqual(["He, Kaiming", "Xiangyu Zhang"]);
+    expect(displayNames(["Smith, Jr."])).toEqual(["Smith, Jr."]);
+    expect(displayNames(["Madonna"])).toEqual(["Madonna"]);
   });
 });

@@ -18,8 +18,9 @@ export interface SemanticObject {
 }
 
 export type PerceptionInput =
-  | { kind: "jsonld"; docs: unknown[]; source: Provenance["source"]; at: string }
-  | { kind: "meta"; tags: { name: string; content: string }[]; source: Provenance["source"]; at: string };
+  | { kind: "jsonld"; docs: unknown[]; source: Provenance["source"]; at: string; adapter?: string }
+  | { kind: "meta"; tags: { name: string; content: string }[]; source: Provenance["source"]; at: string }
+  | { kind: "opengraph"; tags: { name: string; content: string }[]; source: Provenance["source"]; at: string };
 
 export interface Approach { hintRelationId?: string }
 export interface Preferences { approved?: { destination: string; relationId: string }[] }

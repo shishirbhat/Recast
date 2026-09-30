@@ -1,0 +1,11 @@
+{
+ "objects": [
+  {
+   "type": "Location",
+   "properties": {
+    "name": "National Gallery",
+    "address": "Trafalgar Square, London WC2N 5DN"
+   }
+  }
+ ]
+}

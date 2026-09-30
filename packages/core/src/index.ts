@@ -1,4 +1,4 @@
-export { perceive } from "./perceive.js";
+export { perceive, displayNames } from "./perceive.js";
 export { resolve, serialize, deserialize, identityOf, normalizeProps } from "./resolve.js";
 export { propose, rankProposals } from "./propose.js";
 export { preview, plan, commit, undo, checkConsent, inspectObject, inspectOperation, InMemoryEventLog } from "./operate.js";

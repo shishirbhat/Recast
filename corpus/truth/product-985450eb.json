@@ -1,0 +1,14 @@
+{
+ "objects": [
+  {
+   "type": "Product",
+   "properties": {
+    "name": "Men's Tree Runner",
+    "price": {
+     "amount": 100,
+     "currency": "USD"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,14 @@
+{
+ "objects": [
+  {
+   "type": "Product",
+   "properties": {
+    "name": "iPhone 16",
+    "price": {
+     "amount": 89900,
+     "currency": "INR"
+    }
+   }
+  }
+ ]
+}

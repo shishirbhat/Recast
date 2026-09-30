@@ -1,0 +1,18 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Dermatologist-level classification of skin cancer with deep neural networks",
+    "authorsFirst": [
+     "Andre Esteva",
+     "Brett Kuprel",
+     "Roberto A. Novoa",
+     "Justin Ko",
+     "Susan M. Swetter"
+    ],
+    "year": 2017
+   }
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Efficient Estimation of Word Representations in Vector Space",
+    "authors": [
+     "Tomas Mikolov",
+     "Kai Chen",
+     "Greg Corrado",
+     "Jeffrey Dean"
+    ],
+    "year": 2013
+   }
+  }
+ ]
+}

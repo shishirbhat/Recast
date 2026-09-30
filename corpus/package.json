@@ -1,0 +1,9 @@
+{
+  "name": "@recast/corpus", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": {
+    "fetch": "node fetch.mjs",
+    "eval": "pnpm --filter @recast/extract-web run build && node eval.mjs",
+    "peek": "node peek.mjs"
+  },
+  "devDependencies": { "playwright-core": "^1.56.1" }
+}

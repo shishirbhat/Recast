@@ -1,0 +1,14 @@
+{
+ "objects": [
+  {
+   "type": "Product",
+   "properties": {
+    "name": "A Light in the Attic",
+    "price": {
+     "amount": 51.77,
+     "currency": "GBP"
+    }
+   }
+  }
+ ]
+}

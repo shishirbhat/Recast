@@ -1,0 +1,714 @@
+[
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1512.03385"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1810.04805"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/2005.14165"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1412.6980"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/2010.11929"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1409.0473"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1301.3781"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/2203.02155"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1706.03762v7"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/2106.09685"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.nature.com/articles/nature16961"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.nature.com/articles/s41586-021-03819-2"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.nature.com/articles/nature21056"
+ },
+ {
+  "category": "paper",
+  "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0000308"
+ },
+ {
+  "category": "paper",
+  "url": "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.0020124"
+ },
+ {
+  "category": "paper",
+  "url": "https://elifesciences.org/articles/50000"
+ },
+ {
+  "category": "paper",
+  "url": "https://aclanthology.org/N19-1423/"
+ },
+ {
+  "category": "paper",
+  "url": "https://aclanthology.org/P02-1040/"
+ },
+ {
+  "category": "paper",
+  "url": "https://aclanthology.org/D14-1162/"
+ },
+ {
+  "category": "paper",
+  "url": "https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html"
+ },
+ {
+  "category": "paper",
+  "url": "https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html"
+ },
+ {
+  "category": "paper",
+  "url": "https://proceedings.mlr.press/v37/ioffe15.html"
+ },
+ {
+  "category": "paper",
+  "url": "https://link.springer.com/article/10.1007/s11263-015-0816-y"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.science.org/doi/10.1126/science.1127647"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.biorxiv.org/content/10.1101/2020.03.03.972935v1"
+ },
+ {
+  "category": "paper",
+  "url": "https://dl.acm.org/doi/10.1145/3065386"
+ },
+ {
+  "category": "paper",
+  "url": "https://ieeexplore.ieee.org/document/726791"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.sciencedirect.com/science/article/pii/S0893608014002135"
+ },
+ {
+  "category": "paper",
+  "url": "https://pubmed.ncbi.nlm.nih.gov/25730490/"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.jmlr.org/papers/v15/srivastava14a.html"
+ },
+ {
+  "category": "paper",
+  "url": "https://openreview.net/forum?id=rJXMpikCZ"
+ },
+ {
+  "category": "paper",
+  "url": "https://distill.pub/2017/momentum/"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.pnas.org/doi/10.1073/pnas.1611835114"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.cell.com/cell/fulltext/S0092-8674(06)00976-7"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.thelancet.com/journals/lancet/article/PIIS0140-6736(20)30183-5/fulltext"
+ },
+ {
+  "category": "paper",
+  "url": "https://academic.oup.com/nar/article/49/D1/D480/6006194"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.com/d/india--bengaluru/events/"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.com/d/united-states--new-york/music/"
+ },
+ {
+  "category": "event",
+  "url": "https://www.meetup.com/find/?location=in--bengaluru"
+ },
+ {
+  "category": "event",
+  "url": "https://pycon.org/"
+ },
+ {
+  "category": "event",
+  "url": "https://us.pycon.org/2025/"
+ },
+ {
+  "category": "event",
+  "url": "https://reactconf.com/"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/d/united-kingdom--london/events/"
+ },
+ {
+  "category": "event",
+  "url": "https://lu.ma/discover"
+ },
+ {
+  "category": "event",
+  "url": "https://www.songkick.com/"
+ },
+ {
+  "category": "event",
+  "url": "https://www.ted.com/talks"
+ },
+ {
+  "category": "place",
+  "url": "https://www.metmuseum.org/visit/plan-your-visit"
+ },
+ {
+  "category": "place",
+  "url": "https://www.louvre.fr/en"
+ },
+ {
+  "category": "place",
+  "url": "https://www.tate.org.uk/visit/tate-modern"
+ },
+ {
+  "category": "place",
+  "url": "https://www.moma.org/visit/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.nationalgallery.org.uk/visiting"
+ },
+ {
+  "category": "place",
+  "url": "https://www.rijksmuseum.nl/en/visit"
+ },
+ {
+  "category": "place",
+  "url": "https://www.vam.ac.uk/info/visit"
+ },
+ {
+  "category": "place",
+  "url": "https://www.nhm.ac.uk/visit.html"
+ },
+ {
+  "category": "place",
+  "url": "https://www.lalbaghgarden.in/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.tajhotels.com/en-in/taj/taj-mahal-hotel-delhi/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.thelalit.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.claridges.co.uk/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.nobu-restaurants.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.danielnyc.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.noma.dk/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.eleven-madison-park.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.thefatduck.co.uk/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.bluebottlecoffee.com/cafes"
+ },
+ {
+  "category": "place",
+  "url": "https://en.wikipedia.org/wiki/Cubbon_Park"
+ },
+ {
+  "category": "place",
+  "url": "https://en.wikipedia.org/wiki/Le_Bernardin"
+ },
+ {
+  "category": "person",
+  "url": "https://karpathy.ai/"
+ },
+ {
+  "category": "person",
+  "url": "https://www.paulgraham.com/bio.html"
+ },
+ {
+  "category": "person",
+  "url": "https://gwern.net/about"
+ },
+ {
+  "category": "person",
+  "url": "https://www.brendangregg.com/"
+ },
+ {
+  "category": "person",
+  "url": "https://www.ted.com/speakers/sir_ken_robinson"
+ },
+ {
+  "category": "person",
+  "url": "https://profiles.stanford.edu/fei-fei-li"
+ },
+ {
+  "category": "person",
+  "url": "https://www.cs.toronto.edu/~hinton/"
+ },
+ {
+  "category": "person",
+  "url": "https://yann.lecun.com/"
+ },
+ {
+  "category": "person",
+  "url": "https://www.cs.cmu.edu/~rsalakhu/"
+ },
+ {
+  "category": "person",
+  "url": "https://research.google/people/jeff-dean/"
+ },
+ {
+  "category": "person",
+  "url": "https://en.wikipedia.org/wiki/Ada_Lovelace"
+ },
+ {
+  "category": "person",
+  "url": "https://en.wikipedia.org/wiki/Sundar_Pichai"
+ },
+ {
+  "category": "person",
+  "url": "https://www.nobelprize.org/prizes/physics/2021/parisi/facts/"
+ },
+ {
+  "category": "person",
+  "url": "https://www.linkedin.com/in/satyanadella/"
+ },
+ {
+  "category": "person",
+  "url": "https://about.me/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.allbirds.com/products/mens-tree-runners"
+ },
+ {
+  "category": "product",
+  "url": "https://fellowproducts.com/products/stagg-ekg-electric-pour-over-kettle"
+ },
+ {
+  "category": "product",
+  "url": "https://www.glossier.com/products/boy-brow"
+ },
+ {
+  "category": "product",
+  "url": "https://www.gymshark.com/products/gymshark-vital-seamless-2-0-leggings-black-marl-ss22"
+ },
+ {
+  "category": "product",
+  "url": "https://us.bombas.com/products/mens-originals-ankle-sock-4-pack"
+ },
+ {
+  "category": "product",
+  "url": "https://www.ikea.com/in/en/p/billy-bookcase-white-00263850/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.apple.com/in/shop/buy-iphone/iphone-16"
+ },
+ {
+  "category": "product",
+  "url": "https://www.decathlon.in/p/8562404/"
+ },
+ {
+  "category": "product",
+  "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html"
+ },
+ {
+  "category": "product",
+  "url": "https://www.nike.com/in/t/air-force-1-07-shoes-WrLlWX"
+ },
+ {
+  "category": "product",
+  "url": "https://www.amazon.in/dp/B0BDJ4Z7XH"
+ },
+ {
+  "category": "product",
+  "url": "https://www.flipkart.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.nykaa.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://store.google.com/product/pixel_9"
+ },
+ {
+  "category": "product",
+  "url": "https://www.dyson.in/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.patagonia.com/product/mens-better-sweater-fleece-jacket/25528.html"
+ },
+ {
+  "category": "product",
+  "url": "https://www.uniqlo.com/in/en/products/E453102-000"
+ },
+ {
+  "category": "product",
+  "url": "https://www.samsung.com/in/smartphones/galaxy-s24-ultra/"
+ },
+ {
+  "category": "negative",
+  "url": "https://example.com/"
+ },
+ {
+  "category": "negative",
+  "url": "https://news.ycombinator.com/item?id=8863"
+ },
+ {
+  "category": "negative",
+  "url": "https://www.paulgraham.com/greatwork.html"
+ },
+ {
+  "category": "negative",
+  "url": "https://www.gutenberg.org/"
+ },
+ {
+  "category": "negative",
+  "url": "https://en.wikipedia.org/wiki/Special:Random"
+ },
+ {
+  "category": "negative",
+  "url": "https://www.w3.org/TR/html5/"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/arbd-in-the-community-recognition-response-and-pathways-forward-tickets-1987995657527"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/aurela-gace-london-tickets-1992410367042"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/big-finish-day-tickets-1988169832489"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/black-culture-market-black-history-month-october-tickets-1998641191606"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/creative-upcycling-workshop-tickets-1104418327949"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/frenzy-tickets-1999899647682"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/gcg-navratri-2026-tickets-2000154198049"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/health-and-climate-change-conference-2026-tickets-2001065630167"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/hidden-spaces-tours-of-st-alfege-church-galleries-crypt-tickets-1996989804262"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/historic-london-pub-tour-tickets-1976719102046"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/ladbroke-grove-party-night-saturdays-portobello-shack-notting-hill-tickets-863768152797"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/lgbtq-beginner-and-intermediate-ballet-class-tickets-2002555381052"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/london-job-show-westfield-london-careers-fair-tickets-1989981221402"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/london-stem-women-graduate-careers-event-tickets-1981565788616"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/making-your-mark-creativity-impact-and-social-responsibility-tickets-1994939800646"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/matchstick-ldn-tickets-2000584340617"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/mindfulness-through-art-watercolour-workshops-tickets-2001620526878"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/mozart-and-moonlight-sonata-by-candlelight-tickets-1994305559614"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/nightmare-in-brixton-londons-biggest-halloween-party-1000-ravers-tickets-1998670425044"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/no-title-no-permission-no-problem-harnessing-the-power-of-influence-tickets-1993676700680"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/part-time-party-peoples-choice-halloween-special-tickets-2000484299391"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/postgraduate-welcome-party-london-2026-tickets-1998331355879"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/preloved-designer-bags-clothing-sale-tickets-1998880659862"
+ },
+ {
+  "category": "event",
+  "url": "https://www.eventbrite.co.uk/e/sapphic-salsa-and-sombremesa-tickets-1999667651776"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1409.1556"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1502.03167"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1406.2661"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1207.0580"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/2302.13971"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1312.6114"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/1505.04597"
+ },
+ {
+  "category": "paper",
+  "url": "https://arxiv.org/abs/2103.00020"
+ },
+ {
+  "category": "paper",
+  "url": "https://aclanthology.org/2020.acl-main.703/"
+ },
+ {
+  "category": "paper",
+  "url": "https://aclanthology.org/W04-1013/"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.nature.com/articles/nature14539"
+ },
+ {
+  "category": "paper",
+  "url": "https://www.nature.com/articles/s41586-020-2649-2"
+ },
+ {
+  "category": "paper",
+  "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0163094"
+ },
+ {
+  "category": "paper",
+  "url": "https://proceedings.mlr.press/v70/finn17a.html"
+ },
+ {
+  "category": "person",
+  "url": "https://www.ted.com/speakers/brene_brown"
+ },
+ {
+  "category": "person",
+  "url": "https://www.ted.com/speakers/simon_sinek"
+ },
+ {
+  "category": "person",
+  "url": "https://www.britannica.com/biography/Marie-Curie"
+ },
+ {
+  "category": "person",
+  "url": "https://www.nobelprize.org/prizes/chemistry/2020/doudna/facts/"
+ },
+ {
+  "category": "person",
+  "url": "https://en.wikipedia.org/wiki/Alan_Turing"
+ },
+ {
+  "category": "person",
+  "url": "https://en.wikipedia.org/wiki/A._P._J._Abdul_Kalam"
+ },
+ {
+  "category": "person",
+  "url": "https://www.goodreads.com/author/show/1221698.Michelle_Obama"
+ },
+ {
+  "category": "person",
+  "url": "https://scholar.harvard.edu/"
+ },
+ {
+  "category": "place",
+  "url": "https://en.wikipedia.org/wiki/Taj_Mahal"
+ },
+ {
+  "category": "place",
+  "url": "https://en.wikipedia.org/wiki/Lalbagh"
+ },
+ {
+  "category": "place",
+  "url": "https://www.britannica.com/place/Eiffel-Tower-Paris"
+ },
+ {
+  "category": "place",
+  "url": "https://www.katzsdelicatessen.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.gramercytavern.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.franklinbarbecue.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.tartinebakery.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.smithsonianmag.com/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.nps.gov/yose/index.htm"
+ },
+ {
+  "category": "place",
+  "url": "https://www.nps.gov/grca/index.htm"
+ },
+ {
+  "category": "place",
+  "url": "https://www.londonzoo.org/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.kew.org/kew-gardens"
+ },
+ {
+  "category": "place",
+  "url": "https://www.sagradafamilia.org/en/"
+ },
+ {
+  "category": "place",
+  "url": "https://www.vatican.va/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.allbirds.com/products/womens-tree-runners"
+ },
+ {
+  "category": "product",
+  "url": "https://www.allbirds.com/products/mens-wool-runners"
+ },
+ {
+  "category": "product",
+  "url": "https://fellowproducts.com/products/ode-brew-grinder-gen-2"
+ },
+ {
+  "category": "product",
+  "url": "https://www.glossier.com/products/cloud-paint"
+ },
+ {
+  "category": "product",
+  "url": "https://www.mvmtwatches.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.rei.com/product/218339/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.crateandbarrel.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.bestbuy.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://www.ebay.com/itm/1"
+ },
+ {
+  "category": "product",
+  "url": "https://www.walmart.com/"
+ },
+ {
+  "category": "product",
+  "url": "https://shop.tesla.com/"
+ },
+ {
+  "category": "negative",
+  "url": "https://www.gnu.org/philosophy/free-sw.html"
+ },
+ {
+  "category": "negative",
+  "url": "https://motherfuckingwebsite.com/"
+ }
+]
