@@ -1,0 +1,102 @@
+/* Recast design tokens. Three layers: primitive -> semantic -> component.
+   Contrast ratios (WCAG 2.x) were computed, not eyeballed; see docs/04-design-system.md. */
+
+:root {
+  /* ---- Primitive ---- */
+  --ink-950: #121316; --ink-900: #1b1c21; --ink-850: #23252b;
+  --ink-100: #ecedef; --ink-400: #9a9da6; --ink-500: #8a8d96; --ink-600: #5f626b; --ink-900-text: #1c1d21;
+  --paper-50: #ffffff; --paper-100: #f7f7f5; --paper-200: #ecece8;
+  --cobalt-600: #2d50c8; --cobalt-300: #8ba3ff;
+  --red-700: #b3261e; --red-300: #ff8a80;
+  --amber-700: #8a5a00; --amber-300: #f2c46d;
+  --green-700: #1e7a46; --green-300: #7fd6a2;
+
+  /* Type */
+  --font-ui: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 20px;
+  --lh-tight: 1.2; --lh-body: 1.5;
+
+  /* Space: 4px base */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+
+  /* Shape rule: interactive = pill, containers = 12px, inputs = 8px. No other radii. */
+  --r-pill: 999px; --r-panel: 12px; --r-input: 8px;
+
+  /* Motion */
+  --ease: cubic-bezier(.2, .7, .1, 1);
+  --dur-fast: 120ms; --dur-base: 160ms; --dur-slow: 220ms;
+  --toast-ms: 6000ms;
+  --token-spring-stiffness: 320; --token-spring-damping: 30; /* used by Motion in the shell */
+  --hairline: 1px;
+}
+
+/* ---- Semantic: light ---- */
+:root, :root[data-theme="light"] {
+  color-scheme: light;
+  --surface: var(--paper-100);
+  --surface-raised: var(--paper-50);
+  --surface-sunken: var(--paper-200);
+  --text: var(--ink-900-text);
+  --text-muted: var(--ink-600);
+  --line: var(--ink-500);              /* 3.09:1 on surface, meets non-text 3:1 */
+  --line-soft: rgb(28 29 33 / .14);
+  --accent: var(--cobalt-600);
+  --on-accent: #ffffff;
+  --accent-soft: rgb(45 80 200 / .10);
+  --danger: var(--red-700);
+  --warn: var(--amber-700);
+  --ok: var(--green-700);
+  /* Shadows are tinted to the surface hue, never pure black. */
+  --shadow-token: 0 1px 2px rgb(28 29 33 / .10), 0 8px 24px rgb(28 29 33 / .12);
+  --shadow-toast: 0 1px 2px rgb(28 29 33 / .10), 0 12px 32px rgb(28 29 33 / .16);
+}
+
+/* ---- Semantic: dark ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: var(--ink-950);
+    --surface-raised: var(--ink-900);
+    --surface-sunken: #0d0e10;
+    --text: var(--ink-100);
+    --text-muted: var(--ink-400);
+    --line: #6c6f79;
+    --line-soft: rgb(236 237 239 / .14);
+    --accent: var(--cobalt-300);
+    --on-accent: #0e1220;
+    --accent-soft: rgb(139 163 255 / .14);
+    --danger: var(--red-300);
+    --warn: var(--amber-300);
+    --ok: var(--green-300);
+    --shadow-token: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .45);
+    --shadow-toast: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px rgb(0 0 0 / .5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: var(--ink-950); --surface-raised: var(--ink-900); --surface-sunken: #0d0e10;
+  --text: var(--ink-100); --text-muted: var(--ink-400); --line: #6c6f79; --line-soft: rgb(236 237 239 / .14);
+  --accent: var(--cobalt-300); --on-accent: #0e1220; --accent-soft: rgb(139 163 255 / .14);
+  --danger: var(--red-300); --warn: var(--amber-300); --ok: var(--green-300);
+  --shadow-token: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .45);
+  --shadow-toast: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px rgb(0 0 0 / .5);
+}
+
+/* ---- Component ---- */
+:root {
+  --token-h: 44px;
+  --token-bg: var(--surface-raised);
+  --token-fg: var(--text);
+  --chip-h: 32px;
+  --chip-bg: var(--surface-raised);
+  --chip-fg: var(--text);
+  --chip-active-bg: var(--accent);
+  --chip-active-fg: var(--on-accent);
+  --ghost-outline: var(--accent);
+  --toast-bg: var(--surface-raised);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 1ms; --dur-base: 80ms; --dur-slow: 80ms; --token-spring-stiffness: 0; }
+}

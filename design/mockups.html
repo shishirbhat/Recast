@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recast Design States</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface);color:var(--text);font:var(--fs-md)/var(--lh-body) var(--font-ui);-webkit-font-smoothing:antialiased}
+  main{max-width:1120px;margin:0 auto;padding:var(--sp-6) var(--sp-4) 96px}
+  header{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-4);flex-wrap:wrap;margin-bottom:var(--sp-6)}
+  h1{font-size:var(--fs-xl);letter-spacing:-.02em;margin:0 0 var(--sp-1)}
+  p.sub{margin:0;color:var(--text-muted);max-width:60ch;font-size:var(--fs-sm)}
+  .theme{border:1px solid var(--line);background:var(--surface-raised);color:var(--text);border-radius:var(--r-pill);padding:var(--sp-2) var(--sp-4);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+  .theme:focus-visible,.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .grid{display:grid;grid-template-columns:1fr;gap:var(--sp-5)}
+  @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+  figure{margin:0}
+  figcaption{font-size:var(--fs-sm);color:var(--text-muted);margin-top:var(--sp-2)}
+  figcaption b{color:var(--text);font-weight:600}
+  .stage{position:relative;height:300px;border-radius:var(--r-panel);background:var(--surface-sunken);border:1px solid var(--line-soft);overflow:hidden}
+  /* Neutral destination region. A stand-in for "some app's event form", not a screenshot. */
+  .dest{position:absolute;left:24px;right:24px;top:36px;bottom:36px;border-radius:var(--r-input);background:var(--surface-raised);border:1px solid var(--line-soft);padding:var(--sp-4);color:var(--text-muted);font-size:var(--fs-sm)}
+  .dest .row{display:flex;justify-content:space-between;padding:var(--sp-2) 0;border-bottom:1px solid var(--line-soft)}
+  .dest .row:last-child{border:0}
+  .dest.on{border:var(--hairline) solid var(--accent)}
+  .lift{position:absolute;left:24px;top:24px;padding:var(--sp-2) var(--sp-3);border:var(--hairline) solid var(--accent);border-radius:var(--r-input);font-size:var(--fs-sm);background:var(--surface-raised)}
+  .glyph{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:var(--r-input);background:var(--accent-soft);color:var(--accent);font:600 var(--fs-2xs)/1 var(--font-mono);flex:none}
+  .fav{width:16px;height:16px;border-radius:4px;background:var(--text-muted);flex:none}
+  .token{position:absolute;display:flex;align-items:center;gap:var(--sp-2);height:var(--token-h);padding:0 var(--sp-4) 0 var(--sp-3);border-radius:var(--r-pill);background:var(--token-bg);color:var(--token-fg);box-shadow:var(--shadow-token);border:1px solid var(--line-soft);font-size:var(--fs-sm);font-weight:500;max-width:240px}
+  .token span.t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chips{position:absolute;display:flex;flex-direction:column;gap:var(--sp-2)}
+  .chip{display:inline-flex;align-items:center;height:var(--chip-h);padding:0 var(--sp-3);border-radius:var(--r-pill);background:var(--chip-bg);color:var(--chip-fg);border:1px solid var(--line-soft);box-shadow:var(--shadow-token);font:500 var(--fs-xs)/1 var(--font-ui);transition:transform var(--dur-base) var(--ease),background var(--dur-base) var(--ease)}
+  .chip.active{background:var(--chip-active-bg);color:var(--chip-active-fg);border-color:transparent;transform:translateX(-4px)}
+  .ghost{display:flex;justify-content:space-between;padding:var(--sp-2) var(--sp-3);margin-top:var(--sp-2);border:1px dashed var(--ghost-outline);border-radius:var(--r-input);color:var(--text);background:var(--accent-soft)}
+  .toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:var(--sp-4);padding:var(--sp-3) var(--sp-4);border-radius:var(--r-pill);background:var(--toast-bg);box-shadow:var(--shadow-toast);border:1px solid var(--line-soft);font-size:var(--fs-sm);white-space:nowrap}
+  .toast button{all:unset;color:var(--accent);font-weight:600;cursor:pointer;border-radius:var(--r-pill);padding:2px var(--sp-2)}
+  .toast button:focus-visible{outline:2px solid var(--accent)}
+  .bar{position:absolute;left:0;bottom:0;height:2px;background:var(--accent);width:62%}
+  .hold{position:relative;overflow:hidden}
+  .hold i{position:absolute;inset:0;width:55%;background:var(--danger);opacity:.22}
+  .hold.risk{border-color:var(--danger);color:var(--text)}
+  .tag{font:500 var(--fs-2xs)/1 var(--font-mono);color:var(--text-muted);margin-left:var(--sp-2)}
+  .rel{margin-top:var(--sp-6);border-top:1px solid var(--line-soft);padding-top:var(--sp-4);font-size:var(--fs-sm);color:var(--text-muted)}
+  .rel code{font-family:var(--font-mono);color:var(--text)}
+  .swatches{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-3)}
+  .sw{width:96px;font:var(--fs-2xs)/1.3 var(--font-mono)}
+  .sw i{display:block;height:36px;border-radius:var(--r-input);border:1px solid var(--line-soft);margin-bottom:4px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Recast interaction states</h1>
+      <p class="sub">Static mockups of the five desktop states plus the high-risk step. Colours, type and motion come from tokens.css. Follows the system theme; the button overrides it.</p>
+    </div>
+    <button class="theme" id="theme" type="button">Toggle theme</button>
+  </header>
+
+  <div class="grid">
+    <figure>
+      <div class="stage">
+        <div class="dest"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div><div class="row"><span>Location</span><span></span></div></div>
+        <div class="lift"><span class="glyph">P</span> Meera Iyer</div>
+      </div>
+      <figcaption><b>1. Lift mode.</b> Hold the key: capturable objects get a 1px accent outline and a type glyph. Nothing else changes.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage">
+        <div class="dest"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div><div class="row"><span>Location</span><span></span></div></div>
+        <div class="token" style="left:120px;top:120px"><span class="glyph">P</span><span class="t">Meera Iyer</span><span class="fav"></span></div>
+      </div>
+      <figcaption><b>2. Token.</b> 44px pill, glyph, truncated title, source favicon. Follows the pointer with a light spring. No gradient.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage">
+        <div class="dest on"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div><div class="row"><span>Location</span><span></span></div></div>
+        <div class="chips" style="right:12px;top:60px"><button class="chip active">Attendee</button><button class="chip">Location</button></div>
+        <div class="token" style="left:60px;top:120px"><span class="glyph">P</span><span class="t">Meera Iyer</span><span class="fav"></span></div>
+      </div>
+      <figcaption><b>3. Destination response.</b> Hairline around the region; two to four landing chips on its edge. The token snaps to the nearest chip. Only relations the destination supports appear.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage">
+        <div class="dest on"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div>
+          <div class="ghost"><span>Meera Iyer</span><span class="tag">preview</span></div>
+          <div class="row"><span>Location</span><span></span></div></div>
+        <div class="chips" style="right:12px;top:60px"><button class="chip active">Attendee</button><button class="chip">Location</button></div>
+      </div>
+      <figcaption><b>4. Preview.</b> Hovering a chip shows a dashed ghost of the result in place. Esc cancels at any point; nothing has happened yet.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage">
+        <div class="dest"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span style="color:var(--text)">Meera Iyer</span></div><div class="row"><span>Location</span><span></span></div></div>
+        <div class="toast" role="status"><span>Added as attendee</span><button type="button">Undo</button><span class="bar"></span></div>
+      </div>
+      <figcaption><b>5. Place.</b> Toast for about six seconds, with the remaining time shown as a 2px bar. Undo is a real inverse operation from the history log.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage">
+        <div class="dest on"><div class="row"><span>To</span><span></span></div><div class="row"><span>Subject</span><span></span></div></div>
+        <div class="chips" style="right:12px;top:60px"><button class="chip hold risk"><i></i><span style="position:relative">Hold to send</span></button></div>
+      </div>
+      <figcaption><b>6. High risk.</b> Send, delete, publish, money: the chip needs a deliberate hold (about 600ms), filled in the danger colour. Never a single release. Keyboard: press and hold Enter.</figcaption>
+    </figure>
+  </div>
+
+  <div class="rel">
+    <b style="color:var(--text)">Reliability label</b> on every destination, always visible in the chip's tooltip and the control center:
+    <code>native</code> &gt; <code>official API</code> &gt; <code>structured interface</code> &gt; <code>deep link / import</code> &gt; <code>UI automation (fragile)</code> &gt; <code>unsupported</code>.
+    <div class="swatches" id="sw"></div>
+  </div>
+</main>
+<script>
+  const b=document.getElementById('theme');
+  b.addEventListener('click',()=>{const r=document.documentElement;const d=(r.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'))==='dark';r.dataset.theme=d?'light':'dark';render()});
+  const names=['surface','surface-raised','text','text-muted','line','accent','danger','warn','ok'];
+  function render(){const cs=getComputedStyle(document.documentElement);document.getElementById('sw').innerHTML=names.map(n=>`<div class="sw"><i style="background:var(--${n})"></i>${n}<br>${cs.getPropertyValue('--'+n).trim()}</div>`).join('')}
+  render();
+</script>
+</body>
+</html>
