@@ -88,6 +88,17 @@
   "split": "heldout"
  },
  {
+  "id": "event-25af1a26",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/multi-language-action-movies-bengaluru",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:40.349Z",
+  "split": "dev"
+ },
+ {
   "id": "event-33a308d3",
   "category": "event",
   "url": "https://pycon.org/",
@@ -154,6 +165,17 @@
   "split": "dev"
  },
  {
+  "id": "event-5c95b1b7",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/play-zones-bengaluru",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:42.758Z",
+  "split": "dev"
+ },
+ {
   "id": "event-69421d88",
   "category": "event",
   "url": "https://reactconf.com/",
@@ -173,6 +195,28 @@
   "ok": true,
   "sha256": "00640be1c7107e562942be8c69df452962f3e528fed1389110cff314beeba0a4",
   "fetchedAt": "2026-09-30T15:39:12.788Z",
+  "split": "dev"
+ },
+ {
+  "id": "event-6e2b820a",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/multi-language-period-experimental-bengaluru",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:41.529Z",
+  "split": "heldout"
+ },
+ {
+  "id": "event-701eef44",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/the-paradise/buytickets/ET00436621/20260928",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:49.931Z",
   "split": "dev"
  },
  {
@@ -209,6 +253,28 @@
   "split": "dev"
  },
  {
+  "id": "event-797a8294",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/drishyam-3/ET00501169",
+  "status": 403,
+  "bytes": 5487,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:47.546Z",
+  "split": "heldout"
+ },
+ {
+  "id": "event-8951efe5",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/head-out-this-weekend-bengaluru?daygroups=this-weekend&priceGroup=1001.0to1500.0&tags=outdoor-events",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:43.916Z",
+  "split": "dev"
+ },
+ {
   "id": "event-8ed40bf3",
   "category": "event",
   "url": "https://www.eventbrite.co.uk/e/arbd-in-the-community-recognition-response-and-pathways-forward-tickets-1987995657527",
@@ -231,6 +297,28 @@
   "split": "heldout"
  },
  {
+  "id": "event-989fb540",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/explore/home/bengaluru",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:39.141Z",
+  "split": "dev"
+ },
+ {
+  "id": "event-98ed6a4e",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/drishyam-3/buytickets/ET00499251/",
+  "status": 403,
+  "bytes": 5487,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:48.764Z",
+  "split": "dev"
+ },
+ {
   "id": "event-9aefd0cb",
   "category": "event",
   "url": "https://www.eventbrite.co.uk/e/preloved-designer-bags-clothing-sale-tickets-1998880659862",
@@ -239,6 +327,17 @@
   "ok": true,
   "sha256": "07b76ff15f6db3744fa78ba175176882236fe84eea76942b09e1f30a592919ed",
   "fetchedAt": "2026-09-30T15:39:38.260Z",
+  "split": "dev"
+ },
+ {
+  "id": "event-9e375b09",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/cinemas/bengaluru/inox-megaplex-mall-of-asia-bangalore/buytickets/IMMO/20260930",
+  "status": 403,
+  "bytes": 5488,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:45.135Z",
   "split": "dev"
  },
  {
@@ -273,6 +372,17 @@
   "sha256": "efff9d0ae72b060d351ee83b3bf8e2e2a45f4d3693807daca12d7909b167951e",
   "fetchedAt": "2026-09-30T15:39:26.243Z",
   "split": "heldout"
+ },
+ {
+  "id": "event-b3282b32",
+  "category": "event",
+  "url": "https://in.bookmyshow.com/movies/bengaluru/the-paradise/et00436633",
+  "status": 403,
+  "bytes": 5487,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:46.411Z",
+  "split": "dev"
  },
  {
   "id": "event-b42f9c8e",
@@ -1309,6 +1419,17 @@
   "split": "dev"
  },
  {
+  "id": "place-1c128017",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/the-fatty-bao",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:33.601Z",
+  "split": "dev"
+ },
+ {
   "id": "place-21c8e99e",
   "category": "place",
   "url": "https://www.lalbaghgarden.in/",
@@ -1386,6 +1507,17 @@
   "split": "dev"
  },
  {
+  "id": "place-498fcc51",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/nagarjuna-since-1984",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:32.394Z",
+  "split": "dev"
+ },
+ {
   "id": "place-55fc6b14",
   "category": "place",
   "url": "https://en.wikipedia.org/wiki/Le_Bernardin",
@@ -1395,6 +1527,17 @@
   "sha256": "58ed1eded5b8bdc288cc5d5abb6e088d614bc0ebd74c00eb9286e6bedcf7bf74",
   "fetchedAt": "2026-09-30T15:38:38.435Z",
   "split": "heldout"
+ },
+ {
+  "id": "place-5866387d",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-jayanagar-bangalore",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:34.826Z",
+  "split": "dev"
  },
  {
   "id": "place-58b115d3",
@@ -1441,6 +1584,17 @@
   "split": "dev"
  },
  {
+  "id": "place-62758296",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/toit",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:27.732Z",
+  "split": "dev"
+ },
+ {
   "id": "place-76443f27",
   "category": "place",
   "url": "https://en.wikipedia.org/wiki/Cubbon_Park",
@@ -1452,6 +1606,28 @@
   "split": "dev"
  },
  {
+  "id": "place-786d75c9",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-banashankari",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:35.946Z",
+  "split": "heldout"
+ },
+ {
+  "id": "place-7e71c7e4",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/vidyarthi-bhavan-since-1943-basavanagudi-bangalore/order",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:28.815Z",
+  "split": "heldout"
+ },
+ {
   "id": "place-802cd284",
   "category": "place",
   "url": "https://www.vam.ac.uk/info/visit",
@@ -1460,6 +1636,28 @@
   "ok": false,
   "sha256": null,
   "fetchedAt": "2026-09-30T15:38:10.317Z",
+  "split": "dev"
+ },
+ {
+  "id": "place-82ff08de",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/restaurants/truffles-1",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:30.096Z",
+  "split": "heldout"
+ },
+ {
+  "id": "place-95d7b9a9",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-malleshwaram",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:37.274Z",
   "split": "dev"
  },
  {
@@ -1573,6 +1771,17 @@
   "split": "heldout"
  },
  {
+  "id": "place-d17c2e60",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/1947-hennur-bangalore",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:38.345Z",
+  "split": "dev"
+ },
+ {
   "id": "place-d9427c97",
   "category": "place",
   "url": "https://www.kew.org/kew-gardens",
@@ -1626,6 +1835,17 @@
   "sha256": "5e6d11f00c4ebb36e20604e017efa790cfe349a37132cf70f35b09ca9c58da9c",
   "fetchedAt": "2026-09-30T15:40:07.222Z",
   "split": "heldout"
+ },
+ {
+  "id": "place-febb892d",
+  "category": "place",
+  "url": "https://www.zomato.com/bangalore/meghana-foods-marathahalli-bangalore/order?disableOpenApp=1&fsc=1",
+  "status": 0,
+  "bytes": 0,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:31.268Z",
+  "split": "dev"
  },
  {
   "id": "place-febc135d",
@@ -1738,6 +1958,17 @@
   "split": "heldout"
  },
  {
+  "id": "product-48f2e5e7",
+  "category": "product",
+  "url": "https://www.amazon.in/Boat-Rockerz-550-Headphone-Aesthetics/dp/B0856HNLDK",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:16.094Z",
+  "split": "dev"
+ },
+ {
   "id": "product-4a13d856",
   "category": "product",
   "url": "https://store.google.com/product/pixel_9",
@@ -1749,6 +1980,17 @@
   "split": "dev"
  },
  {
+  "id": "product-5066f383",
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Cancelling-Bluetooth-Headphones-Immersive/dp/B09MTQ23X4",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:20.646Z",
+  "split": "heldout"
+ },
+ {
   "id": "product-65cd938c",
   "category": "product",
   "url": "https://www.nykaa.com/",
@@ -1758,6 +2000,17 @@
   "sha256": null,
   "fetchedAt": "2026-09-30T15:39:04.815Z",
   "split": "heldout"
+ },
+ {
+  "id": "product-67e468de",
+  "category": "product",
+  "url": "https://www.amazon.in/Samsung-Galaxy-Storage-Snapdragon-Battery/dp/B0CJ2FZ2L3",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:26.598Z",
+  "split": "dev"
  },
  {
   "id": "product-7453e9f6",
@@ -1815,6 +2068,17 @@
   "split": "dev"
  },
  {
+  "id": "product-879daef3",
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-425-Bluetooth-Headphones/dp/B09QL2WWC4",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:18.396Z",
+  "split": "heldout"
+ },
+ {
   "id": "product-98024e21",
   "category": "product",
   "url": "https://www.bestbuy.com/",
@@ -1835,6 +2099,17 @@
   "sha256": "94ba4b302a01218b800cf3c882b098beb7c6baa0a7b97b6e596c629592b9453f",
   "fetchedAt": "2026-09-30T15:38:55.225Z",
   "split": "dev"
+ },
+ {
+  "id": "product-9cdfcba4",
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-450-Pro-Headphones/dp/B08XY16Y6J",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:23.045Z",
+  "split": "heldout"
  },
  {
   "id": "product-9da7efb0",
@@ -1881,6 +2156,17 @@
   "split": "dev"
  },
  {
+  "id": "product-b02d070e",
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-480-Bluetooth-Headphones/dp/B0DGTSRX3R",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:21.832Z",
+  "split": "heldout"
+ },
+ {
   "id": "product-b1c04b5a",
   "category": "product",
   "url": "https://www.samsung.com/in/smartphones/galaxy-s24-ultra/",
@@ -1889,6 +2175,17 @@
   "ok": false,
   "sha256": null,
   "fetchedAt": "2026-09-30T15:39:07.525Z",
+  "split": "dev"
+ },
+ {
+  "id": "product-b81f3d38",
+  "category": "product",
+  "url": "https://www.amazon.in/Boat-Rockerz-450-Lightweight-Compatibility/dp/B08667772G",
+  "status": 404,
+  "bytes": 870,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:17.127Z",
   "split": "dev"
  },
  {
@@ -1912,6 +2209,17 @@
   "sha256": null,
   "fetchedAt": "2026-09-30T15:40:15.079Z",
   "split": "heldout"
+ },
+ {
+  "id": "product-dae4c19f",
+  "category": "product",
+  "url": "https://www.amazon.in/Logitech-Superlight-Lightspeed-Lightweight-Programmable/dp/B0CGDZC2FK",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:25.461Z",
+  "split": "dev"
  },
  {
   "id": "product-de6a6679",
@@ -1947,6 +2255,17 @@
   "split": "dev"
  },
  {
+  "id": "product-f4b2524a",
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-430-Assistant-Headphones/dp/B0DGTSTQWL",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:19.547Z",
+  "split": "dev"
+ },
+ {
   "id": "product-fdc97dbc",
   "category": "product",
   "url": "https://www.mvmtwatches.com/",
@@ -1956,5 +2275,16 @@
   "sha256": "7c47d0afbd141cbbf4d27bfd3a808b694dbd413ebc25b040b028bd8ff6d71f71",
   "fetchedAt": "2026-09-30T15:40:14.736Z",
   "split": "dev"
+ },
+ {
+  "id": "product-ffde1532",
+  "category": "product",
+  "url": "https://www.amazon.in/boAt-Rockerz-460-Headphones-Assistant/dp/B0CC2G8L22",
+  "status": 503,
+  "bytes": 3793,
+  "ok": false,
+  "sha256": null,
+  "fetchedAt": "2026-09-30T19:02:24.229Z",
+  "split": "heldout"
  }
 ]
