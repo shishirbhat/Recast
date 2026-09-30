@@ -20,3 +20,11 @@ export function cssPath(el: Element): string {
 export function bySelector(doc: Document, path: string): Element | null {
   try { return doc.querySelector(path); } catch { return null; }
 }
+
+/** Text with a space between every text node, so <div>Bankside</div><div>London</div> is not "BanksideLondon". */
+export function spacedText(el: Element): string {
+  const w = el.ownerDocument.createTreeWalker(el, 4 /* SHOW_TEXT */);
+  const parts: string[] = [];
+  for (let n = w.nextNode(); n; n = w.nextNode()) parts.push(n.textContent ?? "");
+  return parts.join(" ");
+}

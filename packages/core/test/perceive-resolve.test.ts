@@ -73,11 +73,14 @@ describe("resolve", () => {
     ["Location with lat but no lng", "Location", { name: "x", lat: 12 }],
     ["Location with lat out of range", "Location", { name: "x", lat: 120, lng: 1 }],
     ["Person with a bad email", "Person", { name: "x", email: ["nope"] }],
-    ["ResearchPaper without authors", "ResearchPaper", { title: "x" }],
+    ["ResearchPaper without a title", "ResearchPaper", { authors: ["A"] }],
     ["Product with a bad currency", "Product", { name: "x", price: { amount: 1, currency: "dollars" } }],
     ["unknown property", "Person", { name: "x", shoeSize: 9 }],
   ] as const)("rejects %s", (_n, type, props) => {
     expect(() => resolve(candidate(type, props as Record<string, unknown>))).toThrow(RecastError);
+  });
+  it("accepts a paper identified by title alone (authors are optional)", () => {
+    expect(obj("ResearchPaper", { title: "Emergence of a Peaceful Culture in Wild Baboons", doi: "10.1371/journal.pbio.0020124" }).type).toBe("ResearchPaper");
   });
   it("rejects a property that has no evidence", () => {
     const c = candidate("Person", { name: "x", org: "y" });

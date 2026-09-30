@@ -1,0 +1,36 @@
+pages 51 (scored 51); objects: truth 38, found 27 (71.1%), spurious 1, related-not-scored 58, excluded snapshots 0
+
+field                       truth  recall   precision  loose-recall 
+Event.end                   1      100.0%   100.0%     100.0%       
+Event.location              7      100.0%   100.0%     100.0%       
+Event.start                 7      100.0%   100.0%     100.0%       
+Event.title                 9      100.0%   100.0%     100.0%       
+Location.address            1      0.0%     0.0%       0.0%         
+Location.name               9      0.0%     n/a        0.0%         
+Person.name                 5      20.0%    100.0%     20.0%        
+Product.name                3      100.0%   100.0%     100.0%       
+ResearchPaper.authors       7      100.0%   100.0%     100.0%       
+ResearchPaper.authorsFirst  3      100.0%   100.0%     100.0%       
+ResearchPaper.title         12     100.0%   100.0%     100.0%       
+ResearchPaper.year          9      100.0%   100.0%     100.0%       
+
+by category: event 9/9 found, 0 spurious; paper 12/12 found, 0 spurious; person 1/5 found, 1 spurious; place 2/9 found, 0 spurious; product 3/3 found, 0 spurious
+evidence: 354 properties; any pointer resolves 100.0%; primary pointer resolves 99.7%; also visible on page 69.5%
+latency (extractor only, in Chromium): cold p50 13.1ms p95 41.3ms max 50.4ms | warm p50 1.9ms p95 18.7ms max 24.7ms
+
+misses:
+person-65469480 SPURIOUS ResearchPaper {"title":"About This Website","authors":["Gwern"],"year":2010,"url":"https://gwern.net/about"}
+person-9177e811 Person.name: NOT EXTRACTED (object missed) want "Giorgio Parisi"
+person-abafe45b Person.name: NOT EXTRACTED (object missed) want "Alan Turing"
+person-b0fd2d83 Person.name: NOT EXTRACTED (object missed) want "Sir Ken Robinson"
+person-e7b6403a Person.name: NOT EXTRACTED (object missed) want "Simon Sinek"
+place-281f4116 Location.name: NOT EXTRACTED (object missed) want "Tartine"
+place-3ce8b0d5 Location.name: NOT EXTRACTED (object missed) want "Claridge's"
+place-55fc6b14 Location.name: NOT EXTRACTED (object missed) want "Le Bernardin"
+place-b447159e Location.name: NOT EXTRACTED (object missed) want "Gramercy Tavern"
+place-c8b31573 Location.name: NOT EXTRACTED (object missed) want "Natural History Museum"
+place-cde45891 Location.name: NOT EXTRACTED (object missed) want "Rijksmuseum"
+place-dd990d3d Location.name: NOT EXTRACTED (object missed) want "noma"
+place-e752de3a Location.name: NOT EXTRACTED want "Tate Modern"
+place-e752de3a Location.address: got "Tate Modern Bankside London SE1 9TG" want "Bankside, London SE1 9TG"
+place-f1d284a3 Location.name: NOT EXTRACTED want "Grand Canyon National Park"

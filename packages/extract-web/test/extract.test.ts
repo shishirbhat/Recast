@@ -77,6 +77,13 @@ describe("OpenGraph, merging and corroboration", () => {
     expect(r.objects[0]!.properties["name"]).toBe("Stagg EKG");
     expect(r.objects[0]!.fields["name"]!.confidence).toBe(0.95);
   });
+  it("merges an OpenGraph title that only partly overlaps the structured name, but never two different structured objects", () => {
+    const og = page(`<head><meta property="og:type" content="product"><meta property="og:title" content="Stagg EKG | Fellow">
+      <script type="application/ld+json">{"@type":"Product","name":"Stagg EKG Electric Kettle"}</script></head>`);
+    expect(og.objects).toHaveLength(1);
+    const two = page(`<head><script type="application/ld+json">[{"@type":"Product","name":"Stagg EKG Electric Kettle"},{"@type":"Product","name":"Stagg EKG Pro Kettle"}]</script></head>`);
+    expect(two.objects).toHaveLength(2);
+  });
   it("adds a visible-element corroboration with a text range", () => {
     const r = page(`<head><script type="application/ld+json">{"@type":"Person","name":"Meera Iyer"}</script></head><body><main><h1>Meera Iyer</h1></main></body>`);
     const css = r.objects[0]!.fields["name"]!.evidence.find((e) => e.locator.kind === "css")!;
@@ -110,6 +117,11 @@ describe("DOM heuristics (low confidence, narrow)", () => {
     expect(page(`<body><address>Contact us</address></body>`).objects).toEqual([]);
     expect(page(`<body><address>hello@example.com</address></body>`).objects).toEqual([]);
   });
+  it("keeps words apart when an <address> is made of block elements", () => {
+    const o = page(`<body><address><div>Tate Modern</div><div>Bankside</div><div>London SE1 9TG</div></address></body>`).objects[0]!;
+    expect(o.properties["address"]).toBe("Tate Modern Bankside London SE1 9TG");
+    expect(createResolver(document)(o.fields["address"]!.evidence[0]!, o.properties["address"]).ok).toBe(true);
+  });
   it("strips phone and email out of an <address>, and ignores one that is only contact details", () => {
     expect(page(`<body><address>Trafalgar Square London WC2N 5DN hello@example.org</address></body>`).objects[0]!.properties["address"]).toBe("Trafalgar Square London WC2N 5DN");
     expect(page(`<body><address>India Toll Free: 1800 11 77 11 Telephone: +91 11 4444 7474</address></body>`).objects).toEqual([]);
@@ -131,5 +143,32 @@ describe("DOM heuristics (low confidence, narrow)", () => {
       <body><h1>Cloud Paint</h1><div itemscope itemtype="https://schema.org/Product"><span itemprop="name">Boy Brow</span></div></body>`);
     const byName = Object.fromEntries(r.objects.map((o) => [o.properties["name"], r.roles[o.id]]));
     expect(byName).toEqual({ "Cloud Paint": "primary", "Boy Brow": "related" });
+  });
+});
+
+describe("hostile pages", () => {
+  it("ignores itemprop names that would touch an object's prototype", () => {
+    const r = page(`<body><div itemscope itemtype="https://schema.org/Person"><span itemprop="name">Meera</span>
+      <span itemprop="__proto__">x</span><span itemprop="constructor">y</span></div></body>`);
+    expect(r.objects[0]!.properties).toEqual({ name: "Meera" });
+    expect(Object.getPrototypeOf(r.objects[0]!.properties)).toBe(Object.prototype);
+  });
+  it("drops javascript:, data: and file: URLs instead of carrying them", () => {
+    const r = page(`<head><script type="application/ld+json">{"@type":"Product","name":"Kettle","url":"javascript:alert(1)","image":"data:image/png;base64,AAAA"}</script></head>`);
+    expect(r.objects[0]!.properties["url"]).toBeUndefined();
+    expect(r.objects[0]!.properties["image"]).toBeUndefined();
+    expect(r.droppedProperties.map((d) => d.property).sort()).toEqual(["image", "url"]);
+  });
+  it("gives up quickly on an enormous, unrepairable JSON-LD block instead of running a slow regex over it", () => {
+    const big = '{"@type":"Person","name":"' + '\\"'.repeat(200_000) + '",}';        // invalid (trailing comma) AND large
+    const t0 = performance.now();
+    const r = page(`<head><script type="application/ld+json">${big}</script></head>`);
+    expect(performance.now() - t0).toBeLessThan(1500);
+    expect(r.diagnostics.jsonLdParseFailures).toBe(1);
+  });
+  it("caps how many microdata items it will walk", () => {
+    const items = Array.from({ length: 1500 }, (_, i) => `<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">P${i}</span></div>`).join("");
+    const r = page(`<body>${items}</body>`);
+    expect(r.diagnostics.microdataItems).toBe(1000);
   });
 });

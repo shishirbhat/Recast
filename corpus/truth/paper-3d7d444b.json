@@ -1,0 +1,19 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Learning Transferable Visual Models From Natural Language Supervision",
+    "authorsFirst": [
+     "Alec Radford",
+     "Jong Wook Kim",
+     "Chris Hallacy",
+     "Aditya Ramesh",
+     "Gabriel Goh"
+    ],
+    "year": 2021
+   }
+  }
+ ],
+ "split": "heldout"
+}

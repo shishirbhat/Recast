@@ -85,7 +85,12 @@ const sameThing = (a: SemanticObject, b: SemanticObject) => {
   // object of the same type when one name contains the other. Two structured objects never merge this way.
   const og = a.provenance.capture.adapter === "opengraph" || b.provenance.capture.adapter === "opengraph";
   const [short, long] = an.length <= bn.length ? [an, bn] : [bn, an];
-  return og && short.length >= 4 && long.includes(short);
+  if (!og) return false;
+  if (short.length >= 4 && long.includes(short)) return true;
+  // "Stagg EKG | Fellow" vs "Stagg EKG Electric Kettle": share at least two words, and at least 40% of the shorter name.
+  const sw = short.match(/[\p{L}\p{N}]+/gu) ?? [], lw = new Set(long.match(/[\p{L}\p{N}]+/gu) ?? []);
+  const shared = sw.filter((w) => lw.has(w)).length;
+  return shared >= 2 && shared >= 0.4 * sw.length;
 };
 
 /** Merge duplicates: keep the higher-confidence value for each property. */
@@ -138,7 +143,14 @@ export function extractPage(doc: Document, opts: ExtractOptions): ExtractResult 
   for (const c of cands) {
     const props = { ...c.properties };
     for (const k of DATE_KEYS) if (typeof props[k] === "string") props[k] = fixDate(props[k] as string);
-    for (const k of URL_KEYS) if (typeof props[k] === "string") props[k] = absolutize(props[k] as string, doc.baseURI || opts.url);
+    for (const k of URL_KEYS) {
+      const v = props[k];
+      if (typeof v !== "string") continue;
+      const abs = absolutize(v, doc.baseURI || opts.url);
+      // Only http(s) URLs are kept. javascript:, data:, file: and the like would be dangerous for anything that later opens them.
+      if (/^https?:\/\//i.test(abs)) props[k] = abs;
+      else { delete props[k]; droppedProperties.push({ type: c.type, property: k, reason: "non-http(s) URL" }); }
+    }
     const r = resolveRepairing({ ...c, properties: props }, droppedProperties);
     if ("error" in r) rejected.push({ type: c.type, adapter: c.provenance.capture.adapter, reason: r.error });
     else resolved.push(r);

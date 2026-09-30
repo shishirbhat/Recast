@@ -1,0 +1,11 @@
+{
+ "objects": [
+  {
+   "type": "Location",
+   "properties": {
+    "name": "Tate Modern",
+    "address": "Bankside, London SE1 9TG"
+   }
+  }
+ ]
+}

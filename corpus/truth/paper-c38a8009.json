@@ -1,0 +1,18 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Highly accurate protein structure prediction with AlphaFold",
+    "authorsFirst": [
+     "John Jumper",
+     "Richard Evans",
+     "Alexander Pritzel",
+     "Tim Green"
+    ],
+    "year": 2021
+   }
+  }
+ ],
+ "split": "heldout"
+}

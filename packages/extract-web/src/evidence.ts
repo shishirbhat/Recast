@@ -1,6 +1,6 @@
 // Evidence: point a property at the place it came from, and check that the pointer is honest.
 import type { Evidence } from "@recast/core";
-import { bySelector, cssPath, norm, tokens } from "./dom-util.js";
+import { bySelector, cssPath, norm, spacedText, tokens } from "./dom-util.js";
 import { collectJsonLd } from "./signals.js";
 
 export const flatten = (v: unknown): string[] =>
@@ -27,7 +27,7 @@ export function createResolver(doc: Document) {
       const attrs = ["href", "src", "content", "datetime", "value", "alt", "title"].map((a) => el.getAttribute(a)).filter((x): x is string => !!x);
       const abs = (u: string) => { try { return new URL(u, doc.baseURI).href; } catch { return u; } };
       const viaAttr = attrs.some((a) => values.some((v) => a === v || abs(a) === v || textMatches(a, [v])));
-      return { ok: textMatches(el.textContent ?? "", values) || viaAttr, element: el };
+      return { ok: textMatches(el.textContent ?? "", values) || textMatches(spacedText(el), values) || viaAttr, element: el };
     }
     if (kind === "meta") {
       const m = /^(.*)\[(\d+)\]$/.exec(loc);

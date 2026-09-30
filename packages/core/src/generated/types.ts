@@ -79,10 +79,7 @@ export interface ProductProperties {
 }
 export interface ResearchPaperProperties {
   title: string;
-  /**
-   * @minItems 1
-   */
-  authors: [string, ...string[]];
+  authors?: string[];
   doi?: string;
   arxivId?: string;
   year?: number;

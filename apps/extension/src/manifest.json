@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Recast",
+  "version": "0.1.0",
+  "description": "Shows the people, places, events, papers and products a page describes, and where each fact came from. Runs only when you click it. Nothing leaves your device.",
+  "minimum_chrome_version": "120",
+  "action": { "default_title": "Recast: what is on this page?", "default_popup": "popup.html" },
+  "permissions": ["activeTab", "scripting"],
+  "content_security_policy": { "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'" }
+}

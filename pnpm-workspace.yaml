@@ -1,6 +1,7 @@
 packages:
   - schema
   - packages/*
+  - apps/*
   - corpus
 onlyBuiltDependencies:
   - esbuild

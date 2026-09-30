@@ -1,0 +1,15 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Why Momentum Really Works",
+    "authors": [
+     "Gabriel Goh"
+    ],
+    "year": 2017
+   }
+  }
+ ],
+ "split": "heldout"
+}

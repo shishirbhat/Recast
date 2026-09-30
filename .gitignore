@@ -4,3 +4,5 @@ dist
 .DS_Store
 corpus/results/
 corpus/pages/
+apps/extension/dist/
+apps/extension/dist-test/

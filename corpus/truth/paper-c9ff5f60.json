@@ -1,0 +1,19 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Dropout: A Simple Way to Prevent Neural Networks from Overfitting",
+    "authors": [
+     "Nitish Srivastava",
+     "Geoffrey Hinton",
+     "Alex Krizhevsky",
+     "Ilya Sutskever",
+     "Ruslan Salakhutdinov"
+    ],
+    "year": 2014
+   }
+  }
+ ],
+ "split": "heldout"
+}

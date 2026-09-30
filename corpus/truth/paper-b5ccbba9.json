@@ -1,0 +1,11 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Sharing Detailed Research Data Is Associated with Increased Citation Rate"
+   }
+  }
+ ],
+ "split": "heldout"
+}

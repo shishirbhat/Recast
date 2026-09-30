@@ -1,0 +1,10 @@
+{
+ "objects": [
+  {
+   "type": "Location",
+   "properties": {
+    "name": "Rijksmuseum"
+   }
+  }
+ ]
+}

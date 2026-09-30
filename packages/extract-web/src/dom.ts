@@ -2,7 +2,7 @@
 // something a person would also read off the page. Confidence is low so the trust model asks for
 // confirmation. Nothing here uses OCR or vision.
 import type { Candidate, Evidence, FieldMeta } from "@recast/core";
-import { cssPath, norm } from "./dom-util.js";
+import { cssPath, norm, spacedText } from "./dom-util.js";
 
 const DOM_CONF = { mailto: 0.6, address: 0.55 } as const;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -30,7 +30,7 @@ export function domCandidates(doc: Document, source: Candidate["provenance"]["so
 
   for (const el of [...doc.querySelectorAll("address")].slice(0, 10)) {
     // <address> often also holds the phone number and email: keep only the postal part.
-    const text = norm((el.textContent ?? "").replace(/[^\s]+@[^\s]+/g, " ").replace(/\b(toll[- ]free|tel(?:ephone)?|phone|fax)\b[:.]?[^A-Za-z]*/gi, " "));
+    const text = norm(spacedText(el).replace(/[^\s]+@[^\s]+/g, " ").replace(/\b(toll[- ]free|tel(?:ephone)?|phone|fax)\b[:.]?[^A-Za-z]*/gi, " "));
     // An address has to look like one: some length, and a digit or a comma-separated locality.
     if (text.length < 8 || text.length > 250 || !(/\d/.test(text) || text.includes(","))) continue;
     if (/^\+?[\d\s()-]+$/.test(text) || seen.has(text)) continue; // just a phone number
