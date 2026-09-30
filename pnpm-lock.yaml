@@ -94,6 +94,19 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.4)(jsdom@26.1.0)(tsx@4.23.15)
 
+  packages/interaction:
+    dependencies:
+      '@recast/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.4)(jsdom@26.1.0)(tsx@4.23.15)
+
   schema:
     devDependencies:
       ajv:
