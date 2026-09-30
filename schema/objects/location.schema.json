@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/objects/location.schema.json",
+  "title": "LocationProperties",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 }, "address": { "type": "string", "minLength": 1 },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+    "url": { "type": "string" }, "placeId": { "type": "string" }
+  },
+  "anyOf": [ { "required": ["name"] }, { "required": ["address"] }, { "required": ["lat", "lng"] } ],
+  "dependentRequired": { "lat": ["lng"], "lng": ["lat"] }
+}

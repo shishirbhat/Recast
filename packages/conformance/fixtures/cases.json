@@ -1,0 +1,1510 @@
+[
+ {
+  "name": "roundtrip-person",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Person",
+    "properties": {
+     "name": "Meera Iyer",
+     "email": [
+      "meera@example.com"
+     ],
+     "org": "Kite Press"
+    },
+    "fields": {
+     "name": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#name"
+        }
+       }
+      ]
+     },
+     "email": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#email"
+        }
+       }
+      ]
+     },
+     "org": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#org"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Person"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-document",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Document",
+    "properties": {
+     "title": "Q3 plan",
+     "url": "https://example.org/q3.pdf",
+     "fileName": "q3.pdf",
+     "pages": 12
+    },
+    "fields": {
+     "title": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#title"
+        }
+       }
+      ]
+     },
+     "url": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#url"
+        }
+       }
+      ]
+     },
+     "fileName": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#fileName"
+        }
+       }
+      ]
+     },
+     "pages": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#pages"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Document"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-event",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Event",
+    "properties": {
+     "title": "Launch dinner",
+     "start": "2026-10-05T19:00:00+05:30",
+     "location": "Toit, Bengaluru"
+    },
+    "fields": {
+     "title": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#title"
+        }
+       }
+      ]
+     },
+     "start": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#start"
+        }
+       }
+      ]
+     },
+     "location": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#location"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Event"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-location",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Location",
+    "properties": {
+     "name": "Toit",
+     "address": "298 100 Feet Rd, Bengaluru",
+     "lat": 12.979,
+     "lng": 77.64
+    },
+    "fields": {
+     "name": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#name"
+        }
+       }
+      ]
+     },
+     "address": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#address"
+        }
+       }
+      ]
+     },
+     "lat": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#lat"
+        }
+       }
+      ]
+     },
+     "lng": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#lng"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Location"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-image",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Image",
+    "properties": {
+     "url": "https://example.org/a.png",
+     "alt": "chart",
+     "width": 800,
+     "height": 600
+    },
+    "fields": {
+     "url": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#url"
+        }
+       }
+      ]
+     },
+     "alt": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#alt"
+        }
+       }
+      ]
+     },
+     "width": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#width"
+        }
+       }
+      ]
+     },
+     "height": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#height"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Image"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-message",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Message",
+    "properties": {
+     "subject": "Budget",
+     "snippet": "Please review",
+     "from": "a@example.com",
+     "to": [
+      "b@example.com"
+     ],
+     "threadId": "t-9"
+    },
+    "fields": {
+     "subject": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#subject"
+        }
+       }
+      ]
+     },
+     "snippet": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#snippet"
+        }
+       }
+      ]
+     },
+     "from": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#from"
+        }
+       }
+      ]
+     },
+     "to": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#to"
+        }
+       }
+      ]
+     },
+     "threadId": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#threadId"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Message"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-task",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Task",
+    "properties": {
+     "title": "Review budget",
+     "due": "2026-10-02",
+     "status": "open"
+    },
+    "fields": {
+     "title": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#title"
+        }
+       }
+      ]
+     },
+     "due": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#due"
+        }
+       }
+      ]
+     },
+     "status": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#status"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Task"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-product",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Product",
+    "properties": {
+     "name": "Kettle",
+     "brand": "Fellow",
+     "price": {
+      "amount": 149,
+      "currency": "USD"
+     },
+     "rating": 4.6
+    },
+    "fields": {
+     "name": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#name"
+        }
+       }
+      ]
+     },
+     "brand": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#brand"
+        }
+       }
+      ]
+     },
+     "price": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#price"
+        }
+       }
+      ]
+     },
+     "rating": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#rating"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "Product"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "roundtrip-researchpaper",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "ResearchPaper",
+    "properties": {
+     "title": "Attention Is All You Need",
+     "authors": [
+      "A. Vaswani",
+      "N. Shazeer"
+     ],
+     "doi": "10.5555/3295222.3295349",
+     "year": 2017
+    },
+    "fields": {
+     "title": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#title"
+        }
+       }
+      ]
+     },
+     "authors": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#authors"
+        }
+       }
+      ]
+     },
+     "doi": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#doi"
+        }
+       }
+      ]
+     },
+     "year": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#year"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "expect": {
+   "roundTrip": true,
+   "objectTypes": [
+    "ResearchPaper"
+   ],
+   "proposals": []
+  }
+ },
+ {
+  "name": "person-jsonld-to-calendar",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "perception": {
+    "kind": "jsonld",
+    "docs": [
+     {
+      "@type": "Person",
+      "name": "Meera Iyer",
+      "email": "mailto:Meera@Example.com"
+     }
+    ],
+    "source": {
+     "app": "fixture-page",
+     "url": "https://example.org/p"
+    },
+    "at": "2026-09-30T10:00:00Z"
+   }
+  },
+  "destination": "calendar",
+  "attempts": [
+   {
+    "kind": "release"
+   },
+   {
+    "kind": "confirm"
+   }
+  ],
+  "undo": true,
+  "expect": {
+   "objectTypes": [
+    "Person"
+   ],
+   "proposals": [
+    {
+     "relationId": "person-event-attendee",
+     "status": "ready",
+     "tier": "medium",
+     "consent": "confirm",
+     "reliability": "official-api"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "CONSENT_REQUIRED"
+    },
+    {
+     "result": "ok"
+    }
+   ],
+   "bridgeStateAfterCommit": [
+    "Add attendee|Meera Iyer|meera@example.com"
+   ],
+   "bridgeStateAfterUndo": [],
+   "log": [
+    {
+     "seq": 1,
+     "kind": "commit"
+    },
+    {
+     "seq": 2,
+     "kind": "undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "person-without-email-is-blocked",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "perception": {
+    "kind": "jsonld",
+    "docs": [
+     {
+      "@type": "Person",
+      "name": "No Email"
+     }
+    ],
+    "source": {
+     "app": "fixture-page",
+     "url": "https://example.org/p"
+    },
+    "at": "2026-09-30T10:00:00Z"
+   }
+  },
+  "destination": "calendar",
+  "expect": {
+   "proposals": [
+    {
+     "relationId": "person-event-attendee",
+     "status": "blocked",
+     "blocked": "needs email"
+    }
+   ]
+  }
+ },
+ {
+  "name": "restaurant-to-event-location",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "perception": {
+    "kind": "jsonld",
+    "docs": [
+     {
+      "@type": "Restaurant",
+      "name": "Toit",
+      "address": {
+       "streetAddress": "298 100 Feet Rd",
+       "addressLocality": "Bengaluru"
+      }
+     }
+    ],
+    "source": {
+     "app": "fixture-page",
+     "url": "https://example.org/p"
+    },
+    "at": "2026-09-30T10:00:00Z"
+   }
+  },
+  "destination": "calendar",
+  "attempts": [
+   {
+    "kind": "release"
+   }
+  ],
+  "undo": true,
+  "expect": {
+   "objectTypes": [
+    "Location"
+   ],
+   "proposals": [
+    {
+     "relationId": "location-event-location",
+     "status": "ready",
+     "tier": "low",
+     "consent": "release"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "ok"
+    }
+   ],
+   "bridgeStateAfterCommit": [
+    "Set location|Toit|298 100 Feet Rd, Bengaluru"
+   ],
+   "bridgeStateAfterUndo": []
+  }
+ },
+ {
+  "name": "send-needs-a-real-hold",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Person",
+    "properties": {
+     "name": "Meera Iyer",
+     "email": [
+      "meera@example.com"
+     ]
+    },
+    "fields": {
+     "name": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#name"
+        }
+       }
+      ]
+     },
+     "email": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#email"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "mail-send",
+  "attempts": [
+   {
+    "kind": "release"
+   },
+   {
+    "kind": "confirm"
+   },
+   {
+    "kind": "hold",
+    "heldMs": 599
+   },
+   {
+    "kind": "hold",
+    "heldMs": 600
+   }
+  ],
+  "expect": {
+   "proposals": [
+    {
+     "status": "ready",
+     "tier": "high",
+     "consent": "hold"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "CONSENT_REQUIRED"
+    },
+    {
+     "result": "CONSENT_REQUIRED"
+    },
+    {
+     "result": "CONSENT_REQUIRED"
+    },
+    {
+     "result": "ok"
+    }
+   ],
+   "bridgeStateAfterCommit": [
+    "Send to person|meera@example.com"
+   ]
+  }
+ },
+ {
+  "name": "paper-meta-to-comparison",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "perception": {
+    "kind": "meta",
+    "source": {
+     "app": "fixture-page",
+     "url": "https://example.org/p"
+    },
+    "at": "2026-09-30T10:00:00Z",
+    "tags": [
+     {
+      "name": "citation_title",
+      "content": "Deep Residual Learning"
+     },
+     {
+      "name": "citation_author",
+      "content": "He, Kaiming"
+     },
+     {
+      "name": "citation_author",
+      "content": "Zhang, Xiangyu"
+     },
+     {
+      "name": "citation_doi",
+      "content": "10.1109/CVPR.2016.90"
+     },
+     {
+      "name": "citation_publication_date",
+      "content": "2016/06/27"
+     }
+    ]
+   }
+  },
+  "destination": "research-compare",
+  "attempts": [
+   {
+    "kind": "release"
+   }
+  ],
+  "undo": true,
+  "expect": {
+   "objectTypes": [
+    "ResearchPaper"
+   ],
+   "proposals": [
+    {
+     "relationId": "paper-paper-compare",
+     "status": "ready",
+     "tier": "low",
+     "reliability": "native"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "ok"
+    }
+   ]
+  }
+ },
+ {
+  "name": "paper-to-claim-needs-confirmation",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "perception": {
+    "kind": "meta",
+    "source": {
+     "app": "fixture-page",
+     "url": "https://example.org/p"
+    },
+    "at": "2026-09-30T10:00:00Z",
+    "tags": [
+     {
+      "name": "citation_title",
+      "content": "Deep Residual Learning"
+     },
+     {
+      "name": "citation_author",
+      "content": "He, Kaiming"
+     },
+     {
+      "name": "citation_doi",
+      "content": "10.1109/CVPR.2016.90"
+     }
+    ]
+   }
+  },
+  "destination": "claim-editor",
+  "attempts": [
+   {
+    "kind": "release"
+   },
+   {
+    "kind": "confirm"
+   }
+  ],
+  "expect": {
+   "proposals": [
+    {
+     "relationId": "paper-claim-evidence",
+     "status": "ready",
+     "tier": "medium"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "CONSENT_REQUIRED"
+    },
+    {
+     "result": "ok"
+    }
+   ]
+  }
+ },
+ {
+  "name": "document-to-task-reference",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Document",
+    "properties": {
+     "title": "Q3 plan",
+     "url": "https://example.org/q3.pdf"
+    },
+    "fields": {
+     "title": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#title"
+        }
+       }
+      ]
+     },
+     "url": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#url"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "tasks-reference",
+  "attempts": [
+   {
+    "kind": "release"
+   }
+  ],
+  "undo": true,
+  "expect": {
+   "proposals": [
+    {
+     "relationId": "document-task-reference",
+     "status": "ready",
+     "tier": "low",
+     "reliability": "deep-link"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "ok"
+    }
+   ],
+   "bridgeStateAfterCommit": [
+    "Attach reference|Q3 plan|https://example.org/q3.pdf"
+   ],
+   "bridgeStateAfterUndo": []
+  }
+ },
+ {
+  "name": "ui-automation-raises-risk",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Document",
+    "properties": {
+     "title": "Q3 plan",
+     "url": "https://example.org/q3.pdf"
+    },
+    "fields": {
+     "title": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#title"
+        }
+       }
+      ]
+     },
+     "url": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#url"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "tasks-reference-ui",
+  "attempts": [
+   {
+    "kind": "release"
+   },
+   {
+    "kind": "confirm"
+   }
+  ],
+  "expect": {
+   "proposals": [
+    {
+     "status": "ready",
+     "tier": "medium",
+     "reliability": "ui-automation"
+    }
+   ],
+   "operation": {
+    "reliabilityLabel": "UI automation (fragile)"
+   },
+   "attempts": [
+    {
+     "result": "CONSENT_REQUIRED"
+    },
+    {
+     "result": "ok"
+    }
+   ]
+  }
+ },
+ {
+  "name": "message-to-task-source",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Message",
+    "properties": {
+     "subject": "Budget",
+     "url": "https://mail.example.org/t-9"
+    },
+    "fields": {
+     "subject": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#subject"
+        }
+       }
+      ]
+     },
+     "url": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#url"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "tasks-from-message",
+  "attempts": [
+   {
+    "kind": "release"
+   }
+  ],
+  "undo": true,
+  "expect": {
+   "proposals": [
+    {
+     "relationId": "message-task-source",
+     "status": "ready",
+     "tier": "low"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "ok"
+    }
+   ]
+  }
+ },
+ {
+  "name": "product-to-comparison",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "perception": {
+    "kind": "jsonld",
+    "docs": [
+     {
+      "@type": "Product",
+      "name": "Kettle",
+      "offers": {
+       "price": "149",
+       "priceCurrency": "usd"
+      }
+     }
+    ],
+    "source": {
+     "app": "fixture-page",
+     "url": "https://example.org/p"
+    },
+    "at": "2026-09-30T10:00:00Z"
+   }
+  },
+  "destination": "product-compare",
+  "attempts": [
+   {
+    "kind": "release"
+   }
+  ],
+  "expect": {
+   "objectTypes": [
+    "Product"
+   ],
+   "proposals": [
+    {
+     "relationId": "product-product-compare",
+     "status": "ready",
+     "tier": "low"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "ok"
+    }
+   ],
+   "bridgeStateAfterCommit": [
+    "Add to comparison|Kettle|149 USD"
+   ]
+  }
+ },
+ {
+  "name": "image-to-project-asset",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Image",
+    "properties": {
+     "url": "https://example.org/a.png",
+     "alt": "chart"
+    },
+    "fields": {
+     "url": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#url"
+        }
+       }
+      ]
+     },
+     "alt": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#alt"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "project-assets",
+  "attempts": [
+   {
+    "kind": "release"
+   }
+  ],
+  "undo": true,
+  "expect": {
+   "proposals": [
+    {
+     "relationId": "image-project-asset",
+     "status": "ready",
+     "tier": "low"
+    }
+   ],
+   "attempts": [
+    {
+     "result": "ok"
+    }
+   ]
+  }
+ },
+ {
+  "name": "wrong-destination-offers-nothing",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Person",
+    "properties": {
+     "name": "Meera Iyer",
+     "email": [
+      "m@example.com"
+     ]
+    },
+    "fields": {
+     "name": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#name"
+        }
+       }
+      ]
+     },
+     "email": {
+      "confidence": 0.95,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#email"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "tasks-reference",
+  "expect": {
+   "proposals": []
+  }
+ },
+ {
+  "name": "low-confidence-demands-deliberate-choice",
+  "now": "2026-09-30T10:00:00Z",
+  "input": {
+   "candidate": {
+    "type": "Person",
+    "properties": {
+     "name": "Meera Iyer",
+     "email": [
+      "m@example.com"
+     ]
+    },
+    "fields": {
+     "name": {
+      "confidence": 0.4,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#name"
+        }
+       }
+      ]
+     },
+     "email": {
+      "confidence": 0.4,
+      "evidence": [
+       {
+        "locator": {
+         "kind": "css",
+         "value": "#email"
+        }
+       }
+      ]
+     }
+    },
+    "provenance": {
+     "source": {
+      "app": "fixture-page",
+      "url": "https://example.org/p"
+     },
+     "capture": {
+      "method": "dom",
+      "adapter": "fixture",
+      "at": "2026-09-30T10:00:00Z"
+     }
+    }
+   }
+  },
+  "destination": "calendar",
+  "expect": {
+   "proposals": [
+    {
+     "status": "ready",
+     "tier": "medium",
+     "deliberate": true
+    }
+   ]
+  }
+ }
+]

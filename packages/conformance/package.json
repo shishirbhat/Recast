@@ -1,0 +1,20 @@
+{
+  "name": "@recast/conformance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "golden": "UPDATE_GOLDEN=1 vitest run test/node-source.test.ts",
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@recast/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0",
+    "playwright-core": "^1.56.1",
+    "esbuild": "^0.25.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/objects/person.schema.json",
+  "title": "PersonProperties",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "email": { "type": "array", "items": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" }, "uniqueItems": true },
+    "phone": { "type": "array", "items": { "type": "string" } },
+    "org": { "type": "string" }, "role": { "type": "string" },
+    "url": { "type": "string" }, "image": { "type": "string" }
+  }
+}

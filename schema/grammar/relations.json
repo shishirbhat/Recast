@@ -1,0 +1,16 @@
+{
+  "$schema": "https://recast.dev/schema/1/grammar/relations.schema.json",
+  "grammarVersion": "1.0.0",
+  "relations": [
+    { "id": "person-event-attendee",   "from": "Person",        "to": "Event",         "relation": "attendee",  "risk": "medium", "requires": [["email"]],                       "reversible": true },
+    { "id": "location-event-location", "from": "Location",      "to": "Event",         "relation": "location",  "risk": "low",    "requires": [["name", "address"]],             "reversible": true },
+    { "id": "document-task-reference", "from": "Document",      "to": "Task",          "relation": "reference", "risk": "low",    "requires": [["url", "fileName"]],             "reversible": true },
+    { "id": "document-project-source", "from": "Document",      "to": "Project",       "relation": "source",    "risk": "low",    "requires": [["title"]],                       "reversible": true },
+    { "id": "paper-paper-compare",     "from": "ResearchPaper", "to": "ResearchPaper", "relation": "compare",   "risk": "low",    "requires": [["title"]],                       "reversible": true },
+    { "id": "paper-claim-evidence",    "from": "ResearchPaper", "to": "Claim",         "relation": "evidence",  "risk": "medium", "requires": [["doi", "url", "arxivId"]],       "reversible": true },
+    { "id": "person-message-recipient","from": "Person",        "to": "Message",       "relation": "recipient", "risk": "medium", "requires": [["email"]],                       "reversible": true },
+    { "id": "product-product-compare", "from": "Product",       "to": "Product",       "relation": "compare",   "risk": "low",    "requires": [["name"]],                        "reversible": true },
+    { "id": "image-project-asset",     "from": "Image",         "to": "Project",       "relation": "asset",     "risk": "low",    "requires": [["url"]],                         "reversible": true },
+    { "id": "message-task-source",     "from": "Message",       "to": "Task",          "relation": "source",    "risk": "low",    "requires": [["url", "threadId", "subject"]], "reversible": true }
+  ]
+}

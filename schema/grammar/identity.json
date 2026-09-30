@@ -1,0 +1,15 @@
+{
+  "identityVersion": "1.0.0",
+  "description": "Stable-ID key groups per type, in priority order. First group whose properties are all present wins. Arrays are sorted then joined.",
+  "keys": {
+    "Person":        [["email"], ["name", "org"], ["name"]],
+    "Document":      [["url"], ["title", "author"], ["title"]],
+    "Event":         [["title", "start", "location"], ["title", "start"]],
+    "Location":      [["placeId"], ["lat", "lng"], ["name", "address"], ["address"], ["name"]],
+    "Image":         [["url"]],
+    "Message":       [["threadId", "date"], ["url"], ["subject", "from", "date"], ["snippet"]],
+    "Task":          [["url"], ["title", "due"]],
+    "Product":       [["sku", "brand"], ["url"], ["name", "brand"], ["name"]],
+    "ResearchPaper": [["doi"], ["arxivId"], ["title", "year"], ["title"]]
+  }
+}

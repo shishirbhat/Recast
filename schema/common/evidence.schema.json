@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/common/evidence.schema.json",
+  "title": "Evidence",
+  "description": "Where a property value came from. Every extracted property carries at least one of these.",
+  "type": "object",
+  "required": ["locator"],
+  "additionalProperties": false,
+  "properties": {
+    "locator": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["css", "xpath", "jsonld", "meta", "uia", "ax", "pdf", "api", "user"] },
+        "value": { "type": "string", "minLength": 1 }
+      }
+    },
+    "textRange": {
+      "type": "object", "required": ["start", "end"], "additionalProperties": false,
+      "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
+    },
+    "pdf": {
+      "type": "object", "required": ["page", "bbox"], "additionalProperties": false,
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "bbox": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number" } }
+      }
+    },
+    "excerpt": { "type": "string", "maxLength": 500 }
+  }
+}

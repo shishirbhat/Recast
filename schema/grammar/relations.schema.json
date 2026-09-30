@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/grammar/relations.schema.json",
+  "title": "RelationGrammar",
+  "description": "The relationship grammar as data. requires = list of groups; each group is satisfied when ANY listed property is present (AND across groups).",
+  "type": "object",
+  "required": ["grammarVersion", "relations"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "grammarVersion": { "type": "string" },
+    "relations": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "from", "to", "relation", "risk", "requires", "reversible"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z]+(-[a-z]+)+$" },
+          "from": { "$ref": "../common/envelope.schema.json#/properties/type" },
+          "to": { "enum": ["Event", "Task", "Project", "Message", "Claim", "ResearchPaper", "Product"] },
+          "relation": { "type": "string" },
+          "risk": { "enum": ["low", "medium", "high"] },
+          "requires": { "type": "array", "items": { "type": "array", "minItems": 1, "items": { "type": "string" } } },
+          "reversible": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

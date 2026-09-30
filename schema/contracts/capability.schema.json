@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/contracts/capability.schema.json",
+  "title": "CapabilityContract",
+  "description": "What a destination declares it can accept. A row can raise the grammar's risk, never lower it.",
+  "type": "object",
+  "required": ["destination", "targetKind", "app", "reliability", "accepts"],
+  "additionalProperties": false,
+  "properties": {
+    "destination": { "type": "string", "minLength": 1 },
+    "app": { "type": "string", "minLength": 1 },
+    "targetKind": { "enum": ["Event", "Task", "Project", "Message", "Claim", "ResearchPaper", "Product"] },
+    "reliability": { "enum": ["native", "official-api", "structured-interface", "deep-link", "ui-automation", "unsupported"] },
+    "accepts": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["relationId", "effect", "dataMoved"],
+        "properties": {
+          "relationId": { "type": "string" },
+          "effect": { "type": "string", "minLength": 1 },
+          "effectFlags": { "type": "array", "uniqueItems": true,
+            "items": { "enum": ["send", "delete", "publish", "financial", "modifies-important", "notifies-third-party"] } },
+          "risk": { "enum": ["low", "medium", "high"] },
+          "reversible": { "type": "boolean" },
+          "dataMoved": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z]+\\.[A-Za-z]+$" } }
+        }
+      }
+    }
+  }
+}

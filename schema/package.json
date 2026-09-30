@@ -1,0 +1,5 @@
+{
+  "name": "@recast/schema", "version": "1.0.0", "private": true, "type": "module",
+  "scripts": { "build": "node scripts/build.mjs", "typecheck": "true", "test": "true" },
+  "devDependencies": { "ajv": "^8.17.1", "json-schema-to-typescript": "^15.0.4" }
+}

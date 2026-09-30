@@ -1,0 +1,20 @@
+{
+  "name": "recast",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "gen": "pnpm --filter @recast/schema run build",
+    "build": "pnpm gen && pnpm --filter @recast/core run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "conformance": "pnpm --filter @recast/conformance run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0"
+  }
+}

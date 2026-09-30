@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/common/candidate.schema.json",
+  "title": "Candidate",
+  "description": "An unresolved candidate from perception: partial properties plus evidence. Not yet an object.",
+  "type": "object",
+  "required": ["type", "properties", "fields", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "$ref": "envelope.schema.json#/properties/type" },
+    "properties": { "type": "object" },
+    "fields": { "$ref": "envelope.schema.json#/properties/fields" },
+    "provenance": { "$ref": "provenance.schema.json" }
+  }
+}
