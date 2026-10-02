@@ -1,0 +1,6 @@
+{
+  "name": "@recast/web", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "dev": "next dev", "build": "next build", "start": "next start", "typecheck": "tsc -p tsconfig.json", "test": "pnpm build && vitest run" },
+  "dependencies": { "@recast/store": "workspace:*", "next": "^16.0.0", "react": "^19.1.0", "react-dom": "^19.1.0", "motion": "^12.0.0" },
+  "devDependencies": { "@axe-core/playwright": "^4.10.0", "@tailwindcss/postcss": "^4.1.0", "@types/node": "^22.0.0", "@types/react": "^19.1.0", "@types/react-dom": "^19.1.0", "playwright-core": "^1.50.0", "tailwindcss": "^4.1.0", "vitest": "^3.2.0" }
+}
