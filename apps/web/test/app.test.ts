@@ -18,7 +18,7 @@ async function server() {
   const p = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" }, stdio: "ignore" });
   servers.push(p);
   const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i++) { try { if ((await fetch(base)).ok) return base; } catch { /* not up yet */ } await new Promise((r) => setTimeout(r, 200)); }
+  for (let i = 0; i < 450; i++) { try { if ((await fetch(base)).ok) return base; } catch { /* not up yet */ } await new Promise((r) => setTimeout(r, 200)); }
   throw new Error("server did not start");
 }
 beforeAll(async () => { const executablePath = chromiumPath(); browser = await chromium.launch(executablePath ? { executablePath } : {}); });

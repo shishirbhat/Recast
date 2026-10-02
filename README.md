@@ -17,3 +17,4 @@ pnpm install && pnpm gen && pnpm typecheck && pnpm test
 - `docs/07-layer1-report.md` Layer 1 results, `docs/permissions.md` extension threat model, `corpus/README.md`
 - `docs/08-layer2-interaction.md` Layer 2a results, `docs/09-windows-spike-kit.md` Windows feasibility kit
 - `docs/10-layer4-control-center.md` Layer 4 results (`apps/web`, `packages/store`, `supabase/migrations`)
+- `docs/11-bridges.md` Calendar, Gmail draft, Sheets, Tasks and Notion bridges as data (`packages/bridges`), not run against live services
