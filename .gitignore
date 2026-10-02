@@ -6,3 +6,6 @@ corpus/results/
 corpus/pages/
 apps/extension/dist/
 apps/extension/dist-test/
+packages/overlay/src/css.generated.ts
+packages/overlay/dist/
+apps/harness/dist/

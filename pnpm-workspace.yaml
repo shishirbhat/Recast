@@ -2,6 +2,7 @@ packages:
   - schema
   - packages/*
   - apps/*
+  - '!apps/spike-win'
   - corpus
 onlyBuiltDependencies:
   - esbuild

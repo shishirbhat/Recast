@@ -39,7 +39,7 @@ describe("lifting", () => {
 describe("approach and preview", () => {
   it("shows only the relationships the destination supports for this object, then a ghost on the nearest chip", () => {
     const d = new Driver(); d.lift("meera");
-    d.move(450, 120);                                              // inside the calendar
+    d.move(350, 200);                                              // inside the calendar
     expect(d.state.phase).toBe("approaching");
     expect(d.state.chips.map((c) => c.label)).toEqual(["attendee"]);   // a Person is not offered "location"
     const v = selectView(d.state); expect(v.destinationRect).toEqual(R.calendar);
@@ -47,7 +47,7 @@ describe("approach and preview", () => {
     expect(d.state.phase).toBe("previewing");
     expect(selectView(d.state).token).toMatchObject({ snapped: true });
     expect(selectView(d.state).ghost?.ghost.rows).toEqual([{ label: "Person.name", value: "Meera Iyer" }, { label: "Person.email", value: "meera@example.com" }]);
-    d.move(450, 250);                                              // far from the chip
+    d.move(350, 270);                                              // far from the chip
     expect(d.state.phase).toBe("approaching"); expect(selectView(d.state).ghost).toBeNull();
     d.move(400, 600);                                              // off every destination
     expect(d.state.phase).toBe("carrying"); expect(d.state.chips).toEqual([]);
@@ -58,14 +58,14 @@ describe("approach and preview", () => {
     expect(d.state.phase).toBe("carrying"); expect(d.state.destination).toBeNull(); expect(d.state.chips).toEqual([]);
   });
   it("announces destination, options and preview for screen readers", () => {
-    const d = new Driver(); d.lift("meera"); d.move(450, 120);
+    const d = new Driver(); d.lift("meera"); d.move(350, 200);
     expect(d.state.live).toBe("Google Calendar. Options: attendee.");
     const c = chipAt(R.calendar); d.move(c.x, c.y);
     expect(d.state.live).toMatch(/^attendee\. Add attendee: Meera Iyer as attendee\. Release to place\.$/);
   });
   it("lets an object that is not sure of itself be chosen only by going directly over the chip (no magnet)", () => {
     const d = new Driver(); d.lift("shaky");
-    d.move(450, 120); const c = chipAt(R.calendar);
+    d.move(350, 200); const c = chipAt(R.calendar);
     d.move(c.x - CHIP_W / 2 - 30, c.y);                            // would be within the magnet for a confident object
     expect(d.state.phase).toBe("approaching");
     d.move(c.x, c.y);
@@ -75,7 +75,7 @@ describe("approach and preview", () => {
 
 describe("placing: consent follows the trust model", () => {
   it("low risk: executes on release, toasts, and Undo really reverses it", async () => {
-    const d = new Driver(); d.lift("toit"); d.move(450, 120);
+    const d = new Driver(); d.lift("toit"); d.move(350, 200);
     const c = chipAt(R.calendar); d.move(c.x, c.y);
     const fx = d.up(c.x, c.y);
     expect(fx).toEqual([expect.objectContaining({ type: "commit", consent: { kind: "release" } })]);
@@ -91,13 +91,13 @@ describe("placing: consent follows the trust model", () => {
     expect((await d.eventLog.entries()).map((e) => e.kind)).toEqual(["commit", "undo"]);
   });
   it("the toast lasts six seconds, and an undone toast three", async () => {
-    const d = new Driver(); d.lift("toit"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y);
+    const d = new Driver(); d.lift("toit"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);
     await d.run(d.up(c.x, c.y));
     d.advance(5999); expect(d.state.toast).not.toBeNull();
     d.advance(1); expect(d.state.toast).toBeNull();
   });
   it("medium risk (notifies someone): release asks for a light confirmation instead of committing", async () => {
-    const d = new Driver(); d.lift("meera"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y);
+    const d = new Driver(); d.lift("meera"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);
     const fx = d.up(c.x, c.y);
     expect(fx).toEqual([]);
     expect(d.state.phase).toBe("confirming"); expect(d.state.pending?.kind).toBe("confirm");
@@ -129,7 +129,7 @@ describe("placing: consent follows the trust model", () => {
     expect(d.state.live).toMatch(/longer/);
   });
   it("a blocked chip explains why, and releasing on it places nothing", () => {
-    const d = new Driver(); d.lift("noemail"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y);
+    const d = new Driver(); d.lift("noemail"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);
     expect(d.state.chips[0]).toMatchObject({ status: "blocked", reason: "needs email" });
     expect(d.state.blockedNote).toBe("Can't: needs email");
     expect(selectView(d.state).ghost).toBeNull();
@@ -138,18 +138,18 @@ describe("placing: consent follows the trust model", () => {
     expect(d.state.outcome).toEqual({ kind: "cancelled", reason: "blocked: needs email" });
   });
   it("dropping on nothing cancels and changes nothing", () => {
-    const d = new Driver(); d.lift("meera"); d.move(450, 120); d.move(450, 600);
+    const d = new Driver(); d.lift("meera"); d.move(350, 200); d.move(450, 600);
     expect(d.up(450, 600)).toEqual([]);
     expect(d.state.outcome).toEqual({ kind: "cancelled", reason: "dropped-nowhere" });
     for (const b of Object.values(d.bridges)) expect(b.state).toEqual([]);
   });
   it("a failed placement says so, changes nothing, and can be retried", async () => {
     const d = new Driver(); d.bridges["google-calendar.event-editor"]!.failNext = true;
-    d.lift("toit"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y);
+    d.lift("toit"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);
     await d.run(d.up(c.x, c.y));
     expect(d.state.toast).toMatchObject({ kind: "error", text: "Couldn't place it: destination unavailable. Nothing changed." });
     expect(d.bridges["google-calendar.event-editor"]!.state).toEqual([]);
-    d.lift("toit"); d.move(450, 120); d.move(c.x, c.y);
+    d.lift("toit"); d.move(350, 200); d.move(c.x, c.y);
     await d.run(d.up(c.x, c.y));
     expect(d.bridges["google-calendar.event-editor"]!.state).toHaveLength(1);
   });
@@ -159,9 +159,9 @@ describe("Escape", () => {
   const phases: [string, (d: Driver) => void][] = [
     ["lifting", (d) => d.hit(d.send({ type: "liftKey", down: true }))],
     ["carrying", (d) => d.lift("meera")],
-    ["approaching", (d) => { d.lift("meera"); d.move(450, 250); }],
-    ["previewing", (d) => { d.lift("meera"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y); }],
-    ["confirming", (d) => { d.lift("meera"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y); }],
+    ["approaching", (d) => { d.lift("meera"); d.move(350, 270); }],
+    ["previewing", (d) => { d.lift("meera"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y); }],
+    ["confirming", (d) => { d.lift("meera"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y); }],
   ];
   it.each(phases)("cancels from %s and changes nothing", (phase, setup) => {
     const d = new Driver(); setup(d);
@@ -172,7 +172,7 @@ describe("Escape", () => {
     for (const b of Object.values(d.bridges)) expect(b.state).toEqual([]);
   });
   it("cannot take back a commit already sent; the placement still lands with its toast and Undo", async () => {
-    const d = new Driver(); d.lift("toit"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y);
+    const d = new Driver(); d.lift("toit"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);
     const fx = d.up(c.x, c.y);
     d.key("Escape");
     expect(d.state.phase).toBe("committing");
@@ -232,13 +232,13 @@ describe("keyboard-only path", () => {
 describe("guarantees", () => {
   it("never mutates the lifted object, through every outcome", async () => {
     const d = new Driver(); const before = serialize(d.sc.candidates[0]!.object);
-    d.lift("meera"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y);
+    d.lift("meera"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y);
     await d.run(d.down(c.x, c.y));
     await d.run(d.send({ type: "undoRequest" }));
     expect(serialize(d.sc.candidates[0]!.object)).toBe(before);
   });
   it("a toast from an earlier placement survives starting a new lift, and Undo still works", async () => {
-    const d = new Driver(); d.lift("toit"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y);
+    const d = new Driver(); d.lift("toit"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);
     await d.run(d.up(c.x, c.y));
     d.hit(d.send({ type: "liftKey", down: true }));
     expect(d.state.toast?.kind).toBe("placed");
@@ -247,15 +247,16 @@ describe("guarantees", () => {
   });
   it("is deterministic: the same events give the same states and effects", async () => {
     const play = async () => {
-      const d = new Driver(); d.lift("meera"); d.move(450, 120); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y); await d.run(d.down(c.x, c.y));
+      const d = new Driver(); d.lift("meera"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y); await d.run(d.down(c.x, c.y));
       return JSON.stringify({ s: d.state, e: d.log });
     };
     expect(await play()).toBe(await play());
   });
   it("token follows the pointer until it snaps to a chip", () => {
-    const d = new Driver(); d.lift("meera"); d.move(450, 250);
-    expect(selectView(d.state).token).toMatchObject({ at: { x: 450, y: 250 }, snapped: false, glyph: "P", title: "Meera Iyer" });
+    const d = new Driver(); d.lift("meera"); d.move(350, 270);
+    expect(selectView(d.state).token).toMatchObject({ at: { x: 350, y: 270 }, snapped: false, glyph: "P", title: "Meera Iyer" });
     const c = chipAt(R.calendar); d.move(c.x, c.y);
-    expect(selectView(d.state).token).toMatchObject({ at: c, snapped: true });
+    const chip = chipRect(R.calendar, 0);
+    expect(selectView(d.state).token).toMatchObject({ at: { x: chip.x - 8, y: chip.y + CHIP_H / 2 }, snapped: true });   // docks beside the chip, not on top of it
   });
 });

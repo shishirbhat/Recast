@@ -1,0 +1,11 @@
+split heldout: 14 pages with targets, 15 targets, 1891 random elements
+
+RECALL (pointing at a labelled thing)
+  Person.name        target element found 100% (5/5); right offer 100% (5/5) of found (100% (5/5) of all)
+  Location.name      target element found 89% (8/9); right offer 88% (7/8) of found (78% (7/9) of all)
+  Location.address   target element found 100% (1/1); right offer 100% (1/1) of found (100% (1/1) of all)
+
+FALSE POSITIVES (pointing at ordinary text)
+  offers anything: 62% (1180/1891); offers something at confidence >= 0.5: 1% (12/1891)
+  by type: {"Location":1134,"Person":240,"Event":24,"Product":25}
+

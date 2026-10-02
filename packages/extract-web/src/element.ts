@@ -30,8 +30,15 @@ function nearby(el: Element, levels = 2): Element[] {
   for (let i = 0; i <= levels && cur; i++, cur = cur.parentElement) out.push(cur);
   return out;
 }
+/** Find `sel` in the element's own "record": itself or an ancestor small enough to be about just this thing.
+ *  An ancestor with lots of text is a whole list or page, and would hand back a NEIGHBOUR's link (the wrong person's email). */
+const RECORD_MAX_TEXT = 200;
 function within(el: Element, sel: string, levels = 2): Element | null {
-  for (const n of nearby(el, levels)) { const f = n.matches(sel) ? n : n.querySelector(sel); if (f) return f; }
+  for (const n of nearby(el, levels)) {
+    if (n !== el && text(n).length > RECORD_MAX_TEXT) break;
+    const f = n.matches(sel) ? n : n.querySelector(sel);
+    if (f) return f;
+  }
   return null;
 }
 
@@ -44,7 +51,12 @@ function looksLikeAddress(s: string): boolean {
   // Identifiers and links are full of digit runs that look like postal codes: arXiv:2302.13971, doi.org/10.48550/...
   if (/:\/\/|doi\.org|arxiv|\b\d+\.\d+\b|^\(|\[|\bpages?\b/i.test(s)) return false;
   const structured = s.includes(",") || /\n/.test(s);
-  return (POSTAL.test(s) && structured && /[\p{L}]{3}/u.test(s)) || (STREET.test(s) && structured);
+  // An address ENDS at its postal code (or country). A long block of text that merely contains a postal code somewhere
+  // (a whole pane, a paragraph about a venue) is not an address.
+  const post = POSTAL.exec(s);
+  const endsAtPostal = !!post && s.length - (post.index + post[0].length) <= 25;
+  const sentences = (s.match(/[.!?]\s+\p{Lu}/gu) ?? []).length;
+  return sentences <= 1 && ((endsAtPostal && structured && /[\p{L}]{3}/u.test(s)) || (STREET.test(s) && structured && s.length <= 140));
 }
 const cleanAddress = (s: string) => norm(s.replace(/[^\s]+@[^\s]+/g, " ").replace(/\b(toll[- ]free|tel(?:ephone)?|phone|fax)\b[:.]?[^A-Za-z]*/gi, " "));
 

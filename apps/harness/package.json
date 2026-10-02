@@ -1,0 +1,27 @@
+{
+  "name": "@recast/harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && vitest run"
+  },
+  "dependencies": {
+    "@recast/overlay": "workspace:*",
+    "@recast/interaction": "workspace:*",
+    "@recast/core": "workspace:*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@recast/extract-web": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "vitest": "^3.2.0",
+    "playwright-core": "^1.56.1",
+    "@axe-core/playwright": "^4.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0"
+  }
+}

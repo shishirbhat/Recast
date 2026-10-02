@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recast harness</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="harness.css">
+</head>
+<body>
+<main>
+  <section aria-label="Source page" class="pane" id="source">
+    <h1>Launch planning</h1>
+    <h2>Contacts</h2>
+    <div class="contact"><h3 id="meera">Meera Iyer</h3> <a href="mailto:meera@example.com">Email</a></div>
+    <div class="contact"><h3 id="priya">Priya Nair</h3></div>
+    <h2>Venue</h2>
+    <div itemscope itemtype="https://schema.org/Restaurant"><p><span id="venue-name" itemprop="name">Toit</span></p><meta itemprop="address" content="298 100 Feet Road, Indiranagar, Bengaluru 560038"></div>
+    <address id="venue-address">298 100 Feet Road, Indiranagar, Bengaluru 560038</address>
+    <h2>Office</h2>
+    <address id="office-address">12 MG Road, Bengaluru 560001</address>
+    <p id="notes" class="plain">Notes: bring the signed agreement and the printed schedule for the team.</p>
+  </section>
+
+  <section aria-label="Calendar event editor" class="pane dest" data-destination="calendar" data-label="Google Calendar" id="calendar">
+    <h2>New event</h2>
+    <div class="row"><span>Title</span><span>Launch dinner</span></div>
+    <div class="row"><span>Attendees</span><ul id="attendees"></ul></div>
+    <div class="row"><span>Location</span><span id="location"></span></div>
+  </section>
+
+  <section aria-label="Compose mail" class="pane dest" data-destination="mail" data-label="Mail" id="mail">
+    <h2>Compose</h2>
+    <div class="row"><span>To</span><ul id="to"></ul></div>
+    <div class="row"><span>Subject</span><span>Launch dinner</span></div>
+  </section>
+
+  <section aria-label="Tasks" class="pane dest" data-destination="tasks" data-label="Tasks" id="tasks">
+    <h2>Tasks</h2>
+    <p class="plain">Drop a document here to attach it.</p>
+  </section>
+</main>
+<script src="main.js"></script>
+</body>
+</html>

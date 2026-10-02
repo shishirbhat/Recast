@@ -2,7 +2,7 @@
 
 Connect two digital things directly so the computer understands the relationship: GRAB, APPROACH, PREVIEW, PLACE.
 
-Status: **Layer 0 done. Layer 1 (browser capture) built; gate result and open decision in `docs/07-layer1-report.md`.**
+Status: **Layer 0 done. Layer 1 built (gate met for structured pages). Layer 2a (interaction engine, overlay, harness) built and tested in Chromium; Windows shell and usability gate open. See `docs/08-layer2-interaction.md`.**
 
 ```
 pnpm install && pnpm gen && pnpm typecheck && pnpm test
@@ -15,3 +15,4 @@ pnpm install && pnpm gen && pnpm typecheck && pnpm test
 - `docs/05-plan.md` Layers 0 to 2 plan and estimates
 - `docs/06-layer0-report.md` Layer 0 results
 - `docs/07-layer1-report.md` Layer 1 results, `docs/permissions.md` extension threat model, `corpus/README.md`
+- `docs/08-layer2-interaction.md` Layer 2a results, `docs/09-windows-spike-kit.md` Windows feasibility kit

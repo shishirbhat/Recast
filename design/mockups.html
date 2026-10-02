@@ -79,10 +79,19 @@
     <figure>
       <div class="stage">
         <div class="dest on"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div><div class="row"><span>Location</span><span></span></div></div>
-        <div class="chips" style="right:12px;top:60px"><button class="chip active">Attendee</button><button class="chip">Location</button></div>
+        <div class="chips" style="right:12px;top:60px"><button class="chip active">Attendee</button></div>
         <div class="token" style="left:60px;top:120px"><span class="glyph">P</span><span class="t">Meera Iyer</span><span class="fav"></span></div>
       </div>
-      <figcaption><b>3. Destination response.</b> Hairline around the region; two to four landing chips on its edge. The token snaps to the nearest chip. Only relations the destination supports appear.</figcaption>
+      <figcaption><b>3. Destination response.</b> Hairline around the region; landing chips on its edge. The token snaps to the nearest chip. Only relations this destination supports <em>for this object</em> appear: a person is offered Attendee, not Location. (Corrected: the first mockup showed both.)</figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage">
+        <div class="dest on"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div><div class="row"><span>Location</span><span></span></div></div>
+        <div class="chips" style="right:12px;top:60px"><button class="chip active">Location</button></div>
+        <div class="token" style="left:60px;top:120px"><span class="glyph">L</span><span class="t">Toit, Indiranagar</span><span class="fav"></span></div>
+      </div>
+      <figcaption><b>3b. Same destination, a place.</b> A Location token is offered only Location. What a destination shows depends on what you carry.</figcaption>
     </figure>
 
     <figure>
@@ -90,7 +99,7 @@
         <div class="dest on"><div class="row"><span>Title</span><span>Dinner</span></div><div class="row"><span>Attendees</span><span></span></div>
           <div class="ghost"><span>Meera Iyer</span><span class="tag">preview</span></div>
           <div class="row"><span>Location</span><span></span></div></div>
-        <div class="chips" style="right:12px;top:60px"><button class="chip active">Attendee</button><button class="chip">Location</button></div>
+        <div class="chips" style="right:12px;top:60px"><button class="chip active">Attendee</button></div>
       </div>
       <figcaption><b>4. Preview.</b> Hovering a chip shows a dashed ghost of the result in place. Esc cancels at any point; nothing has happened yet.</figcaption>
     </figure>

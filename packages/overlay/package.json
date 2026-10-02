@@ -1,0 +1,7 @@
+{
+  "name": "@recast/overlay", "version": "0.1.0", "private": true, "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "typecheck": "tsc -p tsconfig.json", "build": "node scripts/build-css.mjs", "test": "node scripts/build-css.mjs && vitest run" },
+  "dependencies": { "@recast/interaction": "workspace:*", "@recast/core": "workspace:*", "react": "^19.1.0", "react-dom": "^19.1.0", "motion": "^12.0.0" },
+  "devDependencies": { "@types/react": "^19.1.0", "@types/react-dom": "^19.1.0", "tailwindcss": "^4.1.0", "@tailwindcss/cli": "^4.1.0", "vitest": "^3.2.0", "esbuild": "^0.25.0" }
+}

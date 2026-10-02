@@ -39,6 +39,22 @@ describe("Person", () => {
   });
 });
 
+describe("never attaches a neighbour's details", () => {
+  it("a contact without an email does not borrow the email of the contact next to it", () => {
+    const html = `<body><section><div><h3 id="a">Meera Iyer</h3> <a href="mailto:meera@example.com">Email</a></div><div><h3 id="b">Priya Nair</h3></div>
+      <p>Some long text about the team and the launch plan that goes on for a while so that this section is clearly a whole list and not one person. ${"More words. ".repeat(20)}</p></section></body>`;
+    const priya = at(html, "#b").find((c) => c.type === "Person")!;
+    expect(priya.properties["email"]).toBeUndefined();
+    expect(priya.fields["name"]!.confidence).toBeLessThan(0.5);
+    expect(at(html, "#a").find((c) => c.type === "Person")!.properties["email"]).toEqual(["meera@example.com"]);
+  });
+  it("an address or map link belonging to a different record is not used either", () => {
+    const html = `<body><section><div><h3 id="a">Toit</h3> <a href="https://maps.google.com/?q=toit">Map</a></div><div><address id="b">12 Some Road, Pune 411001</address></div>${"<p>Filler text to make the section large enough. </p>".repeat(8)}</section></body>`;
+    const addr = at(html, "#b").find((c) => c.type === "Location")!;
+    expect(addr.fields["address"]!.confidence).toBeLessThan(0.7);
+  });
+});
+
 describe("Location", () => {
   it("an address block becomes a Location with the address", () => {
     const [c] = at(`<body><div id="a">60 East 65th Street, New York, NY 10065</div></body>`, "#a");
@@ -62,6 +78,11 @@ describe("Location", () => {
   it("does not offer a sentence or a lowercase phrase as a place name", () => {
     expect(at(`<body><p id="n">We serve dinner from five until late.</p></body>`, "#n")).toEqual([]);
     expect(at(`<body><p id="n">opening hours</p></body>`, "#n")).toEqual([]);
+  });
+  it("a whole pane of text that happens to contain an address is not an address", () => {
+    const html = `<body><section id="pane"><h1>Launch planning</h1><h2>Contacts</h2><div>Meera Iyer</div><h2>Venue</h2><address>298 100 Feet Road, Indiranagar, Bengaluru 560038</address><p id="n">Notes: bring the signed agreement and the printed schedule for the team.</p></section></body>`;
+    expect(at(html, "#n").filter((c) => c.type === "Location" && c.properties["address"])).toEqual([]);
+    expect(at(html, "address")[0]!.properties["address"]).toBe("298 100 Feet Road, Indiranagar, Bengaluru 560038");
   });
   it.each(["arXiv:2302.13971", "https://doi.org/10.48550/arXiv.1207.0580", "40+32 pages", "(or arXiv:1406.2661v1 [stat.ML] for this version)", "+91 11 4444 7474", "hello@example.com", "Call us today", "1800 11 77 11"])("does not treat %j as an address", (t) => {
     expect(at(`<body><p id="x">${t}</p></body>`, "#x").filter((c) => c.type === "Location")).toEqual([]);

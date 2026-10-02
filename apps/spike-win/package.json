@@ -1,0 +1,8 @@
+{
+  "name": "@recast/spike-win", "version": "0.1.0", "private": true, "type": "module",
+  "description": "Windows feasibility spike. Run on Windows 10/11. Measures, and changes nothing.",
+  "scripts": { "start": "electron ." },
+  "main": "main.cjs",
+  "dependencies": { "koffi": "^2.9.0" },
+  "devDependencies": { "electron": "^37.0.0" }
+}
