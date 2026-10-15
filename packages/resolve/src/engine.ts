@@ -21,11 +21,11 @@ export interface ResolverConfig {
 
 const ALLOWED: Record<ApiType, string[]> = {
   Person: ["name", "email", "phone", "org", "role", "url"], Event: ["title", "start", "end", "location", "url", "description"],
-  Location: ["name", "address", "url"], Product: ["name", "brand", "price", "url"], Paper: ["title", "authors", "doi", "arxivId", "year", "venue", "url"],
+  Location: ["name", "address", "url"], Product: ["name", "brand", "price", "url"], Paper: ["title", "authors", "doi", "arxivId", "year", "venue", "url"], Document: ["title", "url"],
 };
 const ROUTE_TEXT: Record<ApiType, string> = {
   Person: "a person with a name, email address or phone number", Event: "an event with a title, date and time", Location: "a place with a street address and postal code",
-  Product: "a product with a name and a price", Paper: "an academic paper with a title, authors and a DOI",
+  Product: "a product with a name and a price", Paper: "an academic paper with a title, authors and a DOI", Document: "a web page or document with a title and a link",
 };
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 

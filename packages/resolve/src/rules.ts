@@ -139,6 +139,15 @@ export function readPaper(text: string): Reading | null {
   return { type: "Paper", fields, conf, spans, score: 0.9 };
 }
 
+// ---- Document (a titled link) -----------------------------------------------------------------------
+export function readDocument(text: string): Reading | null {
+  const m = text.match(/https?:\/\/[^\s<>"')]+/i); if (!m) return null;
+  const url = m[0].replace(/[.,;:!?]+$/, "");
+  const title = trimPunct(collapse((text.slice(0, m.index!) + " " + text.slice(m.index! + m[0].length)).replace(/\b(link|url|see|read|at)\s*[:-]?\s*$/i, "")));
+  if (title.length < 3 || title.length > 200 || emails(title).length) return null;
+  return { type: "Document", fields: { title, url }, conf: { title: 0.7, url: 0.97 }, spans: { url: [m.index!, m.index! + url.length] }, score: 0.7 };
+}
+
 export function allReadings(text: string): Reading[] {
-  return [readPerson(text), readEvent(text), readLocation(text), readProduct(text), readPaper(text)].filter((r): r is Reading => r !== null).sort((a, b) => b.score - a.score);
+  return [readPerson(text), readEvent(text), readLocation(text), readProduct(text), readPaper(text), readDocument(text)].filter((r): r is Reading => r !== null).sort((a, b) => b.score - a.score);
 }

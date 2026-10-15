@@ -1,8 +1,8 @@
 import type { ObjectType as CoreType } from "@recast/core";
 
 /** The API's vocabulary. "Paper" is the core's ResearchPaper. There is no "Org" yet: the ontology does not have one. */
-export type ApiType = "Person" | "Event" | "Location" | "Product" | "Paper";
-export const API_TYPES: readonly ApiType[] = ["Person", "Event", "Location", "Product", "Paper"];
+export type ApiType = "Person" | "Event" | "Location" | "Product" | "Paper" | "Document";
+export const API_TYPES: readonly ApiType[] = ["Person", "Event", "Location", "Product", "Paper", "Document"];
 export const toCoreType = (t: ApiType): CoreType => (t === "Paper" ? "ResearchPaper" : t);
 export const toApiType = (t: CoreType): ApiType | null => (t === "ResearchPaper" ? "Paper" : (API_TYPES as readonly string[]).includes(t) ? (t as ApiType) : null);
 

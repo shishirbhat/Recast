@@ -93,6 +93,18 @@ describe("rules stage: typed objects from raw text", () => {
   });
 });
 
+describe("documents: a titled link", () => {
+  it("resolves, and routes to Notion and Tasks", async () => {
+    for (const dest of ["notion", "google_tasks"]) {
+      const o = await ok({ raw: "Read the spec https://example.com/spec", target: { destination: dest } });
+      if (o.status !== "resolved") throw new Error(JSON.stringify(o));
+      expect(o.object).toMatchObject({ type: "Document", fields: { title: "Read the spec", url: "https://example.com/spec" } });
+      expect(o.routing?.bridgeReliability).toBe("official_api"); expect(o.routing?.consent).toBe(dest === "notion" ? "confirm" : "release");   // Notion relies on the guessed title (0.7 < 0.75: asks once); Tasks relies on the link itself (0.97)
+    }
+  });
+  it("a bare link has no title and is not resolved", async () => { expect((await ok({ raw: "https://example.com/spec" })).status).toBe("unresolved"); });
+});
+
 describe("routing uses the real contracts, grammar and trust rules", () => {
   it("person to calendar: attendee, official API, asks once because it notifies someone", async () => {
     const o = await ok({ raw: "Meera Iyer, meera@x.com", target: { type: "Person", destination: "google_calendar" } });
@@ -141,12 +153,12 @@ describe("hostile text", () => {
 
 describe("cascade: model stages are optional, capped, grounded and breakable", () => {
   const tie = "Founders meetup 2026-11-14 ₹500";
-  const embedder = (sim: Record<ApiType, number>): Embedder => ({
+  const embedder = (sim: Partial<Record<ApiType, number>>): Embedder => ({
     async embed(text) { // route texts get fixed vectors; the query gets a vector that is closest to the chosen type
-      const order: ApiType[] = ["Person", "Event", "Location", "Product", "Paper"];
+      const order: ApiType[] = ["Person", "Event", "Location", "Product", "Paper", "Document"];
       const v = order.map(() => 0);
-      const idx = order.findIndex((t) => text.startsWith(({ Person: "a person", Event: "an event", Location: "a place", Product: "a product", Paper: "an academic" } as const)[t]));
-      if (idx >= 0) v[idx] = 1; else order.forEach((t, i) => { v[i] = sim[t]; });
+      const idx = order.findIndex((t) => text.startsWith(({ Person: "a person", Event: "an event", Location: "a place", Product: "a product", Paper: "an academic", Document: "a web page" } as const)[t]));
+      if (idx >= 0) v[idx] = 1; else order.forEach((t, i) => { v[i] = sim[t] ?? 0; });
       return v;
     },
   });

@@ -1,0 +1,34 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AuthError, Recast } from "@recast/sdk";
+
+const KEY = "sk_test_e2e_00000001"; let proc: ChildProcess, base: string;
+beforeAll(async () => {
+  const port = 3500 + Math.floor(Math.random() * 400);
+  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", RECAST_API_KEYS: `${KEY}:t_e2e:pro` }, stdio: "ignore" });
+  base = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 450; i++) { try { if ((await fetch(base + "/v1/health")).ok) return; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 200)); }
+  throw new Error("server did not start");
+});
+afterAll(() => { proc?.kill(); });
+
+describe("the built Next.js API (what Vercel would run)", () => {
+  it("health is open; the landing page renders", async () => {
+    expect((await fetch(base + "/v1/health")).status).toBe(200);
+    expect(await (await fetch(base)).text()).toContain("Turn any screen object into a typed, routed action");
+  });
+  it("the SDK resolves and routes through it", async () => {
+    const r = await new Recast({ apiKey: KEY, baseUrl: base }).resolve({ raw: "Meera Iyer, meera@x.com", target: { destination: "gmail" } });
+    if (r.status !== "resolved") throw new Error(JSON.stringify(r));
+    expect(r.routing).toMatchObject({ action: "Create a draft to this person", bridgeReliability: "official_api" });
+  });
+  it("an unknown key is a 401 with a WWW-Authenticate header, and the SDK raises AuthError", async () => {
+    const raw = await fetch(base + "/v1/resolve", { method: "POST", headers: { authorization: "Bearer sk_nobody_nobody_1", "content-type": "application/json" }, body: "{}" });
+    expect(raw.status).toBe(401); expect(raw.headers.get("www-authenticate")).toBe("Bearer"); expect(raw.headers.get("x-powered-by")).toBeNull();
+    await expect(new Recast({ apiKey: "sk_nobody_nobody_1", baseUrl: base }).resolve({ raw: "x" })).rejects.toBeInstanceOf(AuthError);
+  });
+  it("headers: schema version, no-store, quota", async () => {
+    const r = await fetch(base + "/v1/resolve", { method: "POST", headers: { authorization: `Bearer ${KEY}`, "content-type": "application/json" }, body: JSON.stringify({ input: { raw: "Launch dinner 2026-11-14" } }) });
+    expect(r.status).toBe(200); expect(r.headers.get("recast-schema-version")).toBe("1.0.0"); expect(r.headers.get("cache-control")).toBe("no-store"); expect(r.headers.get("x-recast-quota-limit")).toBe("50000");
+  });
+});

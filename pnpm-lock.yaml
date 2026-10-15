@@ -18,6 +18,40 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  apps/api:
+    dependencies:
+      '@recast/api-core':
+        specifier: workspace:*
+        version: link:../../packages/api-core
+      '@recast/resolve':
+        specifier: workspace:*
+        version: link:../../packages/resolve
+      next:
+        specifier: ^16.0.0
+        version: 16.3.8(@types/node@22.20.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      react:
+        specifier: ^19.1.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.3.0(react@19.3.0)
+    devDependencies:
+      '@recast/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.4
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.3.0(@types/react@19.3.0)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)
+
   apps/extension:
     dependencies:
       '@recast/core':
@@ -128,6 +162,22 @@ importers:
       playwright-core:
         specifier: ^1.56.1
         version: 1.63.0
+
+  packages/api-core:
+    dependencies:
+      '@recast/core':
+        specifier: workspace:*
+        version: link:../core
+      '@recast/resolve':
+        specifier: workspace:*
+        version: link:../resolve
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.4
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)
 
   packages/bridges:
     dependencies:
@@ -246,6 +296,21 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)
+
+  packages/sdk:
+    devDependencies:
+      '@recast/api-core':
+        specifier: workspace:*
+        version: link:../api-core
+      '@recast/resolve':
+        specifier: workspace:*
+        version: link:../resolve
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.4
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)

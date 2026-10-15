@@ -1,0 +1,17 @@
+{
+  "name": "@recast/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0",
+    "@types/node": "^22.0.0",
+    "@recast/api-core": "workspace:*",
+    "@recast/resolve": "workspace:*"
+  }
+}
