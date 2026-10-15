@@ -51,20 +51,56 @@ export async function setTenant(sql: Sql, tenantId: string, patch: { tier?: Tier
   if (!rows.length) throw new AdminError("no such tenant");
 }
 
+/** Tables a tenant owns, exported before erasure. Key hashes are cut to a prefix; transient state (proofs seen, idempotency) is left out. */
+const EXPORT_TABLES: Record<string, string> = {
+  tenant: `select id, name, tier, corrections_opt_in, created_at from tenants where id = $1`,
+  members: `select user_id, role from tenant_members where tenant_id = $1 order by user_id`,
+  api_keys: `select left(key_hash, 12) as hash_prefix, label, revoked_at, created_at from api_keys where tenant_id = $1 order by created_at, id`,
+  usage: `select month, resolutions from api_usage where tenant_id = $1 order by month`,
+  corrections: `select object_id, field, old_value, new_value, kind, at from api_corrections where tenant_id = $1 order by at, id`,
+  agents: `select id, agent_key, name, public_key, owner_user_id, created_at, revoked_at from agents where tenant_id = $1 order by created_at, id`,
+  scopes: `select id, agent_id, tool, action, constraints, max_calls, calls, issued_at, expires_at from agent_scopes where tenant_id = $1 order by issued_at, id`,
+  policies: `select name, version, rule_yaml, active, created_at from agent_policies where tenant_id = $1 order by name, version`,
+  approvals: `select id, agent_id, tool, action, request_hash, status, created_ms, decided_by from agent_approvals where tenant_id = $1 order by created_ms, id`,
+  audit_log: `select seq, entry, prev_hash, hash, signature, key_id, at from agent_audit_log where tenant_id = $1 order by seq`,
+};
+
+/** Everything the tenant owns, as one JSON document. The audit log is exported whole (signed entries and hashes), so it can be verified offline. */
+export async function exportTenant(sql: Sql, tenantId: string): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { format: "recast.tenant-export/1", exported_at: new Date().toISOString() };
+  for (const [name, q] of Object.entries(EXPORT_TABLES)) out[name] = (await sql.query(q, [uuidOf(tenantId)])).rows;
+  if (!(out.tenant as unknown[]).length) throw new AdminError("no such tenant");
+  out.tenant = (out.tenant as unknown[])[0];
+  return out;
+}
+
+/** Irreversible. The database checks the confirmation (exactly "ERASE <tenant-id>") and writes a receipt that outlives the tenant. */
+export async function eraseTenant(sql: Sql, tenantId: string, confirm: string, requestedBy: string, reason: string): Promise<string> {
+  if (confirm !== `ERASE ${uuidOf(tenantId)}`) throw new AdminError(`confirmation must be exactly: ERASE ${tenantId}`);
+  if (!requestedBy.trim() || !reason.trim()) throw new AdminError("who asked (--by) and why (--reason) are required");
+  try {
+    const { rows } = await sql.query<{ id: string }>(`select erase_tenant($1, $2, $3, $4) as id`, [tenantId, confirm, requestedBy.trim(), reason.trim()]);
+    return rows[0]!.id;
+  } catch (e) { if (/no such tenant/.test(String((e as Error).message))) throw new AdminError("no such tenant"); throw e; }
+}
+
 export const KEYS_USAGE = `recast-keys: manage API tenants and keys (needs DATABASE_URL)
 
   tenant create <name> [--tier free|pro|scale|enterprise] [--corrections-opt-in]
   tenant set <tenant-id> [--tier <tier>] [--corrections-opt-in | --no-corrections-opt-in]
   key issue <tenant-id> [--label <text>] [--test]     prints the key once; only its hash is stored
   key revoke <key-or-hash>
-  key list <tenant-id>`;
+  key list <tenant-id>
+  tenant export <tenant-id>                            everything the tenant owns, as JSON on stdout
+  tenant erase <tenant-id> --confirm "ERASE <tenant-id>" --by <who> --reason <why>
+                                                       irreversible; export first. Leaves an erasure receipt`;
 
 /** The command line, minus process handling, so tests run it directly. Returns the exit code. */
 export async function runKeysCli(argv: string[], sql: Sql, out: (s: string) => void, errOut: (s: string) => void = out): Promise<number> {
   const flags = new Map<string, string | true>(); const pos: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a.startsWith("--")) { const v = argv[i + 1]; if (["--tier", "--label"].includes(a)) { if (v === undefined) { errOut(`${a} needs a value`); return 2; } flags.set(a, v); i++; } else flags.set(a, true); }
+    if (a.startsWith("--")) { const v = argv[i + 1]; if (["--tier", "--label", "--confirm", "--by", "--reason"].includes(a)) { if (v === undefined) { errOut(`${a} needs a value`); return 2; } flags.set(a, v); i++; } else flags.set(a, true); }
     else pos.push(a);
   }
   const [group, cmd, arg] = pos;
@@ -75,6 +111,12 @@ export async function runKeysCli(argv: string[], sql: Sql, out: (s: string) => v
     if (group === "tenant" && cmd === "set" && arg) {
       const optIn = flags.has("--corrections-opt-in") ? true : flags.has("--no-corrections-opt-in") ? false : undefined;
       await setTenant(sql, arg, { ...(flags.has("--tier") ? { tier: tierOf(String(flags.get("--tier"))) } : {}), ...(optIn === undefined ? {} : { correctionsOptIn: optIn }) }); out("updated"); return 0;
+    }
+    if (group === "tenant" && cmd === "export" && arg) { out(JSON.stringify(await exportTenant(sql, arg), null, 2)); return 0; }
+    if (group === "tenant" && cmd === "erase" && arg) {
+      const v = (f: string) => { const x = flags.get(f); return typeof x === "string" ? x : ""; };
+      const receipt = await eraseTenant(sql, arg, v("--confirm"), v("--by"), v("--reason"));
+      out(`erased; receipt ${receipt}`); return 0;
     }
     if (group === "key" && cmd === "issue" && arg) {
       const label = flags.get("--label"); const { key } = await issueKey(sql, arg, typeof label === "string" ? label : undefined, flags.has("--test") ? "test" : "live");

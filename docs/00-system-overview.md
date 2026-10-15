@@ -113,6 +113,7 @@ Each entry holds the previous entry's hash and is signed by the runtime key. `ve
 - **People surface** (`init`): `objects`, `relationships`, `integrations`, `grants`, `audit_events`; each row has an owner, RLS limits each user to their own rows, `delete_my_data()` erases a user and logs it.
 - **API** (`api`): `tenants` (tier, corrections opt-in), `tenant_members`, `api_keys` (hash only, revocable), `api_usage` (per month, via `record_usage`), `api_corrections` (trigger refuses unless opted in). `is_member(tenant, owner_only)` drives RLS.
 - **Agent Runtime** (`agent_runtime`, `runtime_persistence`): `agents` (identity fields immutable, public key must be an Ed25519 public JWK), `agent_scopes` (calls never above max, consumed atomically by `consume_scope`), `agent_policies` (one active per tenant, `activate_policy`), `agent_audit_log` (append-only, whole signed entry stored), `agent_approvals`, `agent_revoked_tokens`, `agent_dpop_seen`.
+- **Shared API state and erasure** (`api_shared_state`, `tenant_erasure`): `api_rate_buckets` and `api_idempotency` so every API instance enforces the same limits; `erase_tenant()` and `tenant_erasures`, the single audited path that may remove a tenant's audit history (export first).
 
 ## 5. Trust model (shared by all three surfaces)
 - Risk comes from the **effect**, not from how confident a model is: adding an attendee who gets an email is riskier than setting a location. Model stages can lower confidence or add alternatives, never lower a risk tier.

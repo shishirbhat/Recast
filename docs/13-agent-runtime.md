@@ -52,6 +52,15 @@ A plain Node HTTP server around the gateway, configured entirely by environment 
 - **Not the RFC 8693 wire protocol.** The exchange is the same idea (trade an identity token for a narrower credential) as a function call inside the gateway, not a `/token` endpoint other systems can call.
 - **Only one real MCP server was tried**, one built with the official SDK. Other clients (Claude Desktop, Cursor) and servers are untested. Streaming (SSE) responses are relayed untouched and judged by status only, except that `tools/list` handles a JSON or single-event SSE answer. JSON-RPC batches are refused. `resources/*` and `prompts/*` are refused, not proxied.
 - **The default proof mode is `optional`.** Until `required` is set, a bearer token alone works for up to 15 minutes.
-- **Erasure vs. audit.** The audit table cannot be deleted from, and that blocks deleting a tenant that has audit history. A deliberate export-then-erase process is needed and not built. A Postgres superuser can still drop the triggers; the signatures and hash chain are what make that visible.
+- **Erasure vs. audit (resolved, see below).** A Postgres superuser or the service role can still drop the triggers, or hand-write a receipt inside its own transaction; the signatures, the hash chain and the receipt's head hash are what make that visible.
 - **Not deployed.** The SQL stores are tested against PGlite (real Postgres semantics in-process). They have not run on Supabase, and the SQL assumes one connection per store (no transaction helper). No Fly.io or Railway deploy, no key management service (the runtime's signing key would live in one), no approval UI: approvals are decided by calling the store.
 - **Policy is a small evaluator, not OPA or Cedar.**
+
+## Erasure: export, then erase
+The audit log refuses every update, delete and truncate, so a tenant with audit history could not be deleted. Now there is exactly one way through (`supabase/migrations/20260106000000_tenant_erasure.sql`):
+
+1. `recast-keys tenant export <tenant-id>` writes everything the tenant owns as JSON, including the signed audit entries and hashes, so the export can be verified offline with `verifyChain`. Plain API keys never appear (they are not stored); key hashes are cut to a prefix.
+2. `recast-keys tenant erase <tenant-id> --confirm "ERASE <tenant-id>" --by <who> --reason <why>` calls `erase_tenant()`. It first writes a receipt (`tenant_erasures`: who, why, how many audit entries, the chain's last hash), then deletes the tenant; every tenant-owned table cascades, and the audit guard lets those deletes through only for the tenant named on an in-progress receipt created in the same transaction. The receipt is then marked done and is itself append-only.
+
+Tested (`packages/store/test/erasure.test.ts`, `packages/api-core/test/admin.test.ts`): ordinary deletes of audit rows, and deleting the tenant directly, still fail; erasure removes rows in all twelve tenant tables and the rate-limit bucket and leaves other tenants untouched; a wrong confirmation, unknown tenant or missing requester changes nothing; a receipt from another transaction does not unlock deletes; receipts cannot be edited or removed; a signed-in owner cannot call `erase_tenant` or read receipts.
+
