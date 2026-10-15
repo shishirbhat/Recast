@@ -81,29 +81,29 @@ describe("allowed call", () => {
 describe("refusals reach nothing upstream and are logged", () => {
   it("no scope for that tool or action", async () => {
     const r = await rig(); const res = await call(r, rpcCall("google_calendar.delete_event", { id: "1" }));
-    expect(res.status).toBe(403); expect((await res.json() as any).error.message).toMatch(/no live scope/); expect(seen).toEqual([]); expect(await results(r)).toEqual(["denied"]);
+    expect(res.headers.get("x-recast-decision")).toBe("denied"); expect((await res.json() as any).error.message).toMatch(/no live scope/); expect(seen).toEqual([]); expect(await results(r)).toEqual(["denied"]);
   });
   it("scope constraints are enforced", async () => {
     const r = await rig(); await r.scopes.grant({ agentId: r.agent.agentId, tenantId: "t1", tool: "notion", action: "create_page", maxCalls: 9, constraints: { blocks: { max: 2 } }, expiresAt: new Date(T0 + 1e6).toISOString() });
     // the broad grant made in rig() would also satisfy this; use a fresh rig with only the constrained one
     const r2 = await rig(); r2.vault.set("t1", "notion", "UPSTREAM-SECRET-NOTION"); (r2.scopes as any).g.clear(); await r2.scopes.grant({ agentId: r2.agent.agentId, tenantId: "t1", tool: "notion", action: "create_page", maxCalls: 9, constraints: { blocks: { max: 2 } }, expiresAt: new Date(T0 + 1e6).toISOString() });
-    expect((await call(r2, rpcCall("notion.create_page", { blocks: [1, 2, 3] }))).status).toBe(403); expect(seen).toEqual([]);
+    expect((await call(r2, rpcCall("notion.create_page", { blocks: [1, 2, 3] }))).headers.get("x-recast-decision")).toBe("denied"); expect(seen).toEqual([]);
     expect((await call(r2, rpcCall("notion.create_page", { blocks: [1] }))).status).toBe(200); expect(seen).toHaveLength(1);
   });
   it("policy default deny and explicit deny", async () => {
     const r = await rig(); await r.scopes.grant({ agentId: r.agent.agentId, tenantId: "t1", tool: "sheets", action: "append", maxCalls: 5, expiresAt: new Date(T0 + 1e6).toISOString() });
-    const a = await call(r, rpcCall("sheets.append", {})); expect(a.status).toBe(403); expect((await a.json() as any).error.message).toMatch(/default applies/);
-    const b = await call(r, rpcCall("gmail.send_email", { to: "x@banned.example" })); expect(b.status).toBe(403); expect((await b.json() as any).error.message).toMatch(/mail-ban/); expect(seen).toEqual([]);
+    const a = await call(r, rpcCall("sheets.append", {})); expect(a.headers.get("x-recast-decision")).toBe("denied"); expect((await a.json() as any).error.message).toMatch(/default applies/);
+    const b = await call(r, rpcCall("gmail.send_email", { to: "x@banned.example" })); expect(b.headers.get("x-recast-decision")).toBe("denied"); expect((await b.json() as any).error.message).toMatch(/mail-ban/); expect(seen).toEqual([]);
   });
   it("scope call budget runs out", async () => {
     const r = await rig(); (r.scopes as any).g.clear(); await r.scopes.grant({ agentId: r.agent.agentId, tenantId: "t1", tool: "google_calendar", action: "create_event", maxCalls: 2, expiresAt: new Date(T0 + 1e6).toISOString() });
-    const s = []; for (let i = 0; i < 3; i++) s.push((await call(r, rpcCall("google_calendar.create_event", { title: `T${i}` }, i))).status);
-    expect(s).toEqual([200, 200, 403]); expect(seen).toHaveLength(2);       // third has no live scope: spent grants are not found
+    const s = []; for (let i = 0; i < 3; i++) { const x = await call(r, rpcCall("google_calendar.create_event", { title: `T${i}` }, i)); s.push(x.headers.get("x-recast-decision") ?? x.status); }
+    expect(s).toEqual([200, 200, "denied"]); expect(seen).toHaveLength(2);       // third has no live scope: spent grants are not found
   });
   it("a scope that has expired no longer works", async () => {
     const r = await rig(); const old = await token(r); clock = T0 + 2 * 3600_000;
     expect((await call(r, rpcCall("google_calendar.create_event", { title: "T" }), { token: old })).status).toBe(401);   // the old token expired first
-    const t = await token(r); expect((await call(r, rpcCall("google_calendar.create_event", { title: "T" }), { token: t })).status).toBe(403);   // fresh token, expired scope
+    const t = await token(r); expect((await call(r, rpcCall("google_calendar.create_event", { title: "T" }), { token: t })).headers.get("x-recast-decision")).toBe("denied");   // fresh token, expired scope
   });
 });
 
@@ -111,25 +111,25 @@ describe("approval flow", () => {
   const send = { to: "meera@x.com", body: "hi" };
   it("pauses with 202, then goes through once a person approves that exact request, and only once", async () => {
     const r = await rig(); const first = await call(r, rpcCall("gmail.send_email", send));
-    expect(first.status).toBe(202); const id = (await first.json() as any).error.data.approval_id; expect(seen).toEqual([]);
+    expect(first.headers.get("x-recast-decision")).toBe("pending_approval"); const id = (await first.json() as any).error.data.approval_id; expect(seen).toEqual([]);
     expect(await results(r)).toEqual(["pending_approval"]);
     // not yet approved: presenting the id does nothing
-    expect((await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } })).status).toBe(202);
+    expect((await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } })).headers.get("x-recast-decision")).toBe("pending_approval");
     await r.approvals.decide(id, "t1", "usr_meera", true, clock);
     const ok = await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } }); expect(ok.status).toBe(200); expect(seen).toHaveLength(1);
-    const again = await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } }); expect(again.status).toBe(202);   // single use
+    const again = await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } }); expect(again.headers.get("x-recast-decision")).toBe("pending_approval");   // single use
     const log = await r.store.list("t1"); expect(log.find((e) => e.result === "allowed")!.humanApproved).toBe(true);
   });
   it("an approval for one request cannot be used for a different one, or by another tenant", async () => {
     const r = await rig(); const id = ((await (await call(r, rpcCall("gmail.send_email", send))).json()) as any).error.data.approval_id; await r.approvals.decide(id, "t1", "usr_meera", true, clock);
-    expect((await call(r, rpcCall("gmail.send_email", { ...send, to: "everyone@x.com" }), { headers: { "x-approval-id": id } })).status).toBe(202); expect(seen).toEqual([]);
+    expect((await call(r, rpcCall("gmail.send_email", { ...send, to: "everyone@x.com" }), { headers: { "x-approval-id": id } })).headers.get("x-recast-decision")).toBe("pending_approval"); expect(seen).toEqual([]);
     expect(await r.approvals.decide(id, "other-tenant", "usr_evil", true, clock)).toBeNull();
   });
   it("a rejected or expired approval never lets the call through", async () => {
     const r = await rig(); const id = ((await (await call(r, rpcCall("gmail.send_email", send))).json()) as any).error.data.approval_id;
-    await r.approvals.decide(id, "t1", "usr_meera", false, clock); expect((await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } })).status).toBe(202);
+    await r.approvals.decide(id, "t1", "usr_meera", false, clock); expect((await call(r, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id } })).headers.get("x-recast-decision")).toBe("pending_approval");
     const r2 = await rig(); const id2 = ((await (await call(r2, rpcCall("gmail.send_email", send))).json()) as any).error.data.approval_id; await r2.approvals.decide(id2, "t1", "usr_meera", true, clock);
-    clock += 20 * 60_000; expect((await call(r2, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id2 } })).status).toBe(202); expect(seen).toEqual([]);
+    clock += 20 * 60_000; expect((await call(r2, rpcCall("gmail.send_email", send), { headers: { "x-approval-id": id2 } })).headers.get("x-recast-decision")).toBe("pending_approval"); expect(seen).toEqual([]);
   });
 });
 
@@ -144,7 +144,7 @@ describe("authentication and protocol edges", () => {
     const r = await rig(); reply = { status: 200, body: { jsonrpc: "2.0", id: 1, result: { tools: [] } } };
     expect((await call(r, { jsonrpc: "2.0", id: 1, method: "tools/list" })).status).toBe(200); expect(seen).toHaveLength(1);
     expect((await call(r, { jsonrpc: "2.0", id: 1, method: "tools/list" }, { token: null })).status).toBe(401);
-    const res = await call(r, { jsonrpc: "2.0", id: 2, method: "resources/read", params: { uri: "file:///etc/passwd" } }); expect(res.status).toBe(403); expect(seen).toHaveLength(1);
+    const res = await call(r, { jsonrpc: "2.0", id: 2, method: "resources/read", params: { uri: "file:///etc/passwd" } }); expect(res.headers.get("x-recast-decision")).toBe("denied"); expect(seen).toHaveLength(1);
     expect(await results(r)).toEqual(["denied"]);
     expect((await call(r, [rpcCall("google_calendar.create_event", {})])).status).toBe(400);
     expect((await call(r, "{not json")).status).toBe(400); expect((await call(r, { jsonrpc: "2.0", id: 1, method: "tools/call", params: {} })).status).toBe(400);
@@ -176,6 +176,6 @@ describe("failing closed", () => {
 describe("policy is live", () => {
   it("a new policy applies to the next call without restarting anything", async () => {
     const r = await rig(); expect((await call(r, rpcCall("google_calendar.create_event", { title: "T" }))).status).toBe(200);
-    r.policy.current = parsePolicy("rules: []\ndefault: deny\n"); expect((await call(r, rpcCall("google_calendar.create_event", { title: "T" }))).status).toBe(403);
+    r.policy.current = parsePolicy("rules: []\ndefault: deny\n"); expect((await call(r, rpcCall("google_calendar.create_event", { title: "T" }))).headers.get("x-recast-decision")).toBe("denied");
   });
 });

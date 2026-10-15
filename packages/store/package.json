@@ -1,7 +1,22 @@
 {
-  "name": "@recast/store", "version": "0.1.0", "private": true, "type": "module",
+  "name": "@recast/store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "main": "src/index.ts",
-  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run" },
-  "dependencies": { "@recast/core": "workspace:*" },
-  "devDependencies": { "@electric-sql/pglite": "^0.3.0", "vitest": "^3.2.0" }
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@recast/core": "workspace:*",
+    "@electric-sql/pglite": "^0.3.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  }
 }

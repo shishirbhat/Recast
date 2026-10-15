@@ -57,7 +57,7 @@ Destinations: `google_calendar`, `gmail` (draft only), `google_sheets`, `google_
 
 ## Not done, stated plainly
 - **Embedding and model stages are untested against real providers.** The cascade logic is tested with scripted stand-ins; the quality and cost of real stages are unmeasured. The bundled local embedder compares character patterns, not meaning.
-- **No Supabase-backed key or usage store.** `apps/api` takes keys from the `RECAST_API_KEYS` environment variable; with none set every call is `401`. The SQL schema is written and tested, the adapter is not.
+- **Supabase-backed stores exist and are tested on Postgres (PGlite), but `apps/api` is not wired to them.** `apps/api` still takes keys from the `RECAST_API_KEYS` environment variable; with none set every call is `401`. `SqlKeyStore`, `SqlUsageStore` and `SqlCorrectionStore` (in `packages/api-core`) run the same contract tests as the memory stores; connecting them needs a database URL.
 - **Nothing is deployed.** No Vercel project, no domain, no Upstash/Qdrant. Rate limits and idempotency are per server instance (in memory), so they need a shared store before running more than one instance.
 - Not built yet: `/v1/enrich`, `/v1/place`, `/v1/graph`, an MCP server wrapper, a key-issuing dashboard, billing.
 - The ontology has no Org type; relative dates ("Friday") are refused rather than guessed.

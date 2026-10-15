@@ -5,6 +5,7 @@ import { exchangeToken, type CredentialVault } from "./exchange";
 import type { AgentRegistry } from "./identity";
 import { evaluate, type Policy } from "./policy";
 import { checkConstraints, type ScopeStore } from "./scope";
+import { MemoryReplayCache, verifyProof, type ReplayCache } from "./proof";
 import { verifyAgentToken } from "./token";
 
 export interface GatewayDeps {
@@ -20,6 +21,10 @@ export interface GatewayDeps {
   deriveFacts?: (call: { tool: string; action: string; params: Record<string, unknown> }) => Record<string, unknown>;
   isTokenRevoked?: (jti: string) => boolean | Promise<boolean>;
   now?: () => number; maxBodyBytes?: number;
+  /** Per-request proof of possession (DPoP style). "required" refuses a bearer token on its own; "optional" checks the proof only if sent; "off" ignores it. */
+  proof?: "off" | "optional" | "required"; replay?: ReplayCache;
+  /** The URL clients call, when the gateway sits behind a proxy and req.url is not what they signed. */
+  publicUrl?: string;
 }
 
 const PASS_THROUGH = new Set(["initialize", "ping", "tools/list"]);
@@ -34,6 +39,7 @@ export function parseToolName(name: string): { tool: string; action: string } {
 }
 
 export function createGateway(d: GatewayDeps) {
+  let replay: ReplayCache | undefined;
   const now = d.now ?? Date.now; const doFetch = d.forward ?? fetch; const maxBody = d.maxBodyBytes ?? 256 * 1024;
 
   async function handle(req: Request): Promise<Response> {
@@ -48,7 +54,14 @@ export function createGateway(d: GatewayDeps) {
       if (e instanceof AuthError) return new Response(JSON.stringify({ error: { code: e.code, message: e.message } }), { status: 401, headers: { ...JSON_HEADERS, "www-authenticate": `Bearer error="invalid_token"` } });
       throw e;
     }
-    const { agent } = who; const requestId = rid(); const sessionId = req.headers.get("mcp-session-id") ?? undefined;
+    const { agent } = who;
+    const mode = d.proof ?? "optional"; const proof = req.headers.get("dpop");
+    if (mode === "required" && !proof) return new Response(JSON.stringify({ error: { code: "proof_required", message: "send a DPoP proof signed by the agent's key" } }), { status: 401, headers: { ...JSON_HEADERS, "www-authenticate": `DPoP error="use_dpop_proof"` } });
+    if (mode !== "off" && proof) {
+      try { await verifyProof(proof, { agent, method: req.method, url: d.publicUrl ?? req.url, accessToken: m[1]!, replay: (replay ??= d.replay ?? new MemoryReplayCache()), now: now() }); }
+      catch (e) { if (e instanceof AuthError) return new Response(JSON.stringify({ error: { code: e.code, message: `proof rejected: ${e.message}` } }), { status: 401, headers: { ...JSON_HEADERS, "www-authenticate": `DPoP error="invalid_dpop_proof"` } }); throw e; }
+    }
+    const requestId = rid(); const sessionId = req.headers.get("mcp-session-id") ?? undefined;
     const base = { tenantId: agent.tenantId, agentId: agent.agentId, requestId, ...(agent.ownerUserId ? { userId: agent.ownerUserId } : {}), ...(sessionId ? { sessionId } : {}), delegationChain: [...(agent.ownerUserId ? [agent.ownerUserId] : []), agent.agentId] };
     const log = (e: Pick<AuditInput, "tool" | "action" | "params" | "result"> & Partial<AuditInput>) => d.audit.append({ ...base, ...e });
 
@@ -62,22 +75,27 @@ export function createGateway(d: GatewayDeps) {
     const passThrough = PASS_THROUGH.has(method) || method.startsWith("notifications/");
     if (!passThrough && method !== "tools/call") {
       try { await log({ tool: "*", action: method, params: {}, result: "denied", reason: "method is not supported by the gateway" }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
-      return rpcError(403, rpc.id, -32601, `method '${method}' is not available through the gateway`);
+      return rpcError(200, rpc.id, -32601, `method '${method}' is not available through the gateway`, undefined, { "x-recast-decision": "denied" });
     }
 
     // Methods that call nothing: forward without policy, still authenticated.
     if (passThrough) {
       const url = d.upstream("*"); if (!url) return rpcError(404, rpc.id, -32601, "no upstream configured");
-      return relay(doFetch, url, req, text, null);
+      // The upstream usually wants a credential even to initialise or list tools. It is the one stored for tool "*" (if any).
+      const cred = await exchangeToken({ tenantId: agent.tenantId, agentId: agent.agentId, tool: "*", action: method, ...d.exchange, now: now() });
+      const res = await relay(doFetch, url, req, text, cred ? `${cred.tokenType} ${cred.accessToken}` : null);
+      return method === "tools/list" ? filterToolList(res, async (name) => { const t = parseToolName(name); return (await d.scopes.find(agent.agentId, t.tool, t.action, now())).length > 0; }) : res;
     }
 
     // 3. Is this agent allowed, in this tool, doing this action, with these parameters?
     const nameArg = rpc.params?.name; const params = rpc.params?.arguments && typeof rpc.params.arguments === "object" && !Array.isArray(rpc.params.arguments) ? rpc.params.arguments as Record<string, unknown> : {};
     if (typeof nameArg !== "string" || !nameArg) return rpcError(400, rpc.id, -32602, "tools/call needs params.name");
     const { tool, action } = parseToolName(nameArg);
-    const deny = async (status: number, why: string, data?: unknown) => {
+    // A refusal is an application-level answer, so it travels as a JSON-RPC error over HTTP 200: that is what real MCP clients
+    // turn into a typed error with its data. (A 403 would surface as a transport failure.) Observers read x-recast-decision.
+    const deny = async (_status: number, why: string, data?: unknown) => {
       try { await log({ tool, action, params, result: "denied", reason: why }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
-      return rpcError(status, rpc.id, -32003, why, data, { "x-recast-request-id": requestId });
+      return rpcError(200, rpc.id, -32003, why, data, { "x-recast-request-id": requestId, "x-recast-decision": "denied" });
     };
 
     const grants = await d.scopes.find(agent.agentId, tool, action, now());
@@ -97,7 +115,8 @@ export function createGateway(d: GatewayDeps) {
       else {
         const a = await d.approvals.request({ tenantId: agent.tenantId, agentId: agent.agentId, tool, action, requestHash: hash }, now());
         try { await log({ tool, action, params, result: "pending_approval", reason: verdict.reason }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
-        return new Response(JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, error: { code: -32004, message: "a person must approve this first", data: { status: "pending_approval", approval_id: a.id } } }), { status: 202, headers: { ...JSON_HEADERS, "x-recast-request-id": requestId } });
+        // Not 202: in MCP, 202 means "accepted, no response", and a client would wait forever for an answer.
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, error: { code: -32004, message: "a person must approve this first", data: { status: "pending_approval", approval_id: a.id } } }), { status: 200, headers: { ...JSON_HEADERS, "x-recast-request-id": requestId, "x-recast-decision": "pending_approval" } });
       }
     }
 
@@ -129,8 +148,22 @@ export function createGateway(d: GatewayDeps) {
 async function relay(f: typeof fetch, url: string, req: Request, body: string, authorization: string | null): Promise<Response> {
   const h: Record<string, string> = { "content-type": "application/json", accept: req.headers.get("accept") ?? "application/json, text/event-stream" };
   const sid = req.headers.get("mcp-session-id"); if (sid) h["mcp-session-id"] = sid;
+  const pv = req.headers.get("mcp-protocol-version"); if (pv) h["mcp-protocol-version"] = pv;
   if (authorization) h.authorization = authorization;
   const r = await f(url, { method: "POST", headers: h, body });
   const out = new Headers(r.headers); out.delete("set-cookie"); out.delete("set-cookie2");
   return new Response(r.body, { status: r.status, headers: out });
+}
+
+/** An agent only learns about tools it holds a live scope for. Handles a JSON answer or a single-event SSE answer. */
+async function filterToolList(res: Response, allowed: (name: string) => Promise<boolean>): Promise<Response> {
+  const type = res.headers.get("content-type") ?? "";
+  if (!res.ok || !/json|event-stream/.test(type)) return res;
+  const text = await res.text();
+  const keep = async (msg: any) => { if (msg?.result?.tools && Array.isArray(msg.result.tools)) { const out = []; for (const t of msg.result.tools) if (typeof t?.name === "string" && (await allowed(t.name))) out.push(t); msg.result.tools = out; } return msg; };
+  let body: string;
+  if (/json/.test(type)) { try { body = JSON.stringify(await keep(JSON.parse(text))); } catch { return new Response(text, { status: res.status, headers: res.headers }); } }
+  else body = (await Promise.all(text.split("\n").map(async (line) => { if (!line.startsWith("data:")) return line; try { return "data: " + JSON.stringify(await keep(JSON.parse(line.slice(5)))); } catch { return line; } }))).join("\n");
+  const h = new Headers(res.headers); h.delete("content-length");
+  return new Response(body, { status: res.status, headers: h });
 }

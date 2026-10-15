@@ -1,7 +1,21 @@
 {
-  "name": "@recast/api-core", "version": "0.1.0", "private": true, "type": "module",
+  "name": "@recast/api-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "main": "src/index.ts",
-  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run" },
-  "dependencies": { "@recast/core": "workspace:*", "@recast/resolve": "workspace:*" },
-  "devDependencies": { "vitest": "^3.2.0", "@types/node": "^22.0.0" }
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@recast/core": "workspace:*",
+    "@recast/resolve": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0",
+    "@types/node": "^22.0.0",
+    "@recast/store": "workspace:*",
+    "@electric-sql/pglite": "^0.3.0"
+  }
 }
