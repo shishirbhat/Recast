@@ -237,6 +237,19 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)
 
+  packages/resolve:
+    dependencies:
+      '@recast/bridges':
+        specifier: workspace:*
+        version: link:../bridges
+      '@recast/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)
+
   packages/store:
     dependencies:
       '@recast/core':
