@@ -31,7 +31,7 @@ async function open(opts: { theme?: "light" | "dark" } = {}): Promise<{ page: Pa
   page.on("pageerror", (e) => errors.push(e.message)); page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   await page.goto(base); return { page, base, errors };
 }
-const SECTIONS = [["Objects", "/", "Meera Iyer"], ["Relationships", "/relationships", "attendee"], ["Integrations", "/integrations", "Google Calendar"], ["Permissions", "/permissions", "Create and edit events"], ["History", "/history", "Learned"], ["Privacy", "/privacy", "Export everything"]] as const;
+const SECTIONS = [["Objects", "/", "Meera Iyer"], ["Relationships", "/relationships", "attendee"], ["Integrations", "/integrations", "Google Calendar"], ["Permissions", "/permissions", "Create and edit events"], ["Agents", "/agents", "calendar-bot"], ["Approvals", "/approvals", "wants to run"], ["Audit chain", "/audit", "Verified"], ["History", "/history", "Learned"], ["Privacy", "/privacy", "Export everything"]] as const;
 
 describe("control center (production build, demo data)", () => {
   it("every section renders its content and the nav marks the current page", async () => {
@@ -119,6 +119,22 @@ describe("control center (production build, demo data)", () => {
       const bad = (await new AxeBuilder({ page }).analyze()).violations.filter((v) => v.impact === "serious" || v.impact === "critical");
       expect(bad.map((v) => `${href}: ${v.id} ${v.nodes[0]?.html}`)).toEqual([]);
     }
+  });
+
+  it("an agent's request waits for a person: approve moves it out of the queue and into the audit chain, once", async () => {
+    const { page, base } = await open(); await page.goto(base + "/approvals");
+    expect(await page.getByRole("main").innerText()).toMatch(/agt_9f3a2b000001 wants to run gmail\.send_email/);
+    await page.getByRole("button", { name: /Approve gmail\.send_email/ }).click();
+    await page.getByRole("status").filter({ hasText: "Approved" }).waitFor(); await page.getByText("Nothing is waiting for you").waitFor();
+    await page.goto(base + "/audit"); expect(await page.getByRole("main").innerText()).toMatch(/person approved/); expect(await page.getByRole("status").innerText()).toMatch(/Verified: 5 entries/);
+  });
+
+  it("rejecting records a refusal; the agents page shows scopes left and a revoked agent", async () => {
+    const { page, base } = await open(); await page.goto(base + "/approvals"); await page.getByRole("button", { name: /Reject gmail\.send_email/ }).click();
+    await page.getByRole("status").filter({ hasText: "Rejected" }).waitFor(); await page.goto(base + "/audit");
+    expect(await page.getByRole("listitem").first().innerText()).toMatch(/denied[\s\S]*rejected by demo-user/);
+    await page.goto(base + "/agents"); const main = await page.getByRole("main").innerText();
+    expect(main).toMatch(/49 of 50 calls left/); expect(main).toMatch(/research-agent[\s\S]*Revoked/);
   });
 
   it("is usable on a phone-width screen with no sideways scroll", async () => {

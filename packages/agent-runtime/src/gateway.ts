@@ -13,7 +13,7 @@ export interface GatewayDeps {
   audience: string;
   registry: AgentRegistry; scopes: ScopeStore; audit: AuditLog; approvals: ApprovalStore;
   /** Read on every call, so a new policy takes effect without a restart. */
-  getPolicy: () => Policy | Promise<Policy>;
+  getPolicy: (ctx: { tenantId: string; agentId: string }) => Policy | Promise<Policy>;
   exchange: { mode: "vault" | "runtime-jwt"; vault?: CredentialVault; runtime?: { privateJwk: JsonWebKey; issuer: string } };
   /** Where a tool's real MCP server lives. "*" is the default for methods that name no tool. */
   upstream: (tool: string) => string | null;
@@ -104,7 +104,7 @@ export function createGateway(d: GatewayDeps) {
     if (!grant) return deny(403, `scope constraint failed: ${fits[0]!.problem}`);
 
     const facts = { ...params, ...(d.deriveFacts?.({ tool, action, params }) ?? {}), tool, action };
-    const verdict = evaluate(await d.getPolicy(), { agentId: agent.agentId, tool, action }, facts);
+    const verdict = evaluate(await d.getPolicy({ tenantId: agent.tenantId, agentId: agent.agentId }), { agentId: agent.agentId, tool, action }, facts);
     if (verdict.decision === "deny") return deny(403, `policy: ${verdict.reason}`);
 
     let humanApproved = false;

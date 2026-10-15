@@ -90,6 +90,11 @@ export class SqlApprovalStore implements ApprovalStore {
     const { rows } = await this.sql.query(`update agent_approvals set status = 'used' where id = $1 and tenant_id = $2 and request_hash = $3 and status = 'approved' and created_ms > $4 returning id`, [id, tenantId, hash, now - this.ttlMs]);
     return rows.length === 1;
   }
+  /** What a person still has to decide, oldest first. */
+  async listPending(tenantId: string, now: number): Promise<Approval[]> {
+    const { rows } = await this.sql.query<any>(`select p.*, g.agent_key from agent_approvals p join agents g on g.id = p.agent_id where p.tenant_id = $1 and p.status = 'pending' and p.created_ms > $2 order by p.created_ms`, [tenantId, now - this.ttlMs]);
+    return rows.map((r) => this.map(r));
+  }
   async get(id: string) {
     const { rows } = await this.sql.query<any>(`select p.*, g.agent_key from agent_approvals p join agents g on g.id = p.agent_id where p.id = $1`, [id]);
     return rows[0] ? this.map(rows[0]) : null;

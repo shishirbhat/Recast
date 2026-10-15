@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 
-const items = [["/", "Objects"], ["/relationships", "Relationships"], ["/integrations", "Integrations"], ["/permissions", "Permissions"], ["/history", "History"], ["/privacy", "Privacy"]] as const;
+const items = [["/", "Objects"], ["/relationships", "Relationships"], ["/integrations", "Integrations"], ["/permissions", "Permissions"], ["/agents", "Agents"], ["/approvals", "Approvals"], ["/audit", "Audit chain"], ["/history", "History"], ["/privacy", "Privacy"]] as const;
 
 export function Nav() {
   const path = usePathname();

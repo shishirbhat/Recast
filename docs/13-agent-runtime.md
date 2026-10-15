@@ -2,7 +2,7 @@
 
 The second surface on the same spine: identity, permissions and audit for AI agents. Recast is the human surface; Agent Runtime is the machine surface. This slice is the gateway skeleton from the blueprint: an agent authenticates, is scoped, passes a policy, and every action is audited.
 
-## What exists (`packages/agent-runtime`, 71 tests)
+## What exists (`packages/agent-runtime`, 72 tests)
 | Piece | What it does |
 |---|---|
 | `identity.ts` | Ed25519 agent identities (WebCrypto, no dependency). Agent id `agt_` + 12 hex. The registry stores only the public key |
@@ -37,6 +37,16 @@ Database: `supabase/migrations/20260103000000_agent_runtime.sql` adds `agents`, 
 - **Two things that test found and fixed.** (1) The gateway answered "approval needed" with HTTP 202. In MCP, 202 means "accepted, no reply", so a real client waits forever. Refusals and approval-pending now travel as JSON-RPC errors over HTTP 200 (`-32003` denied, `-32004` approval needed, with the approval id in `data`), plus an `x-recast-decision` header for observers. (2) Real servers want a credential even to initialise and list tools; the gateway now uses the credential stored for tool `*` for those methods.
 - **Per-request proof of possession (DPoP style).** `proof: "required"` refuses a bearer token on its own. Every request carries a proof signed by the agent's key, bound to the method, the URL and a hash of the access token, valid for 60 seconds and usable once. A stolen token is useless without the key; a captured proof is useless for another request or a second time. The real MCP client works with it through a custom `fetch` that signs each request. The default is `optional` (checked if sent); use `required` in production.
 - **Postgres-backed stores, tested on real Postgres:** agents, scopes (atomic budgets), the audit log (the signed body is stored whole so verification re-hashes exactly what was signed), approvals (exactly one of several concurrent redeemers wins), revoked token ids, the active policy, and the proof replay cache. The whole gateway also runs end to end on them. API keys, usage and corrections have SQL stores too (`packages/api-core`), including the database refusing corrections for a tenant that has not opted in.
+
+## The deployable server (`apps/agent-server`, 10 tests)
+A plain Node HTTP server around the gateway, configured entirely by environment (`apps/agent-server/.env.example`). It refuses to start with a missing or weak setting (admin token under 24 characters, a signing key that is not an Ed25519 private JWK, an unknown proof mode). **Proofs are required by default.**
+
+- `POST /mcp`: the gateway, with Postgres-backed agents, scopes, audit, approvals, revocations, proof replay and per-tenant policy (cached for 5 seconds, cleared at once by a change made through this server).
+- `/admin/*` (bearer admin token, compared in constant time): list pending approvals and decide one, read the audit chain with its verification result, activate a policy (validated first, so a bad one changes nothing), register and revoke agents, grant scopes, revoke token ids, list agents with live scopes.
+- `/healthz`: checks the database.
+- **Tested over a real Postgres wire connection**: PGlite served through `pglite-socket`, the `pg` driver, the official MCP client and a real MCP server upstream. That includes the approval round trip, policy changes, proof replay through the database, revocation, and the audit endpoint reporting a chain broken by a database-level edit.
+- `packages/runtime-client` is how the control center talks to it. `apps/web` has Agents, Approvals (approve or reject, once, for that exact request) and Audit chain pages. Without `RUNTIME_URL`, `RUNTIME_ADMIN_TOKEN` and `RUNTIME_TENANT_ID` it shows sample data. The admin token stays on the server.
+- A `Dockerfile` is included but **has not been built**. No deploy has been done.
 
 ## Limits, stated plainly
 - **Not the RFC 8693 wire protocol.** The exchange is the same idea (trade an identity token for a narrower credential) as a function call inside the gateway, not a `/token` endpoint other systems can call.

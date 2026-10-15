@@ -25,6 +25,9 @@ The control center runs and is tested end to end in a real browser, **in demo mo
 - Delete everything needs the exact word DELETE. A wrong word deletes nothing and says so.
 - Keyboard: a skip link first, then every nav link in order. axe finds no serious or critical issue on any section in light or dark. No sideways scroll at 375 px.
 
+## Added later: agents, approvals and the audit chain
+Three more sections for the Agent Runtime (see `docs/13-agent-runtime.md`): **Agents** (what each may do and how many calls are left), **Approvals** (approve or reject what an agent asked for, once, for that exact request), **Audit chain** (every action with a verified/broken banner). They run on sample data unless the runtime's address, admin token and tenant id are set. The demo has no sign-in, so decisions are recorded as `demo-user`. 13 browser tests, axe clean on all nine sections.
+
 ## Screenshots
 `docs/images/layer4/`: objects, integrations and privacy, light and dark.
 
