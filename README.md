@@ -19,3 +19,4 @@ pnpm install && pnpm gen && pnpm typecheck && pnpm test
 - `docs/10-layer4-control-center.md` Layer 4 results (`apps/web`, `packages/store`, `supabase/migrations`)
 - `docs/11-bridges.md` Calendar, Gmail draft, Sheets, Tasks and Notion bridges as data (`packages/bridges`), not run against live services
 - `docs/12-api.md` The Recast API: resolve engine, API server, SDK, schema (`packages/resolve`, `packages/api-core`, `apps/api`, `packages/sdk`)
+- `docs/13-agent-runtime.md` Agent Runtime first slice: identity, scopes, policy, signed audit, MCP gateway (`packages/agent-runtime`)
