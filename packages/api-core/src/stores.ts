@@ -37,9 +37,29 @@ export class MemoryCorrectionStore implements CorrectionStore {
 }
 
 export interface IdemRecord { bodyHash: string; status: number; json: unknown; at: number }
-export class MemoryIdempotencyStore {
-  private m = new Map<string, IdemRecord>();
-  constructor(private ttlMs = 24 * 3600_000) {}
-  get(k: string, now: number) { const r = this.m.get(k); if (r && now - r.at > this.ttlMs) { this.m.delete(k); return undefined; } return r; }
-  set(k: string, r: IdemRecord) { this.m.set(k, r); }
+/** What happened when a request tried to claim its Idempotency-Key. */
+export type IdemBegin = { state: "new" } | { state: "replay"; record: IdemRecord } | { state: "mismatch" } | { state: "in_progress" };
+/**
+ * Claim first, then do the work, then complete (or abort on failure). Of two concurrent requests with the same key exactly one
+ * gets "new"; the other sees "in_progress" until the first completes, then "replay". A claim older than `staleMs` is treated as abandoned.
+ */
+export interface IdempotencyStore {
+  begin(tenantId: string, key: string, bodyHash: string, now: number): Promise<IdemBegin>;
+  complete(tenantId: string, key: string, record: IdemRecord): Promise<void>;
+  abort(tenantId: string, key: string): Promise<void>;
+}
+export const IDEM_TTL_MS = 24 * 3600_000, IDEM_STALE_MS = 60_000;
+export class MemoryIdempotencyStore implements IdempotencyStore {
+  private m = new Map<string, { bodyHash: string; at: number; record?: IdemRecord }>();
+  constructor(private ttlMs = IDEM_TTL_MS, private staleMs = IDEM_STALE_MS) {}
+  async begin(t: string, k: string, bodyHash: string, now: number): Promise<IdemBegin> {
+    const id = `${t}|${k}`; const cur = this.m.get(id);
+    if (cur && (now - cur.at > this.ttlMs || (!cur.record && now - cur.at > this.staleMs))) this.m.delete(id);
+    const r = this.m.get(id);
+    if (!r) { this.m.set(id, { bodyHash, at: now }); return { state: "new" }; }
+    if (r.bodyHash !== bodyHash) return { state: "mismatch" };
+    return r.record ? { state: "replay", record: r.record } : { state: "in_progress" };
+  }
+  async complete(t: string, k: string, record: IdemRecord) { const id = `${t}|${k}`; this.m.set(id, { bodyHash: record.bodyHash, at: this.m.get(id)?.at ?? record.at, record }); }
+  async abort(t: string, k: string) { const id = `${t}|${k}`; if (!this.m.get(id)?.record) this.m.delete(id); }
 }

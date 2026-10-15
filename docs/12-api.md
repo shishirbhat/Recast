@@ -41,7 +41,7 @@ Destinations: `google_calendar`, `gmail` (draft only), `google_sheets`, `google_
 | Scale | 500 | 1,000 | 500,000 |
 
 - Rate limit exceeded: `429` with `Retry-After`. Quota used up: `402` with usage headers. Only `resolved` answers use quota; unresolved, ambiguous and rejected calls are free.
-- `Idempotency-Key`: same key and body replays the first answer without counting again; same key with a different body is `422`. Keys are per tenant and last 24 hours.
+- `Idempotency-Key`: same key and body replays the first answer without counting again; same key with a different body is `422`; the same key while the first request is still running is `409` with `Retry-After: 1`; a request that failed frees its key for a retry. Keys are per tenant and last 24 hours.
 - Versioning: `/v1/` in the path; optional `X-Recast-Version`. Deprecated versions get `Deprecation` and `Sunset` headers. Every response carries `Recast-Schema-Version`.
 - Body limit 512 KB, input text limit 4,000 characters, `Cache-Control: no-store`, errors never include internals.
 
@@ -56,7 +56,9 @@ Destinations: `google_calendar`, `gmail` (draft only), `google_sheets`, `google_
 - 190+ new tests: engine 31, API core 21, SDK 21 (including against the real API over HTTP), API server end to end 4, database 8 (+ the existing 20).
 
 ## Running on Postgres
-Set `DATABASE_URL` and `apps/api` keeps keys, monthly usage and corrections in Postgres (the Supabase migrations), through the `pg` driver. Without it, keys come from `RECAST_API_KEYS` and counts stay in memory, for local use and tests.
+Set `DATABASE_URL` and `apps/api` keeps keys, monthly usage, corrections, rate-limit buckets and idempotency records in Postgres (the Supabase migrations), through the `pg` driver. Without it, keys come from `RECAST_API_KEYS` and counts stay in memory, for local use and tests.
+
+Because limits and idempotency are in the database, every instance enforces the same numbers. The token bucket is one locked row per tenant (`take_token`), so concurrent requests cannot spend the same token; an idempotency key is claimed before the work runs (primary key on tenant and key), so of two simultaneous requests exactly one runs. Tested with two API instances on one database (`packages/api-core/test/shared-state.test.ts`). `select purge_api_state(<now ms>)` clears expired records and idle buckets; run it on a schedule. This costs one or two database round trips per request; a Redis/Upstash limiter can replace `SqlRateLimiter` behind the same `Limiter` interface when traffic needs it.
 
 Keys are issued with a command, never by hand:
 ```
@@ -70,7 +72,7 @@ Tested end to end (`apps/api/test/postgres.test.ts`): every migration in a Postg
 
 ## Not done, stated plainly
 - **Embedding and model stages are untested against real providers.** The cascade logic is tested with scripted stand-ins; the quality and cost of real stages are unmeasured. The bundled local embedder compares character patterns, not meaning.
-- **Nothing is deployed.** No Vercel project, no domain, no Upstash/Qdrant. Rate limits and idempotency are per server instance (in memory), so they need a shared store before running more than one instance.
+- **Nothing is deployed.** No Vercel project, no domain, no Upstash/Qdrant.
 - Not built yet: `/v1/enrich`, `/v1/place`, `/v1/graph`, an MCP server wrapper, a key-issuing dashboard, billing.
 - The ontology has no Org type; relative dates ("Friday") are refused rather than guessed.
 - Next.js builds with `--webpack` because Turbopack cannot yet map the core's `./x.js` imports to TypeScript.

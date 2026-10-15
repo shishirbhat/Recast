@@ -1,13 +1,15 @@
 import { sha256Hex } from "@recast/core";
 import { API_TYPES, DESTINATIONS, ResolveInputError, toApiType, toWire, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
-import { RateLimiter } from "./limiter";
-import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type CorrectionStore, type KeyStore, type UsageStore } from "./stores";
+import { RateLimiter, type Limiter } from "./limiter";
+import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type CorrectionStore, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
 import { TIERS } from "./tiers";
 import { checkVersion, type Deprecation } from "./version";
 
 export interface ApiDeps {
   resolver: Resolver; keys: KeyStore;
   usage?: UsageStore; corrections?: CorrectionStore; now?: () => number; deprecated?: Deprecation[];
+  /** Shared implementations (SqlRateLimiter, SqlIdempotencyStore) make limits and replays hold across server instances. */
+  limiter?: Limiter; idempotency?: IdempotencyStore;
   maxBodyBytes?: number; maxBatch?: number;
 }
 
@@ -46,7 +48,7 @@ export function createApi(deps: ApiDeps) {
   const now = deps.now ?? Date.now;
   const usage = deps.usage ?? new MemoryUsageStore();
   const corrections = deps.corrections ?? new MemoryCorrectionStore();
-  const idem = new MemoryIdempotencyStore(); const limiter = new RateLimiter(now);
+  const idem = deps.idempotency ?? new MemoryIdempotencyStore(); const limiter = deps.limiter ?? new RateLimiter(now);
   const maxBody = deps.maxBodyBytes ?? 512 * 1024, maxBatch = deps.maxBatch ?? 50;
 
   async function readJson(req: Request): Promise<unknown> {
@@ -79,7 +81,7 @@ export function createApi(deps: ApiDeps) {
       Object.assign(base, ver.headers);
 
       const key = await authenticate(req); const limits = TIERS[key.tier];
-      const rl = limiter.take(key.tenantId, limits.rps, limits.burst);
+      const rl = await limiter.take(key.tenantId, limits.rps, limits.burst);
       base["RateLimit-Limit"] = String(limits.rps);
       if (!rl.ok) throw new HttpError(429, "rate_limited", "too many requests", { "Retry-After": String(rl.retryAfterSec) });
       base["RateLimit-Remaining"] = String(rl.remaining);
@@ -111,34 +113,35 @@ export function createApi(deps: ApiDeps) {
         let idemKey: string | undefined; const bodyHash = await sha256Hex(path + "\n" + JSON.stringify(body));
         if (ik !== null) {
           if (!/^[\x21-\x7e]{1,255}$/.test(ik)) throw new HttpError(400, "invalid_idempotency_key", "Idempotency-Key must be 1 to 255 visible ASCII characters");
-          idemKey = `${key.tenantId}|${ik}`;
-          const prev = idem.get(idemKey, now());
-          if (prev) {
-            if (prev.bodyHash !== bodyHash) throw new HttpError(422, "idempotency_key_reused", "this Idempotency-Key was already used with a different request");
-            return new Response(JSON.stringify(prev.json), { status: prev.status, headers: { ...JSON_HEADERS, ...base, ...quotaHeaders(used), "Idempotent-Replay": "true" } });
-          }
+          const claim = await idem.begin(key.tenantId, ik, bodyHash, now());
+          if (claim.state === "mismatch") throw new HttpError(422, "idempotency_key_reused", "this Idempotency-Key was already used with a different request");
+          if (claim.state === "in_progress") throw new HttpError(409, "idempotency_key_in_use", "a request with this Idempotency-Key is still running; retry shortly", { "Retry-After": "1" });
+          if (claim.state === "replay") return new Response(JSON.stringify(claim.record.json), { status: claim.record.status, headers: { ...JSON_HEADERS, ...base, ...quotaHeaders(used), "Idempotent-Replay": "true" } });
+          idemKey = ik;
         }
 
-        let resolved = 0; let json: unknown; let status = 200;
-        const run = async (input: ResolveInput) => {
-          const o = await deps.resolver.resolve(input); if (o.status === "resolved") resolved++;
-          return toWire(o, input.options?.includeProvenance ?? true);
-        };
-        if (path === "/v1/resolve") {
-          json = await run(parseResolveInput(body));
-        } else {
-          if (!isObj(body) || !Array.isArray(body.items)) throw new HttpError(400, "invalid_request", "body.items must be an array");
-          if (body.items.length === 0 || body.items.length > maxBatch) throw new HttpError(400, "invalid_request", `body.items must have 1 to ${maxBatch} items`);
-          const inputs = body.items.map((it, i) => parseResolveInput(it, `items[${i}]`));
-          const results: unknown[] = [];
-          for (const [i, input] of inputs.entries()) {
-            try { results.push(await run(input)); }
-            catch (e) { if (e instanceof ResolveInputError) results.push({ status: "error", error: { code: e.code, message: e.message }, index: i }); else throw e; }
+        let resolved = 0; let json: unknown; const status = 200; let newUsed = used;
+        try {
+          const run = async (input: ResolveInput) => {
+            const o = await deps.resolver.resolve(input); if (o.status === "resolved") resolved++;
+            return toWire(o, input.options?.includeProvenance ?? true);
+          };
+          if (path === "/v1/resolve") {
+            json = await run(parseResolveInput(body));
+          } else {
+            if (!isObj(body) || !Array.isArray(body.items)) throw new HttpError(400, "invalid_request", "body.items must be an array");
+            if (body.items.length === 0 || body.items.length > maxBatch) throw new HttpError(400, "invalid_request", `body.items must have 1 to ${maxBatch} items`);
+            const inputs = body.items.map((it, i) => parseResolveInput(it, `items[${i}]`));
+            const results: unknown[] = [];
+            for (const [i, input] of inputs.entries()) {
+              try { results.push(await run(input)); }
+              catch (e) { if (e instanceof ResolveInputError) results.push({ status: "error", error: { code: e.code, message: e.message }, index: i }); else throw e; }
+            }
+            json = { results };
           }
-          json = { results };
-        }
-        const newUsed = resolved ? await usage.add(key.tenantId, month, resolved) : used;
-        if (idemKey) idem.set(idemKey, { bodyHash, status, json, at: now() });
+          newUsed = resolved ? await usage.add(key.tenantId, month, resolved) : used;
+          if (idemKey) await idem.complete(key.tenantId, idemKey, { bodyHash, status, json, at: now() });
+        } catch (e) { if (idemKey) await idem.abort(key.tenantId, idemKey).catch(() => {}); throw e; }   // a failed request can be retried with the same key
         return new Response(JSON.stringify(json), { status, headers: { ...JSON_HEADERS, ...base, ...quotaHeaders(newUsed) } });
       }
 

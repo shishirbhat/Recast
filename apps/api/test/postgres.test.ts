@@ -60,6 +60,13 @@ describe("the built API on Postgres", () => {
     expect(raw.status).toBe(200); expect(raw.headers.get("x-recast-quota-limit")).toBe("50000"); expect(raw.headers.get("x-recast-quota-used")).toBe("2");
     const used = await withPool(async (p) => (await p.query(`select resolutions from api_usage where tenant_id = $1`, [tenant])).rows[0]?.resolutions);
     expect(Number(used)).toBe(2);
+    expect(await withPool(async (p) => (await p.query(`select bucket from api_rate_buckets`)).rows)).toEqual([{ bucket: tenant }]);
+  });
+  it("idempotency records live in the database: a replay is served from there", async () => {
+    const send = () => fetch(base + "/v1/resolve", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "idempotency-key": "pg-1" }, body: JSON.stringify({ input: { raw: "Meera Iyer, meera@x.com" } }) });
+    const a = await send(); const b = await send();
+    expect(b.headers.get("idempotent-replay")).toBe("true"); expect(await b.json()).toEqual(await a.json());
+    expect(await withPool(async (p) => (await p.query(`select key, status from api_idempotency where tenant_id = $1 and key = 'pg-1'`, [tenant])).rows)).toEqual([{ key: "pg-1", status: 200 }]);
   });
   it("stores corrections only for the tenant that opted in", async () => {
     const post = (k: string) => fetch(base + "/v1/corrections", { method: "POST", headers: { authorization: `Bearer ${k}`, "content-type": "application/json" }, body: JSON.stringify({ object_id: "obj_1", kind: "edit", field: "email", new_value: "m@x.com" }) });
