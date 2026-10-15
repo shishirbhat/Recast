@@ -8,6 +8,7 @@ Status: **Layer 0 done. Layer 1 built (gate met for structured pages). Layer 2a 
 pnpm install && pnpm gen && pnpm typecheck && pnpm test
 ```
 
+- `docs/00-system-overview.md` **start here**: the whole system, workflows, data model, real vs not
 - `docs/01-research.md` verified facts, sources, dead ends
 - `docs/02-architecture.md` monorepo, schema strategy, core API, shells
 - `docs/03-decisions.md` open decisions and recommendations
