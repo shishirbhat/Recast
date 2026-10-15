@@ -17,5 +17,9 @@
     "@types/node": "^22.0.0",
     "@recast/store": "workspace:*",
     "@electric-sql/pglite": "^0.3.0"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./admin": "./src/admin.ts"
   }
 }

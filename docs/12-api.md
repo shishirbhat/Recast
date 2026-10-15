@@ -55,9 +55,21 @@ Destinations: `google_calendar`, `gmail` (draft only), `google_sheets`, `google_
 - Labelled set: 42 hand-labelled strings, 42 right, 0 false positives. **This is a development set, not a held-out one.** I tuned two rules and corrected one label (marked in the file) after seeing results. Treat it as a regression guard. A real number needs unseen inputs, ideally real traffic.
 - 190+ new tests: engine 31, API core 21, SDK 21 (including against the real API over HTTP), API server end to end 4, database 8 (+ the existing 20).
 
+## Running on Postgres
+Set `DATABASE_URL` and `apps/api` keeps keys, monthly usage and corrections in Postgres (the Supabase migrations), through the `pg` driver. Without it, keys come from `RECAST_API_KEYS` and counts stay in memory, for local use and tests.
+
+Keys are issued with a command, never by hand:
+```
+DATABASE_URL=postgres://... pnpm --filter @recast/api keys tenant create "Acme" --tier pro
+DATABASE_URL=postgres://... pnpm --filter @recast/api keys key issue <tenant-id> --label prod   # printed once, only the hash is stored
+pnpm --filter @recast/api keys key list <tenant-id>      # hash prefix, status, date, label
+pnpm --filter @recast/api keys key revoke <key-or-hash>  # takes effect on the next request
+pnpm --filter @recast/api keys tenant set <tenant-id> --tier scale --corrections-opt-in
+```
+Tested end to end (`apps/api/test/postgres.test.ts`): every migration in a Postgres wire server, the command run as a separate process, then the built Next.js server: an issued key resolves, usage is counted in the database, corrections are stored only for the opted-in tenant, a tier change applies on the next request, and a revoked key is refused at once. Pool settings: `DATABASE_POOL_MAX` (default 5), `DATABASE_IDLE_TIMEOUT_MS` (default 10000).
+
 ## Not done, stated plainly
 - **Embedding and model stages are untested against real providers.** The cascade logic is tested with scripted stand-ins; the quality and cost of real stages are unmeasured. The bundled local embedder compares character patterns, not meaning.
-- **Supabase-backed stores exist and are tested on Postgres (PGlite), but `apps/api` is not wired to them.** `apps/api` still takes keys from the `RECAST_API_KEYS` environment variable; with none set every call is `401`. `SqlKeyStore`, `SqlUsageStore` and `SqlCorrectionStore` (in `packages/api-core`) run the same contract tests as the memory stores; connecting them needs a database URL.
 - **Nothing is deployed.** No Vercel project, no domain, no Upstash/Qdrant. Rate limits and idempotency are per server instance (in memory), so they need a shared store before running more than one instance.
 - Not built yet: `/v1/enrich`, `/v1/place`, `/v1/graph`, an MCP server wrapper, a key-issuing dashboard, billing.
 - The ontology has no Org type; relative dates ("Friday") are refused rather than guessed.

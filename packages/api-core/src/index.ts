@@ -4,3 +4,4 @@ export * from "./tiers";
 export * from "./version";
 export { RateLimiter } from "./limiter";
 export * from "./sql";
+export * from "./admin";
