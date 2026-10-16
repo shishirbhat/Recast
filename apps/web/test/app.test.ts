@@ -2,11 +2,15 @@ import { chromium, type Browser, type Page } from "playwright-core";
 import AxeBuilder from "@axe-core/playwright";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer as netServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let browser: Browser;
 const servers: ChildProcess[] = [];
-let nextPort = 3400 + Math.floor(Math.random() * 400);
+/** A port the OS says is free right now, instead of a random guess that can collide with another suite's server. */
+const freePort = () => new Promise<number>((ok, fail) => { const s = netServer(); s.once("error", fail); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }); });
+/** npx starts next-server as a child; killing the whole process group stops both, so no server outlives its test. */
+const stop = (p: ChildProcess) => { try { if (p.pid) process.kill(-p.pid, "SIGTERM"); } catch { /* already gone */ } };
 
 function chromiumPath() {
   if (process.env.RECAST_CHROMIUM) return process.env.RECAST_CHROMIUM;
@@ -14,15 +18,16 @@ function chromiumPath() {
 }
 /** A fresh production server per test, so demo data starts identical every time. */
 async function server() {
-  const port = nextPort++;
-  const p = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" }, stdio: "ignore" });
+  servers.splice(0).forEach(stop);   // one server at a time: the previous test's is done
+  const port = await freePort();
+  const p = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" }, stdio: "ignore", detached: true });
   servers.push(p);
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 450; i++) { try { if ((await fetch(base)).ok) return base; } catch { /* not up yet */ } await new Promise((r) => setTimeout(r, 200)); }
   throw new Error("server did not start");
 }
 beforeAll(async () => { const executablePath = chromiumPath(); browser = await chromium.launch(executablePath ? { executablePath } : {}); });
-afterAll(async () => { await browser?.close(); servers.forEach((s) => s.kill()); });
+afterAll(async () => { await browser?.close(); servers.forEach(stop); });
 
 async function open(opts: { theme?: "light" | "dark" } = {}): Promise<{ page: Page; base: string; errors: string[] }> {
   const base = await server();

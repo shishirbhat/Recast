@@ -1,16 +1,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer as netServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthError, Recast } from "@recast/sdk";
 
 const KEY = "sk_test_e2e_00000001"; let proc: ChildProcess, base: string;
 beforeAll(async () => {
-  const port = 3500 + Math.floor(Math.random() * 400);
-  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", RECAST_API_KEYS: `${KEY}:t_e2e:pro` }, stdio: "ignore" });
+  const port = await new Promise<number>((ok, fail) => { const s = netServer(); s.once("error", fail); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }); });
+  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", RECAST_API_KEYS: `${KEY}:t_e2e:pro` }, stdio: "ignore", detached: true });
   base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 450; i++) { try { if ((await fetch(base + "/v1/health")).ok) return; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 200)); }
   throw new Error("server did not start");
 });
-afterAll(() => { proc?.kill(); });
+afterAll(() => { try { if (proc?.pid) process.kill(-proc.pid, "SIGTERM"); } catch { /* gone */ } });
 
 describe("the built Next.js API (what Vercel would run)", () => {
   it("health is open; the landing page renders", async () => {

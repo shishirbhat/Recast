@@ -3,6 +3,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { CredentialCipher } from "@recast/api-core";
 import { promisify } from "node:util";
+import { createServer as netServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
@@ -34,13 +35,13 @@ beforeAll(async () => {
     c.stdin.end("ya29.test-token\n"); c.on("exit", (code) => (code === 0 ? ok() : fail(new Error(`credential set exited ${code}`))));
   });
 
-  const port = 3500 + Math.floor(Math.random() * 400);
-  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: url, DATABASE_POOL_MAX: "1", DATABASE_IDLE_TIMEOUT_MS: "100", RECAST_API_KEYS: "", RECAST_CREDENTIALS_KEY: CRED_KEY }, stdio: "ignore" });
+  const port = await new Promise<number>((ok, fail) => { const s = netServer(); s.once("error", fail); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }); });
+  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: url, DATABASE_POOL_MAX: "1", DATABASE_IDLE_TIMEOUT_MS: "100", RECAST_API_KEYS: "", RECAST_CREDENTIALS_KEY: CRED_KEY }, stdio: "ignore", detached: true });
   base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 450; i++) { try { if ((await fetch(base + "/v1/health")).ok) return; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 200)); }
   throw new Error("server did not start");
 }, 180_000);
-afterAll(async () => { proc?.kill(); await socket?.stop(); });
+afterAll(async () => { try { if (proc?.pid) process.kill(-proc.pid, "SIGTERM"); } catch { /* gone */ } await socket?.stop(); });
 
 describe("recast-keys", () => {
   it("prints a key once and stores only its hash", async () => {
