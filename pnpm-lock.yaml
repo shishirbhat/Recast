@@ -254,6 +254,9 @@ importers:
 
   packages/api-core:
     dependencies:
+      '@recast/bridges':
+        specifier: workspace:*
+        version: link:../bridges
       '@recast/core':
         specifier: workspace:*
         version: link:../core
@@ -341,6 +344,31 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/mcp:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.20.0
+        version: 1.32.1(zod@3.25.76)
+      '@recast/resolve':
+        specifier: workspace:*
+        version: link:../resolve
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.15
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
+    devDependencies:
+      '@recast/api-core':
+        specifier: workspace:*
+        version: link:../api-core
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.4
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)

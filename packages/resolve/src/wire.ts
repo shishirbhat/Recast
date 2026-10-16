@@ -1,4 +1,5 @@
-import type { FieldProvenance, ResolvedObjectView, ResolveOutcome, Routing } from "./types";
+import { DESTINATIONS } from "./registry";
+import { toApiType, type FieldProvenance, type ResolvedObjectView, type ResolveOutcome, type Routing } from "./types";
 
 const prov = (p: FieldProvenance) => ({ field: p.field, source: p.source, confidence: p.confidence, ...(p.excerpt ? { excerpt: p.excerpt } : {}) });
 const obj = (o: ResolvedObjectView, withProv: boolean) => ({ id: o.id, type: o.type, fields: o.fields, confidence: o.confidence, trust: o.trust, ...(withProv ? { provenance: o.provenance.map(prov) } : {}) });
@@ -15,3 +16,12 @@ export function toWire(o: ResolveOutcome, includeProvenance = true) {
   return { status: o.status, reason: o.reason, ...(o.suggestion ? { suggestion: o.suggestion } : {}), degraded: o.meta.degraded, meta: meta(o.meta) };
 }
 export type WireResolve = ReturnType<typeof toWire>;
+
+/** Every destination, in the public shape of `GET /v1/bridges`. */
+export function bridgeCatalog() {
+  return Object.entries(DESTINATIONS).map(([id, c]) => ({
+    id, name: c.app, bridge: c.destination, bridge_reliability: c.reliability.replace(/-/g, "_"),
+    objects: [...new Set(c.accepts.map((a) => a.relationId.split("-")[0]!))].map((s) => toApiType(s === "paper" ? "ResearchPaper" : (s[0]!.toUpperCase() + s.slice(1)) as never)).filter(Boolean),
+    actions: c.accepts.map((a) => a.effect),
+  }));
+}

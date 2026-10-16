@@ -1,4 +1,6 @@
+import type { Receipt } from "@recast/core";
 import { takeResult, type Limiter, type TakeResult } from "./limiter";
+import type { Credential, CredentialCipher, CredentialStore, PlacementRecord, PlacementStore } from "./place";
 import { IDEM_STALE_MS, IDEM_TTL_MS, type ApiKeyRecord, type Correction, type CorrectionStore, type IdemBegin, type IdemRecord, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
 import type { Tier } from "./tiers";
 
@@ -71,4 +73,37 @@ export class SqlIdempotencyStore implements IdempotencyStore {
     await this.sql.query(`update api_idempotency set status = $3, response = $4::jsonb where tenant_id = $1 and key = $2`, [tenantId, key, rec.status, JSON.stringify(rec.json)]);
   }
   async abort(tenantId: string, key: string) { await this.sql.query(`delete from api_idempotency where tenant_id = $1 and key = $2 and status is null`, [tenantId, key]); }
+}
+
+/** Destination tokens, sealed with AES-256-GCM before they are written; see CredentialCipher. */
+export class SqlCredentialStore implements CredentialStore {
+  constructor(private sql: Sql, private cipher: CredentialCipher) {}
+  async get(tenantId: string, destination: string): Promise<Credential | null> {
+    const { rows } = await this.sql.query<{ sealed: string }>(`select sealed from api_credentials where tenant_id = $1 and destination = $2`, [tenantId, destination]);
+    return rows[0] ? this.cipher.open(tenantId, destination, rows[0].sealed) : null;
+  }
+  async set(tenantId: string, destination: string, c: Credential) {
+    await this.sql.query(`insert into api_credentials(tenant_id, destination, sealed) values ($1,$2,$3) on conflict (tenant_id, destination) do update set sealed = excluded.sealed, updated_at = now()`, [tenantId, destination, await this.cipher.seal(tenantId, destination, c)]);
+  }
+  async remove(tenantId: string, destination: string) { return (await this.sql.query(`delete from api_credentials where tenant_id = $1 and destination = $2 returning 1`, [tenantId, destination])).rows.length > 0; }
+}
+
+export class SqlPlacementStore implements PlacementStore {
+  constructor(private sql: Sql) {}
+  async save(r: PlacementRecord) {
+    await this.sql.query(`insert into api_placements(receipt_id, tenant_id, destination, target, receipt, data_moved, status) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7)`,
+      [r.receipt.receiptId, r.tenantId, r.destination, JSON.stringify(r.target), JSON.stringify(r.receipt), JSON.stringify(r.dataMoved), r.status]);
+  }
+  async get(tenantId: string, receiptId: string): Promise<PlacementRecord | null> {
+    const { rows } = await this.sql.query<{ destination: string; target: Record<string, string>; receipt: Receipt; data_moved: PlacementRecord["dataMoved"]; status: PlacementRecord["status"] }>(
+      `select destination, target, receipt, data_moved, status from api_placements where tenant_id = $1 and receipt_id = $2`, [tenantId, receiptId]);
+    const r = rows[0]; return r ? { tenantId, destination: r.destination, target: r.target, receipt: r.receipt, dataMoved: r.data_moved, status: r.status } : null;
+  }
+  async claimUndo(tenantId: string, receiptId: string) {
+    return (await this.sql.query(`update api_placements set status = 'undoing' where tenant_id = $1 and receipt_id = $2 and status = 'done' returning 1`, [tenantId, receiptId])).rows.length > 0;
+  }
+  async finishUndo(tenantId: string, receiptId: string, ok: boolean, receipt?: Receipt) {
+    if (ok) await this.sql.query(`update api_placements set status = 'undone', undone_at = now(), receipt = coalesce($3::jsonb, receipt) where tenant_id = $1 and receipt_id = $2 and status = 'undoing'`, [tenantId, receiptId, receipt ? JSON.stringify(receipt) : null]);
+    else await this.sql.query(`update api_placements set status = 'done' where tenant_id = $1 and receipt_id = $2 and status = 'undoing'`, [tenantId, receiptId]);
+  }
 }

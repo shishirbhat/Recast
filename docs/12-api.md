@@ -70,6 +70,19 @@ pnpm --filter @recast/api keys tenant set <tenant-id> --tier scale --corrections
 ```
 Tested end to end (`apps/api/test/postgres.test.ts`): every migration in a Postgres wire server, the command run as a separate process, then the built Next.js server: an issued key resolves, usage is counted in the database, corrections are stored only for the opted-in tenant, a tier change applies on the next request, and a revoked key is refused at once. Pool settings: `DATABASE_POOL_MAX` (default 5), `DATABASE_IDLE_TIMEOUT_MS` (default 10000).
 
+## MCP server (`packages/mcp`)
+Agents reach Recast as tools. `@recast/mcp` exposes two read-only tools: `resolve_object` (raw text in; typed object, provenance and routing out) and `list_destinations`. Nothing is placed in any app; acting on an answer stays a separate, consented step.
+
+- **Local mode** (no key): the resolve engine runs inside the server process.
+- **Remote mode** (`RECAST_API_KEY`, optional `RECAST_API_URL`): calls the hosted API, so the tenant's limits, quota and consent apply. API errors become tool errors the model can read ("Recast API 429 rate_limited ... Retry after 2 s."), never crashes.
+- **Transports**: stdio for desktop agents (`pnpm --filter @recast/mcp start`), Streamable HTTP for hosted agents (`start:http`, `POST /mcp`, `GET /healthz`, 64 KB body cap).
+
+Claude Desktop or any stdio client:
+```json
+{ "mcpServers": { "recast": { "command": "npx", "args": ["tsx", "/path/to/Recast/packages/mcp/src/stdio.ts"], "env": { "RECAST_API_KEY": "sk_live_..." } } } }
+```
+Tested with the official MCP client (`packages/mcp/test/mcp.test.ts`): in memory, over Streamable HTTP, over stdio with the real binary as a child process, and in remote mode through the real API core (same answers as local mode; bad key and outage become tool errors). Behind the Agent Runtime gateway, these tools get identity, scopes, policy and the signed audit like any other upstream.
+
 ## Not done, stated plainly
 - **Embedding and model stages are untested against real providers.** The cascade logic is tested with scripted stand-ins; the quality and cost of real stages are unmeasured. The bundled local embedder compares character patterns, not meaning.
 - **Nothing is deployed.** No Vercel project, no domain, no Upstash/Qdrant.

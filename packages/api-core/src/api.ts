@@ -1,15 +1,20 @@
+import { RecastError, checkConsent, commit, InMemoryEventLog, plan, undo as coreUndo, type Consent } from "@recast/core";
+import { DestinationError, HttpBridge } from "@recast/bridges";
 import { sha256Hex } from "@recast/core";
-import { API_TYPES, DESTINATIONS, ResolveInputError, toApiType, toWire, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
+import { API_TYPES, ResolveInputError, bridgeCatalog, toWire, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
 import { RateLimiter, type Limiter } from "./limiter";
 import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type CorrectionStore, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
 import { TIERS } from "./tiers";
 import { checkVersion, type Deprecation } from "./version";
+import { PLACE_TARGETS, PlaceInputError, fetchTransport, type PlacementDeps } from "./place";
 
 export interface ApiDeps {
   resolver: Resolver; keys: KeyStore;
   usage?: UsageStore; corrections?: CorrectionStore; now?: () => number; deprecated?: Deprecation[];
   /** Shared implementations (SqlRateLimiter, SqlIdempotencyStore) make limits and replays hold across server instances. */
   limiter?: Limiter; idempotency?: IdempotencyStore;
+  /** Enables POST /v1/place and /v1/place/undo. Without it those answer 501. */
+  placement?: PlacementDeps;
   maxBodyBytes?: number; maxBatch?: number;
 }
 
@@ -69,6 +74,74 @@ export function createApi(deps: ApiDeps) {
     return rec;
   }
 
+  const placementOrThrow = () => { if (!deps.placement) throw new HttpError(501, "not_enabled", "placements are not enabled on this server"); return deps.placement; };
+  const parseConsent = (v: unknown): Consent => {
+    if (v === undefined) return { kind: "release" };
+    if (!isObj(v) || !["release", "confirm", "hold"].includes(String(v.kind))) throw new HttpError(400, "invalid_request", "consent.kind must be release, confirm or hold");
+    if (v.kind === "hold") { if (typeof v.held_ms !== "number" || !(v.held_ms >= 0)) throw new HttpError(400, "invalid_request", "consent.held_ms must be a number for kind hold"); return { kind: "hold", heldMs: v.held_ms }; }
+    return { kind: v.kind as "release" | "confirm" };
+  };
+  const destinationFailure = (e: unknown): never => {
+    if (e instanceof DestinationError) {
+      const auth = e.status === 401 || e.status === 403;
+      throw new HttpError(502, auth ? "destination_unauthorized" : "destination_error", auth ? "the destination refused the stored credential; reconnect it" : `the destination failed: ${e.message}`);
+    }
+    throw e;
+  };
+
+  /** Re-resolves, then plans, checks consent and commits through the bridge: the same pipeline as the desktop app, server-side. */
+  async function place(tenantId: string, body: unknown) {
+    const pd = placementOrThrow();
+    const input = parseResolveInput(body); const destination = input.target?.destination;
+    if (!destination) throw new HttpError(400, "invalid_request", "target.destination is required to place");
+    const b = body as Record<string, unknown>; const dt = PLACE_TARGETS[destination];
+    if (!dt) throw new HttpError(400, "invalid_request", `cannot place into '${destination}'`);
+    let target: Record<string, string>;
+    try { target = dt.parse(isObj(b.destination_target) ? b.destination_target : {}); }
+    catch (e) { if (e instanceof PlaceInputError) throw new HttpError(400, "invalid_request", e.message.replace("target.", "destination_target.")); throw e; }
+    const consent = parseConsent(b.consent);
+    if (b.object_id !== undefined && typeof b.object_id !== "string") throw new HttpError(400, "invalid_request", "object_id must be a string");
+
+    const { outcome, proposal } = await deps.resolver.prepare(input);
+    if (outcome.status !== "resolved") throw new HttpError(422, "not_resolved", `nothing was placed: ${outcome.reason}`);
+    if (!proposal) throw new HttpError(422, "not_placeable", `nothing was placed: ${outcome.routeError ?? "no route to this destination"}`);
+    if (b.object_id !== undefined && b.object_id !== outcome.object.id) throw new HttpError(409, "object_changed", "the text now resolves to a different object than the one you previewed; resolve again and confirm");
+
+    const iso = () => new Date(now()).toISOString();
+    const op = plan(proposal, { now: iso });
+    try { checkConsent(op, consent); }
+    catch (e) { if (e instanceof RecastError) throw new HttpError(403, "consent_required", `this placement needs consent '${op.risk.consent}' (${op.risk.reasons.join("; ")}); send consent.kind accordingly after showing the person what will move`); throw e; }
+    const cred = await pd.credentials.get(tenantId, destination);
+    if (!cred) throw new HttpError(403, "destination_not_connected", `connect ${destination} for this account before placing into it`);
+
+    const bridge = new HttpBridge(dt.spec, target, fetchTransport(cred.accessToken, pd.fetch, pd.timeoutMs));
+    const receipt = await commit(op, consent, { bridge, log: new InMemoryEventLog(), now: iso }).catch(destinationFailure);
+    await pd.placements.save({ tenantId, destination, target, receipt, dataMoved: op.dataMoved, status: "done" });
+    return {
+      status: "placed",
+      receipt: { id: receipt.receiptId, op_id: receipt.opId, destination, relation_id: receipt.relationId, effect: receipt.effect, reversible: receipt.reversible, at: receipt.at },
+      object: (toWire(outcome, false) as { object: unknown }).object, data_moved: op.dataMoved, risk: op.risk.tier,
+    };
+  }
+
+  async function undoPlacement(tenantId: string, receiptId: string) {
+    const pd = placementOrThrow();
+    const rec = await pd.placements.get(tenantId, receiptId);
+    if (!rec) throw new HttpError(404, "not_found", "no placement with this receipt for this account");
+    if (!rec.receipt.reversible) throw new HttpError(409, "not_reversible", "this placement cannot be undone");
+    if (!(await pd.placements.claimUndo(tenantId, receiptId))) throw new HttpError(409, rec.status === "undone" ? "already_undone" : "undo_in_progress", rec.status === "undone" ? "this placement was already undone" : "an undo for this placement is already running");
+    let ok = false;
+    try {
+      const dt = PLACE_TARGETS[rec.destination]!; const cred = await pd.credentials.get(tenantId, rec.destination);
+      if (!cred) throw new HttpError(403, "destination_not_connected", `reconnect ${rec.destination} to undo`);
+      const bridge = new HttpBridge(dt.spec, rec.target, fetchTransport(cred.accessToken, pd.fetch, pd.timeoutMs));
+      const log = new InMemoryEventLog(); await log.append({ kind: "commit", at: rec.receipt.at, receipt: rec.receipt });
+      const undone = await coreUndo(rec.receipt, { bridge, log, now: () => new Date(now()).toISOString() }).catch(destinationFailure);
+      ok = true; await pd.placements.finishUndo(tenantId, receiptId, true, undone);
+      return { status: "undone", receipt: { id: undone.receiptId, destination: rec.destination, effect: undone.effect, at: undone.at } };
+    } finally { if (!ok) await pd.placements.finishUndo(tenantId, receiptId, false); }
+  }
+
   async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url); const path = url.pathname.replace(/\/+$/, "") || "/";
     const base: Record<string, string> = {};
@@ -89,11 +162,7 @@ export function createApi(deps: ApiDeps) {
       const quotaHeaders = (u: number) => ({ "X-Recast-Quota-Limit": String(limits.monthly === Number.MAX_SAFE_INTEGER ? "unlimited" : limits.monthly), "X-Recast-Quota-Used": String(u) });
 
       if (path === "/v1/bridges" && req.method === "GET") {
-        const list = Object.entries(DESTINATIONS).map(([id, c]) => ({
-          id, name: c.app, bridge: c.destination, bridge_reliability: c.reliability.replace(/-/g, "_"),
-          objects: [...new Set(c.accepts.map((a) => a.relationId.split("-")[0]!))].map((s) => toApiType(s === "paper" ? "ResearchPaper" : (s[0]!.toUpperCase() + s.slice(1)) as never)).filter(Boolean),
-          actions: c.accepts.map((a) => a.effect),
-        }));
+        const list = bridgeCatalog();
         return new Response(JSON.stringify({ bridges: list }), { status: 200, headers: { ...JSON_HEADERS, ...base } });
       }
 
@@ -104,7 +173,13 @@ export function createApi(deps: ApiDeps) {
         return new Response(JSON.stringify({ status: "stored" }), { status: 201, headers: { ...JSON_HEADERS, ...base } });
       }
 
-      if ((path === "/v1/resolve" || path === "/v1/resolve/batch") && req.method === "POST") {
+      if (path === "/v1/place/undo" && req.method === "POST") {
+        const b = await readJson(req);
+        if (!isObj(b) || typeof b.receipt_id !== "string" || !/^rc_r_[0-9a-f]{32}$/.test(b.receipt_id)) throw new HttpError(400, "invalid_request", "receipt_id must be a receipt id from POST /v1/place");
+        return new Response(JSON.stringify(await undoPlacement(key.tenantId, b.receipt_id)), { status: 200, headers: { ...JSON_HEADERS, ...base } });
+      }
+
+      if ((path === "/v1/resolve" || path === "/v1/resolve/batch" || path === "/v1/place") && req.method === "POST") {
         const limit = limits.monthly;
         if (used >= limit) throw new HttpError(402, "quota_exceeded", `monthly quota of ${limit} resolutions is used up; it resets on the 1st (UTC) or upgrade your plan`, quotaHeaders(used));
         const body = await readJson(req);
@@ -120,13 +195,15 @@ export function createApi(deps: ApiDeps) {
           idemKey = ik;
         }
 
-        let resolved = 0; let json: unknown; const status = 200; let newUsed = used;
+        let resolved = 0; let json: unknown; let status = 200; let newUsed = used;
         try {
           const run = async (input: ResolveInput) => {
             const o = await deps.resolver.resolve(input); if (o.status === "resolved") resolved++;
             return toWire(o, input.options?.includeProvenance ?? true);
           };
-          if (path === "/v1/resolve") {
+          if (path === "/v1/place") {
+            json = await place(key.tenantId, body); status = 201; resolved = 1;
+          } else if (path === "/v1/resolve") {
             json = await run(parseResolveInput(body));
           } else {
             if (!isObj(body) || !Array.isArray(body.items)) throw new HttpError(400, "invalid_request", "body.items must be an array");

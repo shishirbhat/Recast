@@ -9,6 +9,8 @@ import {
 } from "./types";
 
 /** The caller's input is wrong (not the text's content). The API maps this to a 4xx. */
+export interface Prepared { outcome: ResolveOutcome; proposal: Proposal | null }
+
 export class ResolveInputError extends Error {
   constructor(message: string, readonly code: "empty_input" | "input_too_large" | "bad_option" | "unknown_destination") { super(message); this.name = "ResolveInputError"; }
 }
@@ -59,7 +61,7 @@ export function createResolver(cfg: ResolverConfig = {}) {
     } catch (e) { if (e instanceof RecastError) return null; throw e; }
   }
 
-  function route(obj: SemanticObject, destination: string): { routing: Routing | null; routeError?: string; trust?: TrustLevel } {
+  function route(obj: SemanticObject, destination: string): { routing: Routing | null; routeError?: string; trust?: TrustLevel; proposal?: Proposal } {
     const contract = DESTINATIONS[destination];
     if (!contract) throw new ResolveInputError(`unknown destination '${destination}'. Known: ${destinationIds().join(", ")}`, "unknown_destination");
     const ps: Proposal[] = propose(obj, contract);
@@ -70,7 +72,7 @@ export function createResolver(cfg: ResolverConfig = {}) {
       destination, action: best.effect, relationId: best.relationId, bridge: contract.destination, bridgeReliability: contract.reliability.replace(/-/g, "_"),
       reliabilityLabel: RELIABILITY_LABEL[contract.reliability], requiresConfirmation: best.risk.consent !== "release", consent: best.risk.consent, risk: best.risk.tier, reasons: best.risk.reasons,
     };
-    return { routing, trust: best.risk.tier };
+    return { routing, trust: best.risk.tier, proposal: best };
   }
 
   /** Every string a model returned must appear in the text. A value it made up is dropped, not trusted. */
@@ -87,7 +89,7 @@ export function createResolver(cfg: ResolverConfig = {}) {
     return { type, fields, conf: Object.fromEntries(Object.keys(fields).map((k) => [k, c])), spans: {}, score: c };
   }
 
-  async function resolveText(input: ResolveInput): Promise<ResolveOutcome> {
+  async function prepare(input: ResolveInput): Promise<Prepared> {
     const raw = (input.raw ?? "").trim();
     if (!raw) throw new ResolveInputError("raw must be a non-empty string", "empty_input");
     if (raw.length > MAX_RAW_CHARS) throw new ResolveInputError(`raw is ${raw.length} characters; the limit is ${MAX_RAW_CHARS}`, "input_too_large");
@@ -132,29 +134,33 @@ export function createResolver(cfg: ResolverConfig = {}) {
     if (!p.length) {
       const others = readings.map((r) => r.type);
       const relative = RELATIVE.test(raw) && (!targetType || targetType === "Event");
-      return {
+      return { outcome: {
         status: "unresolved", meta: meta(),
         reason: targetType && others.length ? `no ${targetType} found; the text reads as ${others.join(" or ")}` : "nothing recognisable as a person, event, place, product or paper",
         ...(relative ? { suggestion: "relative dates like 'Friday' need a full date (for example 2026-11-14) to become an event" } : /@/.test(raw) && !targetType ? { suggestion: "include a name with the email address" } : {}),
-      };
+      }, proposal: null };
     }
     const built = readings.map((r) => ({ r, b: build(r, raw, input, r.type === p[0]!.type && stage === "llm" && adapter === "resolve-llm" && r === p[0] ? adapter : "resolve-rules") })).filter((x) => x.b);
     const primaryBuilt = built.find((x) => x.r === p[0]) ?? null;
-    if (!primaryBuilt) return { status: "unresolved", reason: "the text matched a pattern but did not form a valid object", meta: meta() };
+    if (!primaryBuilt) return { outcome: { status: "unresolved", reason: "the text matched a pattern but did not form a valid object", meta: meta() }, proposal: null };
     const others = built.filter((x) => x !== primaryBuilt).map((x) => x.b!.view);
 
     if (ambiguous() && stage === "rules") {
-      return { status: "ambiguous", reason: `the text reads as both ${readings[0]!.type} and ${readings[1]!.type}; say which with target.type`, alternatives: built.map((x) => x.b!.view), meta: meta() };
+      return { outcome: { status: "ambiguous", reason: `the text reads as both ${readings[0]!.type} and ${readings[1]!.type}; say which with target.type`, alternatives: built.map((x) => x.b!.view), meta: meta() }, proposal: null };
     }
     if (primaryBuilt.b!.view.confidence < threshold) {
-      return { status: "ambiguous", reason: `best reading (${primaryBuilt.r.type}) is below the confidence threshold ${threshold}`, alternatives: built.map((x) => x.b!.view), meta: meta() };
+      return { outcome: { status: "ambiguous", reason: `best reading (${primaryBuilt.r.type}) is below the confidence threshold ${threshold}`, alternatives: built.map((x) => x.b!.view), meta: meta() }, proposal: null };
     }
     const view = primaryBuilt.b!.view;
-    let routing: Routing | null = null; let routeError: string | undefined;
-    if (destination) { const rt = route(primaryBuilt.b!.obj, destination); routing = rt.routing; routeError = rt.routeError; if (rt.trust) view.trust = rt.trust; }
-    return { status: "resolved", object: view, routing, ...(routeError ? { routeError } : {}), alternatives: targetType ? [] : others, meta: meta() };
+    let routing: Routing | null = null; let routeError: string | undefined; let proposal: Proposal | null = null;
+    if (destination) { const rt = route(primaryBuilt.b!.obj, destination); routing = rt.routing; routeError = rt.routeError; proposal = rt.proposal ?? null; if (rt.trust) view.trust = rt.trust; }
+    return { outcome: { status: "resolved", object: view, routing, ...(routeError ? { routeError } : {}), alternatives: targetType ? [] : others, meta: meta() }, proposal };
   }
 
-  return { resolve: resolveText };
+  /**
+   * `resolve` is the public answer. `prepare` also hands back the core proposal it routed through, so a placement acts on
+   * exactly what the answer described (same object, same relation, same risk). Server-side only; never serialised.
+   */
+  return { resolve: async (input: ResolveInput): Promise<ResolveOutcome> => (await prepare(input)).outcome, prepare };
 }
 export type Resolver = ReturnType<typeof createResolver>;

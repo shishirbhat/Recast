@@ -10,7 +10,7 @@ The company sells that understanding in two directions:
 | Surface | Who uses it | What they get |
 |---|---|---|
 | **Recast for people** (desktop overlay, browser extension, web control center) | End users | Grab a thing, drag it onto an app, preview, place, undo. Local-first. This is also the data flywheel (corrections, with consent). |
-| **Recast API + SDK** (`/v1/resolve`, `@recast/sdk`; `/v1/place` and `@recast/mcp` are tasks #15–#16) | Developers and AI products | Send raw text, get back a typed object plus where it can go. B2B revenue by tier. |
+| **Recast API + SDK** (`/v1/resolve`, `@recast/sdk`, `@recast/mcp`; `/v1/place` is task #16) | Developers and AI products | Send raw text, get back a typed object plus where it can go. B2B revenue by tier. |
 | **Agent Runtime** (gateway, server, control-center pages) | Companies running AI agents | Each agent gets an identity, narrow scopes, a policy, human approvals for risky calls and a tamper-evident signed audit log. Sits in front of MCP tool servers. |
 
 All three run on one spine: **one schema, one pure core, one trust model**.
@@ -63,6 +63,7 @@ All three run on one spine: **one schema, one pure core, one trust model**.
 | `packages/api-core` | Framework-free HTTP core for the API: key auth (hashed), token-bucket limits, monthly quota, idempotency, versioning headers, corrections with consent. Memory and SQL stores. |
 | `packages/sdk` | `@recast/sdk`: typed client with retries, `Retry-After`, cache, idempotency keys, typed errors, fluent builder. |
 | `packages/agent-runtime` | Agent identities (Ed25519), short-lived tokens, DPoP-style per-request proofs, scopes with call budgets, policy (allow / deny / require approval), approvals bound to the exact request, hash-chained signed audit, MCP gateway, SQL stores, CLI. |
+| `packages/mcp` | `@recast/mcp`: Recast as MCP tools (`resolve_object`, `list_destinations`) over stdio or Streamable HTTP, local engine or hosted API. |
 | `packages/runtime-client` | How the control center talks to the runtime server (HTTP or demo). |
 | `apps/extension` | Browser extension (MV3) that runs the extractors on real pages. |
 | `apps/harness` | Browser test bench: fixture destinations plus the overlay plus the engine, so every interaction flow runs in Chromium. |
