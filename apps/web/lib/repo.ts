@@ -1,9 +1,11 @@
-import { MemoryRepository, type Repository } from "@recast/store";
+import "server-only";
+import { MemoryRepository, userRepository, type Repository } from "@recast/store";
+import { requireSession } from "./auth";
+import { getPool } from "./db";
 
 /**
- * Demo mode: an in-memory repository seeded with example data, so the control center runs and
- * is testable with no cloud project. A Supabase-backed repository replaces this once a project
- * exists (see docs/10-layer4-control-center.md); the pages only ever see `Repository`.
+ * With DATABASE_URL: Postgres (the Supabase migrations), every call as the signed-in person, so row-level security
+ * decides what they see. Without it: the demo, an in-memory repository seeded with example data.
  */
 async function seed(r: Repository) {
   await r.putObject({ id: "person-meera", kind: "Person", title: "Meera Iyer", data: { email: "meera@example.com" }, source: "Page metadata" });
@@ -19,7 +21,10 @@ async function seed(r: Repository) {
 }
 
 const g = globalThis as unknown as { __recastRepo?: Promise<Repository> };
-export function getRepo(): Promise<Repository> {
+export async function getRepo(): Promise<Repository> {
+  const session = await requireSession();
+  const pool = getPool();
+  if (pool) return userRepository(pool, session.userId);
   g.__recastRepo ??= (async () => { const r = new MemoryRepository(); await seed(r); return r; })();
   return g.__recastRepo;
 }

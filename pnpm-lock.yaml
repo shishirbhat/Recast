@@ -204,22 +204,37 @@ importers:
       next:
         specifier: ^16.0.0
         version: 16.3.8(@types/node@22.20.4)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      pg:
+        specifier: ^8.13.0
+        version: 8.23.1
       react:
         specifier: ^19.1.0
         version: 19.3.0
       react-dom:
         specifier: ^19.1.0
         version: 19.3.0(react@19.3.0)
+      server-only:
+        specifier: ^0.0.1
+        version: 0.0.1
     devDependencies:
       '@axe-core/playwright':
         specifier: ^4.10.0
         version: 4.13.0(playwright-core@1.63.0)
+      '@electric-sql/pglite':
+        specifier: ^0.3.0
+        version: 0.3.16
+      '@electric-sql/pglite-socket':
+        specifier: ^0.0.20
+        version: 0.0.20(@electric-sql/pglite@0.3.16)
       '@tailwindcss/postcss':
         specifier: ^4.1.0
         version: 4.3.3
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.4
+      '@types/pg':
+        specifier: ^8.11.0
+        version: 8.23.1
       '@types/react':
         specifier: ^19.1.0
         version: 19.3.0
@@ -232,6 +247,9 @@ importers:
       tailwindcss:
         specifier: ^4.1.0
         version: 4.3.3
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.15
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
@@ -2276,6 +2294,9 @@ packages:
     resolution: {integrity: sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw==}
     engines: {node: '>= 18'}
 
+  server-only@0.0.1:
+    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}
+
   setprototypeof@1.2.0:
     resolution: {integrity: sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==}
 
@@ -4060,6 +4081,8 @@ snapshots:
       send: 1.2.1
     transitivePeerDependencies:
       - supports-color
+
+  server-only@0.0.1: {}
 
   setprototypeof@1.2.0: {}
 

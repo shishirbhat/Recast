@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepo } from "@/lib/repo";
 import { getRuntime } from "@/lib/runtime";
+import { requireSession } from "@/lib/auth";
 
 export async function deleteObject(fd: FormData) { await (await getRepo()).deleteObject(String(fd.get("id"))); revalidatePath("/", "layout"); }
 export async function revokeGrant(fd: FormData) { await (await getRepo()).revokeGrant(String(fd.get("id"))); revalidatePath("/", "layout"); }
@@ -17,9 +18,11 @@ export async function deleteAll(fd: FormData) {
   await (await getRepo()).deleteAll(); revalidatePath("/", "layout"); redirect("/privacy?deleted=1");
 }
 
-/** A person decides what an agent asked to do. `by` is who is signed in; the demo has no sign-in, so it says so. */
+/** A person decides what an agent asked to do. `by` is who is signed in (the demo records "demo-user"). */
 export async function decideApproval(fd: FormData) {
+  const session = await requireSession();
   const id = String(fd.get("id")); const approve = fd.get("decision") === "approve";
-  try { await getRuntime().decide(id, approve, "demo-user"); } catch { redirect("/approvals?error=gone"); }
+  const by = session.via === "demo" ? "demo-user" : `${session.email || session.userId} (${session.via})`;
+  try { await getRuntime().decide(id, approve, by); } catch { redirect("/approvals?error=gone"); }
   revalidatePath("/", "layout"); redirect(`/approvals?done=${approve ? "approved" : "rejected"}`);
 }

@@ -1,9 +1,11 @@
+import { requireSession } from "@/lib/auth";
 import { getRuntime, runtimeIsDemo } from "@/lib/runtime";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
 export default async function Agents() {
+  await requireSession();
   const agents = await getRuntime().listAgents();
   return (
     <>

@@ -1,3 +1,4 @@
+import { requireSession } from "@/lib/auth";
 import { getRuntime, runtimeIsDemo } from "@/lib/runtime";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui/primitives";
 
@@ -5,6 +6,7 @@ export const dynamic = "force-dynamic";
 const tone = (r: string) => (r === "success" || r === "allowed" ? "ok" : r === "denied" || r === "failure" ? "danger" : "warn") as "ok" | "danger" | "warn";
 
 export default async function Audit() {
+  await requireSession();
   const report = await getRuntime().audit(100); const v = report.verification;
   return (
     <>

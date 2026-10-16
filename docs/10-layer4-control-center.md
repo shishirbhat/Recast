@@ -28,6 +28,24 @@ The control center runs and is tested end to end in a real browser, **in demo mo
 ## Added later: agents, approvals and the audit chain
 Three more sections for the Agent Runtime (see `docs/13-agent-runtime.md`): **Agents** (what each may do and how many calls are left), **Approvals** (approve or reject what an agent asked for, once, for that exact request), **Audit chain** (every action with a verified/broken banner). They run on sample data unless the runtime's address, admin token and tenant id are set. The demo has no sign-in, so decisions are recorded as `demo-user`. 13 browser tests, axe clean on all nine sections.
 
+## Added later: Postgres and sign-in
+With `DATABASE_URL` set, the control center reads and writes the Supabase tables through `pg`. Each page or action runs as one transaction under the signed-in person's identity: role `authenticated`, plus the JWT claims that `auth.uid()` reads, all transaction-local. So row-level security, not application code, decides whose rows exist (`packages/store/src/scoped.ts`). A database with no sign-in configured refuses to start serving.
+
+Sign-in has three modes, chosen by environment:
+- **Demo** (no database): sample data, recorded as `demo-user`.
+- **Local accounts** (`RECAST_SESSION_SECRET` of 32+ characters, `RECAST_LOCAL_USERS="email|scrypt-hash|uuid;..."`, hashes from `pnpm --filter @recast/web hash-password`): passwords are checked with scrypt in constant time, and unknown emails cost the same time. Success sets an HMAC-signed, httpOnly, SameSite=Lax cookie for 8 hours.
+- **Supabase** (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET`): the server calls Supabase Auth's password grant and checks the access token (HS256, audience and role `authenticated`, expiry, uuid subject; `alg: none` refused). The proxy renews expired tokens with the refresh token.
+
+`proxy.ts` sends anyone without a valid session to `/signin?next=...`. Every data page and action checks again. `next` only accepts same-site paths. Five wrong passwords lock that email for 15 minutes. That lock is per server instance, as stated in the code. Approvals now record the signed-in person.
+
+Tested (`apps/web/test/postgres.test.ts`, 8 browser tests, and `session.test.ts`, 8 unit tests), using every migration in a Postgres wire server, the built app and Chromium:
+- signed-out visitors are redirected and forged cookies are refused;
+- two people see only their own rows, and one deleting everything leaves the other untouched;
+- sign-out ends the session, and the lockout applies;
+- Supabase sign-in and token renewal work against a stand-in Supabase Auth.
+
+**Not verified:** a real Supabase project (task #21). Newer Supabase projects sign tokens with asymmetric keys (JWKS); only the legacy HS256 secret is supported here.
+
 ## Screenshots
 `docs/images/layer4/`: objects, integrations and privacy, light and dark.
 
@@ -36,8 +54,6 @@ Three more sections for the Agent Runtime (see `docs/13-agent-runtime.md`): **Ag
 - A missing icon caused a 404 on every page; added `app/icon.svg`.
 
 ## Not done, stated plainly
-- **Sign-in.** Demo mode has one pretend user. Row-level security is proven in the database tests, but nothing in the app signs anyone in.
-- **Supabase adapter.** The pages use `Repository`; the Supabase implementation is not written, so cloud sync does not exist.
 - **Live data.** The desktop and browser pieces don't write into this app yet; the demo data is seeded.
 - **Deploy.** Not deployed. Needs a Supabase project and a Vercel project, which need your accounts.
 - Demo state lives in server memory and resets on restart.

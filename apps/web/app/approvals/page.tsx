@@ -1,3 +1,4 @@
+import { requireSession } from "@/lib/auth";
 import { getRuntime, runtimeIsDemo } from "@/lib/runtime";
 import { decideApproval } from "../actions";
 import { Button, Card, Empty, PageHeader } from "@/components/ui/primitives";
@@ -5,6 +6,7 @@ import { Button, Card, Empty, PageHeader } from "@/components/ui/primitives";
 export const dynamic = "force-dynamic";
 
 export default async function Approvals({ searchParams }: { searchParams: Promise<{ done?: string; error?: string }> }) {
+  await requireSession();
   const sp = await searchParams; const pending = await getRuntime().listApprovals();
   return (
     <>
