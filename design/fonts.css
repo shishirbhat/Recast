@@ -1,0 +1,7 @@
+/* Self-hosted fonts (SIL Open Font License), latin subsets only. No request to a font CDN at runtime. */
+@import "@fontsource/figtree/latin-400.css";
+@import "@fontsource/figtree/latin-500.css";
+@import "@fontsource/figtree/latin-600.css";
+@import "@fontsource/eb-garamond/latin-500.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";

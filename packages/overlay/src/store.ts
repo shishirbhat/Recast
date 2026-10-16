@@ -8,14 +8,16 @@ export function createStore() {
   const listeners = new Set<() => void>();
   const x = motionValue(0), y = motionValue(0);
   let placed = false;
+  /** Where the current carry began, so a cancel can drop the token back there. */
+  const origin = { x: 0, y: 0 };
   return {
-    x, y,
+    x, y, origin,
     get: () => view,
     subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },
     update(next: View) {
       view = next;
       if (next.token) {
-        if (!placed) { x.jump(next.token.at.x); y.jump(next.token.at.y); placed = true; }   // first frame: appear at the pointer, do not fly in
+        if (!placed) { x.jump(next.token.at.x); y.jump(next.token.at.y); origin.x = next.token.at.x; origin.y = next.token.at.y; placed = true; }   // first frame: appear at the pointer, do not fly in
         else { x.set(next.token.at.x); y.set(next.token.at.y); }
       } else placed = false;
       for (const l of listeners) l();

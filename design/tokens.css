@@ -1,86 +1,94 @@
-/* Recast design tokens. Three layers: primitive -> semantic -> component.
-   Contrast ratios (WCAG 2.x) were computed, not eyeballed; see docs/04-design-system.md. */
+/* Recast design tokens. North star: "Grab, Carry, Place" (docs/04-design-system.md).
+   Three layers: primitive -> semantic -> component. Contrast ratios were computed, not eyeballed.
+   The brand colours are used as given for fills, glyphs, outlines and bars. Where a colour has to be TEXT on a light
+   surface, the *-ink step of the same hue is used, because the bright fill would fall below WCAG's 4.5:1. */
 
 :root {
   /* ---- Primitive ---- */
-  --ink-950: #121316; --ink-900: #1b1c21; --ink-850: #23252b;
-  --ink-100: #ecedef; --ink-400: #9a9da6; --ink-500: #8a8d96; --ink-600: #5f626b; --ink-900-text: #1c1d21;
-  --paper-50: #ffffff; --paper-100: #f7f7f5; --paper-200: #ecece8;
-  --cobalt-600: #2d50c8; --cobalt-300: #8ba3ff;
-  --red-700: #b3261e; --red-300: #ff8a80;
-  --amber-700: #8a5a00; --amber-300: #f2c46d;
-  --green-700: #1e7a46; --green-300: #7fd6a2;
+  --cream-50: #FAF9F6; --white: #FFFFFF; --cream-100: #F3F1EC; --cream-200: #E9E6DF;
+  --ink-950: #0F0F0F; --ink-900: #1A1A1A; --ink-850: #242424; --ink-700: #737373; --ink-500: #8C8C8C; --ink-600: #6B6B6B; --ink-400: #A3A3A3;
+  --ember-500: #FF6B35; --ember-700: #B83D12; --ember-100: #FFE5DC; --ember-950: #3D1F14;
+  --green-500: #22C55E; --green-700: #15803D;
+  --amber-500: #F59E0B; --amber-700: #B45309;
+  --red-500: #EF4444; --red-700: #B91C1C; --red-400: #F87171;
 
-  /* Type */
-  --font-ui: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
-  --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 20px;
-  --lh-tight: 1.2; --lh-body: 1.5;
+  /* Type: serif display + modern sans body. Self-hosted (@fontsource), so nothing is fetched from a third party at runtime. */
+  --font-display: "EB Garamond", ui-serif, Georgia, serif;
+  --font-ui: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 16px; --fs-xl: 20px; --fs-display: 40px;
+  --lh-tight: 1.15; --lh-body: 1.55;
 
   /* Space: 4px base */
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-8: 48px;
 
-  /* Shape rule: interactive = pill, containers = 12px, inputs = 8px. No other radii. */
-  --r-pill: 999px; --r-panel: 12px; --r-input: 8px;
+  /* Shape rule: interactive = pill, containers = 16px, inputs = 10px. No other radii. */
+  --r-pill: 999px; --r-panel: 16px; --r-input: 10px;
 
-  /* Motion */
-  --ease: cubic-bezier(.2, .7, .1, 1);
-  --dur-fast: 120ms; --dur-base: 160ms; --dur-slow: 220ms;
-  --toast-ms: 6000ms;
-  --token-spring-stiffness: 320; --token-spring-damping: 30; /* used by Motion in the shell */
+  /* Motion: physics, not durations. The overlay reads the same numbers from packages/overlay/src/motion.ts.
+     carry/preview/place/undo spring(300, 24, mass .8) · approach (400, 20) · snap (500, 15) · cancel (200, 25). */
+  --spring-carry-stiffness: 300; --spring-carry-damping: 24; --spring-carry-mass: 0.8;
+  --hold-ms: 600ms; --toast-ms: 6000ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);   /* only for CSS-only fades in the control center; overlay motion is springs */
+  --dur-fast: 150ms; --dur-base: 200ms; --dur-slow: 300ms;
+  --magnet-px: 20px;
   --hairline: 1px;
 }
 
 /* ---- Semantic: light ---- */
 :root, :root[data-theme="light"] {
   color-scheme: light;
-  --surface: var(--paper-100);
-  --surface-raised: var(--paper-50);
-  --surface-sunken: var(--paper-200);
-  --text: var(--ink-900-text);
-  --text-muted: var(--ink-600);
-  --line: var(--ink-500);              /* 3.09:1 on surface, meets non-text 3:1 */
-  --line-soft: rgb(28 29 33 / .14);
-  --accent: var(--cobalt-600);
-  --on-accent: #ffffff;
-  --accent-soft: rgb(45 80 200 / .10);
-  --danger: var(--red-700);
-  --warn: var(--amber-700);
-  --ok: var(--green-700);
-  /* Shadows are tinted to the surface hue, never pure black. */
-  --shadow-token: 0 1px 2px rgb(28 29 33 / .10), 0 8px 24px rgb(28 29 33 / .12);
-  --shadow-toast: 0 1px 2px rgb(28 29 33 / .10), 0 12px 32px rgb(28 29 33 / .16);
+  --surface: var(--cream-50);          /* page */
+  --surface-raised: var(--white);      /* cards, chips, token */
+  --surface-sunken: var(--cream-100);
+  --text: var(--ink-900);              /* 16.6:1 on cream */
+  --text-muted: var(--ink-600);        /* 5.06:1 on cream */
+  --line: var(--ink-500);              /* 3.19:1, meets non-text 3:1 */
+  --line-soft: rgb(26 26 26 / .10);
+  --accent: var(--ember-500);          /* energy: grab, place, primary actions. Fill only on light. */
+  --on-accent: var(--ink-900);         /* 6.14:1 on ember */
+  --accent-soft: var(--ember-100);
+  --accent-ink: var(--ember-700);      /* accent as text: 5.37:1 on cream, 4.71:1 on accent-soft */
+  --ok: var(--green-500);   --ok-ink: var(--green-700);       /* 4.76:1 */
+  --warn: var(--amber-500); --warn-ink: var(--amber-700);     /* 4.77:1 */
+  --danger: var(--red-500); --danger-ink: var(--red-700);     /* 6.15:1 */
+  --focus: var(--ember-700);           /* focus rings need 3:1 against the page; ember-500 is 2.69 */
+  /* Shadows are warm, never pure black: objects resting on paper. --shadow-rgb feeds the token's speed-dependent shadow. */
+  --shadow-rgb: 61 31 20;
+  --shadow-rest: 0 1px 2px rgb(61 31 20 / .06), 0 2px 8px rgb(61 31 20 / .05);
+  --shadow-token: 0 1px 2px rgb(61 31 20 / .10), 0 10px 28px rgb(61 31 20 / .14);
+  --shadow-lifted: 0 2px 4px rgb(61 31 20 / .10), 0 22px 44px rgb(61 31 20 / .20);
+  --shadow-toast: 0 1px 2px rgb(61 31 20 / .10), 0 14px 36px rgb(61 31 20 / .16);
 }
 
 /* ---- Semantic: dark ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface: var(--ink-950);
-    --surface-raised: var(--ink-900);
-    --surface-sunken: #0d0e10;
-    --text: var(--ink-100);
-    --text-muted: var(--ink-400);
-    --line: #6c6f79;
-    --line-soft: rgb(236 237 239 / .14);
-    --accent: var(--cobalt-300);
-    --on-accent: #0e1220;
-    --accent-soft: rgb(139 163 255 / .14);
-    --danger: var(--red-300);
-    --warn: var(--amber-300);
-    --ok: var(--green-300);
-    --shadow-token: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .45);
-    --shadow-toast: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px rgb(0 0 0 / .5);
+    --surface: var(--ink-950); --surface-raised: var(--ink-900); --surface-sunken: #0A0A0A;
+    --text: var(--cream-50); --text-muted: var(--ink-400); --line: var(--ink-700); --line-soft: rgb(250 249 246 / .10);
+    --accent: var(--ember-500); --on-accent: var(--ink-950); --accent-soft: var(--ember-950); --accent-ink: var(--ember-500);
+    --ok: var(--green-500); --ok-ink: var(--green-500); --warn: var(--amber-500); --warn-ink: var(--amber-500); --danger: var(--red-500); --danger-ink: var(--red-400);
+    --focus: var(--ember-500);
+    --shadow-rgb: 0 0 0;
+    --shadow-rest: 0 1px 2px rgb(0 0 0 / .5);
+    --shadow-token: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .5);
+    --shadow-lifted: 0 2px 4px rgb(0 0 0 / .5), 0 22px 44px rgb(0 0 0 / .6);
+    --shadow-toast: 0 1px 2px rgb(0 0 0 / .5), 0 14px 36px rgb(0 0 0 / .55);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface: var(--ink-950); --surface-raised: var(--ink-900); --surface-sunken: #0d0e10;
-  --text: var(--ink-100); --text-muted: var(--ink-400); --line: #6c6f79; --line-soft: rgb(236 237 239 / .14);
-  --accent: var(--cobalt-300); --on-accent: #0e1220; --accent-soft: rgb(139 163 255 / .14);
-  --danger: var(--red-300); --warn: var(--amber-300); --ok: var(--green-300);
-  --shadow-token: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .45);
-  --shadow-toast: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px rgb(0 0 0 / .5);
+  --surface: var(--ink-950); --surface-raised: var(--ink-900); --surface-sunken: #0A0A0A;
+  --text: var(--cream-50); --text-muted: var(--ink-400); --line: var(--ink-700); --line-soft: rgb(250 249 246 / .10);
+  --accent: var(--ember-500); --on-accent: var(--ink-950); --accent-soft: var(--ember-950); --accent-ink: var(--ember-500);
+  --ok: var(--green-500); --ok-ink: var(--green-500); --warn: var(--amber-500); --warn-ink: var(--amber-500); --danger: var(--red-500); --danger-ink: var(--red-400);
+  --focus: var(--ember-500);
+  --shadow-rgb: 0 0 0;
+  --shadow-rest: 0 1px 2px rgb(0 0 0 / .5);
+  --shadow-token: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .5);
+  --shadow-lifted: 0 2px 4px rgb(0 0 0 / .5), 0 22px 44px rgb(0 0 0 / .6);
+  --shadow-toast: 0 1px 2px rgb(0 0 0 / .5), 0 14px 36px rgb(0 0 0 / .55);
 }
 
 /* ---- Component ---- */
@@ -98,5 +106,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-fast: 1ms; --dur-base: 80ms; --dur-slow: 80ms; --token-spring-stiffness: 0; }
+  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; }
 }

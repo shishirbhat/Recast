@@ -1,6 +1,7 @@
 import type { Point, Rect } from "./types.js";
 
-export const CHIP_W = 140, CHIP_H = 32, CHIP_GAP = 8, CHIP_OVERHANG = 12, MAGNET = 56;
+export const CHIP_W = 140, CHIP_H = 32, CHIP_GAP = 8, CHIP_OVERHANG = 12, MAGNET = 20, APPROACH = 56;
+/* MAGNET: a chip locks when the pointer is this close (the snap). APPROACH: inside this, the nearest chip leans toward the pointer and glows. */
 
 export const center = (r: Rect): Point => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 export const contains = (r: Rect, p: Point) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;

@@ -14,7 +14,7 @@ export function Nav() {
         return (
           <Link key={href} href={href} aria-current={on ? "page" : undefined}
             className="relative rounded-(--r-pill) px-4 py-1.5 text-sm text-muted aria-[current=page]:font-medium aria-[current=page]:text-ink hover:text-ink">
-            {on ? <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-(--r-pill) bg-accent-soft" transition={{ duration: 0.16, ease: [0.2, 0.7, 0.1, 1] }} /> : null}
+            {on ? <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-(--r-pill) bg-accent-soft" transition={{ type: "spring", stiffness: 300, damping: 24, mass: 0.8 }} /> : null}
             {label}
           </Link>
         );

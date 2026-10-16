@@ -1,5 +1,57 @@
 # 04. Design system
 
+## North star: "Grab, Carry, Place"
+Every pixel, motion and word exists to make moving an object across apps feel like picking something up with your hand. A choice is right if it makes the token feel weighted, the snap feel like a magnet, the preview feel like a hologram, the toast feel like a receipt. Tone: calm, confident, a little playful. Not neon, not gradients everywhere, not corporate blue, not "AI purple", no motion for its own sake.
+
+### Colour (`design/tokens.css`)
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| surface (page) | `#FAF9F6` | `#0F0F0F` | warm off-white / near-black |
+| surface-raised | `#FFFFFF` | `#1A1A1A` | cards, chips, token |
+| text | `#1A1A1A` | `#FAF9F6` | |
+| text-muted | `#6B6B6B` (5.06:1) | `#A3A3A3` (6.9:1) | |
+| accent | `#FF6B35` | `#FF6B35` | grab, place, primary actions, glyphs, fills, bars |
+| accent-soft | `#FFE5DC` | `#3D1F14` | active chip, nav pill, selection |
+| ok / warn / danger | `#22C55E` / `#F59E0B` / `#EF4444` | same | dots, fills, borders |
+
+**Accessibility rule, computed not eyeballed:** the bright colours fail as text on light backgrounds. `#FF6B35` on cream is 2.69:1, green is 2.28:1 and amber is 2.15:1. They stay fills, and text uses an `-ink` step of the same hue:
+
+| Ink | Light | Ratio on cream | Dark |
+|---|---|---|---|
+| `accent-ink` | `#B83D12` | 5.37:1 (4.71:1 on accent-soft) | `#FF6B35` (6.76:1) |
+| `ok-ink` | `#15803D` | 4.76:1 | `#22C55E` |
+| `warn-ink` | `#B45309` | 4.77:1 | `#F59E0B` |
+| `danger-ink` | `#B91C1C` | 6.15:1 | `#F87171` (6.29:1) |
+
+Text on the accent is `#1A1A1A` (6.14:1). White on `#FF6B35` would be 2.84:1, so it is never used. Focus rings use `--focus` (`#B83D12` light, `#FF6B35` dark) for 3:1 against the page. axe-core reports no serious or critical issue on every overlay state and every control-center page, in light and dark.
+
+### Type
+EB Garamond 500 for display (page titles 40px, wordmark), Figtree 400/500/600 for body and UI (15px body, 12–14px labels), JetBrains Mono 400 for ids and code. All are self-hosted through `@fontsource` (latin subsets, SIL OFL), so no font CDN is called at runtime.
+
+### Motion: physics, not durations (`packages/overlay/src/motion.ts`)
+| Interaction | Trigger | Feedback | Spring |
+|---|---|---|---|
+| Lift | key held | candidate outline pulses once | 200 ms pulse |
+| Carry | pointer moves | token trails on a spring, tilts with momentum (max 8°), shadow grows with speed | (300, 24, mass .8) |
+| Approach | pointer within 56 px of a chip | nearest chip grows 5%, glows, leans up to 6 px toward the pointer | (400, 20) |
+| Snap | pointer within 20 px | chip locks with a small overshoot; token docks beside it | (500, 15) |
+| Preview | chip locked | translucent, blurred "hologram" floats just above the destination | (300, 24) |
+| Hold-to-confirm | press and hold | chip shrinks to .97 and fills with the accent over 600 ms, then pops to 1.06 | linear fill |
+| Place | release / Enter | receipt toast slides up with a 6 s countdown bar | (300, 24) |
+| Undo / dismiss | Undo, or time out | toast slides back down | (300, 24) |
+| Cancel | Esc, or dropped on nothing | token falls back to where it was lifted, bounces once, fades | (200, 25, mass 1.2) |
+
+Springs are interruptible: a change of direction mid-animation is absorbed, not finished. Reduced motion makes every spring instant, with no tilt, lean, glow pulse or drop-back. Every state keeps its screen-reader label and keyboard path.
+
+Tested in Chromium (`apps/harness/test/flows.test.ts`, "physical feel"): the token tilts while moving and settles flat; its shadow changes with speed; a near chip grows and leans before it locks; it locks within the magnet; Esc drops the token back near its origin and then removes it; the hold fill tracks the hold in `#FF6B35`; under reduced motion there is no tilt and no drop-back. Screenshots: `docs/images/north-star/`.
+
+### Not done
+A haptic "click" on snap needs the native shell: browsers have no desktop haptics. The logo is a wordmark (EB Garamond plus an ember dot), not a designed mark. A designer should own the final logo.
+
+---
+
+## Earlier system (kept for history)
+
 Design read: *utility overlay for consumers and professionals, calm and premium in the manner of Wispr Flow's restraint, not an AI-futuristic look.* Dials: variance 3, motion 4, density 3. Overlay UI, not a landing page, so marketing-page rules are used only where they apply (no AI-purple, no pure black or white, one accent, one radius rule, real contrast checks).
 
 Files: `design/tokens.css` (three layers: primitive, semantic, component) and `design/mockups.html` (six states, light and dark, screenshots checked in both themes). Open the HTML in a browser. Geist is not bundled yet, so mockups fall back to the system font; the real build self-hosts Geist and Geist Mono (`next/font` for the web app; bundled files for the overlay).

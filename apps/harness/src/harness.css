@@ -4,7 +4,7 @@ main { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto a
 .pane { background: var(--surface-raised); border: 1px solid var(--line-soft); border-radius: var(--r-panel); padding: 16px 20px; }
 #source { grid-row: 1 / span 3; }
 h1 { font-size: var(--fs-xl); margin: 0 0 12px; } h2 { font-size: var(--fs-md); margin: 16px 0 8px; color: var(--text-muted); } h3 { font-size: var(--fs-lg); margin: 0; display: inline; }
-.contact { padding: 6px 0; } a { color: var(--accent); }
+.contact { padding: 6px 0; } a { color: var(--accent-ink); }
 address { font-style: normal; } .plain { color: var(--text-muted); }
 .row { display: flex; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); color: var(--text-muted); } .row > :first-child { width: 88px; flex: none; }
 .row ul { margin: 0; padding: 0; list-style: none; color: var(--text); } .row li { padding: 0 0 2px; }

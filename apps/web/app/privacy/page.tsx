@@ -9,7 +9,7 @@ export default async function Privacy({ searchParams }: { searchParams: Promise<
     <>
       <PageHeader title="Privacy and data controls" lead="Your data stays on this device unless you turn syncing on. You can take it with you or erase it." />
       <div className="grid gap-4">
-        {sp.deleted ? <p role="status" className="rounded-(--r-panel) border border-ok p-4 text-ok">Everything was deleted. One line in History records that it happened.</p> : null}
+        {sp.deleted ? <p role="status" className="rounded-(--r-panel) border border-ok p-4 text-ok-ink">Everything was deleted. One line in History records that it happened.</p> : null}
         <Card>
           <h2 className="font-medium">Export everything</h2>
           <p className="mt-1 text-muted">A single JSON file with your objects, relationships, destinations, permissions and history.</p>
@@ -24,7 +24,7 @@ export default async function Privacy({ searchParams }: { searchParams: Promise<
             </label>
             <Button variant="danger">Delete everything</Button>
           </form>
-          {sp.error ? <p id="err" role="alert" className="mt-2 text-danger">Nothing was deleted. Type the word DELETE exactly.</p> : null}
+          {sp.error ? <p id="err" role="alert" className="mt-2 text-danger-ink">Nothing was deleted. Type the word DELETE exactly.</p> : null}
         </Card>
       </div>
     </>

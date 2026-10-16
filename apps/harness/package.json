@@ -9,19 +9,22 @@
     "test": "node scripts/build.mjs && vitest run"
   },
   "dependencies": {
-    "@recast/overlay": "workspace:*",
-    "@recast/interaction": "workspace:*",
+    "@fontsource/eb-garamond": "^5.3.0",
+    "@fontsource/figtree": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@recast/core": "workspace:*",
+    "@recast/extract-web": "workspace:*",
+    "@recast/interaction": "workspace:*",
+    "@recast/overlay": "workspace:*",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "@recast/extract-web": "workspace:*"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
-    "vitest": "^3.2.0",
-    "playwright-core": "^1.56.1",
     "@axe-core/playwright": "^4.10.0",
     "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0"
+    "@types/react-dom": "^19.1.0",
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.56.1",
+    "vitest": "^3.2.0"
   }
 }

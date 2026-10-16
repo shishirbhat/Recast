@@ -10,8 +10,8 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
     <>
       <PageHeader title="Approvals" lead="Things an agent wants to do that need a person first. Nothing happens until you decide, and each approval works once, for that exact request." />
       {runtimeIsDemo() ? <p className="mb-4 text-xs text-muted">Sample request. Connect the Agent Runtime to see real ones.</p> : null}
-      {sp.done ? <p role="status" className="mb-4 rounded-(--r-panel) border border-ok p-4 text-ok">{sp.done === "approved" ? "Approved. The agent can now repeat that exact request once." : "Rejected. The agent was told no."}</p> : null}
-      {sp.error ? <p role="status" className="mb-4 rounded-(--r-panel) border border-warn p-4 text-warn">That request was already decided or has expired.</p> : null}
+      {sp.done ? <p role="status" className="mb-4 rounded-(--r-panel) border border-ok p-4 text-ok-ink">{sp.done === "approved" ? "Approved. The agent can now repeat that exact request once." : "Rejected. The agent was told no."}</p> : null}
+      {sp.error ? <p role="status" className="mb-4 rounded-(--r-panel) border border-warn p-4 text-warn-ink">That request was already decided or has expired.</p> : null}
       {pending.length === 0 ? <Empty>Nothing is waiting for you.</Empty> : (
         <ul className="grid gap-3">
           {pending.map((a) => (

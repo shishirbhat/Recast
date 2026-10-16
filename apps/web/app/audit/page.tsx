@@ -10,7 +10,7 @@ export default async function Audit() {
     <>
       <PageHeader title="Audit chain" lead="Everything every agent did or was refused, in order. Each line is signed and linked to the one before, so a changed or missing line shows." />
       {runtimeIsDemo() ? <p className="mb-4 text-xs text-muted">Sample log.</p> : null}
-      <p role="status" className={`mb-4 rounded-(--r-panel) border p-4 ${v.ok ? "border-ok text-ok" : "border-danger text-danger"}`}>
+      <p role="status" className={`mb-4 rounded-(--r-panel) border p-4 ${v.ok ? "border-ok text-ok-ink" : "border-danger text-danger-ink"}`}>
         {v.ok ? `Verified: ${v.entries} entries, every link and signature checks out.` : `Broken at entry ${v.brokenAt}: ${v.reason}. Treat this log as tampered with.`}
       </p>
       {report.entries.length === 0 ? <Empty>Nothing has happened yet.</Empty> : (

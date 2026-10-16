@@ -260,3 +260,24 @@ describe("guarantees", () => {
     expect(selectView(d.state).token).toMatchObject({ at: { x: chip.x - 8, y: chip.y + CHIP_H / 2 }, snapped: true });   // docks beside the chip, not on top of it
   });
 });
+
+describe("approach radius versus snap", () => {
+  it("near (inside the approach radius) leans and glows but does not lock; within the magnet it locks", () => {
+    const d = new Driver(); d.lift("meera");
+    const c = chipRect(R.calendar, 0); const y = c.y + CHIP_H / 2;
+    d.move(c.x - 40, y);
+    let v = selectView(d.state);
+    expect(v.chips[0]).toMatchObject({ active: false, near: true }); expect(v.pointer).toEqual({ x: c.x - 40, y });
+    d.move(c.x - 15, y);
+    v = selectView(d.state);
+    expect(v.chips[0]).toMatchObject({ active: true, near: false });
+    d.move(c.x - 80, y);
+    expect(selectView(d.state).chips.every((ch) => !ch.near && !ch.active)).toBe(true);
+  });
+  it("Escape while carrying tells the renderer to drop the token back; placing does not", () => {
+    const d = new Driver(); d.lift("meera");
+    expect(selectView(d.state).cancelled).toBe(false);
+    d.send({ type: "key", key: "Escape", down: true });
+    expect(selectView(d.state)).toMatchObject({ token: null, cancelled: true });
+  });
+});

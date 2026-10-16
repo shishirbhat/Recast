@@ -196,6 +196,91 @@ describe("real pointer flows in Chromium (classifier -> engine -> overlay -> des
   });
 });
 
+describe("physical feel (Grab, Carry, Place)", () => {
+  const tokenTransform = (p: Page) => overlay(p, "[data-testid=token]").evaluate((e) => getComputedStyle(e).transform);
+  const rotationDeg = (m: string) => { const v = /matrix\(([^)]+)\)/.exec(m)?.[1]?.split(",").map(Number); return v ? Math.round(Math.atan2(v[1]!, v[0]!) * 180 / Math.PI * 10) / 10 : 0; };
+
+  it("the token tilts with momentum and lifts its shadow while moving, then settles flat", async () => {
+    const { page, ctx } = await open();
+    const s = await centre(page, "#meera");
+    await page.keyboard.down("Alt"); await page.mouse.move(s.x, s.y); await page.waitForFunction(() => (globalThis as any).__recast.state().hovered, null, { timeout: 5000 });
+    await page.mouse.down(); await overlay(page, "[data-testid=token]").waitFor();
+    const restShadow = await overlay(page, "[data-testid=token]").evaluate((e) => getComputedStyle(e).boxShadow);
+    let maxTilt = 0, movingShadow = restShadow;
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(s.x + i * 60, s.y + 4);
+      await page.waitForTimeout(16);
+      maxTilt = Math.max(maxTilt, Math.abs(rotationDeg(await tokenTransform(page))));
+      if (i === 5) movingShadow = await overlay(page, "[data-testid=token]").evaluate((e) => getComputedStyle(e).boxShadow);
+    }
+    expect(maxTilt).toBeGreaterThan(0.5); expect(maxTilt).toBeLessThanOrEqual(8.01);
+    expect(movingShadow).not.toBe(restShadow);
+    await page.waitForTimeout(900);
+    expect(Math.abs(rotationDeg(await tokenTransform(page)))).toBeLessThan(0.3);
+    await ctx.close();
+  });
+
+  it("a nearby chip leans toward the pointer and glows before it locks; inside the magnet it locks", async () => {
+    const { page, ctx } = await open();
+    await carryTo(page, "#meera", "#calendar");
+    const r = await page.evaluate(() => (globalThis as any).__recast.state().chips[0].rect as { x: number; y: number; w: number; h: number });
+    await page.mouse.move(r.x - 40, r.y + r.h / 2, { steps: 4 });
+    await page.waitForFunction(() => document.querySelector("recast-overlay")!.shadowRoot!.querySelector("[data-testid=chip]")?.getAttribute("data-near") === "true", null, { timeout: 3000 });
+    await page.waitForTimeout(400);
+    const chip = overlay(page, "[data-testid=chip]").first();
+    expect(await chip.getAttribute("data-active")).toBe("false");
+    const b = (await chip.boundingBox())!;
+    expect(b.width).toBeGreaterThan(r.w * 1.03);                       // grown ~5%
+    expect(b.x + b.width / 2).toBeLessThan(r.x + r.w / 2);              // leaning left, toward the pointer
+    await page.mouse.move(r.x - 12, r.y + r.h / 2, { steps: 2 });
+    await page.waitForFunction(() => document.querySelector("recast-overlay")!.shadowRoot!.querySelector("[data-testid=chip]")?.getAttribute("data-active") === "true", null, { timeout: 3000 });
+    await ctx.close();
+  });
+
+  it("Escape drops the token back to where it was lifted, then it is gone", async () => {
+    const { page, ctx } = await open();
+    const s = await centre(page, "#meera");
+    await carryTo(page, "#meera", "#calendar");
+    await page.keyboard.press("Escape");
+    const dropping = overlay(page, "[data-testid=token-dropping]");
+    await dropping.waitFor({ timeout: 2000 });
+    await page.waitForTimeout(450);
+    const at = (await dropping.boundingBox().catch(() => null));
+    if (at) expect(Math.hypot(at.x - (s.x + 16), at.y - (s.y + 16))).toBeLessThan(60);   // back at the origin (token sits 16px below-right of the pointer)
+    await dropping.waitFor({ state: "detached", timeout: 3000 });
+    expect(await overlay(page, "[data-testid=token]").count()).toBe(0);
+    await ctx.close();
+  });
+
+  it("hold-to-confirm fills the chip with the accent as the hold progresses", async () => {
+    const { page, ctx } = await open();
+    await carryTo(page, "#meera", "#mail");
+    await page.mouse.up(); await waitPhase(page, "confirming");
+    await page.mouse.down();
+    // Read the engine's progress and the drawn fill in the same frame, once the hold is under way.
+    const sample = await page.waitForFunction(() => {
+      const st = (globalThis as any).__recast.state(); const p = st.hold.progress;
+      const fill = document.querySelector("recast-overlay")!.shadowRoot!.querySelector<HTMLElement>("[data-testid=hold-fill]");
+      if (!fill || !fill.parentElement || p < 0.25 || p > 0.9) return null;
+      return { p, w: fill.getBoundingClientRect().width / fill.parentElement.getBoundingClientRect().width, bg: getComputedStyle(fill).backgroundColor };
+    }, null, { timeout: 3000, polling: "raf" }).then((h) => h.jsonValue() as Promise<{ p: number; w: number; bg: string }>);
+    expect(Math.abs(sample.w - sample.p)).toBeLessThan(0.15);           // the fill tracks the hold
+    expect(sample.bg).toBe("rgb(255, 107, 53)");                        // in the accent, #FF6B35
+    await page.mouse.up(); await ctx.close();
+  });
+
+  it("reduced motion: no tilt, no drop-back animation", async () => {
+    const { page, ctx } = await open({ reducedMotion: "reduce" });
+    const s = await centre(page, "#meera");
+    await page.keyboard.down("Alt"); await page.mouse.move(s.x, s.y); await page.waitForFunction(() => (globalThis as any).__recast.state().hovered, null, { timeout: 5000 });
+    await page.mouse.down(); await overlay(page, "[data-testid=token]").waitFor();
+    for (let i = 1; i <= 5; i++) { await page.mouse.move(s.x + i * 80, s.y); await page.waitForTimeout(16); expect(rotationDeg(await tokenTransform(page))).toBe(0); }
+    await page.keyboard.press("Escape"); await page.waitForTimeout(50);
+    expect(await overlay(page, "[data-testid=token-dropping]").count()).toBe(0);
+    await ctx.close();
+  });
+});
+
 describe("accessibility (axe-core on every state, light and dark)", () => {
   const scan = async (page: Page, label: string) => {
     const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
