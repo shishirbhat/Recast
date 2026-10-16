@@ -1,6 +1,7 @@
 // apps/api on Postgres for real: every migration in a Postgres wire server (PGlite behind pglite-socket), keys issued with the
 // recast-keys command as a separate process, then the built Next.js server talking to the database through the `pg` driver.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { CredentialCipher } from "@recast/api-core";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
@@ -10,6 +11,7 @@ import { runKeysCli } from "@recast/api-core";
 import { AuthError, Recast } from "@recast/sdk";
 
 const run = promisify(execFile);
+const CRED_KEY = CredentialCipher.generateKey();
 let socket: PGLiteSocketServer, url: string, proc: ChildProcess, base: string;
 const withPool = async <T>(fn: (p: pg.Pool) => Promise<T>) => { const p = new pg.Pool({ connectionString: url, max: 1 }); try { return await fn(p); } finally { await p.end(); } };
 const keysCmd = (...args: string[]) => run("npx", ["tsx", "scripts/recast-keys.ts", ...args], { env: { ...process.env, DATABASE_URL: url } });
@@ -26,8 +28,14 @@ beforeAll(async () => {
   optTenant = (await keysCmd("tenant", "create", "Beta", "--corrections-opt-in")).stdout.trim();
   optKey = (await keysCmd("key", "issue", optTenant)).stdout.trim();
 
+  // Connect Gmail for Acme: the token goes in on stdin, never on the command line.
+  await new Promise<void>((ok, fail) => {
+    const c = spawn("npx", ["tsx", "scripts/recast-keys.ts", "credential", "set", tenant, "gmail"], { env: { ...process.env, DATABASE_URL: url, RECAST_CREDENTIALS_KEY: CRED_KEY } });
+    c.stdin.end("ya29.test-token\n"); c.on("exit", (code) => (code === 0 ? ok() : fail(new Error(`credential set exited ${code}`))));
+  });
+
   const port = 3500 + Math.floor(Math.random() * 400);
-  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: url, DATABASE_POOL_MAX: "1", DATABASE_IDLE_TIMEOUT_MS: "100", RECAST_API_KEYS: "" }, stdio: "ignore" });
+  proc = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", DATABASE_URL: url, DATABASE_POOL_MAX: "1", DATABASE_IDLE_TIMEOUT_MS: "100", RECAST_API_KEYS: "", RECAST_CREDENTIALS_KEY: CRED_KEY }, stdio: "ignore" });
   base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 450; i++) { try { if ((await fetch(base + "/v1/health")).ok) return; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 200)); }
   throw new Error("server did not start");
@@ -73,6 +81,12 @@ describe("the built API on Postgres", () => {
     expect((await post(key)).status).toBe(403); expect((await post(optKey)).status).toBe(201);
     const rows = await withPool(async (p) => (await p.query(`select tenant_id, field from api_corrections`)).rows);
     expect(rows).toEqual([{ tenant_id: optTenant, field: "email" }]);
+  });
+  it("placement is wired: consent is checked before anything leaves, and an unconnected tenant is told to connect", async () => {
+    const place = (k: string, consent?: unknown) => fetch(base + "/v1/place", { method: "POST", headers: { authorization: `Bearer ${k}`, "content-type": "application/json" }, body: JSON.stringify({ input: { raw: "Meera Iyer, meera@x.com" }, target: { destination: "gmail" }, ...(consent ? { consent } : {}) }) }).then(async (r) => ({ status: r.status, json: await r.json() as any }));
+    expect(await place(key)).toMatchObject({ status: 403, json: { error: { code: "consent_required" } } });
+    expect(await place(optKey, { kind: "confirm" })).toMatchObject({ status: 403, json: { error: { code: "destination_not_connected" } } });
+    expect(await withPool(async (p) => (await p.query(`select destination from api_credentials where tenant_id = $1`, [tenant])).rows)).toEqual([{ destination: "gmail" }]);
   });
   it("a tier change applies on the next request; a revoked key is refused immediately", async () => {
     await withPool((p) => runKeysCli(["tenant", "set", tenant, "--tier", "scale"], p, () => {}));

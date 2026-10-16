@@ -1,6 +1,6 @@
 import { batchFromWire, bridgeFromWire, fromWire, toWireInput } from "./convert";
-import { AuthError, CircuitOpenError, NetworkError, QuotaError, RateLimitError, RecastError, ServerError, ValidationError } from "./errors";
-import type { BatchItemResult, BridgeInfo, CorrectionInput, ObjectType, ResolveInput, ResolveResult, Usage } from "./types";
+import { AuthError, CircuitOpenError, DestinationError, NetworkError, QuotaError, RateLimitError, RecastError, ServerError, ValidationError } from "./errors";
+import type { BatchItemResult, BridgeInfo, CorrectionInput, ObjectType, PlaceInput, Placement, ResolveInput, ResolveResult, Usage } from "./types";
 
 export interface RecastConfig {
   apiKey: string;
@@ -52,6 +52,7 @@ export class Recast {
         if (res.status === 401) throw new AuthError(msg);
         if (res.status === 402) throw new QuotaError(msg, this.lastUsage.used, typeof this.lastUsage.limit === "number" ? this.lastUsage.limit : null);
         if (res.status === 429) { const ra = Number(res.headers.get("retry-after") ?? 1); if (attempt < this.cfg.maxRetries) { await this.sleep(ra * 1000); continue; } throw new RateLimitError(msg, ra); }
+        if (res.status === 502 && /^destination_/.test(code)) throw new DestinationError(msg, code);
         if (res.status >= 500) { if (attempt < this.cfg.maxRetries) { await this.sleep(this.backoff(attempt)); continue; } this.fail(); throw new ServerError(msg, res.status); }
         throw new ValidationError(msg, code, res.status);          // other 4xx: the request is wrong, retrying cannot help
       } catch (e) {
@@ -98,6 +99,32 @@ export class Recast {
     /** Only stored if the account opted in; otherwise the API answers 403 and this throws a ValidationError. */
     create: async (c: CorrectionInput): Promise<void> => { await this.request("POST", "/v1/corrections", { object_id: c.objectId, kind: c.kind, ...(c.field ? { field: c.field } : {}), old_value: c.oldValue, new_value: c.newValue }); },
   };
+  /**
+   * Place an object into a destination app (draft, attendee, row, task, page). Needs the destination connected for this account
+   * and the consent the routing asked for; a missing consent is a ValidationError with code "consent_required" and nothing moves.
+   * One idempotency key per call, reused by retries, so a retry never places twice.
+   */
+  async place(p: PlaceInput): Promise<Placement> {
+    const body = {
+      input: { raw: p.raw, ...(p.sourceUrl ? { source_url: p.sourceUrl } : {}) },
+      target: { destination: p.destination, ...(p.type ? { type: p.type } : {}) },
+      ...(p.target ? { destination_target: p.target } : {}),
+      consent: p.consent === undefined ? { kind: "release" } : typeof p.consent === "string" ? { kind: p.consent } : { kind: "hold", held_ms: p.consent.heldMs },
+      ...(p.objectId ? { object_id: p.objectId } : {}),
+    };
+    const { json } = await this.request("POST", "/v1/place", body, { "idempotency-key": uuid() });
+    const r = json.receipt;
+    return {
+      receipt: { id: r.id, opId: r.op_id, destination: r.destination, relationId: r.relation_id, effect: r.effect, reversible: r.reversible, at: r.at },
+      object: { id: json.object.id, type: json.object.type, fields: json.object.fields, confidence: json.object.confidence, trust: json.object.trust },
+      dataMoved: json.data_moved, risk: json.risk,
+    };
+  }
+  readonly placements = {
+    /** Reverse a placement by its receipt id. A second undo is a ValidationError with code "already_undone". */
+    undo: async (receiptId: string): Promise<{ id: string; at: string }> => { const r = (await this.request("POST", "/v1/place/undo", { receipt_id: receiptId })).json.receipt; return { id: r.id, at: r.at }; },
+  };
+
   async health(): Promise<boolean> { try { return (await this.request("GET", "/v1/health")).json.status === "ok"; } catch { return false; } }
 
   /** Fluent form: recast.from("...").as("Event").to("google_calendar").threshold(0.8).run() */

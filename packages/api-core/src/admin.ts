@@ -1,5 +1,6 @@
 import type { Sql } from "./sql";
 import type { Tier } from "./tiers";
+import { CredentialCipher, PLACE_TARGETS } from "./place";
 
 /** Operator actions on tenants and keys. Runs as the service role. Plain keys exist only in the return value of `issueKey`. */
 const TIER_NAMES: readonly Tier[] = ["free", "pro", "scale", "enterprise"];
@@ -62,6 +63,8 @@ const EXPORT_TABLES: Record<string, string> = {
   scopes: `select id, agent_id, tool, action, constraints, max_calls, calls, issued_at, expires_at from agent_scopes where tenant_id = $1 order by issued_at, id`,
   policies: `select name, version, rule_yaml, active, created_at from agent_policies where tenant_id = $1 order by name, version`,
   approvals: `select id, agent_id, tool, action, request_hash, status, created_ms, decided_by from agent_approvals where tenant_id = $1 order by created_ms, id`,
+  placements: `select receipt_id, destination, target, receipt, data_moved, status, created_at, undone_at from api_placements where tenant_id = $1 order by created_at, receipt_id`,
+  connected_destinations: `select destination, updated_at from api_credentials where tenant_id = $1 order by destination`,
   audit_log: `select seq, entry, prev_hash, hash, signature, key_id, at from agent_audit_log where tenant_id = $1 order by seq`,
 };
 
@@ -84,6 +87,15 @@ export async function eraseTenant(sql: Sql, tenantId: string, confirm: string, r
   } catch (e) { if (/no such tenant/.test(String((e as Error).message))) throw new AdminError("no such tenant"); throw e; }
 }
 
+/** Stores a destination token for a tenant, sealed with the server's credentials key. OAuth sign-in will call the same function. */
+export async function setCredential(sql: Sql, cipher: CredentialCipher, tenantId: string, destination: string, accessToken: string): Promise<void> {
+  if (!PLACE_TARGETS[destination]) throw new AdminError(`destination must be one of ${Object.keys(PLACE_TARGETS).join(", ")}`);
+  const token = accessToken.trim(); if (!token || /\s/.test(token)) throw new AdminError("the token is empty or contains whitespace");
+  const { rows } = await sql.query(`select 1 from tenants where id = $1`, [uuidOf(tenantId)]); if (!rows.length) throw new AdminError("no such tenant");
+  const sealed = await cipher.seal(tenantId, destination, { accessToken: token });
+  await sql.query(`insert into api_credentials(tenant_id, destination, sealed) values ($1,$2,$3) on conflict (tenant_id, destination) do update set sealed = excluded.sealed, updated_at = now()`, [tenantId, destination, sealed]);
+}
+
 export const KEYS_USAGE = `recast-keys: manage API tenants and keys (needs DATABASE_URL)
 
   tenant create <name> [--tier free|pro|scale|enterprise] [--corrections-opt-in]
@@ -93,10 +105,13 @@ export const KEYS_USAGE = `recast-keys: manage API tenants and keys (needs DATAB
   key list <tenant-id>
   tenant export <tenant-id>                            everything the tenant owns, as JSON on stdout
   tenant erase <tenant-id> --confirm "ERASE <tenant-id>" --by <who> --reason <why>
-                                                       irreversible; export first. Leaves an erasure receipt`;
+                                                       irreversible; export first. Leaves an erasure receipt
+  credential set <tenant-id> <destination>             reads the access token from stdin; needs RECAST_CREDENTIALS_KEY
+  credential remove <tenant-id> <destination>
+  credentials-key generate                             prints a new RECAST_CREDENTIALS_KEY`;
 
 /** The command line, minus process handling, so tests run it directly. Returns the exit code. */
-export async function runKeysCli(argv: string[], sql: Sql, out: (s: string) => void, errOut: (s: string) => void = out): Promise<number> {
+export async function runKeysCli(argv: string[], sql: Sql, out: (s: string) => void, errOut: (s: string) => void = out, io: { stdin?: () => Promise<string>; credentialsKey?: string } = {}): Promise<number> {
   const flags = new Map<string, string | true>(); const pos: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -111,6 +126,13 @@ export async function runKeysCli(argv: string[], sql: Sql, out: (s: string) => v
     if (group === "tenant" && cmd === "set" && arg) {
       const optIn = flags.has("--corrections-opt-in") ? true : flags.has("--no-corrections-opt-in") ? false : undefined;
       await setTenant(sql, arg, { ...(flags.has("--tier") ? { tier: tierOf(String(flags.get("--tier"))) } : {}), ...(optIn === undefined ? {} : { correctionsOptIn: optIn }) }); out("updated"); return 0;
+    }
+    if (group === "credentials-key" && cmd === "generate") { out(CredentialCipher.generateKey()); return 0; }
+    if (group === "credential" && (cmd === "set" || cmd === "remove") && arg && pos[3]) {
+      if (cmd === "remove") { const r = await sql.query(`delete from api_credentials where tenant_id = $1 and destination = $2 returning 1`, [uuidOf(arg), pos[3]]); out(r.rows.length ? "removed" : "nothing to remove"); return r.rows.length ? 0 : 1; }
+      if (!io.credentialsKey) throw new AdminError("RECAST_CREDENTIALS_KEY is not set");
+      if (!io.stdin) throw new AdminError("pipe the token on stdin");
+      await setCredential(sql, new CredentialCipher(io.credentialsKey), arg, pos[3], await io.stdin()); out("stored (sealed)"); return 0;
     }
     if (group === "tenant" && cmd === "export" && arg) { out(JSON.stringify(await exportTenant(sql, arg), null, 2)); return 0; }
     if (group === "tenant" && cmd === "erase" && arg) {

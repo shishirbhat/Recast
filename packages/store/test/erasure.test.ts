@@ -5,7 +5,7 @@ import { as, A, freshDb } from "../src/testing";
 let db: PGlite; let t1: string, t2: string;
 const one = async <T = Record<string, unknown>>(q: string, p: unknown[] = []) => (await db.query<T>(q, p)).rows[0] as T;
 const count = async (table: string, tenant: string, col = "tenant_id") => Number((await one<{ n: number }>(`select count(*)::int as n from ${table} where ${col} = $1`, [tenant])).n);
-const TABLES = ["tenant_members", "api_keys", "api_usage", "api_corrections", "agents", "agent_scopes", "agent_policies", "agent_audit_log", "agent_approvals", "agent_revoked_tokens", "agent_dpop_seen", "api_idempotency"];
+const TABLES = ["tenant_members", "api_keys", "api_usage", "api_corrections", "agents", "agent_scopes", "agent_policies", "agent_audit_log", "agent_approvals", "agent_revoked_tokens", "agent_dpop_seen", "api_idempotency", "api_credentials", "api_placements"];
 
 async function seed(tenant: string, n: number) {
   await db.query(`insert into tenant_members(tenant_id, user_id, role) values ($1, $2, 'owner')`, [tenant, A]);
@@ -20,6 +20,8 @@ async function seed(tenant: string, n: number) {
   await db.query(`insert into agent_dpop_seen(tenant_id, jti, seen_ms) values ($1, 'j', 1)`, [tenant]);
   await db.query(`insert into api_idempotency(tenant_id, key, body_hash, created_ms) values ($1, 'k', 'h', 1)`, [tenant]);
   await db.query(`select take_token($1::text, 1, 1, 1)`, [tenant]);
+  await db.query(`insert into api_credentials(tenant_id, destination, sealed) values ($1, 'gmail', 'v1:x:y')`, [tenant]);
+  await db.query(`insert into api_placements(receipt_id, tenant_id, destination, target, receipt, data_moved) values ('rc_r_' || md5($1::uuid::text), $1, 'gmail', '{}', '{}', '[]')`, [tenant]);
   let prev = "0".repeat(64);
   for (let seq = 1; seq <= n; seq++) { const hash = `${tenant.slice(0, 8)}-${seq}`.padEnd(64, "0"); await db.query(`insert into agent_audit_log(tenant_id, seq, request_id, tool, action, result, key_id, prev_hash, hash, signature) values ($1,$2,'r','t','a','success','k1',$3,$4,'sig')`, [tenant, seq, prev, hash]); prev = hash; }
   return prev;

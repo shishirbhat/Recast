@@ -26,3 +26,16 @@ export interface ResolveInput {
 export interface BridgeInfo { id: string; name: string; bridge: string; bridgeReliability: string; objects: ObjectType[]; actions: string[] }
 export interface CorrectionInput { objectId: string; kind: "undo" | "reject" | "edit"; field?: string; oldValue?: unknown; newValue?: unknown }
 export interface Usage { limit: number | "unlimited" | null; used: number | null }
+
+/** What to place, where, and the consent the person gave after seeing what moves. */
+export interface PlaceInput {
+  raw: string; sourceUrl?: string; type?: ObjectType;
+  destination: string;
+  /** Which calendar event, sheet range, task list or database: e.g. { calendar_id, event_id } for google_calendar. */
+  target?: Record<string, string>;
+  consent?: "release" | "confirm" | { kind: "hold"; heldMs: number };
+  /** The object id from the resolve you showed the person. If the text now resolves differently, nothing is placed. */
+  objectId?: string;
+}
+export interface PlacementReceipt { id: string; opId: string; destination: string; relationId: string; effect: string; reversible: boolean; at: string }
+export interface Placement { receipt: PlacementReceipt; object: RecastObject; dataMoved: { path: string; value: string }[]; risk: TrustLevel }

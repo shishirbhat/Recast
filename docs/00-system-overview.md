@@ -10,7 +10,7 @@ The company sells that understanding in two directions:
 | Surface | Who uses it | What they get |
 |---|---|---|
 | **Recast for people** (desktop overlay, browser extension, web control center) | End users | Grab a thing, drag it onto an app, preview, place, undo. Local-first. This is also the data flywheel (corrections, with consent). |
-| **Recast API + SDK** (`/v1/resolve`, `@recast/sdk`, `@recast/mcp`; `/v1/place` is task #16) | Developers and AI products | Send raw text, get back a typed object plus where it can go. B2B revenue by tier. |
+| **Recast API + SDK** (`/v1/resolve`, `/v1/place`, `@recast/sdk`, `@recast/mcp`) | Developers and AI products | Send raw text, get back a typed object plus where it can go. B2B revenue by tier. |
 | **Agent Runtime** (gateway, server, control-center pages) | Companies running AI agents | Each agent gets an identity, narrow scopes, a policy, human approvals for risky calls and a tamper-evident signed audit log. Sits in front of MCP tool servers. |
 
 All three run on one spine: **one schema, one pure core, one trust model**.
@@ -92,6 +92,7 @@ All three run on one spine: **one schema, one pure core, one trust model**.
 5. The answer is one of `resolved` (object, field provenance, destinations it can go to), `ambiguous` (alternatives) or `unresolved` (why). Usage is recorded; headers carry the schema version and any deprecation dates.
 6. Optional: `POST /v1/corrections` stores a fix only if the tenant opted in (the database refuses otherwise).
 7. The SDK wraps all of this, with retries that reuse the same idempotency key.
+8. **Place.** `POST /v1/place` runs steps A.4 to A.6 on the server. It resolves again and refuses if the object changed since the person previewed it. It plans, checks consent, unseals the tenant's destination token and runs the bridge, then returns a receipt; `POST /v1/place/undo` reverses it.
 
 ### C. An AI agent calls a tool through the Agent Runtime
 1. **Setup (admin).** Create an agent: Ed25519 key pair, the private key stays with the agent, the public key is registered as `agt_...`. Grant scopes (tool, action, constraints, expiry, max calls). Activate a policy.

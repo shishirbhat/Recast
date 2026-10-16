@@ -8,3 +8,5 @@ export class ValidationError extends RecastError { constructor(m: string, code: 
 export class ServerError extends RecastError { constructor(m: string, status: number) { super(m, "server_error", status); } }
 export class NetworkError extends RecastError { constructor(m: string) { super(m, "network_error"); } }
 export class CircuitOpenError extends RecastError { constructor() { super("too many recent failures; not calling the API until the cool-down ends", "circuit_open"); } }
+/** The destination app (Google, Notion) refused or failed. Not retried: "reconnect" problems do not fix themselves. */
+export class DestinationError extends RecastError { constructor(m: string, code: string) { super(m, code, 502); } }

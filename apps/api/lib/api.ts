@@ -1,5 +1,5 @@
 import pg from "pg";
-import { MemoryKeyStore, SqlCorrectionStore, SqlIdempotencyStore, SqlKeyStore, SqlRateLimiter, SqlUsageStore, createApi, type Api, type ApiDeps, type Tier } from "@recast/api-core";
+import { CredentialCipher, MemoryKeyStore, SqlCredentialStore, SqlPlacementStore, SqlCorrectionStore, SqlIdempotencyStore, SqlKeyStore, SqlRateLimiter, SqlUsageStore, createApi, type Api, type ApiDeps, type Tier } from "@recast/api-core";
 import { createResolver } from "@recast/resolve";
 
 /**
@@ -8,11 +8,13 @@ import { createResolver } from "@recast/resolve";
  * With nothing configured every authenticated call is a 401, which is the safe default.
  * No embedding or model provider is configured: the rules stage runs alone, and `meta.stage` says so.
  */
-export async function storesFromEnv(env: NodeJS.ProcessEnv): Promise<Pick<ApiDeps, "keys" | "usage" | "corrections" | "limiter" | "idempotency">> {
+export async function storesFromEnv(env: NodeJS.ProcessEnv): Promise<Pick<ApiDeps, "keys" | "usage" | "corrections" | "limiter" | "idempotency" | "placement">> {
   if (env.DATABASE_URL) {
     const pool = new pg.Pool({ connectionString: env.DATABASE_URL, max: Number(env.DATABASE_POOL_MAX ?? 5), idleTimeoutMillis: Number(env.DATABASE_IDLE_TIMEOUT_MS ?? 10_000) });
     // Rate limits and idempotency live in the database too, so every instance (every Vercel function) enforces the same numbers.
-    return { keys: new SqlKeyStore(pool), usage: new SqlUsageStore(pool), corrections: new SqlCorrectionStore(pool), limiter: new SqlRateLimiter(pool), idempotency: new SqlIdempotencyStore(pool) };
+    return { keys: new SqlKeyStore(pool), usage: new SqlUsageStore(pool), corrections: new SqlCorrectionStore(pool), limiter: new SqlRateLimiter(pool), idempotency: new SqlIdempotencyStore(pool),
+      // Placements need the key that seals destination tokens; without it /v1/place answers 501.
+      ...(env.RECAST_CREDENTIALS_KEY ? { placement: { credentials: new SqlCredentialStore(pool, new CredentialCipher(env.RECAST_CREDENTIALS_KEY)), placements: new SqlPlacementStore(pool) } } : {}) };
   }
   const keys = new MemoryKeyStore();
   for (const entry of (env.RECAST_API_KEYS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {

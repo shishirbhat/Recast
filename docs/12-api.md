@@ -70,6 +70,28 @@ pnpm --filter @recast/api keys tenant set <tenant-id> --tier scale --corrections
 ```
 Tested end to end (`apps/api/test/postgres.test.ts`): every migration in a Postgres wire server, the command run as a separate process, then the built Next.js server: an issued key resolves, usage is counted in the database, corrections are stored only for the opted-in tenant, a tier change applies on the next request, and a revoked key is refused at once. Pool settings: `DATABASE_POOL_MAX` (default 5), `DATABASE_IDLE_TIMEOUT_MS` (default 10000).
 
+## `POST /v1/place` and `POST /v1/place/undo`
+Resolving says what a piece of text is and where it could go. Placing does it: a Gmail draft, a calendar attendee or location, a sheet row, a task, a Notion page.
+
+```json
+POST /v1/place
+{ "input": { "raw": "Meera Iyer, meera@x.com" },
+  "target": { "destination": "google_calendar" },
+  "destination_target": { "calendar_id": "primary", "event_id": "abc123" },
+  "consent": { "kind": "confirm" },
+  "object_id": "rc_..." }
+→ 201 { "status": "placed", "receipt": { "id": "rc_r_...", "effect": "Add attendee", "reversible": true, ... }, "object": {...}, "data_moved": [...], "risk": "medium" }
+
+POST /v1/place/undo  { "receipt_id": "rc_r_..." }  → 200 { "status": "undone", ... }
+```
+What happens, in order: the text is resolved again on the server; if `object_id` (from the resolve you showed the person) no longer matches, `409 object_changed` and nothing moves. The core plans the operation and checks consent: anything that notifies someone or is risky needs `confirm` or a `hold` of at least 600 ms, otherwise `403 consent_required` with the reasons. The tenant's destination token is unsealed and the bridge runs. Then the receipt is stored for undo. Undo is claimed atomically, so two concurrent undos run the bridge once; a failed undo can be retried.
+
+Safety built in: bridges reach only the five destination hosts, over HTTPS, with no redirects and a 10 s timeout. Gmail always uses the token owner's own mailbox, so a caller cannot name another. Target fields are checked (no control characters). A destination that refuses the token is `502 destination_unauthorized` ("reconnect"), and the SDK does not retry it. Placements count one resolution each and honour `Idempotency-Key`, and a failed attempt frees the key.
+
+Credentials: `RECAST_CREDENTIALS_KEY` (32 random bytes, base64; `recast-keys credentials-key generate`) seals each token with AES-256-GCM, bound to its tenant and destination, before it reaches the database. `printf %s "$TOKEN" | recast-keys credential set <tenant-id> gmail` stores one. Without the key, `/v1/place` answers `501`. SDK: `recast.place({...})`, `recast.placements.undo(id)`.
+
+Tested against a stand-in Google over real HTTP (`packages/api-core/test/place.test.ts`, `packages/sdk/test/place.test.ts`, `apps/api/test/postgres.test.ts`). **Not run against real Google or Notion:** that needs OAuth apps (task #22). Tokens are stored as given. There is no refresh-token flow yet, so a Google access token works for about an hour.
+
 ## MCP server (`packages/mcp`)
 Agents reach Recast as tools. `@recast/mcp` exposes two read-only tools: `resolve_object` (raw text in; typed object, provenance and routing out) and `list_destinations`. Nothing is placed in any app; acting on an answer stays a separate, consented step.
 

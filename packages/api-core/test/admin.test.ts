@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshDb } from "@recast/store/testing";
-import { SqlKeyStore, createTenant, eraseTenant, exportTenant, generateApiKey, hashKey, issueKey, listKeys, revokeKey, runKeysCli, setTenant } from "../src";
+import { CredentialCipher, SqlCredentialStore, SqlKeyStore, createTenant, eraseTenant, exportTenant, generateApiKey, hashKey, issueKey, listKeys, revokeKey, runKeysCli, setTenant } from "../src";
 
 let db: PGlite; beforeEach(async () => { db = await freshDb(); });
 const cli = async (...argv: string[]) => { const out: string[] = [], err: string[] = []; const code = await runKeysCli(argv, db, (s) => out.push(s), (s) => err.push(s)); return { code, out, err }; };
@@ -63,5 +63,20 @@ describe("export, then erase", () => {
     expect(await cli("tenant", "erase", t)).toMatchObject({ code: 1 });
     expect(await cli("tenant", "erase", t, "--confirm", `ERASE ${t}`, "--by", "ops", "--reason", "closing account")).toMatchObject({ code: 0, out: [expect.stringMatching(/^erased; receipt /)] });
     expect((await cli("tenant", "export", t)).err[0]).toContain("no such tenant");
+  });
+});
+
+describe("destination credentials", () => {
+  it("credential set seals the token from stdin; remove deletes it; bad input is refused", async () => {
+    const t = await createTenant(db, "Acme"); const key = CredentialCipher.generateKey(); const out: string[] = [], err: string[] = [];
+    const run = (argv: string[], token = "ya29.secret") => runKeysCli(argv, db, (x) => out.push(x), (x) => err.push(x), { stdin: async () => token + "\n", credentialsKey: key });
+    expect(await run(["credential", "set", t, "gmail"])).toBe(0);
+    expect(await new SqlCredentialStore(db, new CredentialCipher(key)).get(t, "gmail")).toEqual({ accessToken: "ya29.secret" });
+    expect(JSON.stringify((await db.query(`select * from api_credentials`)).rows)).not.toContain("ya29");
+    expect(await run(["credential", "set", t, "hubspot"])).toBe(1); expect(err.pop()).toContain("destination must be one of");
+    expect(await run(["credential", "set", t, "gmail"], "two words")).toBe(1);
+    expect(await runKeysCli(["credential", "set", t, "gmail"], db, () => {}, (x) => err.push(x), { stdin: async () => "tok" })).toBe(1); expect(err.pop()).toContain("RECAST_CREDENTIALS_KEY");
+    expect(await run(["credential", "remove", t, "gmail"])).toBe(0); expect(out.pop()).toBe("removed");
+    expect((await cli("credentials-key", "generate")).out[0]).toMatch(/^[A-Za-z0-9+/]{43}=$/);
   });
 });
