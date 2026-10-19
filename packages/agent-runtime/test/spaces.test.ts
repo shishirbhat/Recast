@@ -31,14 +31,14 @@ const POLICY = `rules:
   - { id: no-big, tool: shop, action: buy, when: { amount: { gt: 50000 } }, then: deny }
 `;
 interface Rig { agent: AgentKeyPair; spaces: MemorySpaceStore; scopes: MemoryScopeStore; approvals: MemoryApprovalStore; store: MemoryAuditStore; keys: Record<string, JsonWebKey>; gw: ReturnType<typeof createGateway> }
-async function rig(opts: { cohort?: Cohort } = {}): Promise<Rig> {
+async function rig(opts: { cohort?: Cohort; policy?: string } = {}): Promise<Rig> {
   const agent = await createAgentIdentity("shopper", "acme"); const reg = new MemoryAgentRegistry();
   await reg.register({ agentId: agent.agentId, tenantId: "t1", name: agent.name, publicJwk: agent.publicJwk, ownerUserId: "usr_meera" });
   const scopes = new MemoryScopeStore(); const approvals = new MemoryApprovalStore(); const store = new MemoryAuditStore(); const signer = await generateKeyPair();
   const audit = new AuditLog(store, { privateJwk: signer.privateJwk, keyId: "rt1" }, () => new Date(clock)); const vault = new MemoryVault();
   for (const t of ["google_calendar", "gmail", "shop"]) vault.set("t1", t, `SECRET-${t}`);
   const spaces = new MemorySpaceStore();
-  const gw = createGateway({ audience: "gw", registry: reg, scopes, audit, approvals, getPolicy: () => parsePolicy(POLICY), exchange: { mode: "vault", vault }, upstream: () => upstreamUrl, now: () => clock, spaces,
+  const gw = createGateway({ audience: "gw", registry: reg, scopes, audit, approvals, getPolicy: () => parsePolicy(opts.policy ?? POLICY), exchange: { mode: "vault", vault }, upstream: () => upstreamUrl, now: () => clock, spaces,
     ...(opts.cohort ? { release: { release: createRelease(), cohortOf: async () => opts.cohort! } } : {}) });
   for (const [tool, action] of [["google_calendar", "create_event"], ["gmail", "send_email"], ["shop", "buy"]] as const) await scopes.grant({ agentId: agent.agentId, tenantId: "t1", tool, action, maxCalls: 100, expiresAt: hours(48) });
   return { agent, spaces, scopes, approvals, store, keys: { rt1: signer.publicJwk }, gw };
@@ -187,6 +187,21 @@ describe("SqlSpaceStore", () => {
     const free = await s.create(input({ tools: [{ tool: "shop", action: "look" }], budget: { maxCalls: 3 } }), T0);
     expect(await s.reserve(free.id, 5, T0)).toBe("spend_exhausted"); expect(await s.reserve(free.id, 0, T0)).toBe("ok");
     expect(await s.reserve(free.id, 0, T0 + 25 * 3600_000)).toBe("expired");
+  });
+});
+
+describe("a recipe's policy pack at the gateway", () => {
+  it("grocery-runner: a big order inside the Space waits for a person; a small one goes through", async () => {
+    const { readFileSync } = await import("node:fs"); const { instantiate, parseRecipe } = await import("../src");
+    const recipe = parseRecipe(readFileSync(new URL("../../../recipes/grocery-runner.yaml", import.meta.url), "utf8"));
+    const r = await rig({ policy: "rules:\n  - { tool: shop, then: allow }\n" });
+    await r.spaces.create(instantiate(recipe, { tenantId: "t1", agentId: r.agent.agentId, createdBy: "usr_meera", nowMs: clock }), clock);
+    expect((await call(r, buy(250_000))).decision).toBe("pending_approval");
+    expect((await call(r, buy(150_000))).json.result).toBeTruthy();
+    const e = await r.store.list("t1"); expect(e[0]!.reason).toMatch(/recipe:grocery-runner@1:big-order/);
+    // A tenant that denies big orders outright keeps denying them: the pack asks, it never overrides a deny.
+    const strict = await rig(); await strict.spaces.create(instantiate(recipe, { tenantId: "t1", agentId: strict.agent.agentId, createdBy: "u", nowMs: clock }), clock);
+    expect((await call(strict, buy(250_000))).decision).toBe("denied");
   });
 });
 

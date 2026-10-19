@@ -1,0 +1,12 @@
+# Book meetings on the person's calendar; every invitation that reaches other people is approved first.
+id: meeting-scheduler
+version: 1
+title: Schedule meetings with approval
+description: The agent may create calendar events of up to 10 attendees. Each one waits for the person's approval, because invitations reach other people. It can never delete events.
+space:
+  durationHours: 168
+  budget: { maxCalls: 50 }
+  tools:
+    - { tool: google_calendar, action: create_event, approval: always, constraints: { attendees: { max: 10 } } }
+policy:
+  - { id: no-delete, tool: google_calendar, action: delete_event, then: deny }

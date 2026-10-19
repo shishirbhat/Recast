@@ -1,0 +1,12 @@
+# Weekly groceries within a money budget; large single orders need a person.
+id: grocery-runner
+version: 1
+title: Weekly groceries
+description: The agent may order from the named grocery store up to INR 5,000 in total over a week. Any single order above INR 2,000 waits for the person's approval.
+space:
+  durationHours: 168
+  budget: { maxCalls: 20, spend: { currency: INR, limitMinor: 500000 } }
+  tools:
+    - { tool: shop, action: buy, cost: { param: amount }, constraints: { store: { eq: fresh-mart } } }
+policy:
+  - { id: big-order, tool: shop, action: buy, when: { amount: { gt: 200000 } }, then: require_approval }

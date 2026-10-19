@@ -1,0 +1,15 @@
+# Read threads and prepare replies as drafts. Sending stays with the person.
+id: draft-replies
+version: 1
+title: Draft replies, never send
+description: The agent may read email threads and save reply drafts. It can never send, delete or forward mail.
+space:
+  durationHours: 72
+  budget: { maxCalls: 200 }
+  tools:
+    - { tool: gmail, action: read_thread }
+    - { tool: gmail, action: create_draft, constraints: { body: { max: 10000 } } }
+policy:
+  - { id: no-send, tool: gmail, action: send_email, then: deny }
+  - { id: no-delete, tool: gmail, action: delete, then: deny }
+  - { id: no-forward, tool: gmail, action: forward, then: deny }

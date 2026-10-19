@@ -36,7 +36,8 @@ The source is `packages/release/src/index.ts`. `GET /v1/capabilities` returns, f
 | `mcp.recast-tools` | private | MCP |
 | `agent.gateway` | private | agent runtime |
 | `agent.spaces` | internal | agent runtime |
-| `community.recipes` | disabled | community |
+| `agent.recipes` | internal | agent runtime: apply a reviewed first-party recipe (`docs/19-recipes.md`) |
+| `community.recipes` | disabled | community (recipes shared between accounts) |
 | `data.library` | disabled | data |
 
 Nothing is `public`. A test fails if anything becomes public without that test being changed on purpose. A public launch also needs a decision-log entry.

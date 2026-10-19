@@ -15,7 +15,11 @@ export interface SpaceTool {
   cost?: { fixedMinor?: number; param?: string };
 }
 export interface SpaceBudget { maxCalls: number; spend?: { currency: string; limitMinor: number } }
-export interface SpaceInput { tenantId: string; agentId: string; name: string; purpose?: string; tools: SpaceTool[]; budget: SpaceBudget; expiresAt: string; createdBy?: string }
+export interface SpaceInput {
+  tenantId: string; agentId: string; name: string; purpose?: string; tools: SpaceTool[]; budget: SpaceBudget; expiresAt: string; createdBy?: string;
+  /** Extra rules inside this Space only (a recipe's policy pack): deny or require_approval, never allow. */
+  rules?: Rule[];
+}
 export interface Space extends SpaceInput { id: string; status: "active" | "stopped"; calls: number; spentMinor: number; createdAt: string; stoppedAt?: string; stoppedBy?: string }
 export type SpaceState = "active" | "stopped" | "expired" | "exhausted";
 export type ReserveResult = "ok" | "not_found" | "stopped" | "expired" | "calls_exhausted" | "spend_exhausted";
@@ -49,6 +53,13 @@ export function validateSpace(s: SpaceInput, nowMs: number): void {
   const b = s.budget;
   if (!b || !Number.isInteger(b.maxCalls) || b.maxCalls < 1 || b.maxCalls > MAX_SPACE_CALLS) fail(`budget.maxCalls must be 1 to ${MAX_SPACE_CALLS}`);
   if (b.spend && (!/^[A-Z]{3}$/.test(b.spend.currency) || !Number.isInteger(b.spend.limitMinor) || b.spend.limitMinor < 0)) fail("budget.spend needs a currency (ISO 4217) and a whole limitMinor");
+  if (s.rules !== undefined) {
+    if (!Array.isArray(s.rules) || s.rules.length > 100) fail("rules must be a list of at most 100");
+    for (const [i, r] of s.rules.entries()) {
+      if (!r || typeof r !== "object" || (r.then !== "deny" && r.then !== "require_approval")) fail(`rules[${i}]: a Space may only add deny or require_approval rules`);
+      if (r.agent !== undefined) fail(`rules[${i}]: 'agent' is not allowed; the rule applies to this Space's agent`);
+    }
+  }
   const exp = Date.parse(s.expiresAt);
   if (!Number.isFinite(exp) || exp <= nowMs) fail("expiresAt must be in the future");
   if (exp - nowMs > MAX_SPACE_MS) fail("a Space can last at most 30 days");
@@ -84,10 +95,14 @@ export function checkSpaceCall(s: Space, tool: string, action: string, params: R
   return { ok: true, cost, entry };
 }
 
-/** The tenant's policy with the Space's approval rules added. Added rules are only require_approval, so a Space can tighten
- *  policy and never loosen it (deny still beats approval). */
+/** The tenant's policy with the Space's approval rules and its own rules added. Added rules are only deny or require_approval,
+ *  so a Space can tighten policy and never loosen it. */
 export function withSpaceRules(p: Policy, s: Space): Policy {
-  const extra: Rule[] = s.tools.filter((t) => t.approval === "always").map((t) => ({ id: `space:${s.id}:${t.tool}.${t.action}`, tool: t.tool, action: t.action, then: "require_approval" }));
+  const extra: Rule[] = [
+    ...s.tools.filter((t) => t.approval === "always").map((t): Rule => ({ id: `space:${s.id}:${t.tool}.${t.action}`, tool: t.tool, action: t.action, then: "require_approval" })),
+    // Re-checked here as well as at creation: whatever is stored, a Space's own rules can only tighten.
+    ...(s.rules ?? []).filter((r) => r.then === "deny" || r.then === "require_approval").map((r) => ({ ...r, agent: s.agentId })),
+  ];
   return extra.length ? { ...p, rules: [...p.rules, ...extra] } : p;
 }
 

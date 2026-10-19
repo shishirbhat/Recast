@@ -141,6 +141,7 @@ export class SqlSpaceStore implements SpaceStore {
     return {
       id: r.id, tenantId: r.tenant_id, agentId: r.agent_key, name: r.name, ...(r.purpose ? { purpose: r.purpose } : {}), tools: r.tools,
       budget: { maxCalls: r.max_calls, ...(r.spend_currency ? { spend: { currency: r.spend_currency, limitMinor: Number(r.spend_limit_minor) } } : {}) },
+      ...(Array.isArray(r.rules) && r.rules.length ? { rules: r.rules } : {}),
       expiresAt: iso(r.expires_at), status: r.status, calls: r.calls, spentMinor: Number(r.spent_minor), createdAt: iso(r.created_at),
       ...(r.created_by ? { createdBy: r.created_by } : {}), ...(r.stopped_at ? { stoppedAt: iso(r.stopped_at), stoppedBy: r.stopped_by } : {}),
     };
@@ -148,10 +149,10 @@ export class SqlSpaceStore implements SpaceStore {
   async create(s: SpaceInput, nowMs: number) {
     validateSpace(s, nowMs);
     const { rows } = await this.sql.query<any>(
-      `with ins as (insert into agent_spaces(tenant_id, agent_id, name, purpose, tools, max_calls, spend_currency, spend_limit_minor, expires_at, created_at, created_by)
-         select $1, a.id, $3, $4, $5, $6, $7, $8, $9, $10, $11 from agents a where a.agent_key = $2 and a.tenant_id = $1 returning *)
+      `with ins as (insert into agent_spaces(tenant_id, agent_id, name, purpose, tools, max_calls, spend_currency, spend_limit_minor, expires_at, created_at, created_by, rules)
+         select $1, a.id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12 from agents a where a.agent_key = $2 and a.tenant_id = $1 returning *)
        select ins.*, $2 as agent_key from ins`,
-      [s.tenantId, s.agentId, s.name, s.purpose ?? null, JSON.stringify(s.tools), s.budget.maxCalls, s.budget.spend?.currency ?? null, s.budget.spend?.limitMinor ?? null, s.expiresAt, new Date(nowMs).toISOString(), s.createdBy ?? null]);
+      [s.tenantId, s.agentId, s.name, s.purpose ?? null, JSON.stringify(s.tools), s.budget.maxCalls, s.budget.spend?.currency ?? null, s.budget.spend?.limitMinor ?? null, s.expiresAt, new Date(nowMs).toISOString(), s.createdBy ?? null, JSON.stringify(s.rules ?? [])]);
     if (!rows[0]) throw new SpaceError(`no agent ${s.agentId} in this tenant`);
     return this.map(rows[0]);
   }

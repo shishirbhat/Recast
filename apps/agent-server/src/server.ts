@@ -5,6 +5,8 @@ import {
   type Policy, type Space, type SpaceInput, type Sql,
 } from "@recast/agent-runtime";
 import { createRelease, isCohort, type Capability, type Cohort } from "@recast/release";
+import { instantiate, RecipeError, type Narrowing } from "@recast/agent-runtime";
+import { loadCatalog } from "@recast/agent-runtime/src/recipes-cli";
 import { ConfigVault, type ServerConfig } from "./config";
 
 const JSON_H = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
@@ -104,6 +106,27 @@ export function createRuntimeServer(config: ServerConfig, sql: Sql, now: () => n
       const b = await json(); if (typeof b.by !== "string" || !b.by) throw new Bad(400, "invalid_request", "by is required");
       if (!(await spaces.stop(stop[1]!, t(b.tenant), b.by, now()))) throw new Bad(404, "not_found", "no active Space with that id");
       return { space: view((await spaces.get(stop[1]!, b.tenant))!) };
+    }
+    // Recipes: only reviewed ones from the operator's catalog; applying one creates a Space and grants nothing.
+    if (req.method === "GET" && url.pathname === "/admin/recipes") {
+      const tenantId = t(tenant); await needs(tenantId, "agent.recipes");
+      const cat = config.recipesDir ? await loadCatalog(config.recipesDir) : [];
+      return { recipes: cat.map((c) => ({ id: c.recipe.id, version: c.recipe.version, title: c.recipe.title, description: c.recipe.description, reviewed: !!c.review, ...(c.review ? { reviewedBy: c.review.reviewedBy } : {}), tools: c.recipe.space.tools.map((x) => `${x.tool}.${x.action}`), policy: c.recipe.policy.length })) };
+    }
+    const apply = /^\/admin\/recipes\/([a-z][a-z0-9-]{1,63})\/apply$/.exec(url.pathname);
+    if (req.method === "POST" && apply) {
+      const b = await json(); const tenantId = t(b.tenant);
+      await needs(tenantId, "agent.recipes"); await needs(tenantId, "agent.spaces");
+      if (typeof b.agentId !== "string" || typeof b.createdBy !== "string" || !b.createdBy) throw new Bad(400, "invalid_request", "agentId and createdBy are required");
+      const entry = (config.recipesDir ? await loadCatalog(config.recipesDir) : []).find((c) => c.recipe.id === apply[1]);
+      if (!entry) throw new Bad(404, "not_found", "no such recipe");
+      if (!entry.review) throw new Bad(409, "not_reviewed", "this recipe's current content has not been reviewed; it cannot be applied");
+      // Never self-granting: every tool must already be scoped for this agent. The recipe does not add scopes.
+      const missing: string[] = [];
+      for (const x of entry.recipe.space.tools) if (!(await scopes.find(b.agentId, x.tool, x.action, now())).some((g) => g.tenantId === tenantId)) missing.push(`${x.tool}.${x.action}`);
+      if (missing.length) throw new Bad(409, "needs_scopes", `grant these scopes first; a recipe never grants them: ${missing.join(", ")}`);
+      try { const space = await spaces.create(instantiate(entry.recipe, { tenantId, agentId: b.agentId, createdBy: b.createdBy, nowMs: now(), ...(b.narrow ? { narrow: b.narrow as Narrowing } : {}) }), now()); return { space: view(space), recipe: { id: entry.recipe.id, version: entry.recipe.version, reviewedBy: entry.review.reviewedBy } }; }
+      catch (e) { if (e instanceof RecipeError || e instanceof SpaceError) throw new Bad(400, "invalid_narrowing", e.message); throw e; }
     }
     throw new Bad(404, "not_found", "unknown admin endpoint");
   };

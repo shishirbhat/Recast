@@ -67,6 +67,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | API contract (OpenAPI 3.1) served per account; every response in the API, placement, release and SDK tests and on the built server checked against it; breaking-change gate against a committed v1 baseline; SDK safe on unknown statuses | `packages/api-core/src/{openapi,contract,compat}.ts`, `contract/v1.json`; `docs/18-api-compatibility.md` | api-core contract 5 plus every guarded test, SDK compat 3, built server 1 (12 requests) | U, H | no published SDK; request bodies validated by the server code, not by the schema |
 | Performance and reliability budget: local latencies for resolve, placement and gateway overhead (memory and Postgres); limits; failure behaviour; gateway upstream timeout added | `bench/run.ts`, `docs/PERFORMANCE.md`, `agent-runtime/src/gateway.ts` | bench (manual), gateway timeout test | H | not hosted; no load test; not enforced in CI |
 | Credential and permission boundary review (internal): every credential and boundary listed with its enforcement and test; 5 findings fixed (anonymous and non-member access to the runtime link, no upstream timeout, malformed Space input, string constraints); dependency audit | `docs/14-security-review.md`, `apps/web/lib/runtime.ts` | web 3 (built server, Postgres wire, Chromium), agent-runtime | U, H | **not external**; open risks listed (global operator token, no key rotation, env-held secrets, dev-tool advisories) |
+| Recipes and policy packs: declarative Space templates; packs deny or ask only, scoped to their Space; applying never grants scopes; only reviewed content (hash) runs; narrowing only; catalog of 3 | `packages/agent-runtime/src/{recipe,recipes-cli}.ts`, `recipes/`, `supabase/migrations/20260111000000_space_rules.sql`, agent-server `/admin/recipes`; `docs/19-recipes.md` | agent-runtime 9, agent-server 4 (official MCP client, Postgres wire) | U, H | reviews are internal and unsigned; no UI; sharing between accounts disabled |
 | Control center on Postgres with sign-in (local accounts, Supabase sessions) | `apps/web/{proxy.ts,lib/*}`, `packages/store/src/scoped.ts` | 8 browser tests over Postgres wire; 8 unit; isolation between two people | H, F | Supabase is a stand-in; JWKS (asymmetric) tokens unsupported |
 
 ## 2. Implemented but not fully verified
@@ -89,7 +90,6 @@ The previously reported harness failures (two capitalisation assertions in Layer
 |---|---|
 | Release gates in the control center | people's accounts have no cohort yet |
 | Hosted performance (cold starts, network database, providers), load and soak tests | a deployment (#21); local budget and measurements in `docs/PERFORMANCE.md` |
-| Recipes and policy packs | P7 |
 | Deployments (Supabase, Vercel, runtime host) | the founders' accounts (#21) |
 | Real OAuth bridges | the founders' Google/Notion apps (#22) |
 | Native Windows shell | a Windows machine (#23) |

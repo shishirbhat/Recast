@@ -27,7 +27,8 @@ export const CAPABILITIES = {
   "mcp.recast-tools": { state: "private", surface: "mcp", description: "resolve_object and list_destinations as MCP tools" },
   "agent.gateway": { state: "private", surface: "agent", description: "Agent identity, scopes, policy, approvals and audit through the gateway" },
   "agent.spaces": { state: "internal", surface: "agent", description: "Spaces: bounded agent configurations" },
-  "community.recipes": { state: "disabled", surface: "community", description: "Recipes and policy packs" },
+  "agent.recipes": { state: "internal", surface: "agent", description: "Apply a reviewed first-party recipe to create a Space" },
+  "community.recipes": { state: "disabled", surface: "community", description: "Recipes and policy packs shared between accounts" },
   "data.library": { state: "disabled", surface: "data", description: "Data Library" },
 } as const satisfies Record<string, CapabilityInfo>;
 export type Capability = keyof typeof CAPABILITIES;

@@ -15,6 +15,8 @@ export interface ServerConfig {
   vault: Record<string, Record<string, string>>;
   /** "required": every tool call must fit an active Space of the agent (docs/16-spaces.md). */
   spaces: "off" | "required";
+  /** Directory of reviewed recipes (docs/19-recipes.md). Without it, no recipe can be applied. */
+  recipesDir?: string;
   /** RECAST_RELEASE overrides (docs/RELEASE_STATES.md). */
   release: Partial<Record<Capability, ReleaseState>>;
 }
@@ -33,7 +35,7 @@ export function loadConfig(env: Record<string, string | undefined>): ServerConfi
   const upstreamUrl = need("UPSTREAM_URL"); try { new URL(upstreamUrl); } catch { throw new ConfigError("UPSTREAM_URL must be a URL"); }
   const spaces = (env.SPACES_MODE ?? "off") as ServerConfig["spaces"]; if (!["off", "required"].includes(spaces)) throw new ConfigError("SPACES_MODE must be off or required");
   let release: ServerConfig["release"]; try { release = parseOverrides(env.RECAST_RELEASE); } catch (e) { if (e instanceof ReleaseConfigError) throw new ConfigError(e.message); throw e; }
-  return { spaces, release, port, databaseUrl: need("DATABASE_URL"), audience: env.GATEWAY_AUDIENCE ?? "recast-gateway", upstreamUrl, ...(env.PUBLIC_URL ? { publicUrl: env.PUBLIC_URL } : {}), proof, adminToken,
+  return { spaces, release, ...(env.RECIPES_DIR ? { recipesDir: env.RECIPES_DIR } : {}), port, databaseUrl: need("DATABASE_URL"), audience: env.GATEWAY_AUDIENCE ?? "recast-gateway", upstreamUrl, ...(env.PUBLIC_URL ? { publicUrl: env.PUBLIC_URL } : {}), proof, adminToken,
     signingKey: { privateJwk: jwk, publicJwk: { kty: jwk.kty, crv: jwk.crv, x: jwk.x }, keyId: env.RUNTIME_KEY_ID ?? "rt-1" }, vault };
 }
 

@@ -107,3 +107,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Alternatives:** generating the spec from code (no schema library in the handler today); generating code from the spec (heavy for one handler); tests without a baseline (cannot tell an addition from a removal).
 - **Why:** a developer integration breaks on a renamed field, not on a missing feature. The cheapest guard is to make every existing test a contract test.
 - **Change if:** the API grows past one handler, or a typed schema library is adopted in the handler. Then generate the spec from it.
+
+### D21. Recipes create Spaces; their packs only tighten; only reviewed content runs
+- **Decision:** a recipe is YAML (tools, bounds, duration, and a pack of deny or require_approval rules). Applying one creates a Space for one agent and grants nothing: missing scopes are refused, not added. Pack rules live on that Space and apply only to its agent, checked at parse, at creation, by a database trigger and again at evaluation. A review pins the SHA-256 of the behavioural content, and the server applies only reviewed recipes. Sharing between accounts stays disabled.
+- **Alternatives:** packs merged into the tenant policy (a pack could then affect every agent); recipes that also grant scopes (one click to broad authority); reviewing by version number (an edit without a version bump would slip through).
+- **Why:** a template is only safe to reuse if it can never widen authority, and if what runs is exactly what someone looked at.
+- **Change if:** recipes are shared between accounts. Then reviews must be signed by a publisher and verified on apply.
