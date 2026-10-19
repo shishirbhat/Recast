@@ -1,5 +1,6 @@
 // preview -> plan -> commit -> undo, plus the append-only log and inspection.
 import { RecastError } from "./errors.js";
+import { OutcomeUnknownError } from "./lifecycle.js";
 import { hash32 } from "./canonical.js";
 import { assertReady } from "./propose.js";
 import { HOLD_MS, RELIABILITY_LABEL } from "./trust.js";
@@ -67,7 +68,9 @@ export async function commit(op: Operation, consent: Consent, env: CommitEnv): P
   let ref: string | undefined;
   try { ({ ref } = await env.bridge.execute(op)); }
   catch (e) {
-    await env.log.append({ kind: "failed", at: env.now(), opId: op.opId, reason: e instanceof Error ? e.message : String(e) });
+    // A write that may have arrived is not a failure: it is unknown until reconciled. Never retried here.
+    if (e instanceof OutcomeUnknownError) await env.log.append({ kind: "unknown", at: env.now(), opId: op.opId, reason: e.message, ...(e.reconcileRef ? { reconcileRef: e.reconcileRef } : {}) });
+    else await env.log.append({ kind: "failed", at: env.now(), opId: op.opId, reason: e instanceof Error ? e.message : String(e) });
     throw e;
   }
   const at = env.now();

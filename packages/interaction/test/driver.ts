@@ -1,7 +1,7 @@
 // A real host for the machine: performs effects with the real core (propose/plan/commit/undo) and a real
 // in-memory destination. The only things faked are the screen and the pointer, which a test has to supply.
 import { InMemoryEventLog, commit, resolve, undo } from "@recast/core";
-import type { Bridge, Candidate as CoreCandidate, CapabilityContract, Operation, Receipt } from "@recast/core";
+import type { Bridge, Candidate as CoreCandidate, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { contains, initialState, reduce } from "../src/index.js";
 import type { Candidate, Destination, Effect, Event, State } from "../src/index.js";
 
@@ -23,6 +23,14 @@ export const tasks: CapabilityContract = {
   destination: "tasks.task", app: "Tasks", targetKind: "Task", reliability: "deep-link",
   accepts: [{ relationId: "document-task-reference", effect: "Attach reference", dataMoved: ["Document.title", "Document.url"] }],
 };
+
+/** A calendar that accepts whole events (the composition target). */
+export const agenda: CapabilityContract = {
+  destination: "calendar.agenda", app: "Calendar", targetKind: "Calendar", reliability: "official-api",
+  accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.location"] }],
+};
+const piece = (id: string, kind: Fragment["kind"], text: string, extra: Partial<Fragment> = {}): Fragment =>
+  ({ id, kind, text, confidence: 0.9, evidence: [{ locator: { kind: "css", value: `#${id}` }, excerpt: text }], source: { app: "test", url: "https://example.com/invite" }, ...extra });
 
 export class MemoryBridge implements Bridge {
   state: string[] = []; failNext = false;
@@ -47,6 +55,8 @@ export function obj(type: CoreCandidate["type"], properties: Record<string, unkn
 export const R = {
   meera: { x: 20, y: 20, w: 140, h: 30 }, noEmail: { x: 20, y: 60, w: 140, h: 30 }, toit: { x: 20, y: 100, w: 140, h: 30 }, shaky: { x: 20, y: 140, w: 140, h: 30 },
   calendar: { x: 300, y: 20, w: 300, h: 260 }, mail: { x: 300, y: 320, w: 300, h: 200 }, tasks: { x: 700, y: 20, w: 200, h: 200 },
+  when: { x: 20, y: 200, w: 140, h: 24 }, where: { x: 20, y: 240, w: 140, h: 24 }, what: { x: 20, y: 280, w: 140, h: 24 }, when2: { x: 20, y: 320, w: 140, h: 24 },
+  agenda: { x: 700, y: 300, w: 260, h: 240 },
 };
 
 export function scene() {
@@ -55,21 +65,26 @@ export function scene() {
     { id: "noemail", rect: R.noEmail, object: obj("Person", { name: "No Email" }) },
     { id: "toit", rect: R.toit, object: obj("Location", { name: "Toit", address: "298 100 Feet Rd, Bengaluru" }) },
     { id: "shaky", rect: R.shaky, object: obj("Person", { name: "Maybe Meera", email: ["maybe@example.com"] }, 0.4) },
+    { id: "when", rect: R.when, fragment: piece("when", "time", "Sat 14 Nov 2026, 7:30 pm") },
+    { id: "where", rect: R.where, fragment: piece("where", "place", "Toit", { value: { name: "Toit", address: "298 100 Feet Rd, Bengaluru" } }) },
+    { id: "what", rect: R.what, fragment: piece("what", "title", "Launch dinner") },
+    { id: "when2", rect: R.when2, fragment: piece("when2", "time", "Sun 15 Nov 2026, 7:30 pm") },
   ];
   const destinations: Destination[] = [
     { id: "calendar", label: "Google Calendar", rect: R.calendar, contract: calendar },
     { id: "mail", label: "Mail", rect: R.mail, contract: mailSend },
     { id: "tasks", label: "Tasks", rect: R.tasks, contract: tasks },
+    { id: "agenda", label: "Calendar", rect: R.agenda, contract: agenda },
   ];
   return { candidates, destinations };
 }
 
 export class Driver {
-  state: State = initialState(0);
+  state: State = initialState(Date.parse("2026-10-19T09:00:00Z"), { timezone: "Asia/Kolkata" });
+  clock = Date.parse("2026-10-19T09:00:00Z");
   effects: Effect[] = []; log: Effect[] = [];
-  bridges: Record<string, MemoryBridge> = { "google-calendar.event-editor": new MemoryBridge(calendar), "mail.send-now": new MemoryBridge(mailSend), "tasks.task": new MemoryBridge(tasks) };
+  bridges: Record<string, MemoryBridge> = { "google-calendar.event-editor": new MemoryBridge(calendar), "mail.send-now": new MemoryBridge(mailSend), "tasks.task": new MemoryBridge(tasks), "calendar.agenda": new MemoryBridge(agenda) };
   eventLog = new InMemoryEventLog();
-  clock = 0;
   sc = scene();
   autoRun = true;
 

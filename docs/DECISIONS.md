@@ -83,3 +83,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 
 ### D16. One action lifecycle for consumer, API and agent execution
 - **Decision:** `proposed → validated → awaiting_approval? → executing → succeeded | failed | outcome_unknown`, plus `cancelled`, `denied`, `expired` and `reversed`. Success is reported only after the provider confirms. A timeout after a write is `outcome_unknown` and is reconciled, never blindly retried. Undo is a declared capability of a bridge operation, not a universal promise.
+
+### D17. Confidence of composed values reflects the reading, not the classifier's prior
+- **Decision:** a value from a piece the person explicitly picked is read at 0.9 (verbatim text, or an explicit date or time). An inference is 0.6, below the trust model's 0.75, so it asks for a confirmation. Defaults are 0.9 and always listed as assumptions. Values the person typed are 1.0.
+- **Context:** pieces carry the classifier's 0.6–0.7 "is this element a time" prior. Without this rule, every composed event needed a confirmation after the person had already seen the full preview, which is the redundant approval the brief forbids.
+- **Alternatives:** lowering the trust threshold (rejected: affects every action); skipping consent for compositions (rejected: inferences and risky effects must still ask).
+- **Change if:** people place wrong values because they skim the preview. Then raise the bar or highlight inferred fields more.

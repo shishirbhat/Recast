@@ -35,7 +35,7 @@ Nothing in this repository has reached **R** or **P** yet.
 ```
 
 ## 1. Consumer path
-Screen element → extraction → evidence and object → (composition: **not built yet**) → resolution → destination proposal → risk and consent → confirmation → destination execution → receipt → reversal.
+Screen element → extraction → evidence and object → composition of pieces (capsule) → resolution → destination proposal → risk and consent → confirmation → destination execution → receipt → reversal.
 
 | Step | Component | Interface | Where | Verified | Notes |
 |---|---|---|---|---|---|
@@ -43,7 +43,9 @@ Screen element → extraction → evidence and object → (composition: **not bu
 | Page extraction | `packages/extract-web/src/{extract,dom,signals}.ts` | Document → candidates with evidence | local | U, H | JSON-LD, OG, `citation_*`, DOM rules |
 | Browser extension | `apps/extension/src/{page,popup}.ts` | popup lists what the page holds | local | U | **Does not include the overlay or placement.** Extraction and display only |
 | Resolve to object | `packages/core/src/resolve.ts` | candidate → `SemanticObject` (content id, per-field confidence and evidence) | local | U | |
-| Compose fragments | **missing** | — | — | — | Task P2 |
+| Pick pieces | `packages/extract-web/src/element.ts` (`classifyPiece`) | element → time, place or title `Fragment` | local | U, H | |
+| Compose fragments | `packages/core/src/compose.ts` (`compose`, `readTime`) | fragments + context → values with origins, missing, conflicts, assumptions, candidate | local, pure | U, H | |
+| Capsule gesture | `packages/interaction` (capsule, `completing` phase) | collect, park, approach, complete, place | local, pure | U, H | |
 | Interaction state machine | `packages/interaction/src/{machine,view}.ts` | `reduce(state, event) → {state, effects}`; `selectView` | local, pure | U (32) | single object per carry today |
 | Overlay | `packages/overlay/src/{components,store,motion}.tsx` | `mountOverlay({onUndo}).update(view)` | local, shadow DOM | H | |
 | Propose, plan, risk | `packages/core/src/{propose,trust,operate}.ts` | `propose(obj, contract)`, `plan`, `assessRisk`, `checkConsent` | local | U | consent: release, confirm or hold ≥600 ms |

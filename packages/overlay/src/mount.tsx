@@ -1,11 +1,11 @@
 import { createRoot } from "react-dom/client";
 import type { View } from "@recast/interaction";
-import { Overlay } from "./components.js";
+import { Overlay, type CompletionHandlers } from "./components.js";
 import { OVERLAY_CSS } from "./css.generated.js";
 import { createStore } from "./store.js";
 
 /** Mounts the overlay in a shadow root, so page styles cannot reach it and its styles cannot leak into the page. */
-export function mountOverlay(opts: { onUndo: () => void; parent?: HTMLElement }) {
+export function mountOverlay(opts: { onUndo: () => void; completion?: CompletionHandlers; parent?: HTMLElement }) {
   const host = document.createElement("recast-overlay");
   const shadow = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
@@ -15,6 +15,6 @@ export function mountOverlay(opts: { onUndo: () => void; parent?: HTMLElement })
   (opts.parent ?? document.documentElement).appendChild(host);
   const store = createStore();
   const root = createRoot(mountPoint);
-  root.render(<Overlay store={store} onUndo={opts.onUndo} />);
+  root.render(<Overlay store={store} onUndo={opts.onUndo} {...(opts.completion ? { completion: opts.completion } : {})} />);
   return { host, update: (v: View) => store.update(v), destroy: () => { root.unmount(); host.remove(); } };
 }

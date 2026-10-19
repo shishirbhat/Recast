@@ -58,6 +58,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Deployable runtime server on Postgres | `apps/agent-server` | 10 tests over Postgres wire with the official MCP client | H | Dockerfile never built; not deployed |
 | Tenant isolation, append-only audit, erasure via receipt | `supabase/migrations/*`, `packages/store/test/*` | store 49 (RLS, triggers, erasure across 14 tables) on PGlite | U, H | PGlite, not a real Supabase project |
 | Control center: sections, privacy export/delete, approvals | `apps/web` | 29 tests incl. axe on every section | H | demo data unless `DATABASE_URL` |
+| Composition: time + place (+ title) into an Event with per-field origin, missing fields, conflicts and visible assumptions; capsule gesture with completion; pointer and keyboard | `packages/core/src/compose.ts`, `packages/interaction` (capsule), `packages/extract-web` `classifyPiece`, `apps/harness/src/compose.html`; `docs/15-composition.md` | core 17, engine 12, extract-web 4, Chromium 7 (journey, missing title, conflict, Esc, keyboard, axe light and dark) | U, H | in-page calendar only; no real calendar; no Windows |
 | Control center on Postgres with sign-in (local accounts, Supabase sessions) | `apps/web/{proxy.ts,lib/*}`, `packages/store/src/scoped.ts` | 8 browser tests over Postgres wire; 8 unit; isolation between two people | H, F | Supabase is a stand-in; JWKS (asymmetric) tokens unsupported |
 
 ## 2. Implemented but not fully verified
@@ -73,13 +74,11 @@ The previously reported harness failures (two capitalisation assertions in Layer
 ## 3. In progress
 | Requirement | Where | State |
 |---|---|---|
-| Composition: time + place (+ title) → Event candidate with missing fields, conflicts and per-field origin | `packages/core/src/compose.ts`; schema evidence `origin`, `source`, `original`; capture method `composition` | model and 16 unit tests done (U). The gesture, harness prototype and browser tests are next (P2) |
 | System map, decision log | `docs/SYSTEM_MAP.md`, `docs/DECISIONS.md` | written; kept current |
 
 ## 4. Not started, or blocked outside the repository
 | Item | Blocked on |
 |---|---|
-| Multi-fragment capture gesture in the interaction engine | P2, next |
 | Formal action lifecycle (`proposed … outcome_unknown`) and bridge capability declarations | P3 |
 | Calendar event creation with idempotency, duplicate detection and reconciliation | P3 (F); R needs Google OAuth (#22) |
 | Release-state registry | in plan |

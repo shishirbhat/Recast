@@ -149,6 +149,13 @@ export function readTime(text: string, ctx: Pick<ComposeContext, "now" | "timezo
 // ---------------------------------------------------------------- composing ----------------------------------------------------------------
 
 const REQUIRED: EventField[] = ["title", "start"];
+/**
+ * Confidence of a composed value. The person picked each piece themselves, so the classifier's guess about *which* element
+ * matters no longer applies; what remains is how certain the reading of that text is. A verbatim value or an explicit date
+ * is read with high confidence. An inference ("Friday" → a date) stays below the trust model's 0.75, so placing it asks for
+ * a confirmation. A default is policy, shown in the preview and the assumptions.
+ */
+export const COMPOSED_CONFIDENCE = { extracted: 0.9, inferred: 0.6, default: 0.9, user: 1 } as const;
 
 /** Combine fragments into an Event candidate. Deterministic for the same inputs and context. */
 export function compose(fragments: Fragment[], ctx: ComposeContext): Composition {
@@ -180,7 +187,7 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
     if (distinct.length > 1 && !chosen) { conflicts.push({ field, options: distinct.map((o) => ({ value: o.value, fragmentId: o.f.id, original: o.original })) }); return null; }
     const o = chosen ?? distinct[0]!;
     const same = opts.filter((x) => x.value.toLowerCase() === o.value.toLowerCase());
-    return { value: o.value, ids: same.map((x) => x.f.id), original: o.original, conf: Math.min(...same.map((x) => x.f.confidence)) };
+    return { value: o.value, ids: same.map((x) => x.f.id), original: o.original, conf: COMPOSED_CONFIDENCE.extracted };
   };
 
   // Title
@@ -216,7 +223,7 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
       const inferred = dr.dateOrigin === "inferred";
       if (inferred && dr.dateNote) assumptions.push(dr.dateNote);
       if (t) {
-        set("start", { value: `${d.value}T${t.value}`, origin: inferred ? "inferred" : "extracted", fragments: [...new Set([...d.ids, ...t.ids])], original: [...new Set([d.original, t.original])].join(" + "), confidence: Math.min(d.conf, t.conf), ...(inferred ? { note: dr.dateNote! } : {}) });
+        set("start", { value: `${d.value}T${t.value}`, origin: inferred ? "inferred" : "extracted", fragments: [...new Set([...d.ids, ...t.ids])], original: [...new Set([d.original, t.original])].join(" + "), confidence: inferred ? COMPOSED_CONFIDENCE.inferred : COMPOSED_CONFIDENCE.extracted, ...(inferred ? { note: dr.dateNote! } : {}) });
         const endReading = starts.find((x) => x.f.id === t.ids[0])!.r;
         if (endReading.end && !answers.end) {
           const crossesMidnight = endReading.end <= endReading.start!;
@@ -224,9 +231,11 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
           set("end", { value: `${endDate}T${endReading.end}`, origin: "extracted", fragments: t.ids, original: t.original, confidence: t.conf });
         }
       } else if (!conflicts.some((c) => c.field === "start")) {
-        set("start", { value: d.value, origin: inferred ? "inferred" : "extracted", fragments: d.ids, original: d.original, confidence: d.conf, ...(inferred ? { note: dr.dateNote! } : {}) });
-        if (answers.allDay === undefined) { set("allDay", { value: true, origin: "inferred", fragments: d.ids, confidence: d.conf, note: "no time was captured, so this is an all-day event" }); assumptions.push("All day, because no time was captured"); }
+        set("start", { value: d.value, origin: inferred ? "inferred" : "extracted", fragments: d.ids, original: d.original, confidence: inferred ? COMPOSED_CONFIDENCE.inferred : COMPOSED_CONFIDENCE.extracted, ...(inferred ? { note: dr.dateNote! } : {}) });
+        if (answers.allDay === undefined) { set("allDay", { value: true, origin: "inferred", fragments: d.ids, confidence: COMPOSED_CONFIDENCE.inferred, note: "no time was captured, so this is an all-day event" }); assumptions.push("All day, because no time was captured"); }
       }
+    } else if (conflicts.some((c) => c.field === "start")) {
+      // two different dates: the conflict says it all; do not also report the date as missing
     } else if (t && !ambiguous) missing.push({ field: "start", reason: `a time (${t.value}) was captured but no date` });
     else if (!ambiguous && !conflicts.some((c) => c.field === "start") && !missing.some((x) => x.field === "start")) missing.push({ field: "start", reason: "no date or time was captured" });
   }
@@ -239,7 +248,7 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
       set("timezone", { value: z.value, origin: "extracted", fragments: z.ids, original: z.original, confidence: z.conf });
       if (/^[A-Z]{2,4}$/.test(z.original)) assumptions.push(`"${z.original}" read as ${z.value}`);
     } else if (!conflicts.some((c) => c.field === "timezone") && fields.start && fields.allDay?.value !== true) {
-      set("timezone", { value: ctx.timezone, origin: "default", fragments: [], confidence: 1, note: "your time zone; the source named none" });
+      set("timezone", { value: ctx.timezone, origin: "default", fragments: [], confidence: COMPOSED_CONFIDENCE.default, note: "your time zone; the source named none" });
       assumptions.push(`Time zone ${ctx.timezone} (yours; the source named none)`);
     }
   }
@@ -250,7 +259,7 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
     const [date, hm] = fields.start.value.split("T") as [string, string];
     const [y, mo, d] = date.split("-").map(Number) as [number, number, number]; const [h, mi] = hm.split(":").map(Number) as [number, number];
     const t = new Date(Date.UTC(y, mo - 1, d, h, mi + mins));
-    set("end", { value: `${ymd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`, origin: "default", fragments: [], confidence: 1, note: `${mins} minutes, a default` });
+    set("end", { value: `${ymd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`, origin: "default", fragments: [], confidence: COMPOSED_CONFIDENCE.default, note: `${mins} minutes, a default` });
     assumptions.push(`Ends after ${mins} minutes (a default; change it if needed)`);
   }
 

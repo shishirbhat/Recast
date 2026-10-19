@@ -38,11 +38,12 @@ function Token({ token, store }: { token: NonNullable<View["token"]>; store: Sto
   );
 }
 
-function TokenFace({ token }: { token: Pick<NonNullable<View["token"]>, "glyph" | "title" | "favicon"> }) {
+function TokenFace({ token }: { token: Pick<NonNullable<View["token"]>, "glyph" | "title" | "favicon" | "pieces"> }) {
   return (
     <>
       <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-(--r-pill) bg-(--accent) font-mono text-[12px] font-semibold text-(--on-accent)">{token.glyph}</span>
       <span className="truncate text-[13px] font-medium">{token.title}</span>
+      {token.pieces ? <span data-testid="token-pieces" aria-label={`${token.pieces} pieces`} className="shrink-0 rounded-(--r-pill) bg-(--surface-sunken) px-1.5 font-mono text-[11px] text-(--text-muted)">{token.pieces}</span> : null}
       {token.favicon ? <img alt="" src={token.favicon} className="size-4 shrink-0 rounded-sm" /> : null}
     </>
   );
@@ -126,6 +127,50 @@ function Ghost({ view }: { view: View }) {
   );
 }
 
+export interface CompletionHandlers { onAnswer: (field: string, value: string) => void; onChoose: (field: string, fragmentId: string) => void; onSubmit: () => void }
+const FIELD_LABEL: Record<string, string> = { title: "Title", start: "Starts", end: "Ends", location: "Place", timezone: "Time zone", allDay: "All day" };
+
+/** Before an incomplete capsule is placed: ask only for what is missing or conflicting, and show what was assumed. */
+function CompletionCard({ view, handlers }: { view: View; handlers: CompletionHandlers }) {
+  const reduce = !!useReducedMotion();
+  const c = view.completion; const d = view.destinationRect;
+  if (!view.completing || !c) return null;
+  const left = d ? Math.max(8, d.x + 16) : 24, top = d ? d.y + 56 : 24;
+  return (
+    <motion.div role="dialog" aria-label="Finish before placing" data-testid="completion" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={reduce ? INSTANT : SPRING.carry}
+      style={{ left, top, width: 300 }} className="pointer-events-auto absolute rounded-(--r-panel) border border-(--line-soft) bg-(--surface-raised) p-4 text-[13px] text-(--text) shadow-(--shadow-lifted)">
+      <p className="mb-3 font-medium">Before it goes in</p>
+      <div className="grid gap-3">
+        {c.missing.map((m) => (
+          <div key={`m-${m.field}`} className="grid gap-1">
+            <label htmlFor={`recast-${m.field}`} className="text-[12px] text-(--text-muted)">{FIELD_LABEL[m.field] ?? m.field} <span className="sr-only">is needed: </span><span aria-hidden>· {m.reason}</span></label>
+            {m.suggestions?.length && m.field === "start"
+              ? <div className="flex flex-wrap gap-1.5">{m.suggestions.map((sug) => <button key={sug} type="button" data-testid="suggestion" aria-pressed={c.answers[m.field] === sug} onClick={() => handlers.onAnswer(m.field, sug)} className="cursor-pointer rounded-(--r-pill) border border-(--line-soft) px-2.5 py-1 hover:bg-(--accent-soft) aria-pressed:border-(--accent) aria-pressed:bg-(--accent-soft) focus-visible:outline-2 focus-visible:outline-(--focus)">{sug}</button>)}</div>
+              : <input id={`recast-${m.field}`} data-testid={`answer-${m.field}`} autoFocus={c.missing[0] === m} defaultValue="" placeholder={m.suggestions?.[0] ?? (m.field === "start" || m.field === "end" ? "2026-11-14T19:30" : "")}
+                  onChange={(e) => handlers.onAnswer(m.field, e.currentTarget.value)}
+                  className="h-9 rounded-(--r-input) border border-(--line) bg-(--surface) px-3 focus-visible:outline-2 focus-visible:outline-(--focus)" />}
+          </div>
+        ))}
+        {c.conflicts.map((x) => (
+          <fieldset key={`c-${x.field}`} className="grid gap-1">
+            <legend className="mb-1 text-[12px] text-(--text-muted)">{FIELD_LABEL[x.field] ?? x.field} · the pieces disagree, pick one</legend>
+            <div className="flex flex-wrap gap-1.5">{x.options.map((o) => (
+              <button key={o.fragmentId} type="button" data-testid="choice" aria-pressed={c.choices[x.field] === o.fragmentId} onClick={() => handlers.onChoose(x.field, o.fragmentId)} title={`From: ${o.original}`}
+                className="cursor-pointer rounded-(--r-pill) border border-(--line-soft) px-2.5 py-1 hover:bg-(--accent-soft) aria-pressed:border-(--accent) aria-pressed:bg-(--accent-soft) focus-visible:outline-2 focus-visible:outline-(--focus)">{o.value}</button>
+            ))}</div>
+          </fieldset>
+        ))}
+        {c.assumptions.length ? <ul data-testid="assumptions" className="grid gap-0.5 text-[12px] text-(--text-muted)">{c.assumptions.map((a) => <li key={a}>{a}</li>)}</ul> : null}
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <span className="text-[12px] text-(--text-muted)">Esc cancels</span>
+        <button type="button" data-testid="complete" onClick={handlers.onSubmit} disabled={!c.ready}
+          className="cursor-pointer rounded-(--r-pill) bg-(--accent) px-4 py-1.5 font-medium text-(--on-accent) disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus)">Continue</button>
+      </div>
+    </motion.div>
+  );
+}
+
 /** The countdown is one CSS animation started at mount (negative delay = time already elapsed). It must not depend on
  *  `remainingMs`, which changes on every tick: that would restart the animation and re-render this component constantly. */
 const Toast = memo(function Toast({ toast, onUndo }: { toast: NonNullable<View["toast"]>; onUndo: () => void }) {
@@ -147,7 +192,8 @@ const Toast = memo(function Toast({ toast, onUndo }: { toast: NonNullable<View["
   );
 }, (a, b) => a.toast.startedAt === b.toast.startedAt && a.toast.text === b.toast.text && a.toast.kind === b.toast.kind && a.onUndo === b.onUndo);
 
-export function Overlay({ store, onUndo }: { store: Store; onUndo: () => void }) {
+const NO_COMPLETION: CompletionHandlers = { onAnswer: () => {}, onChoose: () => {}, onSubmit: () => {} };
+export function Overlay({ store, onUndo, completion = NO_COMPLETION }: { store: Store; onUndo: () => void; completion?: CompletionHandlers }) {
   const view = useSyncExternalStore(store.subscribe, store.get);
   const last = useRef<NonNullable<View["token"]> | null>(null);
   const [dropped, setDropped] = useState<NonNullable<View["token"]> | null>(null);
@@ -160,9 +206,11 @@ export function Overlay({ store, onUndo }: { store: Store; onUndo: () => void })
   return (
     <>
       {view.liftOutline ? <LiftOutline rect={view.liftOutline} {...(view.liftGlyph ? { glyph: view.liftGlyph } : {})} /> : null}
+      {view.capsuleOutline ? <div data-testid="capsule-outline" className="absolute rounded-(--r-input) border-2 border-dashed border-(--accent)" style={{ left: view.capsuleOutline.x - 3, top: view.capsuleOutline.y - 3, width: view.capsuleOutline.w + 6, height: view.capsuleOutline.h + 6 }} /> : null}
       {view.destinationRect ? <div data-testid="destination" className="absolute rounded-(--r-panel) border-2 border-(--accent)" style={{ left: view.destinationRect.x, top: view.destinationRect.y, width: view.destinationRect.w, height: view.destinationRect.h }} /> : null}
       <Chips view={view} />
-      <Ghost view={view} />
+      {view.completing ? null : <Ghost view={view} />}
+      <CompletionCard view={view} handlers={completion} />
       {view.note ? <div data-testid="note" className="absolute rounded-(--r-input) bg-(--surface-raised) px-3 py-1.5 text-xs text-(--text-muted) shadow-(--shadow-token)" style={{ left: (view.destinationRect?.x ?? 0) + 16, top: (view.destinationRect?.y ?? 0) + (view.destinationRect?.h ?? 0) - 40 }}>{view.note}</div> : null}
       {view.token ? <Token token={view.token} store={store} /> : dropped ? <DroppedToken token={dropped} store={store} onDone={() => setDropped(null)} /> : null}
       <AnimatePresence>{view.toast ? <Toast key={view.toast.startedAt} toast={view.toast} onUndo={onUndo} /> : null}</AnimatePresence>

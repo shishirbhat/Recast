@@ -2,7 +2,7 @@ import type { CapabilityContract, Evidence, Provenance } from "./generated/types
 export type { CapabilityContract, Evidence, Provenance };
 
 export type ObjectType = "Person" | "Document" | "Event" | "Location" | "Image" | "Message" | "Task" | "Product" | "ResearchPaper";
-export type TargetKind = "Event" | "Task" | "Project" | "Message" | "Claim" | "ResearchPaper" | "Product";
+export type TargetKind = "Event" | "Task" | "Project" | "Message" | "Claim" | "ResearchPaper" | "Product" | "Calendar";
 export type RiskTier = "low" | "medium" | "high";
 export type Reliability = CapabilityContract["reliability"];
 export type EffectFlag = NonNullable<CapabilityContract["accepts"][number]["effectFlags"]>[number];
@@ -48,12 +48,15 @@ export interface Receipt {
 export type LogEntry =
   | { seq: number; at: string; kind: "commit"; receipt: Receipt }
   | { seq: number; at: string; kind: "undo"; receipt: Receipt }
-  | { seq: number; at: string; kind: "failed"; opId: string; reason: string };
+  | { seq: number; at: string; kind: "failed"; opId: string; reason: string }
+  | { seq: number; at: string; kind: "unknown"; opId: string; reason: string; reconcileRef?: string };
 export type NewLogEntry = LogEntry extends infer E ? (E extends unknown ? Omit<E, "seq"> : never) : never;
 
 export interface EventLog { append(e: NewLogEntry): Promise<void>; entries(): Promise<readonly LogEntry[]> }
 export interface Bridge {
   describe(): CapabilityContract;
+  /** What each accepted relation's operation declares (writes, idempotency, reversal, timeout behaviour). Optional for in-memory bridges. */
+  capabilities?(relationId: string): import("./lifecycle.js").OperationCapabilities | undefined;
   execute(op: Operation): Promise<{ ref?: string }>;
   undo(receipt: Receipt): Promise<void>;
 }

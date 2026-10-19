@@ -191,7 +191,7 @@ describe("keyboard-only path", () => {
     d.key("Tab", true, true); expect(d.state.hovered?.id).toBe("meera");
     d.key("Enter");
     expect(d.state.phase).toBe("previewing");
-    expect(d.state.placements.map((p) => `${p.proposal.relation}@${p.destination.id}`)).toEqual(["attendee@calendar", "recipient@mail"]);
+    expect(d.state.placements.map((p) => `${p.label}@${p.destination.id}`)).toEqual(["attendee@calendar", "recipient@mail"]);
     expect(d.state.live).toMatch(/attendee\. Add attendee: Meera Iyer as attendee/);
     d.key("Tab"); expect(d.state.destination?.id).toBe("mail");
     d.key("Tab"); expect(d.state.destination?.id).toBe("calendar");
@@ -231,11 +231,11 @@ describe("keyboard-only path", () => {
 
 describe("guarantees", () => {
   it("never mutates the lifted object, through every outcome", async () => {
-    const d = new Driver(); const before = serialize(d.sc.candidates[0]!.object);
+    const d = new Driver(); const before = serialize(d.sc.candidates[0]!.object!);
     d.lift("meera"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y); d.up(c.x, c.y);
     await d.run(d.down(c.x, c.y));
     await d.run(d.send({ type: "undoRequest" }));
-    expect(serialize(d.sc.candidates[0]!.object)).toBe(before);
+    expect(serialize(d.sc.candidates[0]!.object!)).toBe(before);
   });
   it("a toast from an earlier placement survives starting a new lift, and Undo still works", async () => {
     const d = new Driver(); d.lift("toit"); d.move(350, 200); const c = chipAt(R.calendar); d.move(c.x, c.y);

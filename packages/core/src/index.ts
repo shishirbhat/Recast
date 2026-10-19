@@ -9,3 +9,4 @@ export { sha256Hex } from "./sha256.js";
 export { RecastError } from "./errors.js";
 export type * from "./types.js";
 export { compose, readTime, type Composition, type ComposeContext, type ComposedField, type Conflict, type EventField, type Fragment, type FragmentKind, type Missing, type Origin, type TimeReading } from "./compose.js";
+export { advance, isTerminal, LifecycleError, OutcomeUnknownError, startAction, TRANSITIONS, type ActionRecord, type ActionStatus, type ActionStep, type OperationCapabilities } from "./lifecycle.js";

@@ -44,9 +44,24 @@ describe("reading times", () => {
   });
 });
 
+describe("composed confidence: what the trust model sees", () => {
+  it("values the person picked are read with high confidence; an inferred date stays below 0.75 so placing it asks to confirm", async () => {
+    const { assessRisk } = await import("../src/index.js");
+    const lowPrior = (k: Fragment["kind"], t: string, extra: Partial<Fragment> = {}) => frag(k, t, { confidence: 0.55, ...extra });
+    const exact = compose([lowPrior("time", "2026-11-14 7pm"), lowPrior("title", "Dinner")], CTX);
+    expect(exact.fields.start!.confidence).toBe(0.9); expect(exact.fields.title!.confidence).toBe(0.9);
+    const rel = compose([lowPrior("time", "Friday 7pm"), lowPrior("title", "Dinner")], CTX);
+    expect(rel.fields.start!.confidence).toBe(0.6);
+    const risk = (c: number) => assessRisk({ baseRisk: "low", flags: [], reversible: true, confidence: c, reliability: "official-api" }).consent;
+    expect(risk(Math.min(...Object.values(exact.fields).map((f) => f!.confidence)))).toBe("release");
+    expect(risk(Math.min(...Object.values(rel.fields).map((f) => f!.confidence)))).toBe("confirm");
+  });
+});
+
 describe("composing a time and a place into an event", () => {
   it("the acceptance journey: time + place + title becomes a ready candidate with provenance for every field", () => {
-    const c = compose([frag("time", "Sat 14 Nov 2026, 7:30 pm"), frag("place", "Toit", { value: { name: "Toit", address: "298 100 Feet Rd, Bengaluru" } }), frag("title", "Launch dinner")], CTX);
+    const when = frag("time", "Sat 14 Nov 2026, 7:30 pm");
+    const c = compose([when, frag("place", "Toit", { value: { name: "Toit", address: "298 100 Feet Rd, Bengaluru" } }), frag("title", "Launch dinner")], CTX);
     expect(c.status).toBe("ready");
     expect(c.fields.start).toMatchObject({ value: "2026-11-14T19:30", origin: "extracted" });
     expect(c.fields.location).toMatchObject({ value: "Toit, 298 100 Feet Rd, Bengaluru", origin: "extracted", original: "Toit" });
@@ -56,7 +71,7 @@ describe("composing a time and a place into an event", () => {
     expect(c.assumptions).toEqual(["Time zone Asia/Kolkata (yours; the source named none)", "Ends after 60 minutes (a default; change it if needed)"]);
     const obj = resolve(c.candidate!);
     expect(obj.type).toBe("Event"); expect(obj.provenance.capture.method).toBe("composition");
-    expect(obj.fields.start!.evidence.map((e) => [e.locator.value, e.origin, e.source?.url])).toEqual([["#el1", "extracted", "https://example.com/invite"]]);
+    expect(obj.fields.start!.evidence.map((e) => [e.locator.value, e.origin, e.source?.url])).toEqual([[when.evidence[0]!.locator.value, "extracted", "https://example.com/invite"]]);
     expect(obj.fields.end!.evidence[0]).toMatchObject({ locator: { kind: "composition", value: "default:end" }, origin: "default" });
   });
   it("a missing title is asked for, with a suggestion that is not filled in", () => {
@@ -77,6 +92,7 @@ describe("composing a time and a place into an event", () => {
     const c = compose([a, b, t], CTX);
     expect(c.status).toBe("incomplete");
     expect(c.conflicts).toEqual([{ field: "start", options: [{ value: "2026-11-14", fragmentId: a.id, original: a.text }, { value: "2026-11-15", fragmentId: b.id, original: b.text }] }]);
+    expect(c.missing).toEqual([]);   // the conflict is the only thing reported about start
     expect(compose([a, b, t], { ...CTX, choose: { start: b.id } }).fields.start).toMatchObject({ value: "2026-11-15T19:00", origin: "extracted" });
   });
   it("conflicting places conflict; the same place twice merges", () => {

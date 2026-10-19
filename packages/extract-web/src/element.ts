@@ -3,6 +3,8 @@
 // It may return more than one reading of the same text ("Gramercy Tavern" is a plausible person and a plausible place).
 // Every result is low confidence (0.45 to 0.7) and method "dom", so the trust model asks the user to check it.
 import type { Candidate, Evidence, FieldMeta } from "@recast/core";
+import { readTime } from "@recast/core";
+import type { Fragment } from "@recast/core";
 import { cssPath, norm, spacedText } from "./dom-util.js";
 
 export interface ElementOptions { url: string; now: string }
@@ -188,5 +190,33 @@ function findAddress(scope: Element): Element | null {
   const explicit = scope.querySelector("address,[itemprop~=address]");
   if (explicit && text(explicit).length >= 8) return explicit;
   for (const e of scope.querySelectorAll("p,div,span,li")) { if (e.children.length <= 3 && looksLikeAddress(text(e))) return e; }
+  return null;
+}
+
+export interface PieceOptions extends ElementOptions { timezone: string }
+/**
+ * The piece under the pointer, for composing (a time, a place, a title), read from that element only, never the whole page.
+ * Times are read by the core's own reader; places reuse the Location rules above; a short heading is a title.
+ * Confidence stays modest: a piece is a starting point the person sees and can correct, not a fact.
+ */
+export function classifyPiece(el: Element, opts: PieceOptions): Fragment | null {
+  const doc = el.ownerDocument;
+  const source = { app: new URL(opts.url).hostname, url: opts.url, ...(doc.title ? { title: doc.title.slice(0, 200) } : {}) };
+  const unitText = (e: Element) => text(e);
+  for (let cur: Element | null = el, i = 0; cur && i < 2 && cur !== doc.body; cur = cur.parentElement, i++) {
+    const t = unitText(cur);
+    if (t.length < 2 || t.length > 160) continue;
+    const evidence = [{ locator: { kind: "css" as const, value: cssPath(cur) }, excerpt: t.slice(0, 200) }];
+    if (readTime(t, { now: opts.now, timezone: opts.timezone })) return { id: cssPath(cur), kind: "time", text: t, confidence: 0.7, evidence, source };
+    const isHeading = cur.matches("h1,h2,h3,h4,[role=heading]");
+    // A place needs an address, or a confident name. A name-only reading in a heading is weaker than a title.
+    const place = classifyElement(cur, opts).find((c) => c.type === "Location"
+      && (typeof c.properties["address"] === "string" || (!isHeading && Math.min(...Object.values(c.fields).map((f) => f.confidence)) >= 0.6)));
+    if (place) {
+      const name = typeof place.properties["name"] === "string" ? place.properties["name"] : undefined, address = typeof place.properties["address"] === "string" ? place.properties["address"] : undefined;
+      return { id: cssPath(cur), kind: "place", text: t, value: { ...(name ? { name } : {}), ...(address ? { address } : {}) }, confidence: Math.min(...Object.values(place.fields).map((f) => f.confidence)), evidence, source };
+    }
+    if (isHeading && t.length <= 80) return { id: cssPath(cur), kind: "title", text: t, confidence: 0.6, evidence, source };
+  }
   return null;
 }

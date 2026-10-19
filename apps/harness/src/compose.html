@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recast harness: compose an event</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="harness.css">
+</head>
+<body data-scan="#source h2, #source .when, #source address">
+<main>
+  <section aria-label="Team chat" class="pane" id="source">
+    <h1>Team chat</h1>
+    <div class="msg"><b>Meera</b><p>Are we still on for <span class="when" id="when">Sat 14 Nov 2026, 7:30 pm</span>?</p></div>
+    <div class="msg"><b>Arjun</b><p>Yes, booked it:</p><address id="where">298 100 Feet Road, Indiranagar, Bengaluru 560038</address></div>
+    <div class="msg"><b>Meera</b><p>Or <span class="when" id="when2">Sun 15 Nov 2026, 7:30 pm</span> if Saturday is full.</p></div>
+    <div class="msg"><b>Arjun</b><p>Pinned topic:</p><h2 id="what">Launch dinner</h2></div>
+  </section>
+
+  <section aria-label="Calendar" class="pane dest" data-destination="agenda" data-label="Calendar" id="agenda">
+    <h2>Calendar</h2>
+    <ul id="agenda-list"></ul>
+  </section>
+</main>
+<script src="main.js"></script>
+</body>
+</html>
