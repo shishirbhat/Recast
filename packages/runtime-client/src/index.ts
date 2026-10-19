@@ -5,12 +5,23 @@ export interface ApprovalView { id: string; agentId: string; tool: string; actio
 export interface AuditView { seq: number; at: string; agentId: string; tool: string; action: string; result: string; reason?: string; humanApproved?: boolean; hash: string }
 export interface AuditReport { total: number; entries: AuditView[]; verification: { ok: true; entries: number } | { ok: false; brokenAt: number; reason: string } }
 
+/** A Space: one agent's bounded configuration (docs/16-spaces.md). Money is in minor units of `currency`. */
+export interface SpaceView {
+  id: string; agentId: string; name: string; purpose?: string; state: "active" | "stopped" | "expired" | "exhausted";
+  tools: { tool: string; action: string; approval?: "always" | "never" }[];
+  calls: number; maxCalls: number; spend?: { currency: string; spentMinor: number; limitMinor: number };
+  expiresAt: string; stoppedBy?: string;
+}
+
 export interface RuntimeClient {
   listAgents(): Promise<AgentView[]>;
   listApprovals(): Promise<ApprovalView[]>;
   /** `by` is the signed-in person; the runtime records it next to the decision. */
   decide(approvalId: string, approve: boolean, by: string): Promise<void>;
   audit(limit?: number): Promise<AuditReport>;
+  listSpaces(): Promise<SpaceView[]>;
+  /** Immediate and permanent. `by` is the signed-in person. */
+  stopSpace(id: string, by: string): Promise<void>;
 }
 
 export class RuntimeError extends Error { constructor(m: string, readonly status: number) { super(m); this.name = "RuntimeError"; } }
@@ -27,6 +38,13 @@ export class HttpRuntimeClient implements RuntimeClient {
   async listAgents() { return (await this.req(`/admin/agents?tenant=${this.o.tenantId}`)).agents as AgentView[]; }
   async listApprovals() { return ((await this.req(`/admin/approvals?tenant=${this.o.tenantId}`)).approvals as any[]).map((a) => ({ id: a.id, agentId: a.agentId, tool: a.tool, action: a.action, createdAt: a.createdAt })); }
   async decide(id: string, approve: boolean, by: string) { await this.req(`/admin/approvals/${encodeURIComponent(id)}/decide`, { method: "POST", body: JSON.stringify({ tenant: this.o.tenantId, approve, by }) }); }
+  async listSpaces(): Promise<SpaceView[]> {
+    const j = await this.req(`/admin/spaces?tenant=${this.o.tenantId}`);
+    return (j.spaces as any[]).map((s) => ({ id: s.id, agentId: s.agentId, name: s.name, ...(s.purpose ? { purpose: s.purpose } : {}), state: s.state,
+      tools: (s.tools as any[]).map((t) => ({ tool: t.tool, action: t.action, ...(t.approval ? { approval: t.approval } : {}) })), calls: s.calls, maxCalls: s.budget.maxCalls,
+      ...(s.budget.spend ? { spend: { currency: s.budget.spend.currency, spentMinor: s.spentMinor, limitMinor: s.budget.spend.limitMinor } } : {}), expiresAt: s.expiresAt, ...(s.stoppedBy ? { stoppedBy: s.stoppedBy } : {}) }));
+  }
+  async stopSpace(id: string, by: string) { await this.req(`/admin/spaces/${encodeURIComponent(id)}/stop`, { method: "POST", body: JSON.stringify({ tenant: this.o.tenantId, by }) }); }
   async audit(limit = 100): Promise<AuditReport> {
     const j = await this.req(`/admin/audit?tenant=${this.o.tenantId}&limit=${limit}`);
     return { total: j.total, verification: j.verification, entries: (j.entries as any[]).map((e) => ({ seq: e.seq, at: e.at, agentId: e.agentId, tool: e.tool, action: e.action, result: e.result, ...(e.reason ? { reason: e.reason } : {}), ...(e.humanApproved ? { humanApproved: true } : {}), hash: e.hash })) };
@@ -52,6 +70,14 @@ export class DemoRuntimeClient implements RuntimeClient {
     const a = this.approvals.find((x) => x.id === id); if (!a) throw new RuntimeError("no pending approval with that id (it may have been decided or expired)", 404);
     this.approvals = this.approvals.filter((x) => x.id !== id);
     this.log.push({ seq: this.log.length + 1, at: new Date().toISOString(), agentId: a.agentId, tool: a.tool, action: a.action, result: approve ? "allowed" : "denied", reason: `${approve ? "approved" : "rejected"} by ${by}`, humanApproved: approve, hash: String(this.log.length + 1).repeat(64).slice(0, 64) });
+  }
+  private spaces: SpaceView[] = [{ id: "spc_demo0001", agentId: "agt_9f3a2b000001", name: "Weekly team sync", purpose: "Book the Monday sync and invite the team", state: "active",
+    tools: [{ tool: "google_calendar", action: "create_event" }, { tool: "gmail", action: "send_email", approval: "always" }], calls: 1, maxCalls: 20,
+    spend: { currency: "INR", spentMinor: 0, limitMinor: 50_000 }, expiresAt: "2026-10-22T10:00:00.000Z" }];
+  async listSpaces() { return this.spaces.map((s) => ({ ...s })); }
+  async stopSpace(id: string, by: string) {
+    const s = this.spaces.find((x) => x.id === id && x.state === "active"); if (!s) throw new RuntimeError("no active Space with that id", 404);
+    s.state = "stopped"; s.stoppedBy = by;
   }
   async audit(): Promise<AuditReport> { return { total: this.log.length, entries: [...this.log], verification: { ok: true, entries: this.log.length } }; }
 }

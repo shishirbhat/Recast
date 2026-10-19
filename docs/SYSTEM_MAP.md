@@ -73,7 +73,9 @@ Screen element → extraction → evidence and object → composition of pieces 
 ## 3. Agent path
 Agent's MCP client → `apps/agent-server` `/mcp` → `packages/agent-runtime/src/gateway.ts`:
 - verify the agent token (`token.ts`), the DPoP-style proof (`proof.ts`), revocation and replay;
+- release check from the tenant's cohort (`agent.gateway`, `agent.spaces`);
 - check a live scope with calls left (`scope.ts`, `SqlScopeStore.consume_scope`);
+- with Spaces on: pick the agent's Space, check its tools and constraints, price the call, add its approval rules, reserve calls and money atomically (`space.ts`, `reserve_space`);
 - evaluate the policy, where deny beats approval beats allow, default deny (`policy.ts`);
 - for approval, the store is bound to a request hash (`approvals.ts`);
 - **audit the decision before forwarding** (`audit.ts`, `SqlAuditStore`), failing closed;
@@ -83,7 +85,7 @@ Agent's MCP client → `apps/agent-server` `/mcp` → `packages/agent-runtime/sr
 
 Admin: `apps/agent-server/src/server.ts` `/admin/*` (constant-time admin token) for agents, scopes, policy, approvals, revocation and audit. Control center: `packages/runtime-client` → admin API.
 
-Verified: U (crypto, gateway, policy, CLI), H (official MCP client through the gateway to a real local MCP server; deployable server over the Postgres wire protocol). **Not built:** Spaces (budgets including spending, expiry per Space, stop control), a stdio bridge for desktop MCP clients, onboarding. Tasks P4.
+Verified: U (crypto, gateway, policy, CLI), H (official MCP client through the gateway to a real local MCP server; deployable server over the Postgres wire protocol). Spaces: U, H (`docs/16-spaces.md`). **Not built:** a stdio bridge for desktop MCP clients, one-command onboarding (task #42).
 
 ## 4. Persistence: what lives where
 | Data | Store | Isolation enforced by | Notes |
@@ -95,6 +97,7 @@ Verified: U (crypto, gateway, policy, CLI), H (official MCP client through the g
 | Destination credentials | `api_credentials`, sealed (`placements.sql`) | AES-GCM bound to tenant and destination; no user policies | key from `RECAST_CREDENTIALS_KEY` |
 | Placement receipts | `api_placements` | members may read their tenant's rows | |
 | Agents, scopes, policies, approvals, revocations, proof replay | `agents`, `agent_scopes`, `agent_policies`, `agent_approvals`, `agent_revoked_tokens`, `agent_dpop_seen` | tenant RLS; scopes consumed atomically | |
+| Spaces | `agent_spaces` (`reserve_space`, no-restart trigger, ≤30 days) | tenant RLS for members; service role for the gateway | |
 | Agent audit | `agent_audit_log` (signed entry stored whole) | append-only triggers, unique `prev_hash` | erasure only via `erase_tenant` with a receipt (`tenant_erasures`) |
 
 Where checks happen:

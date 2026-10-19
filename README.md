@@ -8,7 +8,7 @@ Status: **Layer 0 done. Layer 1 built (gate met for structured pages). Layer 2a 
 pnpm install && pnpm gen && pnpm typecheck && pnpm test
 ```
 
-- `docs/ENGINEERING_STATUS.md` **what is actually verified**, `docs/SYSTEM_MAP.md` (components and flows), `docs/DECISIONS.md` (decision log), `docs/RELEASE_STATES.md` (who can use what), `docs/design-direction.md` (saved UI direction)
+- `docs/ENGINEERING_STATUS.md` **what is actually verified**, `docs/SYSTEM_MAP.md` (components and flows), `docs/DECISIONS.md` (decision log), `docs/RELEASE_STATES.md` (who can use what), `docs/16-spaces.md` (bounded agents), `docs/design-direction.md` (saved UI direction)
 - `docs/00-system-overview.md` **start here**: the whole system, workflows, data model, real vs not
 - `docs/01-research.md` verified facts, sources, dead ends
 - `docs/02-architecture.md` monorepo, schema strategy, core API, shells

@@ -5,6 +5,8 @@ export type AuditResult = "allowed" | "denied" | "pending_approval" | "success" 
 export interface AuditInput {
   tenantId: string; agentId: string; userId?: string; sessionId?: string; requestId: string; tool: string; action: string; params: unknown;
   result: AuditResult; reason?: string; humanApproved?: boolean; delegationChain?: string[];
+  /** The Space the call ran in, and what it cost against that Space's budget. */
+  spaceId?: string; costMinor?: number;
 }
 export interface AuditEntry extends AuditInput { seq: number; at: string; prevHash: string; hash: string; signature: string; keyId: string }
 export const GENESIS = "0".repeat(64);

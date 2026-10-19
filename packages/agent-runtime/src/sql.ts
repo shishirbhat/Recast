@@ -3,6 +3,8 @@ import type { Approval, ApprovalStore } from "./approvals";
 import type { AgentRecord, AgentRegistry } from "./identity";
 import { parsePolicy, type Policy } from "./policy";
 import type { Constraint, ScopeGrant, ScopeStore } from "./scope";
+import { SpaceError, validateSpace, type ReserveResult, type Space, type SpaceInput, type SpaceStore } from "./space";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** One Postgres connection (PGlite or node-postgres fit). These run as the service role: they are the gateway's own stores. */
 export interface Sql { query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<{ rows: T[]; affectedRows?: number }> }
@@ -130,5 +132,49 @@ export class SqlReplayCache {
     await this.sql.query(`delete from agent_dpop_seen where tenant_id = $1 and seen_ms < $2`, [tenantId, nowMs - this.windowMs]);
     const { rows } = await this.sql.query(`insert into agent_dpop_seen(tenant_id, jti, seen_ms) values ($1,$2,$3) on conflict do nothing returning jti`, [tenantId, jti, nowMs]);
     return rows.length === 1;
+  }
+}
+
+export class SqlSpaceStore implements SpaceStore {
+  constructor(private sql: Sql) {}
+  private map(r: any): Space {
+    return {
+      id: r.id, tenantId: r.tenant_id, agentId: r.agent_key, name: r.name, ...(r.purpose ? { purpose: r.purpose } : {}), tools: r.tools,
+      budget: { maxCalls: r.max_calls, ...(r.spend_currency ? { spend: { currency: r.spend_currency, limitMinor: Number(r.spend_limit_minor) } } : {}) },
+      expiresAt: iso(r.expires_at), status: r.status, calls: r.calls, spentMinor: Number(r.spent_minor), createdAt: iso(r.created_at),
+      ...(r.created_by ? { createdBy: r.created_by } : {}), ...(r.stopped_at ? { stoppedAt: iso(r.stopped_at), stoppedBy: r.stopped_by } : {}),
+    };
+  }
+  async create(s: SpaceInput, nowMs: number) {
+    validateSpace(s, nowMs);
+    const { rows } = await this.sql.query<any>(
+      `with ins as (insert into agent_spaces(tenant_id, agent_id, name, purpose, tools, max_calls, spend_currency, spend_limit_minor, expires_at, created_at, created_by)
+         select $1, a.id, $3, $4, $5, $6, $7, $8, $9, $10, $11 from agents a where a.agent_key = $2 and a.tenant_id = $1 returning *)
+       select ins.*, $2 as agent_key from ins`,
+      [s.tenantId, s.agentId, s.name, s.purpose ?? null, JSON.stringify(s.tools), s.budget.maxCalls, s.budget.spend?.currency ?? null, s.budget.spend?.limitMinor ?? null, s.expiresAt, new Date(nowMs).toISOString(), s.createdBy ?? null]);
+    if (!rows[0]) throw new SpaceError(`no agent ${s.agentId} in this tenant`);
+    return this.map(rows[0]);
+  }
+  async get(id: string, tenantId: string) {
+    if (!UUID.test(id)) return null;
+    const { rows } = await this.sql.query<any>(`select s.*, a.agent_key from agent_spaces s join agents a on a.id = s.agent_id where s.id = $1 and s.tenant_id = $2`, [id, tenantId]);
+    return rows[0] ? this.map(rows[0]) : null;
+  }
+  async list(tenantId: string, agentId?: string) {
+    const { rows } = await this.sql.query<any>(`select s.*, a.agent_key from agent_spaces s join agents a on a.id = s.agent_id where s.tenant_id = $1 and ($2::text is null or a.agent_key = $2) order by s.created_at, s.id`, [tenantId, agentId ?? null]);
+    return rows.map((r) => this.map(r));
+  }
+  async reserve(id: string, cost: number, nowMs: number): Promise<ReserveResult> {
+    if (!UUID.test(id)) return "not_found";
+    const { rows } = await this.sql.query<{ reserve_space: ReserveResult }>(`select reserve_space($1::uuid, $2::bigint, $3::timestamptz)`, [id, cost, new Date(nowMs).toISOString()]);
+    return rows[0]!.reserve_space;
+  }
+  async refund(id: string, take: { calls: number; cost: number }) {
+    await this.sql.query(`update agent_spaces set calls = greatest(0, calls - $2), spent_minor = greatest(0, spent_minor - $3) where id = $1`, [id, take.calls, take.cost]);
+  }
+  async stop(id: string, tenantId: string, by: string, nowMs: number) {
+    if (!UUID.test(id)) return false;
+    const { rows } = await this.sql.query(`update agent_spaces set status = 'stopped', stopped_at = $3, stopped_by = $4 where id = $1 and tenant_id = $2 and status = 'active' returning id`, [id, tenantId, new Date(nowMs).toISOString(), by]);
+    return rows.length > 0;
   }
 }

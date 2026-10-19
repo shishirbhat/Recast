@@ -7,6 +7,8 @@ import { evaluate, type Policy } from "./policy";
 import { checkConstraints, type ScopeStore } from "./scope";
 import { MemoryReplayCache, verifyProof, type ReplayCache } from "./proof";
 import { verifyAgentToken } from "./token";
+import { checkSpaceCall, spaceState, spaceTool, withSpaceRules, type Space, type SpaceStore } from "./space";
+import type { Capability, Cohort, Release } from "@recast/release";
 
 export interface GatewayDeps {
   /** The audience agent tokens must be issued for: this gateway. */
@@ -25,6 +27,10 @@ export interface GatewayDeps {
   proof?: "off" | "optional" | "required"; replay?: ReplayCache;
   /** The URL clients call, when the gateway sits behind a proxy and req.url is not what they signed. */
   publicUrl?: string;
+  /** With a Space store, every tool call must also fit an active Space of the agent (docs/16-spaces.md). */
+  spaces?: SpaceStore;
+  /** Release states, checked per request from the tenant's cohort (docs/RELEASE_STATES.md). */
+  release?: { release: Release; cohortOf: (tenantId: string) => Promise<Cohort> };
 }
 
 const PASS_THROUGH = new Set(["initialize", "ping", "tools/list"]);
@@ -72,6 +78,15 @@ export function createGateway(d: GatewayDeps) {
     if (!rpc || typeof rpc !== "object" || Array.isArray(rpc) || rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string") return rpcError(400, rpc?.id, -32600, "expected a single JSON-RPC 2.0 request (batches are not supported)");
     const method: string = rpc.method;
 
+    if (d.release) {
+      const cohort = await d.release.cohortOf(agent.tenantId);
+      const need: Capability[] = d.spaces ? ["agent.gateway", "agent.spaces"] : ["agent.gateway"];
+      if (!need.every((c) => d.release!.release.allows(c, cohort))) {
+        try { await log({ tool: "*", action: method, params: {}, result: "denied", reason: "not available to this account" }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
+        return rpcError(200, rpc.id, -32003, "this capability is not available to this account", undefined, { "x-recast-decision": "denied" });
+      }
+    }
+
     const passThrough = PASS_THROUGH.has(method) || method.startsWith("notifications/");
     if (!passThrough && method !== "tools/call") {
       try { await log({ tool: "*", action: method, params: {}, result: "denied", reason: "method is not supported by the gateway" }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
@@ -84,7 +99,12 @@ export function createGateway(d: GatewayDeps) {
       // The upstream usually wants a credential even to initialise or list tools. It is the one stored for tool "*" (if any).
       const cred = await exchangeToken({ tenantId: agent.tenantId, agentId: agent.agentId, tool: "*", action: method, ...d.exchange, now: now() });
       const res = await relay(doFetch, url, req, text, cred ? `${cred.tokenType} ${cred.accessToken}` : null);
-      return method === "tools/list" ? filterToolList(res, async (name) => { const t = parseToolName(name); return (await d.scopes.find(agent.agentId, t.tool, t.action, now())).length > 0; }) : res;
+      const live = d.spaces ? (await d.spaces.list(agent.tenantId, agent.agentId)).filter((s) => s.agentId === agent.agentId && spaceState(s, now()) === "active") : [];
+      return method === "tools/list" ? filterToolList(res, async (name) => {
+        const t = parseToolName(name);
+        if (d.spaces && !live.some((s) => spaceTool(s, t.tool, t.action))) return false;
+        return (await d.scopes.find(agent.agentId, t.tool, t.action, now())).length > 0;
+      }) : res;
     }
 
     // 3. Is this agent allowed, in this tool, doing this action, with these parameters?
@@ -93,8 +113,10 @@ export function createGateway(d: GatewayDeps) {
     const { tool, action } = parseToolName(nameArg);
     // A refusal is an application-level answer, so it travels as a JSON-RPC error over HTTP 200: that is what real MCP clients
     // turn into a typed error with its data. (A 403 would surface as a transport failure.) Observers read x-recast-decision.
+    let space: Space | null = null; let cost = 0;
+    const inSpace = () => (space ? { spaceId: space.id, ...(cost ? { costMinor: cost } : {}) } : {});
     const deny = async (_status: number, why: string, data?: unknown) => {
-      try { await log({ tool, action, params, result: "denied", reason: why }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
+      try { await log({ tool, action, params, result: "denied", reason: why, ...inSpace() }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
       return rpcError(200, rpc.id, -32003, why, data, { "x-recast-request-id": requestId, "x-recast-decision": "denied" });
     };
 
@@ -103,41 +125,69 @@ export function createGateway(d: GatewayDeps) {
     const fits = grants.map((g) => ({ g, problem: checkConstraints(g.constraints, params) })); const grant = fits.find((f) => !f.problem)?.g;
     if (!grant) return deny(403, `scope constraint failed: ${fits[0]!.problem}`);
 
+    // 3b. Which Space bounds this call? Named by the client, or the only active Space of this agent that includes the action.
+    if (d.spaces) {
+      const named = req.headers.get("x-recast-space");
+      const all = (await d.spaces.list(agent.tenantId, agent.agentId)).filter((s) => s.agentId === agent.agentId);
+      if (named) space = all.find((s) => s.id === named) ?? null;
+      else {
+        const fitting = all.filter((s) => spaceState(s, now()) === "active" && spaceTool(s, tool, action));
+        if (fitting.length > 1) return deny(403, `several Spaces include ${tool}.${action}; send x-recast-space`);
+        space = fitting[0] ?? null;
+      }
+      if (!space) return deny(403, named ? "no such Space for this agent" : `no active Space includes ${tool}.${action}`);
+      const fit = checkSpaceCall(space, tool, action, params, now());
+      if (!fit.ok) return deny(403, fit.reason);
+      cost = fit.cost;
+    }
+
     const facts = { ...params, ...(d.deriveFacts?.({ tool, action, params }) ?? {}), tool, action };
-    const verdict = evaluate(await d.getPolicy({ tenantId: agent.tenantId, agentId: agent.agentId }), { agentId: agent.agentId, tool, action }, facts);
+    const basePolicy = await d.getPolicy({ tenantId: agent.tenantId, agentId: agent.agentId });
+    const verdict = evaluate(space ? withSpaceRules(basePolicy, space) : basePolicy, { agentId: agent.agentId, tool, action }, facts);
     if (verdict.decision === "deny") return deny(403, `policy: ${verdict.reason}`);
 
     let humanApproved = false;
     if (verdict.decision === "require_approval") {
-      const hash = await requestHash(agent.tenantId, agent.agentId, tool, action, params);
+      // Bound to the exact parameters, and to the Space: an approval given inside one Space does not run in another.
+      const hash = await requestHash(agent.tenantId, agent.agentId, tool, action, space ? { params, space: space.id } : params);
       const presented = req.headers.get("x-approval-id");
       if (presented && (await d.approvals.redeem(presented, agent.tenantId, hash, now()))) humanApproved = true;
       else {
         const a = await d.approvals.request({ tenantId: agent.tenantId, agentId: agent.agentId, tool, action, requestHash: hash }, now());
-        try { await log({ tool, action, params, result: "pending_approval", reason: verdict.reason }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
+        try { await log({ tool, action, params, result: "pending_approval", reason: verdict.reason, ...inSpace() }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
         // Not 202: in MCP, 202 means "accepted, no response", and a client would wait forever for an answer.
         return new Response(JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, error: { code: -32004, message: "a person must approve this first", data: { status: "pending_approval", approval_id: a.id } } }), { status: 200, headers: { ...JSON_HEADERS, "x-recast-request-id": requestId, "x-recast-decision": "pending_approval" } });
       }
     }
 
-    // 4. Spend one call from the scope, record the decision (fail closed if we cannot), then act.
-    if (!(await d.scopes.consume(grant.id, now()))) return deny(429, "scope has no calls left");
-    try { await log({ tool, action, params, result: "allowed", reason: verdict.reason, humanApproved }); } catch { return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
+    // 4. Take the Space's budget, spend one call from the scope, record the decision (fail closed if we cannot), then act.
+    const sp = space as Space | null;
+    if (sp) {
+      const r = await d.spaces!.reserve(sp.id, cost, now());
+      if (r !== "ok") return deny(429, `Space '${sp.name}': ${r.replace("_", " ")}`);
+    }
+    const giveBack = () => (sp ? d.spaces!.refund(sp.id, { calls: 1, cost }).catch(() => undefined) : Promise.resolve());
+    if (!(await d.scopes.consume(grant.id, now()))) { await giveBack(); return deny(429, "scope has no calls left"); }
+    try { await log({ tool, action, params, result: "allowed", reason: verdict.reason, humanApproved, ...inSpace() }); } catch { await giveBack(); return rpcError(503, rpc.id, -32000, "audit log unavailable; refusing to act"); }
 
     const url = d.upstream(tool); const cred = url ? await exchangeToken({ tenantId: agent.tenantId, agentId: agent.agentId, tool, action, ...d.exchange, now: now() }) : null;
     if (!url || !cred) {
-      await log({ tool, action, params, result: "failure", reason: !url ? "no upstream for this tool" : "no credential for this tool", humanApproved }).catch(() => undefined);
+      await giveBack();
+      await log({ tool, action, params, result: "failure", reason: !url ? "no upstream for this tool" : "no credential for this tool", humanApproved, ...inSpace() }).catch(() => undefined);
       return rpcError(502, rpc.id, -32000, !url ? `no upstream is configured for '${tool}'` : `no credential is configured for '${tool}'`, undefined, { "x-recast-request-id": requestId });
     }
 
     // 5. Forward with the exchanged credential. The agent's own token is never sent upstream.
     let res: Response;
     try { res = await relay(doFetch, url, req, text, `${cred.tokenType} ${cred.accessToken}`); }
-    catch (e) { await log({ tool, action, params, result: "failure", reason: "upstream unreachable", humanApproved }).catch(() => undefined); return rpcError(502, rpc.id, -32000, "upstream unreachable", undefined, { "x-recast-request-id": requestId }); }
-    let ok = res.ok;
-    if (ok && /json/.test(res.headers.get("content-type") ?? "")) { try { ok = !(JSON.parse(await res.clone().text())?.error); } catch { /* not JSON-RPC: trust the status */ } }
+    // Unreachable mid-request is not proof that nothing happened, so the Space's budget stays spent.
+    catch (e) { await log({ tool, action, params, result: "failure", reason: "upstream unreachable", humanApproved, ...inSpace() }).catch(() => undefined); return rpcError(502, rpc.id, -32000, "upstream unreachable", undefined, { "x-recast-request-id": requestId }); }
+    let ok = res.ok; let refused = res.status >= 400 && res.status < 500;
+    if (ok && /json/.test(res.headers.get("content-type") ?? "")) { try { ok = !(JSON.parse(await res.clone().text())?.error); refused ||= !ok; } catch { /* not JSON-RPC: trust the status */ } }
+    // The tool said no (a JSON-RPC error or a 4xx): nothing was spent, so the money comes back. The call still counts.
+    if (refused && sp && cost) await d.spaces!.refund(sp.id, { calls: 0, cost }).catch(() => undefined);
     let auditHeader: Record<string, string> = {};
-    try { await log({ tool, action, params, result: ok ? "success" : "failure", humanApproved }); } catch { auditHeader = { "x-recast-audit": "failed" }; }
+    try { await log({ tool, action, params, result: ok ? "success" : "failure", humanApproved, ...inSpace() }); } catch { auditHeader = { "x-recast-audit": "failed" }; }
     const h = new Headers(res.headers); h.set("x-recast-request-id", requestId); for (const [k, v] of Object.entries(auditHeader)) h.set(k, v);
     return new Response(res.body, { status: res.status, headers: h });
   }

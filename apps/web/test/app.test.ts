@@ -142,6 +142,16 @@ describe("control center (production build, demo data)", () => {
     expect(main).toMatch(/49 of 50 calls left/); expect(main).toMatch(/research-agent[\s\S]*Revoked/);
   });
 
+  it("a Space shows what an agent may do and spend, and Stop ends it for good", async () => {
+    const { page, base } = await open(); await page.goto(base + "/agents");
+    const main = await page.getByRole("main").innerText();
+    expect(main).toMatch(/Weekly team sync[\s\S]*Active/); expect(main).toMatch(/gmail\.send_email \(asks you first\)/); expect(main).toMatch(/19 of 20 calls left, ₹500\.00 of ₹500\.00 to spend/);
+    await page.getByRole("button", { name: "Stop Weekly team sync" }).click();
+    await page.getByRole("status").filter({ hasText: "Stopped" }).waitFor();
+    expect(await page.getByRole("main").innerText()).toMatch(/Stopped by demo-user/);
+    expect(await page.getByRole("button", { name: "Stop Weekly team sync" }).count()).toBe(0);
+  });
+
   it("is usable on a phone-width screen with no sideways scroll", async () => {
     const { page, base } = await open(); await page.setViewportSize({ width: 375, height: 700 });
     for (const [, href] of SECTIONS) { await page.goto(base + href); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); }

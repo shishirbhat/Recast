@@ -95,3 +95,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Alternatives:** feature flags in a hosted service (another vendor and secret); per-key flags (a tenant's keys would disagree); defaulting new tenants to `private` (opens unreleased surfaces to anyone an operator creates).
 - **Why:** one server-side source of truth that cannot be bypassed by a UI, and that fails closed.
 - **Change if:** cohorts need to vary per user within a tenant, or the registry needs to change without a deploy (then move it to the database with the same checks).
+
+### D19. Spaces narrow; they never grant. Money is reserved before acting and kept when the outcome is unknown
+- **Decision:** a Space is a per-agent bound on top of scopes and policy: an explicit tool list (no wildcards), call and money budgets, an expiry of at most 30 days, and approval rules that can only add `require_approval`. Budget is reserved atomically before forwarding. A tool's explicit refusal returns the money; an unknown outcome keeps it spent. Stop is permanent. Several matching Spaces without `x-recast-space` are refused instead of guessed.
+- **Alternatives:** Spaces as a replacement for scopes (would mix the credential grant with the person's bound); post-hoc spend accounting (overspends under concurrency); refunding on any failure (could under-count real spend).
+- **Why:** a person must be able to say "this agent, these actions, this much, until then", and trust it holds under retries and concurrency.
+- **Change if:** providers return authoritative charges. Then settle against the receipt instead of the declared amount.

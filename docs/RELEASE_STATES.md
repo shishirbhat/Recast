@@ -57,6 +57,6 @@ Set `RECAST_RELEASE="api.place=preview,agent.spaces=private"`. An unknown capabi
 | Developer API (`apps/api`, `packages/api-core`) | **yes**, per request, from `tenants.cohort` | `packages/api-core/test/release.test.ts` (memory and Postgres) |
 | SDK | through the API | the SDK has no gate of its own; the API answers 403 |
 | Local MCP server (`packages/mcp`) | in remote mode, through the API; in local mode **no** | local mode runs on the person's own machine with no tenant |
-| Agent gateway (`apps/agent-server`) | **not yet** | to do with Spaces (task #41) |
+| Agent gateway (`apps/agent-server`) | **yes**, per request, from `tenants.cohort`; Space admin endpoints too (stop is never gated) | `packages/agent-runtime/test/spaces.test.ts`, `apps/agent-server/test/spaces.test.ts` |
 | Control center (`apps/web`) | **not yet** | people's workspace accounts have no cohort yet |
 | Consumer harness and extension | **no** | local builds; release is by distribution, not by a server |

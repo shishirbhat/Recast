@@ -26,3 +26,11 @@ export async function decideApproval(fd: FormData) {
   try { await getRuntime().decide(id, approve, by); } catch { redirect("/approvals?error=gone"); }
   revalidatePath("/", "layout"); redirect(`/approvals?done=${approve ? "approved" : "rejected"}`);
 }
+
+/** Stops a Space at once and for good. Anyone signed in to the workspace can stop one; nobody can restart it. */
+export async function stopSpace(fd: FormData) {
+  const session = await requireSession();
+  const by = session.via === "demo" ? "demo-user" : `${session.email || session.userId} (${session.via})`;
+  try { await getRuntime().stopSpace(String(fd.get("id")), by); } catch { redirect("/agents?error=gone"); }
+  revalidatePath("/", "layout"); redirect("/agents?done=stopped");
+}

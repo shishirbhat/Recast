@@ -23,7 +23,7 @@ beforeAll(async () => {
   const db = await freshDb(); socket = new PGLiteSocketServer({ db, port: 0, host: "127.0.0.1" }); await socket.start();
   const addr = (socket as any).server?.address?.() ?? null; const port: number = addr?.port ?? (socket as any).port;
   pool = new pg.Pool({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`, max: 1 });
-  tenant = (await pool.query(`insert into tenants(name) values ('Acme') returning id`)).rows[0].id;
+  tenant = (await pool.query(`insert into tenants(name, cohort) values ('Acme', 'internal') returning id`)).rows[0].id;
 
   upstream = createServer(async (q, r) => {
     const parsed = await body(q); if (q.headers.authorization !== `Bearer ${UPSTREAM_SECRET}`) { r.writeHead(401).end(); return; }

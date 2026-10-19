@@ -1,9 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import {
-  AuditLog, SqlAgentRegistry, SqlApprovalStore, SqlAuditStore, SqlPolicyStore, SqlReplayCache, SqlRevocationList, SqlScopeStore, createGateway, parsePolicy, verifyChain,
-  type Policy, type Sql,
+  AuditLog, SpaceError, SqlAgentRegistry, SqlApprovalStore, SqlAuditStore, SqlPolicyStore, SqlReplayCache, SqlRevocationList, SqlScopeStore, SqlSpaceStore, createGateway, parsePolicy, spaceState, verifyChain,
+  type Policy, type Space, type SpaceInput, type Sql,
 } from "@recast/agent-runtime";
+import { createRelease, isCohort, type Capability, type Cohort } from "@recast/release";
 import { ConfigVault, type ServerConfig } from "./config";
 
 const JSON_H = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
@@ -26,11 +27,20 @@ export function createRuntimeServer(config: ServerConfig, sql: Sql, now: () => n
   // Policies are read per tenant and cached briefly so a call does not cost a query; a change made through this server applies at once.
   const cache = new Map<string, { at: number; p: Policy }>(); const TTL = 5000;
   const policyFor = async ({ tenantId }: { tenantId: string }) => { const c = cache.get(tenantId); if (c && now() - c.at < TTL) return c.p; const p = await policies.active(tenantId); cache.set(tenantId, { at: now(), p }); return p; };
+  // Release states: a tenant's cohort is read from the database and cached briefly, like the policy.
+  const release = createRelease(config.release); const cohorts = new Map<string, { at: number; c: Cohort }>();
+  const cohortOf = async (tenantId: string): Promise<Cohort> => {
+    const c = cohorts.get(tenantId); if (c && now() - c.at < TTL) return c.c;
+    const { rows } = await sql.query<{ cohort: string }>(`select cohort from tenants where id = $1`, [tenantId]);
+    const v = isCohort(rows[0]?.cohort) ? rows[0]!.cohort as Cohort : "public"; cohorts.set(tenantId, { at: now(), c: v }); return v;
+  };
+  const spaces = new SqlSpaceStore(sql);
   const revocations = new Map<string, SqlRevocationList>(); const revocationFor = (t: string) => revocations.get(t) ?? (revocations.set(t, new SqlRevocationList(sql, t)), revocations.get(t)!);
 
   const gateway = createGateway({
     audience: config.audience, registry, scopes, approvals, audit, getPolicy: policyFor, exchange: { mode: "vault", vault: new ConfigVault(config.vault) }, upstream: () => config.upstreamUrl,
     replay: new SqlReplayCache(sql), proof: config.proof, ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}), now,
+    release: { release, cohortOf }, ...(config.spaces === "required" ? { spaces } : {}),
     isTokenRevoked: async (jti) => { for (const r of revocations.values()) if (await r.isRevoked(jti)) return true; return false; },
   });
 
@@ -74,6 +84,26 @@ export function createRuntimeServer(config: ServerConfig, sql: Sql, now: () => n
       if (typeof b.agentId !== "string" || typeof b.tool !== "string" || typeof b.action !== "string" || !(ttl > 0 && ttl <= 7 * 86400) || !Number.isInteger(max) || max < 1) throw new Bad(400, "invalid_request", "agentId, tool, action, ttlSeconds (up to 7 days) and maxCalls are required");
       const g = await scopes.grant({ agentId: b.agentId, tenantId: t(b.tenant), tool: b.tool, action: b.action, maxCalls: max, expiresAt: new Date(now() + ttl * 1000).toISOString(), ...(b.constraints && typeof b.constraints === "object" ? { constraints: b.constraints } : {}) });
       return { scope: g };
+    }
+    // Spaces. The release gate applies here too: an operator token does not open a capability a tenant has not been given.
+    const needs = async (tenantId: string, c: Capability) => { if (!release.allows(c, await cohortOf(tenantId))) throw new Bad(403, "not_available", "this capability is not available to this account"); };
+    const view = (s: Space) => ({ ...s, state: spaceState(s, now()), remaining: { calls: Math.max(0, s.budget.maxCalls - s.calls), ...(s.budget.spend ? { spendMinor: Math.max(0, s.budget.spend.limitMinor - s.spentMinor) } : {}) } });
+    if (req.method === "GET" && url.pathname === "/admin/spaces") {
+      const tenantId = t(tenant); await needs(tenantId, "agent.spaces");
+      return { spaces: (await spaces.list(tenantId, url.searchParams.get("agent") ?? undefined)).map(view) };
+    }
+    if (req.method === "POST" && url.pathname === "/admin/spaces") {
+      const b = await json(); const tenantId = t(b.tenant); await needs(tenantId, "agent.spaces");
+      if (typeof b.agentId !== "string" || typeof b.createdBy !== "string" || !b.createdBy) throw new Bad(400, "invalid_request", "agentId and createdBy are required");
+      const input: SpaceInput = { tenantId, agentId: b.agentId, name: String(b.name ?? ""), ...(typeof b.purpose === "string" ? { purpose: b.purpose.slice(0, 500) } : {}), tools: b.tools, budget: b.budget, expiresAt: String(b.expiresAt ?? ""), createdBy: b.createdBy };
+      try { return { space: view(await spaces.create(input, now())) }; } catch (e) { if (e instanceof SpaceError) throw new Bad(400, "invalid_space", e.message); throw e; }
+    }
+    const stop = /^\/admin\/spaces\/([0-9a-f-]{36})\/stop$/.exec(url.pathname);
+    if (req.method === "POST" && stop) {
+      // Stopping is never gated: whoever can see a Space must always be able to stop it.
+      const b = await json(); if (typeof b.by !== "string" || !b.by) throw new Bad(400, "invalid_request", "by is required");
+      if (!(await spaces.stop(stop[1]!, t(b.tenant), b.by, now()))) throw new Bad(404, "not_found", "no active Space with that id");
+      return { space: view((await spaces.get(stop[1]!, b.tenant))!) };
     }
     throw new Bad(404, "not_found", "unknown admin endpoint");
   };
