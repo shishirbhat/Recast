@@ -146,3 +146,48 @@ describe("Supabase sessions (stand-in Supabase Auth)", () => {
     await ctx.close();
   });
 });
+
+describe("the Agent Runtime link (operator token stays behind membership)", () => {
+  const TENANT = "00000000-0000-0000-0000-0000000000c1"; const SPACE = "11111111-1111-4111-8111-111111111111";
+  let runtime: Server, runtimeUrl: string; const seen: string[] = []; const bodies: string[] = [];
+  let srv: { proc: ChildProcess; base: string }; let open: { proc: ChildProcess; base: string };
+  beforeAll(async () => {
+    runtime = httpServer((rq, rs) => {
+      seen.push(`${rq.method} ${rq.url}`); let b = ""; rq.on("data", (c) => { b += c; }); rq.on("end", () => { if (b) bodies.push(b); });
+      const send = (b: unknown) => { rs.writeHead(rq.headers.authorization === "Bearer runtime-admin-token-0123456789" ? 200 : 401, { "content-type": "application/json" }); rs.end(JSON.stringify(b)); };
+      const space = { id: SPACE, agentId: "agt_aaaaaaaaaaaa", name: "Live space", state: "active", tools: [{ tool: "notes", action: "append" }], calls: 0, spentMinor: 0, budget: { maxCalls: 5 }, expiresAt: "2026-12-01T00:00:00.000Z" };
+      if (rq.url?.startsWith("/admin/agents")) return send({ agents: [{ agentId: "agt_aaaaaaaaaaaa", name: "live-bot", createdAt: "2026-10-19T00:00:00.000Z", revoked: false, scopes: [] }] });
+      if (rq.url?.startsWith("/admin/spaces?")) return send({ spaces: [space] });
+      if (rq.url === `/admin/spaces/${SPACE}/stop`) return send({ space: { ...space, state: "stopped" } });
+      send({ approvals: [], total: 0, entries: [], verification: { ok: true, entries: 0 } });
+    });
+    await new Promise<void>((ok) => runtime.listen(0, "127.0.0.1", ok)); runtimeUrl = `http://127.0.0.1:${(runtime.address() as any).port}`;
+    await q(`insert into tenants(id, name) values ($1, 'Acme agents')`, [TENANT]); await q(`insert into tenant_members(tenant_id, user_id, role) values ($1, $2, 'owner')`, [TENANT, A]);
+    const users = `alice@acme.com|${await hashPassword("alice-password-1")}|${A};bee@acme.com|${await hashPassword("bee-password-22")}|${B}`;
+    const link = { RUNTIME_URL: runtimeUrl, RUNTIME_ADMIN_TOKEN: "runtime-admin-token-0123456789", RUNTIME_TENANT_ID: TENANT };
+    [srv, open] = await Promise.all([start({ RECAST_SESSION_SECRET: SECRET, RECAST_LOCAL_USERS: users, ...link }), start({ DATABASE_URL: "", ...link })]);
+  }, 240_000);
+  afterAll(() => { stop(srv?.proc); stop(open?.proc); runtime?.close(); });
+
+  it("a member sees the live runtime and can stop a Space, recorded under their name", async () => {
+    const ctx = await browser.newContext(); const page = await ctx.newPage();
+    await signIn(page, srv.base, "alice@acme.com", "alice-password-1", "/agents");
+    const main = await page.locator("main").innerText(); expect(main).toContain("live-bot"); expect(main).toContain("Live space");
+    await page.getByRole("button", { name: "Stop Live space" }).click(); await page.getByRole("status").filter({ hasText: "Stopped" }).waitFor();
+    expect(seen).toContain(`POST /admin/spaces/${SPACE}/stop`);
+    expect(JSON.parse(bodies.at(-1)!)).toEqual({ tenant: TENANT, by: "alice@acme.com (local)" });
+    await ctx.close();
+  });
+  it("a signed-in person who is not a member is refused, and nothing reaches the runtime for them", async () => {
+    const ctx = await browser.newContext(); const page = await ctx.newPage(); const before = seen.length;
+    await signIn(page, srv.base, "bee@acme.com", "bee-password-22", "/agents");
+    for (const path of ["/agents", "/approvals", "/audit"]) { await page.goto(srv.base + path); expect(await page.locator("main").innerText(), path).toContain("You are not a member of the account these agents belong to"); }
+    expect(seen.slice(before)).toEqual([]);
+    await ctx.close();
+  });
+  it("without sign-in, a runtime link is refused outright instead of opening it to anonymous visitors", async () => {
+    const before = seen.length;
+    for (const path of ["/agents", "/approvals", "/audit"]) expect((await fetch(open.base + path)).status, path).toBe(500);
+    expect(seen.slice(before)).toEqual([]);
+  });
+});

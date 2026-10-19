@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getRepo } from "@/lib/repo";
-import { getRuntime } from "@/lib/runtime";
+import { runtimeFor } from "@/lib/runtime";
 import { requireSession } from "@/lib/auth";
 
 export async function deleteObject(fd: FormData) { await (await getRepo()).deleteObject(String(fd.get("id"))); revalidatePath("/", "layout"); }
@@ -23,7 +23,8 @@ export async function decideApproval(fd: FormData) {
   const session = await requireSession();
   const id = String(fd.get("id")); const approve = fd.get("decision") === "approve";
   const by = session.via === "demo" ? "demo-user" : `${session.email || session.userId} (${session.via})`;
-  try { await getRuntime().decide(id, approve, by); } catch { redirect("/approvals?error=gone"); }
+  const access = await runtimeFor(session); if (!access.ok) redirect("/approvals");
+  try { await access.runtime.decide(id, approve, by); } catch { redirect("/approvals?error=gone"); }
   revalidatePath("/", "layout"); redirect(`/approvals?done=${approve ? "approved" : "rejected"}`);
 }
 
@@ -31,6 +32,7 @@ export async function decideApproval(fd: FormData) {
 export async function stopSpace(fd: FormData) {
   const session = await requireSession();
   const by = session.via === "demo" ? "demo-user" : `${session.email || session.userId} (${session.via})`;
-  try { await getRuntime().stopSpace(String(fd.get("id")), by); } catch { redirect("/agents?error=gone"); }
+  const access = await runtimeFor(session); if (!access.ok) redirect("/agents");
+  try { await access.runtime.stopSpace(String(fd.get("id")), by); } catch { redirect("/agents?error=gone"); }
   revalidatePath("/", "layout"); redirect("/agents?done=stopped");
 }

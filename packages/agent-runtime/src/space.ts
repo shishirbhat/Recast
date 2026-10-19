@@ -31,9 +31,11 @@ export class SpaceError extends Error {}
 export function validateSpace(s: SpaceInput, nowMs: number): void {
   const fail = (m: string) => { throw new SpaceError(m); };
   if (!s.name?.trim() || s.name.length > 120) fail("name is required (at most 120 characters)");
+  if (!s || typeof s !== "object") fail("a Space must be an object");
   if (!Array.isArray(s.tools) || s.tools.length === 0 || s.tools.length > 50) fail("a Space lists 1 to 50 tool actions");
   const seen = new Set<string>();
   for (const t of s.tools) {
+    if (!t || typeof t !== "object") fail("each tool must be an object with tool and action");
     if (!NAME.test(t.tool ?? "") || !NAME.test(t.action ?? "")) fail(`tool and action must be plain names; wildcards are not allowed in a Space ('${t.tool}.${t.action}')`);
     const k = `${t.tool}.${t.action}`; if (seen.has(k)) fail(`${k} is listed twice`); seen.add(k);
     if (t.approval !== undefined && t.approval !== "always" && t.approval !== "never") fail(`${k}: approval must be 'always' or 'never'`);

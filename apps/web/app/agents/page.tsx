@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { getRuntime, runtimeIsDemo } from "@/lib/runtime";
+import { runtimeFor, runtimeIsDemo } from "@/lib/runtime";
 import { stopSpace } from "../actions";
 import { Badge, Button, Card, Empty, PageHeader } from "@/components/ui/primitives";
 import type { SpaceView } from "@recast/runtime-client";
@@ -10,8 +10,9 @@ const money = (minor: number, currency: string) => new Intl.NumberFormat("en", {
 const STATE: Record<SpaceView["state"], { label: string; tone: "ok" | "muted" | "warn" | "danger" }> = { active: { label: "Active", tone: "ok" }, stopped: { label: "Stopped", tone: "danger" }, expired: { label: "Expired", tone: "muted" }, exhausted: { label: "Budget used up", tone: "warn" } };
 
 export default async function Agents({ searchParams }: { searchParams: Promise<{ done?: string; error?: string }> }) {
-  await requireSession();
-  const sp = await searchParams; const runtime = getRuntime();
+  const access = await runtimeFor(await requireSession());
+  if (!access.ok) return (<><PageHeader title="Agents" lead="Every AI agent that can act for you." /><Empty>{access.reason}</Empty></>);
+  const sp = await searchParams; const runtime = access.runtime;
   const [agents, spaces] = await Promise.all([runtime.listAgents(), runtime.listSpaces().catch(() => [] as SpaceView[])]);
   return (
     <>

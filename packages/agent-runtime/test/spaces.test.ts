@@ -65,7 +65,7 @@ describe("a Space is bounded by construction", () => {
       { tools: [{ tool: "*", action: "buy" }] }, { tools: [{ tool: "shop", action: "*" }] }, { tools: [] },
       { expiresAt: hours(-1) }, { expiresAt: hours(24 * 31) }, { budget: { maxCalls: 0 } },
       { tools: [{ tool: "shop", action: "buy", cost: { fixedMinor: 10 } }] },
-      { tools: [{ tool: "shop", action: "buy" }, { tool: "shop", action: "buy" }] },
+      { tools: [{ tool: "shop", action: "buy" }, { tool: "shop", action: "buy" }] }, { tools: [null] }, { tools: "shop.buy" }, { budget: null },
     ]) expect(() => validateSpace({ ...base, ...bad } as SpaceInput, T0)).toThrow(SpaceError);
   });
 });

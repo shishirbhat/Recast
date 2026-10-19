@@ -1,13 +1,14 @@
 import { requireSession } from "@/lib/auth";
-import { getRuntime, runtimeIsDemo } from "@/lib/runtime";
+import { runtimeFor, runtimeIsDemo } from "@/lib/runtime";
 import { decideApproval } from "../actions";
 import { Button, Card, Empty, PageHeader } from "@/components/ui/primitives";
 
 export const dynamic = "force-dynamic";
 
 export default async function Approvals({ searchParams }: { searchParams: Promise<{ done?: string; error?: string }> }) {
-  await requireSession();
-  const sp = await searchParams; const pending = await getRuntime().listApprovals();
+  const access = await runtimeFor(await requireSession());
+  if (!access.ok) return (<><PageHeader title="Approvals" lead="Things an agent wants to do that need a person first." /><Empty>{access.reason}</Empty></>);
+  const sp = await searchParams; const pending = await access.runtime.listApprovals();
   return (
     <>
       <PageHeader title="Approvals" lead="Things an agent wants to do that need a person first. Nothing happens until you decide, and each approval works once, for that exact request." />
