@@ -1,0 +1,26 @@
+{
+  "name": "relay",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Provider-neutral coordination for human developers and coding agents.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "relay": "./bin/relay"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 'test/*.test.ts'",
+    "test:real": "RELAY_REAL_PROVIDER=1 node --test --test-concurrency=1 'test/real/*.test.ts'"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

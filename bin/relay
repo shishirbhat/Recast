@@ -1,0 +1,4 @@
+#!/bin/sh
+# Resolve symlinks so the CLI works when linked onto PATH.
+DIR=$(dirname "$(readlink -f "$0")")
+exec node --disable-warning=ExperimentalWarning "$DIR/../src/cli.ts" "$@"

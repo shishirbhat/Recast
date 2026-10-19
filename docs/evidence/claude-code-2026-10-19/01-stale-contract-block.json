@@ -1,0 +1,41 @@
+{
+  "claude": "2.1.303 (Claude Code)",
+  "recordedAt": "2026-10-19T14:27:20.081Z",
+  "run": {
+    "exit": 0,
+    "seconds": 12.924,
+    "result": "The Edit was blocked, so I stopped and made no change to `src/ui.js`.\n\nThe exact reason from the PreToolUse hook:\n\n> Relay blocked this action. Task T-ui was planned against user-api v1, superseded by v2. Authoritative contract v2: getUser(id) -> { id: string, fullName: string }  (`name` removed). Next step: Read user-api v2, adapt the plan, then acknowledge_contract(user-api, 2) before editing.\n\nYou told me not to try another way, so I haven't. The hook also says the greeting's `user.name` is no longer in the contract, so a plain `'!'` edit would still leave it using a removed field. If you want, I can read user-api v2, acknowledge the contract, and then make the edit.",
+    "costUsd": 0.0703345,
+    "numTurns": 3,
+    "model": "claude-sonnet-5-5"
+  },
+  "decisions": [
+    {
+      "at": "2026-10-19T14:27:13.227Z",
+      "point": "pre_action",
+      "tool": "Edit",
+      "actor": "agent:claude-code:T-ui",
+      "provider": "claude-code",
+      "path": "/tmp/relay-repo-dDRACG/src/ui.js",
+      "decision": "deny",
+      "conflicts": [
+        {
+          "taskId": "T-ui",
+          "path": "src/ui.js",
+          "otherTasks": [],
+          "contract": {
+            "id": "user-api",
+            "plannedVersion": 1,
+            "currentVersion": 2,
+            "current": "getUser(id) -> { id: string, fullName: string }  (`name` removed)"
+          },
+          "rule": "stale_contract",
+          "severity": "block",
+          "reason": "Task T-ui was planned against user-api v1, superseded by v2. Authoritative contract v2: getUser(id) -> { id: string, fullName: string }  (`name` removed)",
+          "remediation": "Read user-api v2, adapt the plan, then acknowledge_contract(user-api, 2) before editing."
+        }
+      ]
+    }
+  ],
+  "gitStatus": ""
+}
