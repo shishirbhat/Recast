@@ -13,7 +13,7 @@ The second surface on the same spine: identity, permissions and audit for AI age
 | `exchange.ts` | The agent's token is traded for a one-tool credential. Vault mode hands the upstream its own stored secret; runtime-JWT mode mints a 60-second token with the agent as `act`. The agent never sees either |
 | `approvals.ts` | A person approves one exact request, once. Approval is bound to a hash of the call, so "send to Meera" cannot be reused for "send to everyone" |
 | `gateway.ts` | The MCP middleware: authenticate, parse JSON-RPC, scope, policy, approval, spend the call, **log the decision**, forward with the exchanged credential, **log the outcome** |
-| `cli.ts` | `agent-auth create`, `scope`, `verify-audit` against a local directory. Private keys are written at mode 600 and nowhere else |
+| `cli.ts`, `bridge.ts` | `agent-auth init`, `connect` (stdio bridge, `docs/17-agent-pilot.md`), `create`, `scope`, `verify-audit`. Private keys are written at mode 600 and nowhere else |
 
 Database: `supabase/migrations/20260103000000_agent_runtime.sql` adds `agents`, `agent_scopes`, `agent_policies` and `agent_audit_log` on top of the existing `tenants` and `tenant_members`. 11 tests on real Postgres (PGlite).
 

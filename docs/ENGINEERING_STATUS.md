@@ -63,6 +63,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Calendar event creation: stable id, duplicate detection, restore after delete, reconciliation; composed objects placed through the API | `googleCalendarEvent`, `/v1/place` with `object` | see `docs/12-api.md` | U, F | **R** needs Google OAuth (#22) |
 | Release states: registry, tenant cohorts, server-side gates on every API endpoint, per-deployment overrides that refuse typos, `/v1/capabilities` | `packages/release`, `packages/api-core/src/api.ts`, `supabase/migrations/20260109000000_release_cohorts.sql`; `docs/RELEASE_STATES.md` | release 4, api-core 8 (memory and Postgres) | U, H | enforced in the API and the agent gateway; control center not yet gated |
 | Spaces: bounded agent configuration (tool list with constraints, call and money budgets, ≤30-day expiry, permanent stop, approval bound to parameters and Space); atomic reservation; control-center Stop | `packages/agent-runtime/src/space.ts`, gateway, `SqlSpaceStore`, `supabase/migrations/20260110000000_agent_spaces.sql`, `apps/agent-server` admin, `apps/web` Agents; `docs/16-spaces.md` | agent-runtime 15, agent-server 3 (official MCP client, Postgres wire), web 1 (Chromium) | U, H | spend is as declared by the call; no real provider; off by default (`SPACES_MODE`) |
+| Bounded agent pilot: `agent-auth init` (local key, register public half), `agent-auth connect` stdio bridge (fresh proof per request), approvals via `_meta`, two local tools, activity, revoke; BYOK and gateway-bypass limits written down | `packages/agent-runtime/src/{bridge,cli}.ts`; `docs/17-agent-pilot.md` | official MCP client over stdio through the deployable server (proofs and Spaces required, Postgres wire): 6; bridge unit 5 | U, H | not run inside a real desktop agent product; no packaged CLI |
 | Control center on Postgres with sign-in (local accounts, Supabase sessions) | `apps/web/{proxy.ts,lib/*}`, `packages/store/src/scoped.ts` | 8 browser tests over Postgres wire; 8 unit; isolation between two people | H, F | Supabase is a stand-in; JWKS (asymmetric) tokens unsupported |
 
 ## 2. Implemented but not fully verified
@@ -84,7 +85,6 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Item | Blocked on |
 |---|---|
 | Release gates in the control center | people's accounts have no cohort yet |
-| One-command agent onboarding, stdio bridge for desktop MCP clients | P4 (#42) |
 | API contract tests and compatibility doc | P5 |
 | Performance budget for real paths (gateway overhead, end to end) | in plan; only harness and rules latencies measured |
 | Recipes and policy packs | P7 |

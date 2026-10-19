@@ -85,7 +85,7 @@ Agent's MCP client → `apps/agent-server` `/mcp` → `packages/agent-runtime/sr
 
 Admin: `apps/agent-server/src/server.ts` `/admin/*` (constant-time admin token) for agents, scopes, policy, approvals, revocation and audit. Control center: `packages/runtime-client` → admin API.
 
-Verified: U (crypto, gateway, policy, CLI), H (official MCP client through the gateway to a real local MCP server; deployable server over the Postgres wire protocol). Spaces: U, H (`docs/16-spaces.md`). **Not built:** a stdio bridge for desktop MCP clients, one-command onboarding (task #42).
+Verified: U (crypto, gateway, policy, CLI), H (official MCP client through the gateway to a real local MCP server; deployable server over the Postgres wire protocol). Spaces: U, H (`docs/16-spaces.md`). Desktop clients: MCP client (stdio) → `agent-auth connect` (`bridge.ts`: signs token and proof locally) → HTTPS → gateway (`docs/17-agent-pilot.md`), H.
 
 ## 4. Persistence: what lives where
 | Data | Store | Isolation enforced by | Notes |

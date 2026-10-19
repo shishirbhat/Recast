@@ -127,7 +127,7 @@ export function createGateway(d: GatewayDeps) {
 
     // 3b. Which Space bounds this call? Named by the client, or the only active Space of this agent that includes the action.
     if (d.spaces) {
-      const named = req.headers.get("x-recast-space");
+      const named = req.headers.get("x-recast-space") ?? (typeof rpc.params?._meta?.["recast/space"] === "string" ? rpc.params._meta["recast/space"] as string : null);
       const all = (await d.spaces.list(agent.tenantId, agent.agentId)).filter((s) => s.agentId === agent.agentId);
       if (named) space = all.find((s) => s.id === named) ?? null;
       else {
@@ -150,7 +150,8 @@ export function createGateway(d: GatewayDeps) {
     if (verdict.decision === "require_approval") {
       // Bound to the exact parameters, and to the Space: an approval given inside one Space does not run in another.
       const hash = await requestHash(agent.tenantId, agent.agentId, tool, action, space ? { params, space: space.id } : params);
-      const presented = req.headers.get("x-approval-id");
+      // From a header, or from the request's _meta for clients that cannot set headers (stdio, through `agent-auth connect`).
+      const meta = rpc.params?._meta; const presented = req.headers.get("x-approval-id") ?? (meta && typeof meta["recast/approval_id"] === "string" ? meta["recast/approval_id"] as string : null);
       if (presented && (await d.approvals.redeem(presented, agent.tenantId, hash, now()))) humanApproved = true;
       else {
         const a = await d.approvals.request({ tenantId: agent.tenantId, agentId: agent.agentId, tool, action, requestHash: hash }, now());

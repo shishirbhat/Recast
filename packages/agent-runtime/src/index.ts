@@ -10,3 +10,4 @@ export * from "./gateway";
 export * from "./sql";
 export * from "./proof";
 export * from "./space";
+export * from "./bridge";

@@ -4,12 +4,13 @@ export interface ScopeGrant {
   constraints?: Record<string, Constraint>; issuedAt: string; expiresAt: string; maxCalls: number; calls: number;
 }
 
-/** Every constraint must hold for the call's params; a constrained param that is missing fails the check. */
+/** Every constraint must hold for the call's params; a constrained param that is missing fails the check.
+ *  `min`/`max` bound a number's value, or the length of a string or list. */
 export function checkConstraints(c: Record<string, Constraint> | undefined, params: Record<string, unknown>): string | null {
   for (const [k, rule] of Object.entries(c ?? {})) {
     const v = params[k];
     if (v === undefined) return `parameter '${k}' is required by this scope`;
-    const n = Array.isArray(v) ? v.length : v;
+    const n = Array.isArray(v) || typeof v === "string" ? v.length : v;   // for lists and text, min and max bound the length
     if (rule.max !== undefined && !(typeof n === "number" && n <= rule.max)) return `${k} must be at most ${rule.max}`;
     if (rule.min !== undefined && !(typeof n === "number" && n >= rule.min)) return `${k} must be at least ${rule.min}`;
     if (rule.eq !== undefined && v !== rule.eq) return `${k} must equal ${JSON.stringify(rule.eq)}`;
