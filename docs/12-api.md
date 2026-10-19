@@ -22,7 +22,9 @@ Answer is one of three shapes, selected by `status`:
 - `ambiguous`: `alternatives[]` and a reason. Used when two readings tie, or the best is under the confidence threshold.
 - `unresolved`: a reason and sometimes a suggestion ("relative dates like 'Friday' need a full date").
 
-Other endpoints: `POST /v1/resolve/batch` (1 to 50 items, per-item errors), `GET /v1/bridges`, `POST /v1/corrections` (opt-in only), `GET /v1/health`.
+Other endpoints: `POST /v1/resolve/batch` (1 to 50 items, per-item errors), `GET /v1/bridges`, `POST /v1/corrections` (opt-in only), `GET /v1/capabilities` (what this key may use), `GET /v1/health`.
+
+Every endpoint except health is gated by release state: a capability not released to the account's cohort answers `403 not_available` before quota or idempotency are touched. See `docs/RELEASE_STATES.md`. New tenants are `public` and so cannot resolve until an operator moves them (`keys tenant set <id> --cohort private`).
 
 Destinations: `google_calendar`, `gmail` (draft only), `google_sheets`, `google_tasks`, `notion`. They use the same contracts and trust rules as the desktop product.
 

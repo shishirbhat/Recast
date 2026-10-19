@@ -9,7 +9,7 @@ const mk = (extra = {}) => createApi({ resolver: createResolver({ now: () => new
 beforeEach(async () => {
   clock = Date.parse("2026-10-15T10:00:00Z");
   keys = new MemoryKeyStore(); usage = new MemoryUsageStore(); corr = new MemoryCorrectionStore();
-  await keys.add(FREE, { tenantId: "t_free", tier: "free" }); await keys.add(PRO, { tenantId: "t_pro", tier: "pro" }); await keys.add(OPT, { tenantId: "t_opt", tier: "pro", correctionsOptIn: true });
+  await keys.add(FREE, { tenantId: "t_free", tier: "free", cohort: "private" }); await keys.add(PRO, { tenantId: "t_pro", tier: "pro", cohort: "private" }); await keys.add(OPT, { tenantId: "t_opt", tier: "pro", correctionsOptIn: true, cohort: "private" });
 });
 const call = (api: ReturnType<typeof mk>, path: string, body?: unknown, h: Record<string, string> = {}, key: string | null = FREE, method = body === undefined ? "GET" : "POST") =>
   api.handle(new Request("http://x" + path, { method, headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}), ...h }, ...(body !== undefined ? { body: typeof body === "string" ? body : JSON.stringify(body) } : {}) }));

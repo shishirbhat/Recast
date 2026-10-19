@@ -89,3 +89,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Context:** pieces carry the classifier's 0.6–0.7 "is this element a time" prior. Without this rule, every composed event needed a confirmation after the person had already seen the full preview, which is the redundant approval the brief forbids.
 - **Alternatives:** lowering the trust threshold (rejected: affects every action); skipping consent for compositions (rejected: inferences and risky effects must still ask).
 - **Change if:** people place wrong values because they skim the preview. Then raise the bar or highlight inferred fields more.
+
+### D18. Release state is per tenant cohort, checked by the server, and new tenants start public
+- **Decision:** capabilities live in one registry (`packages/release`). A tenant has a `cohort` (`internal | private | preview | public`), stored on `tenants`. The API checks the gate on every request after authentication and before quota. New tenants default to `public`, the narrowest access. Unreleased and disabled capabilities both answer `403 not_available`. Undo and reconcile are not narrowed by cohort, only by `disabled`. Deployment overrides (`RECAST_RELEASE`) refuse unknown names.
+- **Alternatives:** feature flags in a hosted service (another vendor and secret); per-key flags (a tenant's keys would disagree); defaulting new tenants to `private` (opens unreleased surfaces to anyone an operator creates).
+- **Why:** one server-side source of truth that cannot be bypassed by a UI, and that fails closed.
+- **Change if:** cohorts need to vary per user within a tenant, or the registry needs to change without a deploy (then move it to the database with the same checks).

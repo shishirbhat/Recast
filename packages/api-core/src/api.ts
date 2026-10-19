@@ -2,8 +2,9 @@ import { RecastError, checkConsent, commit, deserialize, hash32, propose, rankPr
 import { DestinationError, DuplicateError, HttpBridge } from "@recast/bridges";
 import { sha256Hex } from "@recast/core";
 import { API_TYPES, DESTINATIONS, ResolveInputError, bridgeCatalog, toApiType, toWire, type ResolveOutcome, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
+import { createRelease, type Capability, type Release } from "@recast/release";
 import { RateLimiter, type Limiter } from "./limiter";
-import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type CorrectionStore, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
+import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type ApiKeyRecord, type CorrectionStore, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
 import { TIERS } from "./tiers";
 import { checkVersion, type Deprecation } from "./version";
 import { PLACE_TARGETS, PlaceInputError, fetchTransport, type PlacementDeps } from "./place";
@@ -16,6 +17,8 @@ export interface ApiDeps {
   /** Enables POST /v1/place and /v1/place/undo. Without it those answer 501. */
   placement?: PlacementDeps;
   maxBodyBytes?: number; maxBatch?: number;
+  /** Release states (docs/RELEASE_STATES.md). Checked here, on the server, for every request; defaults to the registry. */
+  release?: Release;
 }
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
@@ -57,6 +60,9 @@ export function createApi(deps: ApiDeps) {
   const corrections = deps.corrections ?? new MemoryCorrectionStore();
   const idem = deps.idempotency ?? new MemoryIdempotencyStore(); const limiter = deps.limiter ?? new RateLimiter(now);
   const maxBody = deps.maxBodyBytes ?? 512 * 1024, maxBatch = deps.maxBatch ?? 50;
+  const release = deps.release ?? createRelease();
+  /** Same answer whether the capability is unreleased to this cohort or disabled: it does not tell outsiders what exists. */
+  const gate = (c: Capability, key: ApiKeyRecord) => { if (!release.allows(c, key.cohort)) throw new HttpError(403, "not_available", "this capability is not available to this account"); };
 
   async function readJson(req: Request): Promise<unknown> {
     const len = Number(req.headers.get("content-length") ?? 0);
@@ -92,9 +98,11 @@ export function createApi(deps: ApiDeps) {
   };
 
   /** Re-resolves, then plans, checks consent and commits through the bridge: the same pipeline as the desktop app, server-side. */
-  async function place(tenantId: string, body: unknown) {
-    const pd = placementOrThrow();
+  async function place(key: ApiKeyRecord, body: unknown) {
+    const tenantId = key.tenantId;
     const hasObject = isObj(body) && (body as Record<string, unknown>).object !== undefined;
+    if (hasObject) gate("api.place.object", key);
+    const pd = placementOrThrow();
     const input = parseResolveInput(hasObject ? { ...(body as Record<string, unknown>), input: { raw: "(object)" } } : body); const destination = input.target?.destination;
     if (!destination) throw new HttpError(400, "invalid_request", "target.destination is required to place");
     const b = body as Record<string, unknown>; const dt = PLACE_TARGETS[destination];
@@ -206,6 +214,10 @@ export function createApi(deps: ApiDeps) {
     return { status: to, action_id: receiptId, changed, ...(to === "failed" ? { message: "nothing was created; it is safe to place again" } : {}) };
   }
 
+  /** Undo and reconcile only touch placements the account already made, so narrowing a release never strands them. Only the
+   *  `disabled` kill switch stops them, because they also call the destination. */
+  const settleGate = () => { if (release.state("api.place") === "disabled") throw new HttpError(403, "not_available", "this capability is not available to this account"); };
+
   async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url); const path = url.pathname.replace(/\/+$/, "") || "/";
     const base: Record<string, string> = {};
@@ -225,12 +237,19 @@ export function createApi(deps: ApiDeps) {
       const month = monthOf(now()); const used = await usage.get(key.tenantId, month);
       const quotaHeaders = (u: number) => ({ "X-Recast-Quota-Limit": String(limits.monthly === Number.MAX_SAFE_INTEGER ? "unlimited" : limits.monthly), "X-Recast-Quota-Used": String(u) });
 
+      if (path === "/v1/capabilities" && req.method === "GET") {
+        // Only what this account can use; unreleased names are not listed.
+        const available = release.table().filter((r) => ["api", "sdk", "mcp"].includes(r.surface) && release.allows(r.capability, key.cohort)).map((r) => r.capability);
+        return new Response(JSON.stringify({ capabilities: available }), { status: 200, headers: { ...JSON_HEADERS, ...base } });
+      }
       if (path === "/v1/bridges" && req.method === "GET") {
+        gate("api.resolve", key);
         const list = bridgeCatalog();
         return new Response(JSON.stringify({ bridges: list }), { status: 200, headers: { ...JSON_HEADERS, ...base } });
       }
 
       if (path === "/v1/corrections" && req.method === "POST") {
+        gate("api.corrections", key);
         if (!key.correctionsOptIn) throw new HttpError(403, "corrections_not_enabled", "this account has not opted in to storing corrections; nothing was saved");
         const b = await readJson(req); if (!isObj(b) || typeof b.object_id !== "string" || !["undo", "reject", "edit"].includes(String(b.kind))) throw new HttpError(400, "invalid_request", "object_id (string) and kind (undo|reject|edit) are required");
         await corrections.add({ tenantId: key.tenantId, objectId: b.object_id, kind: b.kind as "undo", ...(typeof b.field === "string" ? { field: b.field } : {}), oldValue: b.old_value, newValue: b.new_value, at: new Date(now()).toISOString() });
@@ -238,17 +257,20 @@ export function createApi(deps: ApiDeps) {
       }
 
       if (path === "/v1/place/reconcile" && req.method === "POST") {
+        settleGate();
         const b = await readJson(req);
         if (!isObj(b) || typeof b.action_id !== "string" || !/^rc_r_[0-9a-f]{32}$/.test(b.action_id)) throw new HttpError(400, "invalid_request", "action_id must be an id from POST /v1/place");
         return new Response(JSON.stringify(await reconcilePlacement(key.tenantId, b.action_id)), { status: 200, headers: { ...JSON_HEADERS, ...base } });
       }
       if (path === "/v1/place/undo" && req.method === "POST") {
+        settleGate();
         const b = await readJson(req);
         if (!isObj(b) || typeof b.receipt_id !== "string" || !/^rc_r_[0-9a-f]{32}$/.test(b.receipt_id)) throw new HttpError(400, "invalid_request", "receipt_id must be a receipt id from POST /v1/place");
         return new Response(JSON.stringify(await undoPlacement(key.tenantId, b.receipt_id)), { status: 200, headers: { ...JSON_HEADERS, ...base } });
       }
 
       if ((path === "/v1/resolve" || path === "/v1/resolve/batch" || path === "/v1/place") && req.method === "POST") {
+        gate(path === "/v1/place" ? "api.place" : "api.resolve", key);
         const limit = limits.monthly;
         if (used >= limit) throw new HttpError(402, "quota_exceeded", `monthly quota of ${limit} resolutions is used up; it resets on the 1st (UTC) or upgrade your plan`, quotaHeaders(used));
         const body = await readJson(req);
@@ -271,7 +293,7 @@ export function createApi(deps: ApiDeps) {
             return toWire(o, input.options?.includeProvenance ?? true);
           };
           if (path === "/v1/place") {
-            try { json = await place(key.tenantId, body); status = 201; }
+            try { json = await place(key, body); status = 201; }
             catch (e) { if (!(e instanceof Accepted)) throw e; json = e.json; status = 202; }
             resolved = 1;
           } else if (path === "/v1/resolve") {

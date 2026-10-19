@@ -1,7 +1,9 @@
 import { sha256Hex } from "@recast/core";
+import type { Cohort } from "@recast/release";
 import type { Tier } from "./tiers";
 
-export interface ApiKeyRecord { tenantId: string; tier: Tier; revoked: boolean; correctionsOptIn: boolean; label?: string }
+/** `cohort` decides which released capabilities the tenant reaches (docs/RELEASE_STATES.md). */
+export interface ApiKeyRecord { tenantId: string; tier: Tier; cohort: Cohort; revoked: boolean; correctionsOptIn: boolean; label?: string }
 export interface KeyStore {
   /** Look a key up by its hash. The plain key is never stored. */
   find(keyHash: string): Promise<ApiKeyRecord | null>;
@@ -10,8 +12,9 @@ export const hashKey = (key: string) => sha256Hex(key);
 
 export class MemoryKeyStore implements KeyStore {
   private byHash = new Map<string, ApiKeyRecord>();
-  async add(plainKey: string, rec: Omit<ApiKeyRecord, "revoked" | "correctionsOptIn"> & { revoked?: boolean; correctionsOptIn?: boolean }) {
-    this.byHash.set(await hashKey(plainKey), { revoked: false, correctionsOptIn: false, ...rec });
+  /** Without a cohort a key is `public`, the narrowest access, as in the database. */
+  async add(plainKey: string, rec: Omit<ApiKeyRecord, "revoked" | "correctionsOptIn" | "cohort"> & { revoked?: boolean; correctionsOptIn?: boolean; cohort?: Cohort }) {
+    this.byHash.set(await hashKey(plainKey), { revoked: false, correctionsOptIn: false, cohort: "public", ...rec });
   }
   async find(h: string) { return this.byHash.get(h) ?? null; }
   async revoke(plainKey: string) { const r = this.byHash.get(await hashKey(plainKey)); if (r) r.revoked = true; }

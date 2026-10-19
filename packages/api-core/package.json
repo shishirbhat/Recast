@@ -11,7 +11,8 @@
   "dependencies": {
     "@recast/core": "workspace:*",
     "@recast/resolve": "workspace:*",
-    "@recast/bridges": "workspace:*"
+    "@recast/bridges": "workspace:*",
+    "@recast/release": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.0",

@@ -1,3 +1,4 @@
+import { isCohort, type Cohort } from "@recast/release";
 import type { Sql } from "./sql";
 import type { Tier } from "./tiers";
 import { CredentialCipher, PLACE_TARGETS } from "./place";
@@ -19,9 +20,11 @@ export function generateApiKey(env: "live" | "test" = "live"): string {
 const tierOf = (t: string): Tier => { if (!(TIER_NAMES as readonly string[]).includes(t)) throw new AdminError(`tier must be one of ${TIER_NAMES.join(", ")}`); return t as Tier; };
 const uuidOf = (id: string | undefined, what = "tenant id"): string => { if (!id || !UUID.test(id)) throw new AdminError(`${what} must be a uuid`); return id; };
 
-export async function createTenant(sql: Sql, name: string, tier: Tier = "free", correctionsOptIn = false): Promise<string> {
+const cohortOf = (c: string): Cohort => { if (!isCohort(c)) throw new AdminError("cohort must be one of internal, private, preview, public"); return c; };
+
+export async function createTenant(sql: Sql, name: string, tier: Tier = "free", correctionsOptIn = false, cohort: Cohort = "public"): Promise<string> {
   if (!name.trim()) throw new AdminError("tenant name is required");
-  const { rows } = await sql.query<{ id: string }>(`insert into tenants(name, tier, corrections_opt_in) values ($1,$2,$3) returning id`, [name.trim(), tierOf(tier), correctionsOptIn]);
+  const { rows } = await sql.query<{ id: string }>(`insert into tenants(name, tier, corrections_opt_in, cohort) values ($1,$2,$3,$4) returning id`, [name.trim(), tierOf(tier), correctionsOptIn, cohortOf(cohort)]);
   return rows[0]!.id;
 }
 
@@ -46,15 +49,15 @@ export async function listKeys(sql: Sql, tenantId: string) {
   return rows.map((r) => ({ hashPrefix: r.key_hash.slice(0, 12), label: r.label, revoked: r.revoked_at !== null, createdAt: new Date(r.created_at).toISOString() }));
 }
 
-export async function setTenant(sql: Sql, tenantId: string, patch: { tier?: Tier; correctionsOptIn?: boolean }): Promise<void> {
-  const { rows } = await sql.query(`update tenants set tier = coalesce($2, tier), corrections_opt_in = coalesce($3, corrections_opt_in) where id = $1 returning id`,
-    [uuidOf(tenantId), patch.tier === undefined ? null : tierOf(patch.tier), patch.correctionsOptIn ?? null]);
+export async function setTenant(sql: Sql, tenantId: string, patch: { tier?: Tier; correctionsOptIn?: boolean; cohort?: Cohort }): Promise<void> {
+  const { rows } = await sql.query(`update tenants set tier = coalesce($2, tier), corrections_opt_in = coalesce($3, corrections_opt_in), cohort = coalesce($4, cohort) where id = $1 returning id`,
+    [uuidOf(tenantId), patch.tier === undefined ? null : tierOf(patch.tier), patch.correctionsOptIn ?? null, patch.cohort === undefined ? null : cohortOf(patch.cohort)]);
   if (!rows.length) throw new AdminError("no such tenant");
 }
 
 /** Tables a tenant owns, exported before erasure. Key hashes are cut to a prefix; transient state (proofs seen, idempotency) is left out. */
 const EXPORT_TABLES: Record<string, string> = {
-  tenant: `select id, name, tier, corrections_opt_in, created_at from tenants where id = $1`,
+  tenant: `select id, name, tier, cohort, corrections_opt_in, created_at from tenants where id = $1`,
   members: `select user_id, role from tenant_members where tenant_id = $1 order by user_id`,
   api_keys: `select left(key_hash, 12) as hash_prefix, label, revoked_at, created_at from api_keys where tenant_id = $1 order by created_at, id`,
   usage: `select month, resolutions from api_usage where tenant_id = $1 order by month`,
@@ -98,8 +101,8 @@ export async function setCredential(sql: Sql, cipher: CredentialCipher, tenantId
 
 export const KEYS_USAGE = `recast-keys: manage API tenants and keys (needs DATABASE_URL)
 
-  tenant create <name> [--tier free|pro|scale|enterprise] [--corrections-opt-in]
-  tenant set <tenant-id> [--tier <tier>] [--corrections-opt-in | --no-corrections-opt-in]
+  tenant create <name> [--tier free|pro|scale|enterprise] [--cohort internal|private|preview|public] [--corrections-opt-in]
+  tenant set <tenant-id> [--tier <tier>] [--cohort <cohort>] [--corrections-opt-in | --no-corrections-opt-in]
   key issue <tenant-id> [--label <text>] [--test]     prints the key once; only its hash is stored
   key revoke <key-or-hash>
   key list <tenant-id>
@@ -115,17 +118,17 @@ export async function runKeysCli(argv: string[], sql: Sql, out: (s: string) => v
   const flags = new Map<string, string | true>(); const pos: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a.startsWith("--")) { const v = argv[i + 1]; if (["--tier", "--label", "--confirm", "--by", "--reason"].includes(a)) { if (v === undefined) { errOut(`${a} needs a value`); return 2; } flags.set(a, v); i++; } else flags.set(a, true); }
+    if (a.startsWith("--")) { const v = argv[i + 1]; if (["--tier", "--cohort", "--label", "--confirm", "--by", "--reason"].includes(a)) { if (v === undefined) { errOut(`${a} needs a value`); return 2; } flags.set(a, v); i++; } else flags.set(a, true); }
     else pos.push(a);
   }
   const [group, cmd, arg] = pos;
   try {
     if (group === "tenant" && cmd === "create" && arg) {
-      out(await createTenant(sql, arg, tierOf(String(flags.get("--tier") ?? "free")), flags.has("--corrections-opt-in"))); return 0;
+      out(await createTenant(sql, arg, tierOf(String(flags.get("--tier") ?? "free")), flags.has("--corrections-opt-in"), cohortOf(String(flags.get("--cohort") ?? "public")))); return 0;
     }
     if (group === "tenant" && cmd === "set" && arg) {
       const optIn = flags.has("--corrections-opt-in") ? true : flags.has("--no-corrections-opt-in") ? false : undefined;
-      await setTenant(sql, arg, { ...(flags.has("--tier") ? { tier: tierOf(String(flags.get("--tier"))) } : {}), ...(optIn === undefined ? {} : { correctionsOptIn: optIn }) }); out("updated"); return 0;
+      await setTenant(sql, arg, { ...(flags.has("--tier") ? { tier: tierOf(String(flags.get("--tier"))) } : {}), ...(optIn === undefined ? {} : { correctionsOptIn: optIn }), ...(flags.has("--cohort") ? { cohort: cohortOf(String(flags.get("--cohort"))) } : {}) }); out("updated"); return 0;
     }
     if (group === "credentials-key" && cmd === "generate") { out(CredentialCipher.generateKey()); return 0; }
     if (group === "credential" && (cmd === "set" || cmd === "remove") && arg && pos[3]) {

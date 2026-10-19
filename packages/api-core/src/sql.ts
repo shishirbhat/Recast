@@ -2,6 +2,7 @@ import type { ActionStep, Receipt } from "@recast/core";
 import { takeResult, type Limiter, type TakeResult } from "./limiter";
 import type { Credential, CredentialCipher, CredentialStore, PlacementRecord, PlacementStore } from "./place";
 import { IDEM_STALE_MS, IDEM_TTL_MS, type ApiKeyRecord, type Correction, type CorrectionStore, type IdemBegin, type IdemRecord, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
+import type { Cohort } from "@recast/release";
 import type { Tier } from "./tiers";
 
 /** One Postgres connection (PGlite or node-postgres fit). Runs as the service role: these stores authenticate callers, so RLS is not in their way. */
@@ -10,10 +11,10 @@ export interface Sql { query<T = Record<string, unknown>>(text: string, params?:
 export class SqlKeyStore implements KeyStore {
   constructor(private sql: Sql) {}
   async find(keyHash: string): Promise<ApiKeyRecord | null> {
-    const { rows } = await this.sql.query<{ tenant_id: string; tier: Tier; opt: boolean; revoked_at: unknown; label: string | null }>(
-      `select t.id as tenant_id, t.tier, t.corrections_opt_in as opt, k.revoked_at, k.label from api_keys k join tenants t on t.id = k.tenant_id where k.key_hash = $1`, [keyHash]);
+    const { rows } = await this.sql.query<{ tenant_id: string; tier: Tier; cohort: Cohort; opt: boolean; revoked_at: unknown; label: string | null }>(
+      `select t.id as tenant_id, t.tier, t.cohort, t.corrections_opt_in as opt, k.revoked_at, k.label from api_keys k join tenants t on t.id = k.tenant_id where k.key_hash = $1`, [keyHash]);
     const r = rows[0]; if (!r) return null;
-    return { tenantId: r.tenant_id, tier: r.tier, revoked: r.revoked_at !== null, correctionsOptIn: r.opt, ...(r.label ? { label: r.label } : {}) };
+    return { tenantId: r.tenant_id, tier: r.tier, cohort: r.cohort, revoked: r.revoked_at !== null, correctionsOptIn: r.opt, ...(r.label ? { label: r.label } : {}) };
   }
   /** Issuing a key: only the hash is stored. The caller shows the plain key once. */
   async add(tenantId: string, keyHash: string, label?: string) { await this.sql.query(`insert into api_keys(tenant_id, key_hash, label) values ($1,$2,$3)`, [tenantId, keyHash, label ?? null]); }

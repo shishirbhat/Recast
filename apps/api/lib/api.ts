@@ -1,11 +1,13 @@
 import pg from "pg";
 import { CredentialCipher, MemoryKeyStore, SqlCredentialStore, SqlPlacementStore, SqlCorrectionStore, SqlIdempotencyStore, SqlKeyStore, SqlRateLimiter, SqlUsageStore, createApi, type Api, type ApiDeps, type Tier } from "@recast/api-core";
 import { createResolver } from "@recast/resolve";
+import { isCohort, releaseFromEnv } from "@recast/release";
 
 /**
  * With DATABASE_URL set, keys, usage, corrections, rate-limit buckets and idempotency records live in Postgres (the Supabase migrations); issue keys with `pnpm --filter @recast/api keys`.
- * Without it, keys come from RECAST_API_KEYS="sk_live_abc...:tenant_id:tier[:optin],..." and counts live in memory (local and tests).
+ * Without it, keys come from RECAST_API_KEYS="sk_live_abc...:tenant_id:tier[:optin][:cohort],..." and counts live in memory (local and tests).
  * With nothing configured every authenticated call is a 401, which is the safe default.
+ * A key without a cohort is `public` (docs/RELEASE_STATES.md); RECAST_RELEASE overrides release states per deployment.
  * No embedding or model provider is configured: the rules stage runs alone, and `meta.stage` says so.
  */
 export async function storesFromEnv(env: NodeJS.ProcessEnv): Promise<Pick<ApiDeps, "keys" | "usage" | "corrections" | "limiter" | "idempotency" | "placement">> {
@@ -18,12 +20,13 @@ export async function storesFromEnv(env: NodeJS.ProcessEnv): Promise<Pick<ApiDep
   }
   const keys = new MemoryKeyStore();
   for (const entry of (env.RECAST_API_KEYS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
-    const [key, tenantId, tier = "free", optin] = entry.split(":");
-    if (key && tenantId && ["free", "pro", "scale", "enterprise"].includes(tier)) await keys.add(key, { tenantId, tier: tier as Tier, correctionsOptIn: optin === "optin" });
+    const [key, tenantId, tier = "free", ...rest] = entry.split(":");
+    const cohort = rest.find(isCohort) ?? "public";
+    if (key && tenantId && ["free", "pro", "scale", "enterprise"].includes(tier)) await keys.add(key, { tenantId, tier: tier as Tier, correctionsOptIn: rest.includes("optin"), cohort });
   }
   return { keys };
 }
 
-const build = async (): Promise<Api> => createApi({ resolver: createResolver(), ...(await storesFromEnv(process.env)) });
+const build = async (): Promise<Api> => createApi({ resolver: createResolver(), release: releaseFromEnv(process.env), ...(await storesFromEnv(process.env)) });
 const g = globalThis as unknown as { __recastApi?: Promise<Api> };
 export const getApi = () => (g.__recastApi ??= build());

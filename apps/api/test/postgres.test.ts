@@ -23,10 +23,10 @@ beforeAll(async () => {
   const addr = (socket as any).server?.address?.() ?? null; url = `postgresql://postgres:postgres@127.0.0.1:${addr?.port ?? (socket as any).port}/postgres`;
 
   // The real command, as a separate process.
-  tenant = (await keysCmd("tenant", "create", "Acme", "--tier", "pro")).stdout.trim();
+  tenant = (await keysCmd("tenant", "create", "Acme", "--tier", "pro", "--cohort", "internal")).stdout.trim();
   const issued = await keysCmd("key", "issue", tenant, "--label", "prod");
   key = issued.stdout.trim(); expect(issued.stderr).toContain("not shown again");
-  optTenant = (await keysCmd("tenant", "create", "Beta", "--corrections-opt-in")).stdout.trim();
+  optTenant = (await keysCmd("tenant", "create", "Beta", "--corrections-opt-in", "--cohort", "internal")).stdout.trim();
   optKey = (await keysCmd("key", "issue", optTenant)).stdout.trim();
 
   // Connect Gmail for Acme: the token goes in on stdin, never on the command line.

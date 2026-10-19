@@ -55,7 +55,7 @@ async function setup(stores?: { credentials: CredentialStore; placements: Placem
   seen = []; failWith = 0; event = { attendees: [{ email: "host@acme.com" }], location: "Old place" }; calendar.clear(); hangAfterWrite = false;
   tenants = stores?.tenants ?? ["tA", "tB"];
   const keys = new MemoryKeyStore();
-  await keys.add(KEY_A, { tenantId: tenants[0], tier: "pro", correctionsOptIn: false }); await keys.add(KEY_B, { tenantId: tenants[1], tier: "pro", correctionsOptIn: false });
+  await keys.add(KEY_A, { tenantId: tenants[0], tier: "pro", correctionsOptIn: false, cohort: "internal" }); await keys.add(KEY_B, { tenantId: tenants[1], tier: "pro", correctionsOptIn: false, cohort: "internal" });
   const credentials = stores?.credentials ?? new MemoryCredentialStore(); const placements = stores?.placements ?? new MemoryPlacementStore();
   await credentials.set(tenants[0], "gmail", { accessToken: TOKEN }); await credentials.set(tenants[0], "google_calendar", { accessToken: TOKEN }); await credentials.set(tenants[0], "google_calendar_event", { accessToken: TOKEN });
   const api = createApi({ resolver: createResolver(), keys, idempotency: new MemoryIdempotencyStore(), placement: { credentials, placements, fetch: opts.fetch ?? toLocal, ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}) } });
@@ -71,7 +71,7 @@ const toCal = { ...MEERA, target: { destination: "google_calendar" }, destinatio
 
 describe("POST /v1/place", () => {
   it("is off unless the server is configured for placements", async () => {
-    const keys = new MemoryKeyStore(); await keys.add(KEY_A, { tenantId: "tA", tier: "pro", correctionsOptIn: false });
+    const keys = new MemoryKeyStore(); await keys.add(KEY_A, { tenantId: "tA", tier: "pro", correctionsOptIn: false, cohort: "internal" });
     const r = await createApi({ resolver: createResolver(), keys }).handle(new Request("http://x/v1/place", { method: "POST", headers: { authorization: `Bearer ${KEY_A}`, "content-type": "application/json" }, body: JSON.stringify(toGmail) }));
     expect(r.status).toBe(501);
   });

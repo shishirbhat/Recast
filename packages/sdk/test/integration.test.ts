@@ -7,7 +7,7 @@ import { AuthError, QuotaError, Recast, ValidationError } from "../src";
 let server: Server, base: string; const usage = new MemoryUsageStore();
 const KEY = "sk_test_integration_01", POOR = "sk_test_poor_integration";
 beforeAll(async () => {
-  const keys = new MemoryKeyStore(); await keys.add(KEY, { tenantId: "t1", tier: "pro", correctionsOptIn: true }); await keys.add(POOR, { tenantId: "t2", tier: "free" });
+  const keys = new MemoryKeyStore(); await keys.add(KEY, { tenantId: "t1", tier: "pro", correctionsOptIn: true, cohort: "internal" }); await keys.add(POOR, { tenantId: "t2", tier: "free", cohort: "private" });
   const api = createApi({ resolver: createResolver(), keys, usage });
   server = createServer(async (q, r) => {
     const chunks: Buffer[] = []; for await (const c of q) chunks.push(c as Buffer);

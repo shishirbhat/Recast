@@ -61,13 +61,14 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Composition: time + place (+ title) into an Event with per-field origin, missing fields, conflicts and visible assumptions; capsule gesture with completion; pointer and keyboard | `packages/core/src/compose.ts`, `packages/interaction` (capsule), `packages/extract-web` `classifyPiece`, `apps/harness/src/compose.html`; `docs/15-composition.md` | core 17, engine 12, extract-web 4, Chromium 7 (journey, missing title, conflict, Esc, keyboard, axe light and dark) | U, H | in-page calendar only; no real calendar; no Windows |
 | Action lifecycle shared by placements; declared bridge capabilities; unknown outcomes recorded, never retried, reconciled once | `packages/core/src/lifecycle.ts`, `packages/bridges/src/{http,specs}.ts`, `packages/api-core/src/api.ts`, `supabase/migrations/20260108000000_action_lifecycle.sql` | core 4, bridges 11, api-core 20 placement tests incl. Postgres, SDK 25 | U, H, F | Google is a stand-in; the harness's in-page destinations do not use the lifecycle yet |
 | Calendar event creation: stable id, duplicate detection, restore after delete, reconciliation; composed objects placed through the API | `googleCalendarEvent`, `/v1/place` with `object` | see `docs/12-api.md` | U, F | **R** needs Google OAuth (#22) |
+| Release states: registry, tenant cohorts, server-side gates on every API endpoint, per-deployment overrides that refuse typos, `/v1/capabilities` | `packages/release`, `packages/api-core/src/api.ts`, `supabase/migrations/20260109000000_release_cohorts.sql`; `docs/RELEASE_STATES.md` | release 4, api-core 8 (memory and Postgres) | U, H | enforced in the API only; agent gateway and control center not yet gated |
 | Control center on Postgres with sign-in (local accounts, Supabase sessions) | `apps/web/{proxy.ts,lib/*}`, `packages/store/src/scoped.ts` | 8 browser tests over Postgres wire; 8 unit; isolation between two people | H, F | Supabase is a stand-in; JWKS (asymmetric) tokens unsupported |
 
 ## 2. Implemented but not fully verified
 | Requirement | Implementation | What exists | Missing to verify |
 |---|---|---|---|
 | Destination bridges: Calendar attendee/location, Gmail draft, Sheets row, Tasks task, Notion page | `packages/bridges/src/specs.ts` | request builders, undo tokens, injection guards; F via a fake Google over HTTP (Gmail draft, Calendar attendee) | **R**: needs OAuth apps (task #22). No bridge creates a calendar *event* yet |
-| `POST /v1/place` and undo | `packages/api-core/src/{api,place}.ts` | re-resolve, object-id check, consent, sealed credentials, host allowlist, atomic undo claim | R; no OAuth flow (tokens stored as given, no refresh); not under a release gate yet |
+| `POST /v1/place` and undo | `packages/api-core/src/{api,place}.ts` | re-resolve, object-id check, consent, sealed credentials, host allowlist, atomic undo claim; release state `internal` | R; no OAuth flow (tokens stored as given, no refresh) |
 | Browser extension | `apps/extension` | extracts the page and lists objects in a popup (15 tests) | **does not include the overlay or placement**; never loaded in a real browser profile by a person |
 | Windows interaction | `apps/spike-win` | probes for a global hook and UI Automation, not run | everything: needs a Windows machine (task #23) |
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
@@ -81,7 +82,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 ## 4. Not started, or blocked outside the repository
 | Item | Blocked on |
 |---|---|
-| Release-state registry | in plan |
+| Release gates in the agent gateway and control center | with Spaces (#41) |
 | Spaces (budgets including spending, expiry, stop), one-command agent onboarding, stdio bridge for desktop MCP clients | P4 |
 | API contract tests and compatibility doc | P5 |
 | Performance budget for real paths (gateway overhead, end to end) | in plan; only harness and rules latencies measured |

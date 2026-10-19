@@ -16,7 +16,7 @@ beforeAll(async () => {
     r.writeHead(404).end();
   });
   const gport = await listen(google);
-  const keys = new MemoryKeyStore(); await keys.add(KEY, { tenantId: "t1", tier: "pro", correctionsOptIn: false });
+  const keys = new MemoryKeyStore(); await keys.add(KEY, { tenantId: "t1", tier: "pro", correctionsOptIn: false, cohort: "internal" });
   const credentials = new MemoryCredentialStore(); await credentials.set("t1", "gmail", { accessToken: "tok" });
   const core = createApi({ resolver: createResolver(), keys, placement: { credentials, placements: new MemoryPlacementStore(), fetch: (u, i) => { const x = new URL(String(u)); return fetch(`http://127.0.0.1:${gport}${x.pathname}`, i); } } });
   api = createServer(async (q, r) => {

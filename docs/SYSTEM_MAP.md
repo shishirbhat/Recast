@@ -57,7 +57,7 @@ Screen element → extraction → evidence and object → composition of pieces 
 **End to end today:** grab, carry, preview, place and undo work only in the harness, against in-page stand-ins (**H**). No path reaches a real app.
 
 ## 2. API and SDK path
-**Resolution** (read-only): developer app → `packages/sdk` (`Recast.resolve`) → HTTP → `apps/api` (`app/v1/[...path]/route.ts`) → `packages/api-core` (`createApi().handle`) → key auth (hash lookup) → `Limiter` → monthly quota → `IdempotencyStore` claim → `packages/resolve` (rules → optional embedder → optional LLM) → `toWire` → usage recorded.
+**Resolution** (read-only): developer app → `packages/sdk` (`Recast.resolve`) → HTTP → `apps/api` (`app/v1/[...path]/route.ts`) → `packages/api-core` (`createApi().handle`) → key auth (hash lookup) → release gate (`packages/release`, tenant cohort) → `Limiter` → monthly quota → `IdempotencyStore` claim → `packages/resolve` (rules → optional embedder → optional LLM) → `toWire` → usage recorded.
 
 **Execution** (writes to a third party, separate): `POST /v1/place` → re-resolve via `resolver.prepare` (or a complete `object`, checked by `deserialize`) → object-id check → `plan` → `checkConsent` → `CredentialStore` (AES-GCM sealed) → `HttpBridge` + `fetchTransport` (host allowlist, no redirects, 10 s timeout) → receipt in `PlacementStore`. `POST /v1/place/undo` claims the receipt atomically, then runs the bridge's undo. Placements record the lifecycle; a write with no answer is stored as `outcome_unknown` and settled by `POST /v1/place/reconcile` (read-only).
 
@@ -90,7 +90,7 @@ Verified: U (crypto, gateway, policy, CLI), H (official MCP client through the g
 |---|---|---|---|
 | People's objects, relationships, integrations, grants, history | Postgres `objects`, `relationships`, `integrations`, `grants`, `audit_events` (`init.sql`) | RLS, `owner = auth.uid()`; server runs each request with `withUser` | Demo mode: in-memory, lost on restart |
 | Harness interaction log | memory | — | test bench only |
-| API tenants, keys, usage, corrections | `tenants`, `tenant_members`, `api_keys` (hash only), `api_usage`, `api_corrections` (`api.sql`) | service role plus RLS for members; corrections require opt-in (trigger) | without `DATABASE_URL`: memory |
+| API tenants (with release `cohort`), keys, usage, corrections | `tenants`, `tenant_members`, `api_keys` (hash only), `api_usage`, `api_corrections` (`api.sql`) | service role plus RLS for members; corrections require opt-in (trigger) | without `DATABASE_URL`: memory |
 | Rate limits, idempotency | `api_rate_buckets`, `api_idempotency` (`api_shared_state.sql`) | service role only (RLS, no policies) | shared across instances |
 | Destination credentials | `api_credentials`, sealed (`placements.sql`) | AES-GCM bound to tenant and destination; no user policies | key from `RECAST_CREDENTIALS_KEY` |
 | Placement receipts | `api_placements` | members may read their tenant's rows | |
@@ -101,6 +101,7 @@ Where checks happen:
 - **Tenant isolation:** Postgres RLS, plus explicit tenant filters in service-role stores.
 - **Credentials:** sealed at rest; never returned by any endpoint; never forwarded to agents.
 - **Idempotency:** `api_idempotency` (API).
+- **Release states:** the API, from `tenants.cohort` (`docs/RELEASE_STATES.md`); not an authorisation boundary on its own.
 - **Usage and limits:** `record_usage`, `take_token`.
 - **Agent call budgets:** `consume_scope`.
 - **Audit:** the gateway, before and after forwarding.

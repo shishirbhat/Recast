@@ -53,7 +53,7 @@ describe("local mode", () => {
 describe("remote mode, through the real API core", () => {
   const KEY = "sk_test_mcp_remote_01"; let calls: string[] = [];
   async function api() {
-    const keys = new MemoryKeyStore(); await keys.add(KEY, { tenantId: "t1", tier: "free", correctionsOptIn: false });
+    const keys = new MemoryKeyStore(); await keys.add(KEY, { tenantId: "t1", tier: "free", correctionsOptIn: false, cohort: "private" });
     const a = createApi({ resolver: createResolver(), keys });
     return (async (url: string | URL | Request, init?: RequestInit) => { calls.push(String(url)); return a.handle(new Request(url, init)); }) as typeof fetch;
   }

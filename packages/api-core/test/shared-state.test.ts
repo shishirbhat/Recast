@@ -7,7 +7,7 @@ import { createResolver, type Resolver } from "@recast/resolve";
 import { MemoryIdempotencyStore, RateLimiter, SqlIdempotencyStore, SqlKeyStore, SqlRateLimiter, SqlUsageStore, createApi, hashKey, type IdempotencyStore, type Limiter } from "../src";
 
 let db: PGlite; let tenant: string; let clock = 1_000_000;
-beforeEach(async () => { db = await freshDb(); clock = 1_000_000; tenant = (await db.query<{ id: string }>(`insert into tenants(name, tier) values ('Acme','free') returning id`)).rows[0]!.id; });
+beforeEach(async () => { db = await freshDb(); clock = 1_000_000; tenant = (await db.query<{ id: string }>(`insert into tenants(name, tier, cohort) values ('Acme','free','private') returning id`)).rows[0]!.id; });
 
 const limiters: Record<string, () => Limiter> = { memory: () => new RateLimiter(() => clock), sql: () => new SqlRateLimiter(db, () => clock) };
 for (const [name, make] of Object.entries(limiters)) describe(`Limiter contract: ${name}`, () => {

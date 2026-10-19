@@ -7,15 +7,15 @@ import { MemoryCorrectionStore, MemoryKeyStore, MemoryUsageStore, SqlCorrectionS
 let db: PGlite; let tenant: string, optTenant: string;
 beforeEach(async () => {
   db = await freshDb();
-  tenant = (await db.query<{ id: string }>(`insert into tenants(name, tier) values ('Acme','free') returning id`)).rows[0]!.id;
-  optTenant = (await db.query<{ id: string }>(`insert into tenants(name, tier, corrections_opt_in) values ('Beta','pro', true) returning id`)).rows[0]!.id;
+  tenant = (await db.query<{ id: string }>(`insert into tenants(name, tier, cohort) values ('Acme','free','private') returning id`)).rows[0]!.id;
+  optTenant = (await db.query<{ id: string }>(`insert into tenants(name, tier, corrections_opt_in, cohort) values ('Beta','pro', true, 'private') returning id`)).rows[0]!.id;
 });
 
 describe("SqlKeyStore", () => {
   it("finds a key by hash with its tenant, tier and consent; never stores the plain key", async () => {
     const store = new SqlKeyStore(db); const plain = "sk_test_sql_000000001";
     await store.add(tenant, await hashKey(plain), "prod");
-    expect(await store.find(await hashKey(plain))).toEqual({ tenantId: tenant, tier: "free", revoked: false, correctionsOptIn: false, label: "prod" });
+    expect(await store.find(await hashKey(plain))).toEqual({ tenantId: tenant, tier: "free", cohort: "private", revoked: false, correctionsOptIn: false, label: "prod" });
     expect(await store.find(await hashKey("sk_other_other_0001"))).toBeNull();
     expect(JSON.stringify((await db.query(`select * from api_keys`)).rows)).not.toContain(plain);
   });
