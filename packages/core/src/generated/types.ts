@@ -93,7 +93,7 @@ export interface ResearchPaperProperties {
  */
 export interface Evidence {
   locator: {
-    kind: "css" | "xpath" | "jsonld" | "meta" | "uia" | "ax" | "pdf" | "api" | "user";
+    kind: "css" | "xpath" | "jsonld" | "meta" | "uia" | "ax" | "pdf" | "api" | "user" | "composition";
     value: string;
   };
   textRange?: {
@@ -109,6 +109,22 @@ export interface Evidence {
     bbox: [number, number, number, number];
   };
   excerpt?: string;
+  /**
+   * How the value was obtained: read from the source, inferred from context (e.g. a relative date), a default Recast suggested, or typed by the person. Absent means extracted.
+   */
+  origin?: "extracted" | "inferred" | "default" | "user";
+  /**
+   * Where this piece came from, when an object is composed from fragments on different pages or apps.
+   */
+  source?: {
+    app: string;
+    url?: string;
+    title?: string;
+  };
+  /**
+   * The text as it appeared, kept when the value was normalised.
+   */
+  original?: string;
 }
 export interface Provenance {
   source: {
@@ -120,7 +136,7 @@ export interface Provenance {
     /**
      * Ordered by preference; ocr and vision are fallback only.
      */
-    method: "structured" | "api" | "dom" | "accessibility" | "ocr" | "vision" | "user";
+    method: "structured" | "api" | "dom" | "accessibility" | "ocr" | "vision" | "user" | "composition";
     adapter: string;
     at: string;
   };

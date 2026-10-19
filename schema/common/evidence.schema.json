@@ -4,29 +4,116 @@
   "title": "Evidence",
   "description": "Where a property value came from. Every extracted property carries at least one of these.",
   "type": "object",
-  "required": ["locator"],
+  "required": [
+    "locator"
+  ],
   "additionalProperties": false,
   "properties": {
     "locator": {
       "type": "object",
-      "required": ["kind", "value"],
+      "required": [
+        "kind",
+        "value"
+      ],
       "additionalProperties": false,
       "properties": {
-        "kind": { "enum": ["css", "xpath", "jsonld", "meta", "uia", "ax", "pdf", "api", "user"] },
-        "value": { "type": "string", "minLength": 1 }
+        "kind": {
+          "enum": [
+            "css",
+            "xpath",
+            "jsonld",
+            "meta",
+            "uia",
+            "ax",
+            "pdf",
+            "api",
+            "user",
+            "composition"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "textRange": {
-      "type": "object", "required": ["start", "end"], "additionalProperties": false,
-      "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
-    },
-    "pdf": {
-      "type": "object", "required": ["page", "bbox"], "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false,
       "properties": {
-        "page": { "type": "integer", "minimum": 1 },
-        "bbox": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number" } }
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "excerpt": { "type": "string", "maxLength": 500 }
+    "pdf": {
+      "type": "object",
+      "required": [
+        "page",
+        "bbox"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bbox": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "excerpt": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "origin": {
+      "enum": [
+        "extracted",
+        "inferred",
+        "default",
+        "user"
+      ],
+      "description": "How the value was obtained: read from the source, inferred from context (e.g. a relative date), a default Recast suggested, or typed by the person. Absent means extracted."
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "app"
+      ],
+      "additionalProperties": false,
+      "description": "Where this piece came from, when an object is composed from fragments on different pages or apps.",
+      "properties": {
+        "app": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "original": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "The text as it appeared, kept when the value was normalised."
+    }
   }
 }
