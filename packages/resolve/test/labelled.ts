@@ -19,6 +19,9 @@ export const LABELLED: Labelled[] = [
   { raw: "Diwali party on 8 November 2026", type: "Event", fields: { title: "Diwali party", start: "2026-11-08" } },
   { raw: "Hackathon kickoff, Dec 3, 2026 10am", type: "Event", fields: { title: "Hackathon kickoff", start: "2026-12-03T10:00" } },
   { raw: "Board meeting 2026-12-01", type: "Event", fields: { title: "Board meeting", start: "2026-12-01" } },
+  // Added 2026-10-19 after finding that end times were pasted into the title (regression guard, not a benchmark).
+  { raw: "Launch dinner, 2026-11-14 19:30 to 21:00", type: "Event", fields: { title: "Launch dinner", start: "2026-11-14T19:30", end: "2026-11-14T21:00" } },
+  { raw: "Release party 2026-12-31 22:00-01:00", type: "Event", fields: { title: "Release party", start: "2026-12-31T22:00", end: "2027-01-01T01:00" } },
   { raw: "Annual general meeting 15 Jan 2027, 4:30 pm", type: "Event", fields: { title: "Annual general meeting", start: "2027-01-15T16:30" } },
   { raw: "Design review 2026-11-20T14:00", type: "Event", fields: { title: "Design review", start: "2026-11-20T14:00" } },
   { raw: "Standup tomorrow 9am", type: null },

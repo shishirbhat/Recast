@@ -40,7 +40,7 @@ describe("local mode", () => {
   });
   it("lists destinations in the public /v1/bridges shape", async () => {
     const r: any = await c.callTool({ name: "list_destinations", arguments: {} });
-    expect(r.structuredContent.destinations.map((d: any) => d.id)).toEqual(["google_calendar", "gmail", "google_sheets", "google_tasks", "notion"]);
+    expect(r.structuredContent.destinations.map((d: any) => d.id)).toEqual(["google_calendar", "google_calendar_event", "gmail", "google_sheets", "google_tasks", "notion"]);
   });
   it("refuses bad input before the engine runs", async () => {
     for (const args of [{}, { raw: "" }, { raw: "x".repeat(4001) }, { raw: "x", target_type: "Spaceship" }, { raw: "x", source_url: "not a url" }]) {
@@ -62,7 +62,7 @@ describe("remote mode, through the real API core", () => {
     const r: any = await c.callTool({ name: "resolve_object", arguments: { raw: "Meera Iyer, meera@x.com", destination: "gmail" } });
     const local: any = await (await memClient(localBackend())).callTool({ name: "resolve_object", arguments: { raw: "Meera Iyer, meera@x.com", destination: "gmail" } });
     expect(r.structuredContent.routing).toEqual(local.structuredContent.routing); expect(r.structuredContent.object.fields).toEqual(local.structuredContent.object.fields);
-    expect((await c.callTool({ name: "list_destinations", arguments: {} }) as any).structuredContent.destinations).toHaveLength(5);
+    expect((await c.callTool({ name: "list_destinations", arguments: {} }) as any).structuredContent.destinations).toHaveLength(6);
     expect(calls).toEqual(["https://api.test/v1/resolve", "https://api.test/v1/bridges"]);
     expect((await c.listTools()).tools[0]!.annotations?.openWorldHint).toBe(true);
   });

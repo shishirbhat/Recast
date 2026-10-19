@@ -1,7 +1,7 @@
-import { RecastError, checkConsent, commit, InMemoryEventLog, plan, undo as coreUndo, type Consent } from "@recast/core";
-import { DestinationError, HttpBridge } from "@recast/bridges";
+import { RecastError, checkConsent, commit, deserialize, hash32, propose, rankProposals, InMemoryEventLog, OutcomeUnknownError, plan, undo as coreUndo, type ActionStep, type Consent, type Proposal, type Receipt, type SemanticObject } from "@recast/core";
+import { DestinationError, DuplicateError, HttpBridge } from "@recast/bridges";
 import { sha256Hex } from "@recast/core";
-import { API_TYPES, ResolveInputError, bridgeCatalog, toWire, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
+import { API_TYPES, DESTINATIONS, ResolveInputError, bridgeCatalog, toApiType, toWire, type ResolveOutcome, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
 import { RateLimiter, type Limiter } from "./limiter";
 import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type CorrectionStore, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
 import { TIERS } from "./tiers";
@@ -21,6 +21,8 @@ export interface ApiDeps {
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 const monthOf = (t: number) => new Date(t).toISOString().slice(0, 7);
 
+/** A request that was accepted but whose result is not known (HTTP 202). Thrown so the idempotency record still completes. */
+class Accepted extends Error { constructor(readonly json: Record<string, unknown>) { super("accepted"); } }
 class HttpError extends Error { constructor(readonly status: number, readonly code: string, message: string, readonly extra: Record<string, string> = {}) { super(message); } }
 const err = (status: number, code: string, message: string, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify({ error: { code, message, ...(headers["Retry-After"] ? { retry_after: Number(headers["Retry-After"]) } : {}) } }), { status, headers: { ...JSON_HEADERS, ...headers } });
@@ -92,7 +94,8 @@ export function createApi(deps: ApiDeps) {
   /** Re-resolves, then plans, checks consent and commits through the bridge: the same pipeline as the desktop app, server-side. */
   async function place(tenantId: string, body: unknown) {
     const pd = placementOrThrow();
-    const input = parseResolveInput(body); const destination = input.target?.destination;
+    const hasObject = isObj(body) && (body as Record<string, unknown>).object !== undefined;
+    const input = parseResolveInput(hasObject ? { ...(body as Record<string, unknown>), input: { raw: "(object)" } } : body); const destination = input.target?.destination;
     if (!destination) throw new HttpError(400, "invalid_request", "target.destination is required to place");
     const b = body as Record<string, unknown>; const dt = PLACE_TARGETS[destination];
     if (!dt) throw new HttpError(400, "invalid_request", `cannot place into '${destination}'`);
@@ -102,9 +105,21 @@ export function createApi(deps: ApiDeps) {
     const consent = parseConsent(b.consent);
     if (b.object_id !== undefined && typeof b.object_id !== "string") throw new HttpError(400, "invalid_request", "object_id must be a string");
 
-    const { outcome, proposal } = await deps.resolver.prepare(input);
-    if (outcome.status !== "resolved") throw new HttpError(422, "not_resolved", `nothing was placed: ${outcome.reason}`);
-    if (!proposal) throw new HttpError(422, "not_placeable", `nothing was placed: ${outcome.routeError ?? "no route to this destination"}`);
+    let outcome: ResolveOutcome; let proposal: Proposal | null;
+    if (b.object !== undefined) {
+      // A complete object (for example composed on the device from pieces the person picked). It must pass the schema and
+      // its content id must match its properties; then it goes through exactly the same checks as a resolved one.
+      let obj: SemanticObject;
+      try { obj = deserialize(JSON.stringify(b.object)); } catch (e) { throw new HttpError(400, "invalid_object", `object is not a valid Recast object: ${e instanceof Error ? e.message : String(e)}`); }
+      const contract = DESTINATIONS[destination]!;
+      proposal = rankProposals(propose(obj, contract)).find((p) => p.status === "ready") ?? null;
+      outcome = { status: "resolved", object: { id: obj.id, type: toApiType(obj.type) ?? "Document", fields: { ...obj.properties }, confidence: Math.min(...Object.values(obj.fields).map((f) => f.confidence)), trust: "medium", provenance: [] }, routing: null, alternatives: [], meta: { stage: "rules", schemaVersion: "1.0.0", degraded: false } };
+      if (!proposal) throw new HttpError(422, "not_placeable", `nothing was placed: ${contract.app} cannot take this ${obj.type}`);
+    } else {
+      ({ outcome, proposal } = await deps.resolver.prepare(input));
+      if (outcome.status !== "resolved") throw new HttpError(422, "not_resolved", `nothing was placed: ${outcome.reason}`);
+      if (!proposal) throw new HttpError(422, "not_placeable", `nothing was placed: ${outcome.routeError ?? "no route to this destination"}`);
+    }
     if (b.object_id !== undefined && b.object_id !== outcome.object.id) throw new HttpError(409, "object_changed", "the text now resolves to a different object than the one you previewed; resolve again and confirm");
 
     const iso = () => new Date(now()).toISOString();
@@ -115,12 +130,40 @@ export function createApi(deps: ApiDeps) {
     if (!cred) throw new HttpError(403, "destination_not_connected", `connect ${destination} for this account before placing into it`);
 
     const bridge = new HttpBridge(dt.spec, target, fetchTransport(cred.accessToken, pd.fetch, pd.timeoutMs));
-    const receipt = await commit(op, consent, { bridge, log: new InMemoryEventLog(), now: iso }).catch(destinationFailure);
-    await pd.placements.save({ tenantId, destination, target, receipt, dataMoved: op.dataMoved, status: "done" });
+    const caps = bridge.capabilities(op.proposal.relationId);
+    const needs = bridge.check(op);
+    if (needs.length) throw new HttpError(422, "incomplete", `nothing was placed: ${destination} needs ${needs.join(", ")}, which the text does not give`);
+    // Lifecycle: proposed and validated (resolved, consent checked, connected), then executing.
+    const action: ActionStep[] = [{ status: "proposed", at: op.at }, { status: "validated", at: iso() }, { status: "executing", at: iso() }];
+    const provisional = (bridgeRef?: string): Receipt => ({
+      receiptId: `rc_r_${hash32(`${op.opId}\ncommit`)}`, opId: op.opId, at: iso(), status: "done", objectId: op.proposal.object.id,
+      destination: op.proposal.destination.destination, relationId: op.proposal.relationId, effect: op.proposal.effect, reversible: op.proposal.reversible, ...(bridgeRef ? { bridgeRef } : {}),
+    });
+    const wireObject = (toWire(outcome, false) as { object: unknown }).object;
+    let receipt: Receipt;
+    try {
+      receipt = await commit(op, consent, { bridge, log: new InMemoryEventLog(), now: iso });
+    } catch (e) {
+      if (e instanceof OutcomeUnknownError) {
+        const r = provisional(e.reconcileRef);
+        await pd.placements.save({ tenantId, destination, target, receipt: r, dataMoved: op.dataMoved, status: "outcome_unknown", action: [...action, { status: "outcome_unknown", at: iso(), reason: e.message }], ...(e.reconcileRef ? { reconcileRef: e.reconcileRef } : {}) });
+        // 202: the provider may or may not have done it. Never reported as success, never silently retried.
+        throw new Accepted({ status: "outcome_unknown", action_id: r.receiptId, message: `${e.message}. Recast has not retried it.`,
+          next: e.reconcileRef && caps?.verifiable ? "POST /v1/place/reconcile with this action_id to check with the destination" : "check the destination yourself before trying again: this destination cannot be checked or retried safely" });
+      }
+      if (e instanceof DuplicateError) throw new HttpError(409, "already_placed", "this is already in that destination; nothing new was created");
+      const r = provisional();
+      await pd.placements.save({ tenantId, destination, target, receipt: r, dataMoved: op.dataMoved, status: "failed", action: [...action, { status: "failed", at: iso(), reason: e instanceof Error ? e.message : String(e) }] });
+      return destinationFailure(e);
+    }
+    const done: ActionStep[] = [...action, { status: "succeeded", at: receipt.at }];
+    await pd.placements.save({ tenantId, destination, target, receipt, dataMoved: op.dataMoved, status: "succeeded", action: done });
+    const undoAvailable = receipt.reversible && caps?.reversal !== "none";
     return {
       status: "placed",
-      receipt: { id: receipt.receiptId, op_id: receipt.opId, destination, relation_id: receipt.relationId, effect: receipt.effect, reversible: receipt.reversible, at: receipt.at },
-      object: (toWire(outcome, false) as { object: unknown }).object, data_moved: op.dataMoved, risk: op.risk.tier,
+      receipt: { id: receipt.receiptId, op_id: receipt.opId, destination, relation_id: receipt.relationId, effect: receipt.effect, reversible: undoAvailable, at: receipt.at },
+      action: { status: "succeeded", history: done }, undo: { available: undoAvailable, ...(caps ? { kind: caps.reversal } : {}) },
+      object: wireObject, data_moved: op.dataMoved, risk: op.risk.tier,
     };
   }
 
@@ -128,18 +171,39 @@ export function createApi(deps: ApiDeps) {
     const pd = placementOrThrow();
     const rec = await pd.placements.get(tenantId, receiptId);
     if (!rec) throw new HttpError(404, "not_found", "no placement with this receipt for this account");
-    if (!rec.receipt.reversible) throw new HttpError(409, "not_reversible", "this placement cannot be undone");
-    if (!(await pd.placements.claimUndo(tenantId, receiptId))) throw new HttpError(409, rec.status === "undone" ? "already_undone" : "undo_in_progress", rec.status === "undone" ? "this placement was already undone" : "an undo for this placement is already running");
+    if (rec.status === "outcome_unknown") throw new HttpError(409, "outcome_unknown", "it is not known whether this placement happened; reconcile it first");
+    if (rec.status === "failed") throw new HttpError(409, "not_placed", "this placement failed; there is nothing to undo");
+    const dt = PLACE_TARGETS[rec.destination]!;
+    const caps = dt.spec.capabilities[rec.receipt.relationId];
+    if (!rec.receipt.reversible || caps?.reversal === "none") throw new HttpError(409, "not_reversible", "this placement cannot be undone");
+    if (!(await pd.placements.claimUndo(tenantId, receiptId))) throw new HttpError(409, rec.status === "reversed" ? "already_undone" : "undo_in_progress", rec.status === "reversed" ? "this placement was already undone" : "an undo for this placement is already running");
     let ok = false;
     try {
-      const dt = PLACE_TARGETS[rec.destination]!; const cred = await pd.credentials.get(tenantId, rec.destination);
+      const cred = await pd.credentials.get(tenantId, rec.destination);
       if (!cred) throw new HttpError(403, "destination_not_connected", `reconnect ${rec.destination} to undo`);
       const bridge = new HttpBridge(dt.spec, rec.target, fetchTransport(cred.accessToken, pd.fetch, pd.timeoutMs));
       const log = new InMemoryEventLog(); await log.append({ kind: "commit", at: rec.receipt.at, receipt: rec.receipt });
       const undone = await coreUndo(rec.receipt, { bridge, log, now: () => new Date(now()).toISOString() }).catch(destinationFailure);
-      ok = true; await pd.placements.finishUndo(tenantId, receiptId, true, undone);
-      return { status: "undone", receipt: { id: undone.receiptId, destination: rec.destination, effect: undone.effect, at: undone.at } };
-    } finally { if (!ok) await pd.placements.finishUndo(tenantId, receiptId, false); }
+      ok = true; await pd.placements.finishUndo(tenantId, receiptId, true, { status: "reversed", at: undone.at }, undone);
+      return { status: "undone", receipt: { id: undone.receiptId, destination: rec.destination, effect: undone.effect, at: undone.at }, action: { status: "reversed" } };
+    } finally { if (!ok) await pd.placements.finishUndo(tenantId, receiptId, false, { status: "succeeded", at: new Date(now()).toISOString() }); }
+  }
+
+  /** Ask the destination whether an unknown-outcome placement happened. Reads only; never sends the write again. */
+  async function reconcilePlacement(tenantId: string, receiptId: string) {
+    const pd = placementOrThrow();
+    const rec = await pd.placements.get(tenantId, receiptId);
+    if (!rec) throw new HttpError(404, "not_found", "no placement with this id for this account");
+    if (rec.status !== "outcome_unknown") return { status: rec.status, action_id: receiptId, changed: false };
+    const dt = PLACE_TARGETS[rec.destination]!;
+    if (!rec.reconcileRef || !dt.spec.reconcile) throw new HttpError(409, "cannot_reconcile", "this destination cannot be checked; look in the destination before trying again");
+    const cred = await pd.credentials.get(tenantId, rec.destination);
+    if (!cred) throw new HttpError(403, "destination_not_connected", `reconnect ${rec.destination} to check`);
+    const bridge = new HttpBridge(dt.spec, rec.target, fetchTransport(cred.accessToken, pd.fetch, pd.timeoutMs));
+    const found = await bridge.reconcile(rec.reconcileRef).catch(destinationFailure);
+    const to = found === "present" ? "succeeded" : "failed";
+    const changed = await pd.placements.resolveUnknown(tenantId, receiptId, to, { status: to, at: new Date(now()).toISOString(), reason: found === "present" ? "found at the destination" : "not found at the destination" });
+    return { status: to, action_id: receiptId, changed, ...(to === "failed" ? { message: "nothing was created; it is safe to place again" } : {}) };
   }
 
   async function handle(req: Request): Promise<Response> {
@@ -173,6 +237,11 @@ export function createApi(deps: ApiDeps) {
         return new Response(JSON.stringify({ status: "stored" }), { status: 201, headers: { ...JSON_HEADERS, ...base } });
       }
 
+      if (path === "/v1/place/reconcile" && req.method === "POST") {
+        const b = await readJson(req);
+        if (!isObj(b) || typeof b.action_id !== "string" || !/^rc_r_[0-9a-f]{32}$/.test(b.action_id)) throw new HttpError(400, "invalid_request", "action_id must be an id from POST /v1/place");
+        return new Response(JSON.stringify(await reconcilePlacement(key.tenantId, b.action_id)), { status: 200, headers: { ...JSON_HEADERS, ...base } });
+      }
       if (path === "/v1/place/undo" && req.method === "POST") {
         const b = await readJson(req);
         if (!isObj(b) || typeof b.receipt_id !== "string" || !/^rc_r_[0-9a-f]{32}$/.test(b.receipt_id)) throw new HttpError(400, "invalid_request", "receipt_id must be a receipt id from POST /v1/place");
@@ -202,7 +271,9 @@ export function createApi(deps: ApiDeps) {
             return toWire(o, input.options?.includeProvenance ?? true);
           };
           if (path === "/v1/place") {
-            json = await place(key.tenantId, body); status = 201; resolved = 1;
+            try { json = await place(key.tenantId, body); status = 201; }
+            catch (e) { if (!(e instanceof Accepted)) throw e; json = e.json; status = 202; }
+            resolved = 1;
           } else if (path === "/v1/resolve") {
             json = await run(parseResolveInput(body));
           } else {

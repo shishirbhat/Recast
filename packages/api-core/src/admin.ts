@@ -63,7 +63,7 @@ const EXPORT_TABLES: Record<string, string> = {
   scopes: `select id, agent_id, tool, action, constraints, max_calls, calls, issued_at, expires_at from agent_scopes where tenant_id = $1 order by issued_at, id`,
   policies: `select name, version, rule_yaml, active, created_at from agent_policies where tenant_id = $1 order by name, version`,
   approvals: `select id, agent_id, tool, action, request_hash, status, created_ms, decided_by from agent_approvals where tenant_id = $1 order by created_ms, id`,
-  placements: `select receipt_id, destination, target, receipt, data_moved, status, created_at, undone_at from api_placements where tenant_id = $1 order by created_at, receipt_id`,
+  placements: `select receipt_id, destination, target, receipt, data_moved, status, created_at, reversed_at from api_placements where tenant_id = $1 order by created_at, receipt_id`,
   connected_destinations: `select destination, updated_at from api_credentials where tenant_id = $1 order by destination`,
   audit_log: `select seq, entry, prev_hash, hash, signature, key_id, at from agent_audit_log where tenant_id = $1 order by seq`,
 };

@@ -1,5 +1,8 @@
-import type { Operation } from "@recast/core";
-import { DestinationError, need, moved, seg, type Send, type Spec } from "./http";
+import { hash32, OutcomeUnknownError, type Operation, type OperationCapabilities } from "@recast/core";
+import { DestinationError, DuplicateError, need, moved, seg, type Send, type Spec } from "./http";
+
+/** A write that cannot be repeated safely and cannot be read back: an unknown outcome stays unknown until the person checks. */
+const unkeyedCreate = (permission: string, reversal: OperationCapabilities["reversal"]): OperationCapabilities => ({ writes: true, idempotency: "none", verifiable: false, reversal, onTimeout: "outcome-unknown", permission });
 
 const asObj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown, what: string): string => { if (typeof v !== "string" || !v) throw new DestinationError(`unexpected response: no ${what}`); return v; };
@@ -16,6 +19,11 @@ export const googleCalendar: Spec<CalendarTarget> = {
       { relationId: "person-event-attendee", effect: "Add attendee", effectFlags: ["notifies-third-party"], dataMoved: ["Person.name", "Person.email"] },
       { relationId: "location-event-location", effect: "Set location", dataMoved: ["Location.name", "Location.address"] },
     ],
+  },
+  // PATCH sets a value: repeating the same request gives the same result, and the event can be read back.
+  capabilities: {
+    "person-event-attendee": { writes: true, idempotency: "not-applicable", verifiable: true, reversal: "restore-previous", onTimeout: "safe-to-retry", permission: "calendar.events" },
+    "location-event-location": { writes: true, idempotency: "not-applicable", verifiable: true, reversal: "restore-previous", onTimeout: "safe-to-retry", permission: "calendar.events" },
   },
   async execute(op: Operation, t: CalendarTarget, send: Send) {
     const cur = asObj(await send({ method: "GET", url: eventUrl(t) }));
@@ -57,6 +65,7 @@ export const gmailDraft: Spec<GmailTarget> = {
     destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api",
     accepts: [{ relationId: "person-message-recipient", effect: "Create a draft to this person", dataMoved: ["Person.email"] }],
   },
+  capabilities: { "person-message-recipient": unkeyedCreate("gmail.compose", "delete-created") },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Person.email")) } } }));
     return JSON.stringify({ id: str(r.id, "draft id") });
@@ -72,6 +81,7 @@ export const googleSheets: Spec<SheetTarget> = {
     destination: "google-sheets.range", app: "Google Sheets", targetKind: "Product", reliability: "official-api",
     accepts: [{ relationId: "product-product-compare", effect: "Add a row", dataMoved: ["Product.name", "Product.url"] }],
   },
+  capabilities: { "product-product-compare": unkeyedCreate("spreadsheets", "delete-created") },
   async execute(op, t, send) {
     const row = [need(op, "Product.name"), moved(op, "Product.url") ?? ""];
     // RAW, not USER_ENTERED: a product called "=IMPORTXML(...)" must land as text, never as a formula.
@@ -91,6 +101,7 @@ export const googleTasks: Spec<TasksTarget> = {
     destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api",
     accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
   },
+  capabilities: { "document-task-reference": unkeyedCreate("tasks", "delete-created") },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Document.title"), ...(moved(op, "Document.url") ? { notes: moved(op, "Document.url") } : {}) } }));
     return JSON.stringify({ id: str(r.id, "task id") });
@@ -107,6 +118,7 @@ export const notion: Spec<NotionTarget> = {
     destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api",
     accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],
   },
+  capabilities: { "document-project-source": unkeyedCreate("insert_content", "archive") },
   async execute(op, t, send) {
     const properties: Record<string, unknown> = { [t.titleProperty ?? "Name"]: { title: [{ text: { content: need(op, "Document.title") } }] } };
     if (moved(op, "Document.url")) properties[t.urlProperty ?? "URL"] = { url: moved(op, "Document.url") };
@@ -114,4 +126,65 @@ export const notion: Spec<NotionTarget> = {
     return JSON.stringify({ id: str(r.id, "page id") });
   },
   async undo(token, _t, send) { await send({ method: "PATCH", url: `${NOTION}/${seg((JSON.parse(token) as { id: string }).id)}`, headers: NOTION_HEADERS, body: { archived: true } }); },
+};
+
+// ---- Google Calendar, new event (Calendar API v3, events.insert with a client-chosen id / events.get / events.delete) ----
+export interface CalendarListTarget { calendarId: string }
+
+/**
+ * The event id is derived from the object's content id and the calendar, so:
+ * - a retry of the same placement is a no-op (Google answers 409 for an id that exists), never a duplicate;
+ * - placing the identical event in the same calendar again is detected as a duplicate and reported, not created;
+ * - after a timeout the event can be looked up by id (reconciliation) instead of being sent again.
+ * Google event ids use base32hex (0-9, a-v), 5 to 1024 characters; "rc" + 32 hex characters fits.
+ * Invitations: composed events carry no attendees, so sendUpdates=none; nobody is emailed.
+ */
+export const calendarEventId = (objectId: string, calendarId: string) => `rc${hash32(`${objectId}|${calendarId}`)}`;
+
+function eventBody(op: Operation, id: string) {
+  const start = need(op, "Event.start"); const end = moved(op, "Event.end"); const tz = moved(op, "Event.timezone");
+  const allDay = moved(op, "Event.allDay") === "true" || !start.includes("T");
+  const when = (v: string) => allDay ? { date: v.slice(0, 10) } : { dateTime: v.length === 16 ? `${v}:00` : v, ...(tz ? { timeZone: tz } : {}) };
+  const nextDay = (d: string) => { const t = new Date(`${d.slice(0, 10)}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10); };
+  if (!allDay && !end) throw new DestinationError("missing Event.end");
+  return {
+    id, summary: need(op, "Event.title"),
+    start: when(start), end: allDay ? { date: end ? end.slice(0, 10) : nextDay(start) } : when(end!),
+    ...(moved(op, "Event.location") ? { location: moved(op, "Event.location") } : {}),
+  };
+}
+
+export const googleCalendarEvent: Spec<CalendarListTarget> = {
+  contract: {
+    destination: "google-calendar.calendar", app: "Google Calendar", targetKind: "Calendar", reliability: "official-api",
+    accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
+  },
+  capabilities: { "event-calendar-entry": { writes: true, idempotency: "provider-key", verifiable: true, reversal: "delete-created", onTimeout: "safe-to-retry", permission: "calendar.events" } },
+  // A timed event needs an end; Recast does not invent one here (composition offers a visible default instead).
+  check: (op) => { const start = moved(op, "Event.start") ?? ""; const allDay = moved(op, "Event.allDay") === "true" || !start.includes("T"); return !allDay && !moved(op, "Event.end") ? ["Event.end"] : []; },
+  async execute(op, t, send) {
+    const id = calendarEventId(op.proposal.object.id, t.calendarId);
+    const token = JSON.stringify({ id });
+    const url = `${GCAL}/calendars/${seg(t.calendarId)}/events`;
+    try {
+      await send({ method: "POST", url: `${url}?sendUpdates=none`, body: eventBody(op, id) });
+      return token;
+    } catch (e) {
+      if (e instanceof OutcomeUnknownError) throw new OutcomeUnknownError(e.message, token);
+      if (!(e instanceof DestinationError) || e.status !== 409) throw e;
+      // The id exists: the same event was placed before. If it was since deleted, restore it; otherwise it is a duplicate.
+      const cur = (await send({ method: "GET", url: `${url}/${seg(id)}` })) as { status?: string } | null;
+      if (cur?.status === "cancelled") { await send({ method: "PUT", url: `${url}/${seg(id)}?sendUpdates=none`, body: { ...eventBody(op, id), status: "confirmed" } }); return token; }
+      throw new DuplicateError("this event is already in that calendar", token);
+    }
+  },
+  async undo(token, t, send) {
+    await send({ method: "DELETE", url: `${GCAL}/calendars/${seg(t.calendarId)}/events/${seg((JSON.parse(token) as { id: string }).id)}?sendUpdates=none` });
+  },
+  async reconcile(token, t, send) {
+    try {
+      const cur = (await send({ method: "GET", url: `${GCAL}/calendars/${seg(t.calendarId)}/events/${seg((JSON.parse(token) as { id: string }).id)}` })) as { status?: string } | null;
+      return cur && cur.status !== "cancelled" ? "present" : "absent";
+    } catch (e) { if (e instanceof DestinationError && (e.status === 404 || e.status === 410)) return "absent"; throw e; }
+  },
 };

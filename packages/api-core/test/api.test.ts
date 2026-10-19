@@ -142,7 +142,7 @@ describe("versioning", () => {
 describe("bridges and corrections", () => {
   it("lists every destination with its reliability and what it accepts", async () => {
     const j = await (await call(mk(), "/v1/bridges")).json() as any;
-    expect(j.bridges.map((b: any) => b.id)).toEqual(["google_calendar", "gmail", "google_sheets", "google_tasks", "notion"]);
+    expect(j.bridges.map((b: any) => b.id)).toEqual(["google_calendar", "google_calendar_event", "gmail", "google_sheets", "google_tasks", "notion"]);
     expect(j.bridges[0]).toMatchObject({ name: "Google Calendar", bridge_reliability: "official_api", objects: ["Person", "Location"] });
     expect(j.bridges.find((b: any) => b.id === "notion").objects).toEqual(["Document"]);
   });

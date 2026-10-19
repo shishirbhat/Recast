@@ -59,7 +59,7 @@ Screen element → extraction → evidence and object → composition of pieces 
 ## 2. API and SDK path
 **Resolution** (read-only): developer app → `packages/sdk` (`Recast.resolve`) → HTTP → `apps/api` (`app/v1/[...path]/route.ts`) → `packages/api-core` (`createApi().handle`) → key auth (hash lookup) → `Limiter` → monthly quota → `IdempotencyStore` claim → `packages/resolve` (rules → optional embedder → optional LLM) → `toWire` → usage recorded.
 
-**Execution** (writes to a third party, separate): `POST /v1/place` → re-resolve via `resolver.prepare` → object-id check → `plan` → `checkConsent` → `CredentialStore` (AES-GCM sealed) → `HttpBridge` + `fetchTransport` (host allowlist, no redirects, 10 s timeout) → receipt in `PlacementStore`. `POST /v1/place/undo` claims the receipt atomically, then runs the bridge's undo.
+**Execution** (writes to a third party, separate): `POST /v1/place` → re-resolve via `resolver.prepare` (or a complete `object`, checked by `deserialize`) → object-id check → `plan` → `checkConsent` → `CredentialStore` (AES-GCM sealed) → `HttpBridge` + `fetchTransport` (host allowlist, no redirects, 10 s timeout) → receipt in `PlacementStore`. `POST /v1/place/undo` claims the receipt atomically, then runs the bridge's undo. Placements record the lifecycle; a write with no answer is stored as `outcome_unknown` and settled by `POST /v1/place/reconcile` (read-only).
 
 | Component | Location | Local / remote | Verified |
 |---|---|---|---|
@@ -112,4 +112,4 @@ Where checks happen:
 | Capability contract (destination) | `schema/contracts/capability.schema.json` | core, bridges, resolve, interaction |
 | Wire resolve shape (snake_case) | `packages/resolve/src/wire.ts` | API, SDK, MCP |
 | Agent token, proof and audit entry | `packages/agent-runtime/src/{token,proof,audit}.ts` | gateway, server, CLI, control center |
-| Action lifecycle | **not formalised yet** (core has commit/undo receipts with `done`/`undone`) | Task P3 |
+| Action lifecycle and operation capabilities | `packages/core/src/lifecycle.ts` (`ActionStatus`, `TRANSITIONS`, `OperationCapabilities`, `OutcomeUnknownError`) | core, bridges, api-core placements; agent runtime to adopt (P4) |

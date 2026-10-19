@@ -120,7 +120,7 @@ describe("routing uses the real contracts, grammar and trust rules", () => {
   });
 
   it("an unknown destination is the caller's mistake, listed with the known ones", async () => {
-    await expect(ok({ raw: "Meera Iyer, meera@x.com", target: { destination: "hubspot" } })).rejects.toThrow(/unknown destination 'hubspot'. Known: google_calendar, gmail/);
+    await expect(ok({ raw: "Meera Iyer, meera@x.com", target: { destination: "hubspot" } })).rejects.toThrow(/unknown destination 'hubspot'. Known: google_calendar, google_calendar_event, gmail/);
   });
 
   it("a person to Gmail makes a draft; a paper to nowhere has no routing", async () => {

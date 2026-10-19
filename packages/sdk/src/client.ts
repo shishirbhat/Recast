@@ -1,6 +1,6 @@
 import { batchFromWire, bridgeFromWire, fromWire, toWireInput } from "./convert";
 import { AuthError, CircuitOpenError, DestinationError, NetworkError, QuotaError, RateLimitError, RecastError, ServerError, ValidationError } from "./errors";
-import type { BatchItemResult, BridgeInfo, CorrectionInput, ObjectType, PlaceInput, Placement, ResolveInput, ResolveResult, Usage } from "./types";
+import type { BatchItemResult, BridgeInfo, CorrectionInput, ObjectType, PlaceInput, Placement, PlacementUnknown, ResolveInput, ResolveResult, Usage } from "./types";
 
 export interface RecastConfig {
   apiKey: string;
@@ -104,7 +104,7 @@ export class Recast {
    * and the consent the routing asked for; a missing consent is a ValidationError with code "consent_required" and nothing moves.
    * One idempotency key per call, reused by retries, so a retry never places twice.
    */
-  async place(p: PlaceInput): Promise<Placement> {
+  async place(p: PlaceInput): Promise<Placement | PlacementUnknown> {
     const body = {
       input: { raw: p.raw, ...(p.sourceUrl ? { source_url: p.sourceUrl } : {}) },
       target: { destination: p.destination, ...(p.type ? { type: p.type } : {}) },
@@ -113,16 +113,20 @@ export class Recast {
       ...(p.objectId ? { object_id: p.objectId } : {}),
     };
     const { json } = await this.request("POST", "/v1/place", body, { "idempotency-key": uuid() });
+    if (json.status === "outcome_unknown") return { status: "outcome_unknown", actionId: json.action_id, message: json.message, next: json.next };
     const r = json.receipt;
     return {
+      status: "placed",
       receipt: { id: r.id, opId: r.op_id, destination: r.destination, relationId: r.relation_id, effect: r.effect, reversible: r.reversible, at: r.at },
       object: { id: json.object.id, type: json.object.type, fields: json.object.fields, confidence: json.object.confidence, trust: json.object.trust },
-      dataMoved: json.data_moved, risk: json.risk,
+      dataMoved: json.data_moved, risk: json.risk, history: json.action?.history ?? [], undo: json.undo ?? { available: r.reversible },
     };
   }
   readonly placements = {
     /** Reverse a placement by its receipt id. A second undo is a ValidationError with code "already_undone". */
     undo: async (receiptId: string): Promise<{ id: string; at: string }> => { const r = (await this.request("POST", "/v1/place/undo", { receipt_id: receiptId })).json.receipt; return { id: r.id, at: r.at }; },
+    /** After an unknown outcome: ask the destination whether it happened. Reads only; never sends the write again. */
+    reconcile: async (actionId: string): Promise<{ status: "succeeded" | "failed" | string; changed: boolean }> => { const j = (await this.request("POST", "/v1/place/reconcile", { action_id: actionId })).json; return { status: j.status, changed: j.changed }; },
   };
 
   async health(): Promise<boolean> { try { return (await this.request("GET", "/v1/health")).json.status === "ok"; } catch { return false; } }

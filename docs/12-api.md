@@ -92,6 +92,38 @@ Credentials: `RECAST_CREDENTIALS_KEY` (32 random bytes, base64; `recast-keys cre
 
 Tested against a stand-in Google over real HTTP (`packages/api-core/test/place.test.ts`, `packages/sdk/test/place.test.ts`, `apps/api/test/postgres.test.ts`). **Not run against real Google or Notion:** that needs OAuth apps (task #22). Tokens are stored as given. There is no refresh-token flow yet, so a Google access token works for about an hour.
 
+### Action lifecycle, unknown outcomes, duplicates (added 2026-10-19)
+Every placement follows the shared lifecycle (`packages/core/src/lifecycle.ts`, decision D16) and stores its history: `proposed → validated → executing → succeeded | failed | outcome_unknown`, then `reversed` after undo.
+
+- **Success means the destination confirmed it.** The 201 includes `action.history` and `undo: { available, kind }`. Undo is offered only when the bridge declares a reversal.
+- **202 `outcome_unknown`:** a write was sent and no answer came back (a timeout, a reset, a 504). Recast does **not** retry it. If the operation is verifiable, `POST /v1/place/reconcile { action_id }` asks the destination, reading only, and settles the action exactly once as `succeeded` or `failed`. Otherwise the answer says the person must check the destination. Undo is refused until it is reconciled.
+- **Failed:** only when nothing can have arrived (the connection was refused) or the destination refused. It is recorded, and the request may be repeated.
+- **409 `already_placed`:** the same event is already in that calendar. Nothing new is created.
+- **422 `incomplete`:** a bridge's pre-flight check found something missing (a timed event with no end). Nothing is sent, and Recast does not invent the value.
+
+Each bridge operation declares `OperationCapabilities`: whether it writes, its idempotency (`provider-key` | `none` | `not-applicable`), whether it is verifiable, its reversal, its timeout behaviour and the permission it needs. A test enforces that an un-keyed write can never be marked safe to retry.
+
+**New destination `google_calendar_event`:** creates an event (`destination_target: { calendar_id }`). The event id is derived from the object's content id and the calendar, so:
+- a retry is a no-op;
+- the identical event placed again is a duplicate;
+- an unknown outcome is reconciled by reading the event;
+- an event deleted earlier is restored rather than refused.
+
+Invitations: none are sent (`sendUpdates=none`); composed events carry no attendees.
+
+**Placing a composed object:** instead of `input.raw`, send `object`, a complete Recast object such as a capsule composed on the device. It must pass the schema, and its content id must match its properties (`deserialize`). It then gets the same destination, consent, pre-flight and lifecycle handling.
+
+SDK: `place()` returns `{ status: "placed", history, undo, ... }` or `{ status: "outcome_unknown", actionId, message, next }`; `placements.reconcile(actionId)`.
+
+Tested against a stand-in Google over HTTP (`packages/api-core/test/place.test.ts`, 20 tests; `packages/bridges/test/calendar-event.test.ts`, 11). Covered:
+- a timeout after the write landed, then reconciliation and undo;
+- two concurrent reconciles settle once (Postgres);
+- duplicates and restore;
+- refused connections;
+- a forged object.
+
+**Not run against real Google** (task #22).
+
 ## MCP server (`packages/mcp`)
 Agents reach Recast as tools. `@recast/mcp` exposes two read-only tools: `resolve_object` (raw text in; typed object, provenance and routing out) and `list_destinations`. Nothing is placed in any app; acting on an answer stays a separate, consented step.
 

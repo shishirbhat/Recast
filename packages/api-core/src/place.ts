@@ -1,5 +1,5 @@
-import { gmailDraft, googleCalendar, googleSheets, googleTasks, notion, DestinationError, type Spec, type Transport } from "@recast/bridges";
-import type { Receipt } from "@recast/core";
+import { gmailDraft, googleCalendar, googleCalendarEvent, googleSheets, googleTasks, notion, DestinationError, type Spec, type Transport } from "@recast/bridges";
+import { OutcomeUnknownError, type ActionStep, type Receipt } from "@recast/core";
 import { b64 } from "./b64";
 
 // ---- What the caller says it is placing into, per destination --------------------------------------------------------
@@ -15,6 +15,7 @@ interface DestinationTarget { spec: Spec<any>; parse(t: Record<string, unknown>)
 /** destination id -> its bridge and the fields that pick the exact calendar event, sheet range, task list or database. */
 export const PLACE_TARGETS: Record<string, DestinationTarget> = {
   google_calendar: { spec: googleCalendar, parse: (t) => ({ calendarId: field(t, "calendar_id")!, eventId: field(t, "event_id")! }) },
+  google_calendar_event: { spec: googleCalendarEvent, parse: (t) => ({ calendarId: field(t, "calendar_id")! }) },
   gmail: { spec: gmailDraft, parse: () => ({ userId: "me" }) },   // always the token owner's own mailbox; a caller cannot name another
   google_sheets: { spec: googleSheets, parse: (t) => ({ spreadsheetId: field(t, "spreadsheet_id")!, range: field(t, "range")! }) },
   google_tasks: { spec: googleTasks, parse: (t) => ({ taskListId: field(t, "task_list_id")! }) },
@@ -35,7 +36,13 @@ export function fetchTransport(accessToken: string, f: typeof fetch = fetch, tim
         headers: { accept: "application/json", ...(req.body !== undefined ? { "content-type": "application/json" } : {}), ...(req.headers ?? {}), authorization: `Bearer ${accessToken}` },
         ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {}),
       });
-    } catch { throw new DestinationError(`${u.hostname} could not be reached`); }
+    } catch (e) {
+      // Only a failure to connect proves nothing arrived. Anything later (a timeout, a reset) on a write may have been applied.
+      const code = (e as { cause?: { code?: string } })?.cause?.code ?? "";
+      const neverSent = ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"].includes(code);
+      if (req.method !== "GET" && !neverSent) throw new OutcomeUnknownError(`${u.hostname} did not answer; the change may have been made`);
+      throw new DestinationError(`${u.hostname} could not be reached`);
+    }
     const text = await res.text(); let json: unknown = null; try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON error page */ }
     return { status: res.status, json };
   };
@@ -79,20 +86,28 @@ export class CredentialCipher {
 }
 
 // ---- Placement records, for undo --------------------------------------------------------------------------------------
-export interface PlacementRecord { tenantId: string; destination: string; target: Record<string, string>; receipt: Receipt; dataMoved: { path: string; value: string }[]; status: "done" | "undoing" | "undone" }
+/** Lifecycle statuses a stored placement can be in. `reversing` is the claim held while an undo runs. */
+export type PlacementStatus = "succeeded" | "reversing" | "reversed" | "outcome_unknown" | "failed";
+export interface PlacementRecord {
+  tenantId: string; destination: string; target: Record<string, string>; receipt: Receipt; dataMoved: { path: string; value: string }[];
+  status: PlacementStatus; action: ActionStep[]; reconcileRef?: string;
+}
 export interface PlacementStore {
   save(r: PlacementRecord): Promise<void>;
   get(tenantId: string, receiptId: string): Promise<PlacementRecord | null>;
-  /** Atomically moves done -> undoing. False if it was not "done" (already undone, or another undo is running). */
+  /** Atomically moves succeeded -> reversing. False if it was not "succeeded" (already reversed, unknown, or another undo is running). */
   claimUndo(tenantId: string, receiptId: string): Promise<boolean>;
-  finishUndo(tenantId: string, receiptId: string, ok: boolean, receipt?: Receipt): Promise<void>;
+  finishUndo(tenantId: string, receiptId: string, ok: boolean, step: ActionStep, receipt?: Receipt): Promise<void>;
+  /** outcome_unknown -> succeeded or failed, once, after asking the provider. False if it was no longer unknown. */
+  resolveUnknown(tenantId: string, receiptId: string, to: "succeeded" | "failed", step: ActionStep): Promise<boolean>;
 }
 export class MemoryPlacementStore implements PlacementStore {
   private m = new Map<string, PlacementRecord>();
   async save(r: PlacementRecord) { this.m.set(r.receipt.receiptId, structuredClone(r)); }
   async get(t: string, id: string) { const r = this.m.get(id); return r && r.tenantId === t ? structuredClone(r) : null; }
-  async claimUndo(t: string, id: string) { const r = this.m.get(id); if (!r || r.tenantId !== t || r.status !== "done") return false; r.status = "undoing"; return true; }
-  async finishUndo(t: string, id: string, ok: boolean, receipt?: Receipt) { const r = this.m.get(id); if (!r || r.tenantId !== t) return; r.status = ok ? "undone" : "done"; if (ok && receipt) r.receipt = receipt; }
+  async claimUndo(t: string, id: string) { const r = this.m.get(id); if (!r || r.tenantId !== t || r.status !== "succeeded") return false; r.status = "reversing"; return true; }
+  async finishUndo(t: string, id: string, ok: boolean, step: ActionStep, receipt?: Receipt) { const r = this.m.get(id); if (!r || r.tenantId !== t || r.status !== "reversing") return; r.status = ok ? "reversed" : "succeeded"; if (ok) { r.action.push(step); if (receipt) r.receipt = receipt; } }
+  async resolveUnknown(t: string, id: string, to: "succeeded" | "failed", step: ActionStep) { const r = this.m.get(id); if (!r || r.tenantId !== t || r.status !== "outcome_unknown") return false; r.status = to; r.action.push(step); return true; }
 }
 
 export interface PlacementDeps { credentials: CredentialStore; placements: PlacementStore; fetch?: typeof fetch; timeoutMs?: number }

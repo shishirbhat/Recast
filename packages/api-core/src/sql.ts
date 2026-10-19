@@ -1,4 +1,4 @@
-import type { Receipt } from "@recast/core";
+import type { ActionStep, Receipt } from "@recast/core";
 import { takeResult, type Limiter, type TakeResult } from "./limiter";
 import type { Credential, CredentialCipher, CredentialStore, PlacementRecord, PlacementStore } from "./place";
 import { IDEM_STALE_MS, IDEM_TTL_MS, type ApiKeyRecord, type Correction, type CorrectionStore, type IdemBegin, type IdemRecord, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
@@ -91,19 +91,23 @@ export class SqlCredentialStore implements CredentialStore {
 export class SqlPlacementStore implements PlacementStore {
   constructor(private sql: Sql) {}
   async save(r: PlacementRecord) {
-    await this.sql.query(`insert into api_placements(receipt_id, tenant_id, destination, target, receipt, data_moved, status) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7)`,
-      [r.receipt.receiptId, r.tenantId, r.destination, JSON.stringify(r.target), JSON.stringify(r.receipt), JSON.stringify(r.dataMoved), r.status]);
+    await this.sql.query(`insert into api_placements(receipt_id, tenant_id, destination, target, receipt, data_moved, status, action, reconcile_ref) values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7,$8::jsonb,$9)`,
+      [r.receipt.receiptId, r.tenantId, r.destination, JSON.stringify(r.target), JSON.stringify(r.receipt), JSON.stringify(r.dataMoved), r.status, JSON.stringify(r.action), r.reconcileRef ?? null]);
   }
   async get(tenantId: string, receiptId: string): Promise<PlacementRecord | null> {
-    const { rows } = await this.sql.query<{ destination: string; target: Record<string, string>; receipt: Receipt; data_moved: PlacementRecord["dataMoved"]; status: PlacementRecord["status"] }>(
-      `select destination, target, receipt, data_moved, status from api_placements where tenant_id = $1 and receipt_id = $2`, [tenantId, receiptId]);
-    const r = rows[0]; return r ? { tenantId, destination: r.destination, target: r.target, receipt: r.receipt, dataMoved: r.data_moved, status: r.status } : null;
+    const { rows } = await this.sql.query<{ destination: string; target: Record<string, string>; receipt: Receipt; data_moved: PlacementRecord["dataMoved"]; status: PlacementRecord["status"]; action: PlacementRecord["action"]; reconcile_ref: string | null }>(
+      `select destination, target, receipt, data_moved, status, action, reconcile_ref from api_placements where tenant_id = $1 and receipt_id = $2`, [tenantId, receiptId]);
+    const r = rows[0];
+    return r ? { tenantId, destination: r.destination, target: r.target, receipt: r.receipt, dataMoved: r.data_moved, status: r.status, action: r.action, ...(r.reconcile_ref ? { reconcileRef: r.reconcile_ref } : {}) } : null;
   }
   async claimUndo(tenantId: string, receiptId: string) {
-    return (await this.sql.query(`update api_placements set status = 'undoing' where tenant_id = $1 and receipt_id = $2 and status = 'done' returning 1`, [tenantId, receiptId])).rows.length > 0;
+    return (await this.sql.query(`update api_placements set status = 'reversing' where tenant_id = $1 and receipt_id = $2 and status = 'succeeded' returning 1`, [tenantId, receiptId])).rows.length > 0;
   }
-  async finishUndo(tenantId: string, receiptId: string, ok: boolean, receipt?: Receipt) {
-    if (ok) await this.sql.query(`update api_placements set status = 'undone', undone_at = now(), receipt = coalesce($3::jsonb, receipt) where tenant_id = $1 and receipt_id = $2 and status = 'undoing'`, [tenantId, receiptId, receipt ? JSON.stringify(receipt) : null]);
-    else await this.sql.query(`update api_placements set status = 'done' where tenant_id = $1 and receipt_id = $2 and status = 'undoing'`, [tenantId, receiptId]);
+  async finishUndo(tenantId: string, receiptId: string, ok: boolean, step: ActionStep, receipt?: Receipt) {
+    if (ok) await this.sql.query(`update api_placements set status = 'reversed', reversed_at = now(), receipt = coalesce($3::jsonb, receipt), action = action || $4::jsonb where tenant_id = $1 and receipt_id = $2 and status = 'reversing'`, [tenantId, receiptId, receipt ? JSON.stringify(receipt) : null, JSON.stringify([step])]);
+    else await this.sql.query(`update api_placements set status = 'succeeded' where tenant_id = $1 and receipt_id = $2 and status = 'reversing'`, [tenantId, receiptId]);
+  }
+  async resolveUnknown(tenantId: string, receiptId: string, to: "succeeded" | "failed", step: ActionStep) {
+    return (await this.sql.query(`update api_placements set status = $3, action = action || $4::jsonb where tenant_id = $1 and receipt_id = $2 and status = 'outcome_unknown' returning 1`, [tenantId, receiptId, to, JSON.stringify([step])])).rows.length > 0;
   }
 }

@@ -34,6 +34,8 @@ describe("SDK placements", () => {
     const s = sdk(); const preview = await s.resolve({ raw: "Meera Iyer, meera@x.com", target: { destination: "gmail" } });
     if (preview.status !== "resolved" || !preview.routing) throw new Error("no route");
     const p = await s.place({ raw: "Meera Iyer, meera@x.com", destination: "gmail", consent: preview.routing.consent === "hold" ? { kind: "hold", heldMs: 600 } : preview.routing.consent, objectId: preview.object.id });
+    if (p.status !== "placed") throw new Error("not placed");
+    expect(p.history.map((h) => h.status)).toEqual(["proposed", "validated", "executing", "succeeded"]);
     expect(p).toMatchObject({ receipt: { destination: "gmail", effect: "Create a draft to this person", reversible: true }, object: { id: preview.object.id, type: "Person" }, dataMoved: [{ path: "Person.email", value: "meera@x.com" }] });
     expect(drafts).toBe(1);
     expect((await s.placements.undo(p.receipt.id)).id).toBe(p.receipt.id); expect(drafts).toBe(0);
@@ -49,5 +51,22 @@ describe("SDK placements", () => {
     const e = await s.place({ raw: "Meera Iyer, meera@x.com", destination: "gmail", consent: "confirm" }).catch((x) => x);
     googleDown = false;
     expect(e).toBeInstanceOf(DestinationError); expect(e.code).toBe("destination_unauthorized"); expect(calls).toBe(1);
+  });
+});
+
+describe("SDK: an unknown outcome is not a success", () => {
+  it("a 202 becomes { status: 'outcome_unknown' } with what to do next, and reconcile reports the answer", async () => {
+    const calls: string[] = [];
+    const stub: typeof fetch = async (u) => {
+      calls.push(String(u));
+      const body = String(u).endsWith("/v1/place") ? { status: "outcome_unknown", action_id: "rc_r_" + "a".repeat(32), message: "x did not answer. Recast has not retried it.", next: "POST /v1/place/reconcile with this action_id" }
+        : { status: "succeeded", action_id: "rc_r_" + "a".repeat(32), changed: true };
+      return new Response(JSON.stringify(body), { status: String(u).endsWith("/v1/place") ? 202 : 200, headers: { "content-type": "application/json" } });
+    };
+    const s = new Recast({ apiKey: KEY, baseUrl: "https://api.test", fetch: stub, sleep: async () => {} });
+    const r = await s.place({ raw: "Launch dinner, 2026-11-14 19:30 to 21:00", destination: "google_calendar_event", target: { calendar_id: "primary" } });
+    expect(r).toEqual({ status: "outcome_unknown", actionId: "rc_r_" + "a".repeat(32), message: "x did not answer. Recast has not retried it.", next: "POST /v1/place/reconcile with this action_id" });
+    expect(await s.placements.reconcile("rc_r_" + "a".repeat(32))).toEqual({ status: "succeeded", changed: true });
+    expect(calls).toEqual(["https://api.test/v1/place", "https://api.test/v1/place/reconcile"]);   // one request each: no retry of the write
   });
 });

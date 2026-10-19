@@ -38,4 +38,10 @@ export interface PlaceInput {
   objectId?: string;
 }
 export interface PlacementReceipt { id: string; opId: string; destination: string; relationId: string; effect: string; reversible: boolean; at: string }
-export interface Placement { receipt: PlacementReceipt; object: RecastObject; dataMoved: { path: string; value: string }[]; risk: TrustLevel }
+export interface ActionStep { status: string; at: string; reason?: string }
+export interface Placement {
+  status: "placed"; receipt: PlacementReceipt; object: RecastObject; dataMoved: { path: string; value: string }[]; risk: TrustLevel;
+  history: ActionStep[]; undo: { available: boolean; kind?: string };
+}
+/** The destination may or may not have done it (for example it timed out after receiving the request). Recast did not retry. */
+export interface PlacementUnknown { status: "outcome_unknown"; actionId: string; message: string; next: string }

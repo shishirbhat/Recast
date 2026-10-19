@@ -79,11 +79,24 @@ export function readEvent(text: string): Reading | null {
   for (const f of DATE_FORMS) {
     const m = text.match(f.re); if (!m) continue;
     const r = f.read(m); if (!r || !validDate(r.y, r.mo, r.d)) continue;
-    const start = `${r.y}-${pad(r.mo)}-${pad(r.d)}${r.t ? "T" + r.t : ""}`;
-    const rest = text.slice(0, m.index!) + " " + text.slice(m.index! + m[0].length);
+    const date = `${r.y}-${pad(r.mo)}-${pad(r.d)}`;
+    const start = `${date}${r.t ? "T" + r.t : ""}`;
+    // An end right after the start ("19:30 to 21:00", "19:30-21:00", "T19:30 - 2026-11-14T21:00") is the end, not part of the title.
+    let used = m[0].length; let end: string | undefined;
+    const e = r.t ? /^\s*(?:-|–|—|to|until|till)\s*(?:(\d{4}-\d{2}-\d{2})[T ])?([01]?\d|2[0-3]):([0-5]\d)\b/i.exec(text.slice(m.index! + m[0].length)) : null;
+    if (e) {
+      const endTime = `${pad(Number(e[2]))}:${e[3]}`;
+      let endDate = e[1] ?? date;
+      if (!e[1] && endTime <= r.t!) { const t = new Date(`${date}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + 1); endDate = t.toISOString().slice(0, 10); }
+      end = `${endDate}T${endTime}`; used += e[0].length;
+    }
+    const rest = text.slice(0, m.index!) + " " + text.slice(m.index! + used);
     const title = trimPunct(collapse(rest).replace(/\b(on|at|from|starts?|starting)\s*$/i, "").replace(/^\s*(on|at)\s+/i, ""));
     if (title.length < 2 || emails(title).length) return null;
-    return { type: "Event", fields: { title, start }, conf: { title: 0.75, start: f.re.source.startsWith("\\b(\\d{4})") ? 0.97 : 0.9 }, spans: { start: [m.index!, m.index! + m[0].length] }, score: r.t ? 0.9 : 0.8 };
+    const fields: Record<string, unknown> = { title, start }; const conf: Record<string, number> = { title: 0.75, start: f.re.source.startsWith("\\b(\\d{4})") ? 0.97 : 0.9 };
+    const spans: Record<string, [number, number]> = { start: [m.index!, m.index! + m[0].length] };
+    if (end) { fields.end = end; conf.end = 0.9; spans.end = [m.index! + m[0].length, m.index! + used]; }
+    return { type: "Event", fields, conf, spans, score: r.t ? 0.9 : 0.8 };
   }
   return null;
 }
