@@ -37,6 +37,8 @@ Status labels: **[impl]** implemented and tested · **[design]** designed, not b
    
    Agent-reported evidence is stored as `agent_claim` and never counts.
 
+3. **Contract partners.** A task can't complete on its own while another unfinished task depends on one of the same contracts. Those tasks complete together through the integration gate (§4a).
+
 `completed` and `cancelled` are terminal. Any transition can carry an idempotency key, and a repeated key is applied once.
 
 ## 3. Contracts [impl]
@@ -63,7 +65,20 @@ The same rules run at three points:
 - **diff-time**, through `relay check`, over every file differing from the task's base commit, untracked files included;
 - **intent declaration**.
 
-Planned rules [design]: a schema change that invalidates a known consumer; a stale base commit; cross-task integration conformance.
+Planned rules [design]: a schema change that invalidates a known consumer; a stale base commit relative to newer integrated work.
+
+## 4a. Integration gate [impl]
+
+`relay integrate check T1,T2,... --cwd DIR [--verify CMD...]` evaluates one workspace that holds the combined change, and records an integration with status `blocked` or `passed`. It is blocked unless all of the following hold:
+- every task is `review_required`;
+- no unfinished task outside the set depends on a contract the set uses;
+- every task is on the current accepted version of every contract it uses;
+- all tasks share one base commit;
+- every changed file is inside the union of the tasks' scopes and isn't protected;
+- Relay itself ran every task's `verify` commands plus the integration commands, and all passed (at least one is required);
+- the workspace didn't change while they ran.
+
+`relay integrate approve ID --cwd DIR` is human-only. It refuses if the workspace tree, a contract version, or any task's state has changed since the check, and otherwise completes every task in one transaction. Approval binds to exactly what was checked.
 
 ## 5. Hook decision protocol (Claude Code) [impl]
 

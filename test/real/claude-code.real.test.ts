@@ -108,7 +108,7 @@ test("real Claude Code: a shell write is blocked, and the diff check confirms no
   assert.deepEqual(check.files, [], "workspace must be unchanged");
 });
 
-test("real Claude Code: full participatory loop through MCP ends in a verified, human-approved result", { skip: !REAL }, () => {
+test("real Claude Code: full participatory loop through MCP; Relay refuses to complete the task while its contract partner is unfinished", { skip: !REAL }, () => {
   const { relay, repo, db } = scenario();
   // The contract changes before the agent starts; the agent is not told about it.
   relay.proposeContract("user-api", USER_API_V2, HUMAN);
@@ -154,7 +154,10 @@ test("real Claude Code: full participatory loop through MCP ends in a verified, 
     assert.doesNotMatch(ui, /\.name\b/, "implementation should not use the removed v1 field");
     assert.equal(check.evidence.exitCode, 0);
     assert.ok(verify.every((v) => v.exitCode === 0));
-    assert.ok(completed, gate);
+    // T-api (the server side of user-api) has not been done, so T-ui must not complete on its own:
+    // this is the gap the first version of Relay missed in this exact scenario.
+    assert.equal(completed, false);
+    assert.match(gate, /shares a contract with unfinished task\(s\) T-api/);
   } finally {
     r.close();
   }

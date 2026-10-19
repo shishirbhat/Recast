@@ -23,6 +23,8 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay contract accept|reject <id> <version>
   relay contract show <id>
   relay intent approve <intent-id>
+  relay integrate check <task,task...> --cwd DIR [--verify CMD...]   cross-task gate (Relay runs every check)
+  relay integrate approve <integration-id> --cwd DIR                 human approval; completes all its tasks
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
   relay events [task]
@@ -167,6 +169,19 @@ async function main(): Promise<void> {
         }
         if (sub === "reject") return print(relay.rejectContract(need(a1, "contract id"), Number(need(a2, "version")), human, o.reason));
         if (sub === "show") return print(relay.contractHistory(need(a1, "contract id")));
+        break;
+      }
+      case "integrate": {
+        if (sub === "check") {
+          const r = relay.checkIntegration(need(a1, "task ids").split(",").filter(Boolean), resolve(need(o.cwd, "--cwd")), o.verify ?? []);
+          print(r, r.status === "passed" ? `PASSED ${r.id}\nApprove with: relay integrate approve ${r.id} --cwd ${o.cwd}` : `BLOCKED ${r.id}\n` + r.gaps.map((g) => `  - ${g}`).join("\n"));
+          if (r.status !== "passed") process.exitCode = 1;
+          return;
+        }
+        if (sub === "approve") {
+          const r = relay.approveIntegration(need(a1, "integration id"), human, resolve(need(o.cwd, "--cwd")));
+          return print(r, `Approved ${r.id}: completed ${r.tasks.join(", ")}`);
+        }
         break;
       }
       case "intent":

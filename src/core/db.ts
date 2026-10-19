@@ -54,6 +54,21 @@ CREATE TABLE IF NOT EXISTS evidence (
   created_at TEXT NOT NULL
 );
 
+-- One check of a set of tasks integrated together. status: blocked | passed | approved.
+CREATE TABLE IF NOT EXISTS integrations (
+  id TEXT PRIMARY KEY,
+  tasks TEXT NOT NULL,          -- JSON string[]
+  base_commit TEXT,
+  tree TEXT NOT NULL,           -- workspace tree hash the check ran against
+  contracts TEXT NOT NULL,      -- JSON {contractId: version} the tasks agreed on
+  status TEXT NOT NULL,
+  gaps TEXT NOT NULL,           -- JSON string[]
+  results TEXT NOT NULL,        -- JSON [{command, exitCode, output}]
+  created_at TEXT NOT NULL,
+  approved_by TEXT,
+  approved_at TEXT
+);
+
 -- Append-only. Nothing updates or deletes rows here.
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,

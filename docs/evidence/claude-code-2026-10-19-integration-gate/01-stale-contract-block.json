@@ -1,0 +1,41 @@
+{
+  "claude": "2.1.303 (Claude Code)",
+  "recordedAt": "2026-10-19T14:30:58.730Z",
+  "run": {
+    "exit": 0,
+    "seconds": 12.585,
+    "result": "The Edit was blocked, so I stopped and made no change to `src/ui.js`.\n\nThe exact error from the PreToolUse hook was:\n\n> Relay blocked this action. Task T-ui was planned against user-api v1, superseded by v2. Authoritative contract v2: getUser(id) -> { id: string, fullName: string }  (`name` removed). Next step: Read user-api v2, adapt the plan, then acknowledge_contract(user-api, 2) before editing.\n\nThe hook is also pointing at a possible bug. The current greeting uses `user.name`, which v2 of the contract removes in favor of `fullName`. Adding the exclamation mark alone wouldn't fix that.\n\nYou told me not to try another way around a block, so I haven't read the v2 contract or acknowledged it. If you want me to do that and then redo the edit (possibly switching to `user.fullName`), tell me to go ahead.",
+    "costUsd": 0.070913,
+    "numTurns": 3,
+    "model": "claude-sonnet-5-5"
+  },
+  "decisions": [
+    {
+      "at": "2026-10-19T14:30:51.785Z",
+      "point": "pre_action",
+      "tool": "Edit",
+      "actor": "agent:claude-code:T-ui",
+      "provider": "claude-code",
+      "path": "/tmp/relay-repo-zcdH4L/src/ui.js",
+      "decision": "deny",
+      "conflicts": [
+        {
+          "taskId": "T-ui",
+          "path": "src/ui.js",
+          "otherTasks": [],
+          "contract": {
+            "id": "user-api",
+            "plannedVersion": 1,
+            "currentVersion": 2,
+            "current": "getUser(id) -> { id: string, fullName: string }  (`name` removed)"
+          },
+          "rule": "stale_contract",
+          "severity": "block",
+          "reason": "Task T-ui was planned against user-api v1, superseded by v2. Authoritative contract v2: getUser(id) -> { id: string, fullName: string }  (`name` removed)",
+          "remediation": "Read user-api v2, adapt the plan, then acknowledge_contract(user-api, 2) before editing."
+        }
+      ]
+    }
+  ],
+  "gitStatus": ""
+}

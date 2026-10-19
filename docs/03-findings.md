@@ -17,8 +17,12 @@ What this shows:
 
 ## Known limitations
 
-1. **Integration gap (most important).** In run 3, T-ui was completed against v2 while T-api (the server) still returned the v1 shape. The integrated program would print `Hello undefined`. The agent noticed and said so; **Relay did not.** The completion gate is per task, and `node --check` is a weak verification.
-   Next fix [design]: an **objective-level integration gate**. Tasks that share a contract version are integrated together. The merge is blocked until every affected task has acknowledged the same version *and* an integration test spanning both sides passes in a clean workspace.
+1. **Integration gap: found in real runs, now closed for this case.** In the first two runs of case 3, Relay let T-ui complete against v2 while T-api (the server) still returned the v1 shape. The integrated program would have printed `Hello undefined`. The agent noticed; Relay didn't. **Fix:**
+   - a task can't complete alone while a contract partner is unfinished;
+   - a cross-task integration gate (specs §4a).
+   
+   A deterministic replay of run 3 is now a unit test. In a third real run (`docs/evidence/claude-code-2026-10-19-integration-gate/`), Relay refused to complete T-ui and named T-api.
+   **Still open:** the gate depends on the integration test being meaningful. Relay can require one, but it can't yet judge whether a test actually covers the contract.
 2. **Acknowledgment is a claim.** `acknowledge_contract` records that the agent says it adapted. Nothing checks conformance yet (the integration gate above is the first real check).
 3. **The Bash heuristic is bypassable** (`python -c`, `node -e`, scripts). Only the diff check sees every write, and it runs after the session, not before.
 4. **Very few runs (n=2), one provider.** These results aren't statistics. Precision and recall for the conflict rules haven't been measured. Codex and Cursor are untested.
@@ -43,7 +47,7 @@ What this shows:
 
 ## Next steps
 
-1. Objective-level integration gate plus a cross-task integration test (fixes limitation 1).
+1. A second real agent on T-api, to run the full two-sided loop through `relay integrate` with real agents.
 2. Codex CLI adapter: hook, MCP config and runner. **Needs `OPENAI_API_KEY`.**
 3. Benchmark repo and with/without-Relay measurement.
 4. Worktree manager plus orchestrated runner.

@@ -161,6 +161,8 @@ test("diff check sees writes that bypassed the hook (shell writes, untracked fil
 
 test("completion gate: needs Relay-run verification and a clean diff check on the current workspace", () => {
   const { relay, repo } = scenario();
+  // T-api shares user-api; with it cancelled, T-ui may complete on its own.
+  relay.transition("T-api", "cancelled", HUMAN);
   relay.claim("T-ui", AGENT_A);
   writeFileSync(join(repo, "src/ui.js"), "export function greet(user) { return 'Hello ' + user.name + '!'; }\n");
 
@@ -209,4 +211,78 @@ test("a database kept inside the repository is not a workspace change, but the r
   relay2.claim("T2", AGENT_A);
   const d = relay2.diffCheck("T2", repo).decisions[".relay/injected.json"]!;
   assert.equal(d.conflicts[0]!.rule, "protected_path");
+});
+
+const SERVER_V2 = "export function getUser(id) { return { id, fullName: 'Ada' }; }\n";
+const UI_V2 = "export function greet(user) { return 'Hello ' + user.fullName; }\n";
+const INTEGRATION_TEST = `node --input-type=module -e "const {getUser}=await import('./src/server.js');const {greet}=await import('./src/ui.js');const g=greet(getUser(1));if(g!=='Hello Ada'){console.error('got',g);process.exit(1)}"`;
+
+test("replay of real run 3: a task cannot complete alone while a contract partner is unfinished", () => {
+  const { relay, repo } = scenario();
+  relay.proposeContract("user-api", USER_API_V2, HUMAN);
+  relay.acceptContract("user-api", 2, HUMAN);
+  relay.claim("T-ui", AGENT_A);
+  relay.acknowledgeContract("T-ui", "user-api", 2, AGENT_A);
+  writeFileSync(join(repo, "src/ui.js"), UI_V2);
+  relay.transition("T-ui", "review_required", AGENT_A);
+  relay.diffCheck("T-ui", repo);
+  relay.runVerification("T-ui", repo);
+  // Per-task checks all pass, as they did in run 3...
+  assert.throws(() => relay.transition("T-ui", "completed", HUMAN, { cwd: repo }), /shares a contract with unfinished task\(s\) T-api/);
+
+  // ...and the integration gate names exactly what is wrong.
+  const alone = relay.checkIntegration(["T-ui"], repo, [INTEGRATION_TEST]);
+  assert.equal(alone.status, "blocked");
+  assert.ok(alone.gaps.some((g) => /T-api depend on the same contract/.test(g)), alone.gaps.join("\n"));
+  assert.ok(alone.gaps.some((g) => /verification failed: node --input-type/.test(g)), "the integration test catches 'Hello undefined'");
+  const both = relay.checkIntegration(["T-ui", "T-api"], repo, [INTEGRATION_TEST]);
+  assert.ok(both.gaps.includes("T-api is queued, not review_required"));
+  assert.ok(both.gaps.includes("T-api was built against user-api v1; current is v2"));
+  assert.throws(() => relay.approveIntegration(both.id, HUMAN, repo), { code: "unverified" });
+});
+
+test("integration gate passes once both sides follow the contract, and approval completes both tasks", () => {
+  const { relay, repo } = scenario();
+  relay.proposeContract("user-api", USER_API_V2, HUMAN);
+  relay.acceptContract("user-api", 2, HUMAN);
+  for (const [task, agent, file, body] of [["T-ui", AGENT_A, "src/ui.js", UI_V2], ["T-api", AGENT_B, "src/server.js", SERVER_V2]] as const) {
+    relay.claim(task, agent);
+    relay.acknowledgeContract(task, "user-api", 2, agent);
+    writeFileSync(join(repo, file), body);
+    relay.transition(task, "review_required", agent);
+  }
+  const integ = relay.checkIntegration(["T-ui", "T-api"], repo, [INTEGRATION_TEST]);
+  assert.equal(integ.status, "passed", integ.gaps.join("\n"));
+  assert.deepEqual(integ.contracts, { "user-api": 2 });
+  assert.throws(() => relay.approveIntegration(integ.id, AGENT_A, repo), { code: "forbidden" });
+
+  // Approval binds to the checked tree: a later edit invalidates it.
+  writeFileSync(join(repo, "src/ui.js"), UI_V2 + "// late edit\n");
+  assert.throws(() => relay.approveIntegration(integ.id, HUMAN, repo), { code: "stale_state" });
+  writeFileSync(join(repo, "src/ui.js"), UI_V2);
+  assert.equal(relay.approveIntegration(integ.id, HUMAN, repo).status, "approved");
+  assert.equal(relay.requireTask("T-ui").state, "completed");
+  assert.equal(relay.requireTask("T-api").state, "completed");
+});
+
+test("integration gate: out-of-scope change, failing test, and a contract change after the check", () => {
+  const { relay, repo } = scenario();
+  relay.proposeContract("user-api", USER_API_V2, HUMAN);
+  relay.acceptContract("user-api", 2, HUMAN);
+  for (const [task, agent] of [["T-ui", AGENT_A], ["T-api", AGENT_B]] as const) {
+    relay.claim(task, agent);
+    relay.acknowledgeContract(task, "user-api", 2, agent);
+    relay.transition(task, "review_required", agent);
+  }
+  writeFileSync(join(repo, "README.md"), "changed by nobody's task\n");
+  const r = relay.checkIntegration(["T-ui", "T-api"], repo, ["exit 3"]);
+  assert.ok(r.gaps.includes("README.md changed but belongs to none of T-ui, T-api"));
+  assert.ok(r.gaps.includes("verification failed: exit 3 (exit 3)"));
+
+  writeFileSync(join(repo, "README.md"), "demo\n");
+  const ok = relay.checkIntegration(["T-ui", "T-api"], repo, ["true"]);
+  assert.equal(ok.status, "passed", ok.gaps.join("\n"));
+  relay.proposeContract("user-api", "v3", HUMAN);
+  relay.acceptContract("user-api", 3, HUMAN);
+  assert.throws(() => relay.approveIntegration(ok.id, HUMAN, repo), /user-api changed since the integration check/);
 });

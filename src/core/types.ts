@@ -87,6 +87,20 @@ export interface RelayEvent {
   idempotencyKey: string | null;
 }
 
+export interface Integration {
+  id: string;
+  tasks: string[];
+  baseCommit: string | null;
+  tree: string;
+  contracts: Record<string, number>;
+  status: "blocked" | "passed" | "approved";
+  gaps: string[];
+  results: { command: string; exitCode: number | null; output: string }[];
+  createdAt: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+}
+
 export type Severity = "block" | "warn";
 export type ConflictRule =
   | "outside_scope"

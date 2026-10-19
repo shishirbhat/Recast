@@ -5,7 +5,7 @@ import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { openDb, tx } from "./db.ts";
 import { canTransition } from "./statemachine.ts";
-import { evaluateEdit, normalizePath } from "./conflicts.ts";
+import { evaluateEdit, inScope, isProtected, normalizePath } from "./conflicts.ts";
 import { changedFiles, repoRoot, workspaceFingerprint } from "../git.ts";
 import type {
   Actor,
@@ -13,6 +13,7 @@ import type {
   Decision,
   EnforcementPoint,
   Evidence,
+  Integration,
   Intent,
   RelayEvent,
   Task,
@@ -251,7 +252,18 @@ export class Relay {
       else if (last.environment.tree !== tree) gaps.push(`workspace changed since verification ran: ${cmd}`);
       else if (last.exitCode !== 0) gaps.push(`verification failed: ${cmd} (exit ${last.exitCode ?? "timeout"})`);
     }
+    const partners = this.contractPartners([task.id]);
+    if (partners.length) gaps.push(`shares a contract with unfinished task(s) ${partners.join(", ")}; complete them together with relay integrate`);
     return gaps;
+  }
+
+  /** Non-terminal tasks outside `ids` that depend on a contract some task in `ids` depends on. */
+  private contractPartners(ids: readonly string[]): string[] {
+    const set = new Set(ids);
+    const contracts = new Set(ids.flatMap((id) => Object.keys(this.requireTask(id).contracts)));
+    return this.listTasks()
+      .filter((t) => !set.has(t.id) && t.state !== "completed" && t.state !== "cancelled" && Object.keys(t.contracts).some((c) => contracts.has(c)))
+      .map((t) => t.id);
   }
 
   // ---------- contracts ----------
@@ -418,6 +430,127 @@ export class Relay {
     });
     this.emit({ taskId, type: "enforcement.diff_check", actor: "system:relay", data: { files, blocking: blocking.map(([f]) => f), evidenceId: evidence.id } });
     return { files, decisions, evidence };
+  }
+
+  // ---------- integration ----------
+
+  /**
+   * Checks a set of tasks as one integrated change in one workspace and records the result.
+   * Relay runs every task's verification plus the integration commands itself, on this exact tree.
+   */
+  checkIntegration(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000): Integration {
+    if (!taskIds.length) throw new RelayError("invalid", "An integration needs at least one task");
+    const tasks = [...new Set(taskIds)].map((id) => this.requireTask(id));
+    const gaps: string[] = [];
+
+    for (const t of tasks) if (t.state !== "review_required") gaps.push(`${t.id} is ${t.state}, not review_required`);
+    const missing = this.contractPartners(tasks.map((t) => t.id));
+    if (missing.length) gaps.push(`task(s) ${missing.join(", ")} depend on the same contract(s) and must be integrated in the same change`);
+
+    const agreed: Record<string, number> = {};
+    for (const cid of new Set(tasks.flatMap((t) => Object.keys(t.contracts)))) {
+      const cur = this.currentContract(cid);
+      if (!cur) { gaps.push(`contract ${cid} has no accepted version`); continue; }
+      agreed[cid] = cur.version;
+      for (const t of tasks) {
+        const v = t.contracts[cid];
+        if (v !== undefined && v !== cur.version) gaps.push(`${t.id} was built against ${cid} v${v}; current is v${cur.version}`);
+      }
+    }
+
+    const bases = [...new Set(tasks.map((t) => t.baseCommit))];
+    if (bases.length !== 1 || !bases[0]) gaps.push(`tasks do not share one base commit (${bases.join(", ")})`);
+    const base = bases.length === 1 ? bases[0]! : null;
+
+    const own = this.ownFiles(cwd);
+    if (base) {
+      const root = repoRoot(cwd);
+      const scope = tasks.flatMap((t) => t.scope);
+      for (const f of changedFiles(cwd, base, own)) {
+        const p = normalizePath(root, f);
+        if (p === null || isProtected(p)) gaps.push(`${f} is a protected path`);
+        else if (!inScope(scope, p)) gaps.push(`${f} changed but belongs to none of ${tasks.map((t) => t.id).join(", ")}`);
+      }
+    }
+
+    const tree = workspaceFingerprint(cwd, own);
+    const commands = [...new Set([...tasks.flatMap((t) => t.verify), ...integrationVerify])];
+    const results = commands.map((command) => {
+      const r = spawnSync(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs });
+      const timedOut = r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
+      const output = (timedOut ? "[timed out]\n" : "") + (r.stdout ?? "") + (r.stderr ?? "");
+      return { command, exitCode: timedOut ? null : (r.status ?? null), output: output.slice(0, OUTPUT_LIMIT) };
+    });
+    for (const r of results) if (r.exitCode !== 0) gaps.push(`verification failed: ${r.command} (exit ${r.exitCode ?? "timeout"})`);
+    if (!commands.length) gaps.push("no verification commands: an integration needs at least one");
+    if (workspaceFingerprint(cwd, own) !== tree) gaps.push("workspace changed while verification ran (commands must not modify tracked or untracked files)");
+
+    const integration: Integration = {
+      id: randomUUID(),
+      tasks: tasks.map((t) => t.id),
+      baseCommit: base,
+      tree,
+      contracts: agreed,
+      status: gaps.length ? "blocked" : "passed",
+      gaps,
+      results,
+      createdAt: now(),
+      approvedBy: null,
+      approvedAt: null,
+    };
+    this.db
+      .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), integration.createdAt);
+    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree } });
+    return integration;
+  }
+
+  getIntegration(id: string): Integration | undefined {
+    const r = this.db.prepare("SELECT * FROM integrations WHERE id = ?").get(id) as Row | undefined;
+    if (!r) return undefined;
+    return {
+      id: r.id as string,
+      tasks: JSON.parse(r.tasks as string),
+      baseCommit: (r.base_commit as string | null) ?? null,
+      tree: r.tree as string,
+      contracts: JSON.parse(r.contracts as string),
+      status: r.status as Integration["status"],
+      gaps: JSON.parse(r.gaps as string),
+      results: JSON.parse(r.results as string),
+      createdAt: r.created_at as string,
+      approvedBy: (r.approved_by as string | null) ?? null,
+      approvedAt: (r.approved_at as string | null) ?? null,
+    };
+  }
+
+  /**
+   * A human approves exactly what was checked: same workspace tree, same task states, same contract versions.
+   * Anything that moved since the check requires a fresh check. Completes every task in the integration.
+   */
+  approveIntegration(id: string, actor: Actor, cwd: string): Integration {
+    requireHuman(actor, "Approving an integration");
+    const tree = workspaceFingerprint(cwd, this.ownFiles(cwd));
+    return tx(this.db, () => {
+      const integ = this.getIntegration(id);
+      if (!integ) throw new RelayError("not_found", `Unknown integration ${id}`);
+      if (integ.status !== "passed") throw new RelayError("unverified", `Integration ${id} is ${integ.status}: ${integ.gaps.join("; ")}`);
+      if (integ.tree !== tree) throw new RelayError("stale_state", "Workspace changed since the integration check; run it again");
+      for (const [cid, v] of Object.entries(integ.contracts)) {
+        if (this.currentContract(cid)?.version !== v) throw new RelayError("stale_state", `${cid} changed since the integration check; run it again`);
+      }
+      for (const tid of integ.tasks) {
+        const t = this.requireTask(tid);
+        if (t.state !== "review_required") throw new RelayError("stale_state", `${tid} is ${t.state} now; run the check again`);
+      }
+      const at = now();
+      this.db.prepare("UPDATE integrations SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?").run(actorString(actor), at, id);
+      for (const tid of integ.tasks) {
+        this.db.prepare("UPDATE tasks SET state = 'completed', updated_at = ? WHERE id = ?").run(at, tid);
+        this.emit({ taskId: tid, type: "task.transition", actor, from: "review_required", to: "completed", data: { integrationId: id } });
+      }
+      this.emit({ type: "integration.approved", actor, data: { integrationId: id, tasks: integ.tasks, tree } });
+      return this.getIntegration(id)!;
+    });
   }
 
   // ---------- evidence ----------

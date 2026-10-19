@@ -10,7 +10,7 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 
 | Component | Status |
 |---|---|
-| Core engine: tasks and state machine, versioned contracts, intents, deterministic conflict rules, evidence, completion gate, append-only events | **Implemented and unit-tested** (23 tests) |
+| Core engine: tasks and state machine, versioned contracts, intents, deterministic conflict rules, evidence, completion gate, append-only events | **Implemented and unit-tested** (26 tests) |
 | Claude Code pre-action hook adapter (fail-closed) | **Tested against the real provider** (Claude Code 2.1.303) |
 | Relay MCP server (9 tools, bound to one task per process) | **Tested against the real provider** (Claude Code over stdio) |
 | Diff-time backstop (`relay check`) | **Implemented and tested.** Also run after real-provider sessions |
@@ -18,12 +18,12 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 | CLI | **Implemented.** Exercised by tests |
 | Codex CLI adapter | **Not built.** Waiting for an OpenAI API key |
 | Cursor | **Docs only.** Needs a desktop test |
-| Objective-level integration gate (across tasks) | **Designed, not built.** See [known limitations](docs/03-findings.md#known-limitations) |
+| Cross-task integration gate (`relay integrate`) | **Implemented and tested** (replays real run 3). Exercised against the real provider only through the per-task block |
 | Benchmark vs. baseline workflow | **Not started** |
 | VS Code extension | **Not started** |
 | Validation with independent users | **None** |
 
-The first milestone (two different real agents, a caught contract mismatch, a verified integrated result, and less coordination effort than the baseline) **has not been reached**. One provider works end to end. The second provider, the integration gate and the baseline measurement are still open.
+The first milestone (two different real agents, a caught contract mismatch, a verified integrated result, and less coordination effort than the baseline) **has not been reached**. One provider works end to end. The second provider, worktree-based orchestration and the baseline measurement are still open.
 
 ## Quick start
 
@@ -31,7 +31,7 @@ Requires Node ≥ 22.18 (types are stripped natively; there is no build step) an
 
 ```sh
 npm install
-npm run typecheck && npm test        # 23 tests, no model calls
+npm run typecheck && npm test        # 26 tests, no model calls
 RELAY_REAL_PROVIDER=1 npm run test:real   # runs real `claude -p`; costs model usage
 ```
 
@@ -45,6 +45,9 @@ relay agent-config claude-code --task T-ui --root "$PWD" --out /tmp/relay-T-ui
 claude --settings /tmp/relay-T-ui/settings.json --mcp-config /tmp/relay-T-ui/mcp.json --strict-mcp-config
 # after the agent submits for review:
 relay check T-ui --cwd . && relay verify T-ui --cwd . && relay task complete T-ui --cwd .
+# tasks that share a contract complete together:
+relay integrate check T-ui,T-api --cwd . --verify "npm run test:integration"
+relay integrate approve <integration-id> --cwd .
 ```
 
 ## Docs
