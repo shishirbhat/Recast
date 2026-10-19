@@ -227,6 +227,17 @@ export class Relay {
     });
   }
 
+  /** Pin the commit a task works from. Only before work starts, so evidence and diffs stay comparable. */
+  setBaseCommit(taskId: string, commit: string, actor: Actor): Task {
+    return tx(this.db, () => {
+      const task = this.requireTask(taskId);
+      if (task.state !== "queued" && task.state !== "proposed") throw new RelayError("illegal_transition", `${taskId} is ${task.state}; its base can only change before work starts`);
+      this.db.prepare("UPDATE tasks SET base_commit = ?, updated_at = ? WHERE id = ?").run(commit, now(), taskId);
+      this.emit({ taskId, type: "task.base_changed", actor, data: { from: task.baseCommit, to: commit } });
+      return this.requireTask(taskId);
+    });
+  }
+
   /** An agent takes a queued task. Two concurrent claims cannot both succeed. */
   claim(taskId: string, actor: Actor, idempotencyKey?: string): Task {
     const t = this.getTask(taskId);
@@ -400,6 +411,16 @@ export class Relay {
     const decision = this.evaluate(taskId, normalizePath(root, rawPath), rawPath, ["running"]);
     this.emit({ taskId: this.getTask(taskId) ? taskId : null, type: "enforcement.decision", actor: meta.actor, data: { ...meta, path: rawPath, decision: decision.decision, conflicts: decision.conflicts } });
     return decision;
+  }
+
+  /** Record an event raised outside the engine (collaboration, agent runs). */
+  record(type: string, actor: Actor | string, data: Record<string, unknown> = {}, taskId: string | null = null): void {
+    this.emit({ taskId: taskId && this.getTask(taskId) ? taskId : null, type, actor, data });
+  }
+
+  /** Events after a sequence number, for live feeds. */
+  eventsSince(seq: number, limit = 500): RelayEvent[] {
+    return this.db.prepare("SELECT * FROM events WHERE seq > ? ORDER BY seq LIMIT ?").all(seq, limit).map((r) => toEvent(r as Row));
   }
 
   /** Record a denial that happened without an engine decision (for example a guard failing closed). */

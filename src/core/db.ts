@@ -69,6 +69,53 @@ CREATE TABLE IF NOT EXISTS integrations (
   approved_at TEXT
 );
 
+-- Project members for the IDE. Tokens are stored only as SHA-256 hashes.
+CREATE TABLE IF NOT EXISTS members (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,           -- owner | editor | viewer
+  color TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+CREATE TABLE IF NOT EXISTS invites (
+  token_hash TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id),
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+-- Collaborative documents: an append-only Yjs update log per document, compacted periodically.
+CREATE TABLE IF NOT EXISTS doc_updates (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc TEXT NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS doc_updates_doc ON doc_updates(doc, seq);
+-- What the server last wrote to disk for each document, to tell its own writes from external ones.
+CREATE TABLE IF NOT EXISTS doc_files (
+  doc TEXT PRIMARY KEY,
+  last_written TEXT NOT NULL,
+  written_at TEXT NOT NULL
+);
+-- External disk changes that could not be merged cleanly. The disk version is kept here, never dropped.
+CREATE TABLE IF NOT EXISTS doc_conflicts (
+  id TEXT PRIMARY KEY,
+  doc TEXT NOT NULL,
+  base TEXT NOT NULL,
+  ours TEXT NOT NULL,
+  theirs TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT
+);
+
 -- Append-only. Nothing updates or deletes rows here.
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,

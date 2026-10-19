@@ -8,6 +8,9 @@ import type { Actor, TaskState } from "./core/types.ts";
 import { resolveCommit } from "./git.ts";
 import { HOOK_MATCHER, runHook } from "./hooks/claude-code.ts";
 import { runMcp } from "./mcp/server.ts";
+import { startServer } from "./server/server.ts";
+import { Members } from "./server/auth.ts";
+import type { Role } from "./server/auth.ts";
 
 const RELAY_BIN = resolve(dirname(fileURLToPath(import.meta.url)), "../bin/relay");
 
@@ -28,6 +31,8 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
   relay events [task]
+  relay ide [--port N] [--host ADDR] [--cwd DIR]  start the collaborative IDE server (127.0.0.1:4747 by default)
+  relay ide invite <name> [--role owner|editor|viewer] [--port N]   one-time join link for a collaborator
   relay agent-config claude-code --task ID --root DIR --out DIR
   relay hook claude-code --task ID --root DIR   (invoked by Claude Code)
   relay mcp --task ID --root DIR --agent NAME   (invoked by an agent as an MCP server)
@@ -55,6 +60,9 @@ const { values: o, positionals: args } = parseArgs({
     root: { type: "string" },
     agent: { type: "string" },
     out: { type: "string" },
+    port: { type: "string" },
+    host: { type: "string" },
+    role: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
 });
@@ -97,6 +105,30 @@ async function main(): Promise<void> {
   }
   if (cmd === "mcp") {
     return runMcp({ db: dbPath, task: need(o.task, "--task"), root: need(o.root, "--root"), agent: need(o.agent, "--agent") });
+  }
+  if (cmd === "ide") {
+    const port = o.port ? Number(o.port) : 4747;
+    const host = o.host ?? "127.0.0.1";
+    if (sub === "invite") {
+      const relay = new Relay(dbPath);
+      try {
+        const { member, token } = new Members(relay.db).invite(need(a1, "name"), (o.role ?? "editor") as Role);
+        return print({ member, joinUrl: `http://${host}:${port}/join#${token}` }, `Invite for ${member.name} (${member.role}). One-time link, valid 72 hours:\n  http://${host}:${port}/join#${token}`);
+      } finally {
+        relay.close();
+      }
+    }
+    const root = resolve(o.cwd ?? process.cwd());
+    const server = await startServer({ root, dbPath, port, host, staticDir: resolve(dirname(RELAY_BIN), "../ide/web/out") });
+    if (host !== "127.0.0.1" && host !== "localhost") console.error("relay: warning: serving on a network interface without TLS. Put it behind an HTTPS reverse proxy or tunnel.");
+    if (server.members.list().length === 0) {
+      const { member, token } = server.members.invite(process.env.USER || "owner", "owner");
+      console.log(`Relay IDE for ${root}\n  ${server.url}\n\nYou are the first member (${member.name}, owner). Open this one-time link to sign in:\n  ${server.url}/join#${token}`);
+    } else console.log(`Relay IDE for ${root}\n  ${server.url}\nNeed a link? relay ide invite <name> --role editor`);
+    const stop = () => server.close().then(() => process.exit(0));
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+    return new Promise<void>(() => {});
   }
   if (cmd === "agent-config") {
     if (sub !== "claude-code") throw new RelayError("usage", `Unknown agent ${sub}`);
