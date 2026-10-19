@@ -23,6 +23,8 @@ export interface GatewayDeps {
   deriveFacts?: (call: { tool: string; action: string; params: Record<string, unknown> }) => Record<string, unknown>;
   isTokenRevoked?: (jti: string) => boolean | Promise<boolean>;
   now?: () => number; maxBodyBytes?: number;
+  /** How long to wait for the upstream tool. After that the outcome is unknown: audited as such, budget kept, never retried. */
+  upstreamTimeoutMs?: number;
   /** Per-request proof of possession (DPoP style). "required" refuses a bearer token on its own; "optional" checks the proof only if sent; "off" ignores it. */
   proof?: "off" | "optional" | "required"; replay?: ReplayCache;
   /** The URL clients call, when the gateway sits behind a proxy and req.url is not what they signed. */
@@ -46,7 +48,8 @@ export function parseToolName(name: string): { tool: string; action: string } {
 
 export function createGateway(d: GatewayDeps) {
   let replay: ReplayCache | undefined;
-  const now = d.now ?? Date.now; const doFetch = d.forward ?? fetch; const maxBody = d.maxBodyBytes ?? 256 * 1024;
+  const now = d.now ?? Date.now; const maxBody = d.maxBodyBytes ?? 256 * 1024; const upstreamTimeoutMs = d.upstreamTimeoutMs ?? 30_000;
+  const doFetch: typeof fetch = (u, init) => (d.forward ?? fetch)(u, { ...init, signal: AbortSignal.timeout(upstreamTimeoutMs) });
 
   async function handle(req: Request): Promise<Response> {
     if (req.method !== "POST") return new Response(JSON.stringify({ error: { code: "method_not_allowed", message: "MCP requests are POSTed" } }), { status: 405, headers: { ...JSON_HEADERS, allow: "POST" } });
@@ -182,7 +185,12 @@ export function createGateway(d: GatewayDeps) {
     let res: Response;
     try { res = await relay(doFetch, url, req, text, `${cred.tokenType} ${cred.accessToken}`); }
     // Unreachable mid-request is not proof that nothing happened, so the Space's budget stays spent.
-    catch (e) { await log({ tool, action, params, result: "failure", reason: "upstream unreachable", humanApproved, ...inSpace() }).catch(() => undefined); return rpcError(502, rpc.id, -32000, "upstream unreachable", undefined, { "x-recast-request-id": requestId }); }
+    catch (e) {
+      const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      const why = timedOut ? `upstream did not answer within ${upstreamTimeoutMs} ms; the outcome is unknown` : "upstream unreachable";
+      await log({ tool, action, params, result: "failure", reason: why, humanApproved, ...inSpace() }).catch(() => undefined);
+      return rpcError(timedOut ? 504 : 502, rpc.id, -32000, timedOut ? `${why}: check before calling again` : why, undefined, { "x-recast-request-id": requestId });
+    }
     let ok = res.ok; let refused = res.status >= 400 && res.status < 500;
     if (ok && /json/.test(res.headers.get("content-type") ?? "")) { try { ok = !(JSON.parse(await res.clone().text())?.error); refused ||= !ok; } catch { /* not JSON-RPC: trust the status */ } }
     // The tool said no (a JSON-RPC error or a 4xx): nothing was spent, so the money comes back. The call still counts.

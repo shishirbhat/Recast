@@ -4,5 +4,6 @@ packages:
   - apps/*
   - '!apps/spike-win'
   - corpus
+  - bench
 onlyBuiltDependencies:
   - esbuild

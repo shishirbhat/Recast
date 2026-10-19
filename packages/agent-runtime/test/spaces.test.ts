@@ -189,3 +189,21 @@ describe("SqlSpaceStore", () => {
     expect(await s.reserve(free.id, 0, T0 + 25 * 3600_000)).toBe("expired");
   });
 });
+
+describe("a tool that never answers", () => {
+  it("times out as an unknown outcome: audited, budget kept, a clear error to the agent", async () => {
+    const hang = createServer(() => { /* never answers */ }); await new Promise<void>((ok) => hang.listen(0, "127.0.0.1", ok));
+    const url = `http://127.0.0.1:${(hang.address() as any).port}/mcp`;
+    const agent = await createAgentIdentity("slow", "acme"); const reg = new MemoryAgentRegistry(); await reg.register({ agentId: agent.agentId, tenantId: "t1", name: "slow", publicJwk: agent.publicJwk });
+    const scopes = new MemoryScopeStore(); const store = new MemoryAuditStore(); const spaces = new MemorySpaceStore(); const signer = await generateKeyPair(); const vault = new MemoryVault(); vault.set("t1", "shop", "S");
+    await scopes.grant({ agentId: agent.agentId, tenantId: "t1", tool: "shop", action: "buy", maxCalls: 5, expiresAt: hours(2) });
+    const s = await spaces.create({ tenantId: "t1", agentId: agent.agentId, name: "S", expiresAt: hours(1), tools: [{ tool: "shop", action: "buy", cost: { param: "amount" } }], budget: { maxCalls: 5, spend: { currency: "INR", limitMinor: 1000 } } }, clock);
+    const gw = createGateway({ audience: "gw", registry: reg, scopes, approvals: new MemoryApprovalStore(), audit: new AuditLog(store, { privateJwk: signer.privateJwk, keyId: "k" }, () => new Date(clock)), getPolicy: () => parsePolicy(POLICY), exchange: { mode: "vault", vault }, upstream: () => url, now: () => clock, spaces, upstreamTimeoutMs: 200 });
+    const t = await signToken(agent.privateJwk, { iss: agent.agentId, sub: agent.agentId, aud: "gw", now: clock });
+    const r = await gw.handle(new Request("http://gw/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${t}` }, body: JSON.stringify(buy(300)) }));
+    expect(r.status).toBe(504); expect(((await r.json()) as any).error.message).toMatch(/did not answer within 200 ms; the outcome is unknown/);
+    expect((await spaces.get(s.id, "t1"))!.spentMinor).toBe(300);
+    expect((await store.list("t1")).map((e) => e.result)).toEqual(["allowed", "failure"]);
+    hang.closeAllConnections(); hang.close();
+  });
+});
