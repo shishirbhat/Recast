@@ -7,8 +7,10 @@ import { freshDb } from "@recast/store/testing";
 import { createResolver } from "@recast/resolve";
 import {
   CredentialCipher, MemoryCredentialStore, MemoryIdempotencyStore, MemoryKeyStore, MemoryPlacementStore, SqlCredentialStore, SqlPlacementStore,
-  createApi, fetchTransport, type CredentialStore, type PlacementStore,
+  createApi as rawCreateApi, fetchTransport, type CredentialStore, type PlacementStore,
 } from "../src";
+import { guard } from "./contract-guard";
+const createApi = (d: Parameters<typeof rawCreateApi>[0]) => guard(rawCreateApi(d));
 
 const TOKEN = "ya29.fake-google-token"; const KEY_A = "sk_test_place_tenant_a1", KEY_B = "sk_test_place_tenant_b1";
 type Seen = { method: string; host: string; path: string; auth?: string; body?: any };

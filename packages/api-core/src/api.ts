@@ -3,6 +3,7 @@ import { DestinationError, DuplicateError, HttpBridge } from "@recast/bridges";
 import { sha256Hex } from "@recast/core";
 import { API_TYPES, DESTINATIONS, ResolveInputError, bridgeCatalog, toApiType, toWire, type ResolveOutcome, type ApiType, type ResolveInput, type Resolver } from "@recast/resolve";
 import { createRelease, type Capability, type Release } from "@recast/release";
+import { openapiFor } from "./openapi";
 import { RateLimiter, type Limiter } from "./limiter";
 import { MemoryCorrectionStore, MemoryIdempotencyStore, MemoryUsageStore, hashKey, type ApiKeyRecord, type CorrectionStore, type IdempotencyStore, type KeyStore, type UsageStore } from "./stores";
 import { TIERS } from "./tiers";
@@ -237,6 +238,9 @@ export function createApi(deps: ApiDeps) {
       const month = monthOf(now()); const used = await usage.get(key.tenantId, month);
       const quotaHeaders = (u: number) => ({ "X-Recast-Quota-Limit": String(limits.monthly === Number.MAX_SAFE_INTEGER ? "unlimited" : limits.monthly), "X-Recast-Quota-Used": String(u) });
 
+      if (path === "/v1/openapi.json" && req.method === "GET") {
+        return new Response(JSON.stringify(openapiFor((c) => release.allows(c, key.cohort))), { status: 200, headers: { ...JSON_HEADERS, ...base } });
+      }
       if (path === "/v1/capabilities" && req.method === "GET") {
         // Only what this account can use; unreleased names are not listed.
         const available = release.table().filter((r) => ["api", "sdk", "mcp"].includes(r.surface) && release.allows(r.capability, key.cohort)).map((r) => r.capability);

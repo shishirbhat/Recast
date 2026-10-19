@@ -1,7 +1,12 @@
 // SDK place/undo against the real API core over real HTTP; Google is a local stand-in reached through the API's fetch.
 import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MemoryCredentialStore, MemoryKeyStore, MemoryPlacementStore, createApi } from "@recast/api-core";
+import { afterEach as contractAfterEach, expect as contractExpect } from "vitest";
+import { withContractCheck } from "@recast/api-core/contract";
+import { MemoryCredentialStore, MemoryKeyStore, MemoryPlacementStore, createApi as rawCreateApi } from "@recast/api-core";
+// Every response the SDK reads in these tests is checked against the API contract (packages/api-core/src/openapi.ts).
+const breaches: string[] = []; const createApi = (d: Parameters<typeof rawCreateApi>[0]) => withContractCheck(rawCreateApi(d), breaches);
+contractAfterEach(() => { contractExpect(breaches.splice(0), "responses that break the API contract").toEqual([]); });
 import { createResolver } from "@recast/resolve";
 import { DestinationError, Recast, ValidationError } from "../src";
 

@@ -1,0 +1,426 @@
+{
+  "operations": {
+    "GET /v1/health": [
+      "200"
+    ],
+    "GET /v1/capabilities": [
+      "200",
+      "400",
+      "401",
+      "429",
+      "500"
+    ],
+    "GET /v1/openapi.json": [
+      "200",
+      "400",
+      "401",
+      "429",
+      "500"
+    ],
+    "GET /v1/bridges": [
+      "200",
+      "400",
+      "401",
+      "403",
+      "429",
+      "500"
+    ],
+    "POST /v1/resolve": [
+      "200",
+      "400",
+      "401",
+      "402",
+      "403",
+      "409",
+      "413",
+      "415",
+      "422",
+      "429",
+      "500"
+    ],
+    "POST /v1/resolve/batch": [
+      "200",
+      "400",
+      "401",
+      "402",
+      "403",
+      "409",
+      "413",
+      "415",
+      "422",
+      "429",
+      "500"
+    ],
+    "POST /v1/corrections": [
+      "201",
+      "400",
+      "401",
+      "403",
+      "413",
+      "415",
+      "429",
+      "500"
+    ],
+    "POST /v1/place": [
+      "201",
+      "202",
+      "400",
+      "401",
+      "402",
+      "403",
+      "409",
+      "413",
+      "415",
+      "422",
+      "429",
+      "500",
+      "501",
+      "502"
+    ],
+    "POST /v1/place/undo": [
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+      "413",
+      "415",
+      "429",
+      "500",
+      "501",
+      "502"
+    ],
+    "POST /v1/place/reconcile": [
+      "200",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+      "413",
+      "415",
+      "429",
+      "500",
+      "501",
+      "502"
+    ]
+  },
+  "schemas": {
+    "Error": {
+      "properties": [
+        "error"
+      ],
+      "required": [
+        "error"
+      ],
+      "consts": {}
+    },
+    "Health": {
+      "properties": [
+        "status"
+      ],
+      "required": [
+        "status"
+      ],
+      "consts": {
+        "status": "ok"
+      }
+    },
+    "Provenance": {
+      "properties": [
+        "confidence",
+        "excerpt",
+        "field",
+        "source"
+      ],
+      "required": [
+        "confidence",
+        "field",
+        "source"
+      ],
+      "consts": {}
+    },
+    "Object": {
+      "properties": [
+        "confidence",
+        "fields",
+        "id",
+        "provenance",
+        "trust",
+        "type"
+      ],
+      "required": [
+        "confidence",
+        "fields",
+        "id",
+        "trust",
+        "type"
+      ],
+      "consts": {}
+    },
+    "Routing": {
+      "properties": [
+        "action",
+        "bridge",
+        "bridge_reliability",
+        "consent",
+        "destination",
+        "reasons",
+        "relation_id",
+        "reliability_label",
+        "requires_confirmation",
+        "risk"
+      ],
+      "required": [
+        "action",
+        "bridge",
+        "bridge_reliability",
+        "consent",
+        "destination",
+        "reasons",
+        "relation_id",
+        "reliability_label",
+        "requires_confirmation",
+        "risk"
+      ],
+      "consts": {}
+    },
+    "Meta": {
+      "properties": [
+        "degraded",
+        "schema_version",
+        "stage"
+      ],
+      "required": [
+        "degraded",
+        "schema_version",
+        "stage"
+      ],
+      "consts": {}
+    },
+    "Resolved": {
+      "properties": [
+        "alternatives",
+        "degraded",
+        "meta",
+        "object",
+        "route_error",
+        "routing",
+        "status"
+      ],
+      "required": [
+        "alternatives",
+        "degraded",
+        "meta",
+        "object",
+        "routing",
+        "status"
+      ],
+      "consts": {
+        "status": "resolved"
+      }
+    },
+    "Ambiguous": {
+      "properties": [
+        "alternatives",
+        "degraded",
+        "meta",
+        "reason",
+        "status"
+      ],
+      "required": [
+        "alternatives",
+        "degraded",
+        "meta",
+        "reason",
+        "status"
+      ],
+      "consts": {
+        "status": "ambiguous"
+      }
+    },
+    "Unresolved": {
+      "properties": [
+        "degraded",
+        "meta",
+        "reason",
+        "status",
+        "suggestion"
+      ],
+      "required": [
+        "degraded",
+        "meta",
+        "reason",
+        "status"
+      ],
+      "consts": {
+        "status": "unresolved"
+      }
+    },
+    "ResolveResult": {
+      "properties": [],
+      "required": [],
+      "consts": {}
+    },
+    "BatchItemError": {
+      "properties": [
+        "error",
+        "index",
+        "status"
+      ],
+      "required": [
+        "error",
+        "index",
+        "status"
+      ],
+      "consts": {
+        "status": "error"
+      }
+    },
+    "BatchResult": {
+      "properties": [
+        "results"
+      ],
+      "required": [
+        "results"
+      ],
+      "consts": {}
+    },
+    "Bridges": {
+      "properties": [
+        "bridges"
+      ],
+      "required": [
+        "bridges"
+      ],
+      "consts": {}
+    },
+    "Capabilities": {
+      "properties": [
+        "capabilities"
+      ],
+      "required": [
+        "capabilities"
+      ],
+      "consts": {}
+    },
+    "CorrectionStored": {
+      "properties": [
+        "status"
+      ],
+      "required": [
+        "status"
+      ],
+      "consts": {
+        "status": "stored"
+      }
+    },
+    "ActionStep": {
+      "properties": [
+        "at",
+        "reason",
+        "status"
+      ],
+      "required": [
+        "at",
+        "status"
+      ],
+      "consts": {}
+    },
+    "Placement": {
+      "properties": [
+        "action",
+        "data_moved",
+        "object",
+        "receipt",
+        "risk",
+        "status",
+        "undo"
+      ],
+      "required": [
+        "action",
+        "data_moved",
+        "object",
+        "receipt",
+        "risk",
+        "status",
+        "undo"
+      ],
+      "consts": {
+        "status": "placed"
+      }
+    },
+    "PlacementUnknown": {
+      "properties": [
+        "action_id",
+        "message",
+        "next",
+        "status"
+      ],
+      "required": [
+        "action_id",
+        "message",
+        "next",
+        "status"
+      ],
+      "consts": {
+        "status": "outcome_unknown"
+      }
+    },
+    "Undone": {
+      "properties": [
+        "action",
+        "receipt",
+        "status"
+      ],
+      "required": [
+        "action",
+        "receipt",
+        "status"
+      ],
+      "consts": {
+        "status": "undone"
+      }
+    },
+    "Reconciled": {
+      "properties": [
+        "action_id",
+        "changed",
+        "message",
+        "status"
+      ],
+      "required": [
+        "action_id",
+        "changed",
+        "status"
+      ],
+      "consts": {}
+    },
+    "ResolveRequest": {
+      "properties": [
+        "input",
+        "options",
+        "target"
+      ],
+      "required": [
+        "input"
+      ],
+      "consts": {}
+    },
+    "PlaceRequest": {
+      "properties": [
+        "consent",
+        "destination_target",
+        "input",
+        "object",
+        "object_id",
+        "target"
+      ],
+      "required": [
+        "target"
+      ],
+      "consts": {}
+    }
+  }
+}

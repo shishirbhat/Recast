@@ -101,3 +101,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Alternatives:** Spaces as a replacement for scopes (would mix the credential grant with the person's bound); post-hoc spend accounting (overspends under concurrency); refunding on any failure (could under-count real spend).
 - **Why:** a person must be able to say "this agent, these actions, this much, until then", and trust it holds under retries and concurrency.
 - **Change if:** providers return authoritative charges. Then settle against the receipt instead of the declared amount.
+
+### D20. A hand-written contract, enforced by tests on every response and a committed v1 baseline
+- **Decision:** OpenAPI 3.1 lives next to the handler (`openapi.ts`). Tests check every response they produce against it, including errors and the built server's. Response objects are closed for the server and open for clients. Breaking changes against `contract/v1.json` fail the build, and the snapshot tool refuses to record one.
+- **Alternatives:** generating the spec from code (no schema library in the handler today); generating code from the spec (heavy for one handler); tests without a baseline (cannot tell an addition from a removal).
+- **Why:** a developer integration breaks on a renamed field, not on a missing feature. The cheapest guard is to make every existing test a contract test.
+- **Change if:** the API grows past one handler, or a typed schema library is adopted in the handler. Then generate the spec from it.

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createResolver } from "@recast/resolve";
-import { MemoryCorrectionStore, MemoryKeyStore, MemoryUsageStore, createApi, TIERS } from "../src";
+import { MemoryCorrectionStore, MemoryKeyStore, MemoryUsageStore, createApi as rawCreateApi, TIERS } from "../src";
+import { guard } from "./contract-guard";
+const createApi = (d: Parameters<typeof rawCreateApi>[0]) => guard(rawCreateApi(d));
 
 const FREE = "sk_test_free_00000001", PRO = "sk_test_pro_000000002", OPT = "sk_test_optin_0000003";
 let clock = Date.parse("2026-10-15T10:00:00Z");

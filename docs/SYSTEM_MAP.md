@@ -115,5 +115,6 @@ Where checks happen:
 | Object envelope, evidence, confidence | `schema/common/*.schema.json` → `packages/core/src/generated` | everything |
 | Capability contract (destination) | `schema/contracts/capability.schema.json` | core, bridges, resolve, interaction |
 | Wire resolve shape (snake_case) | `packages/resolve/src/wire.ts` | API, SDK, MCP |
+| Public API contract (OpenAPI 3.1) and v1 compatibility baseline | `packages/api-core/src/openapi.ts`, `contract/v1.json` | API (served), tests, SDK |
 | Agent token, proof and audit entry | `packages/agent-runtime/src/{token,proof,audit}.ts` | gateway, server, CLI, control center |
 | Action lifecycle and operation capabilities | `packages/core/src/lifecycle.ts` (`ActionStatus`, `TRANSITIONS`, `OperationCapabilities`, `OutcomeUnknownError`) | core, bridges, api-core placements; agent runtime to adopt (P4) |

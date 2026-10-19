@@ -7,3 +7,5 @@ export * from "./sql";
 export * from "./admin";
 export * from "./place";
 export { b64 } from "./b64";
+export * from "./openapi";
+export * from "./compat";

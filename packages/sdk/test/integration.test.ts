@@ -1,6 +1,11 @@
 import { createServer, type Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MemoryKeyStore, MemoryUsageStore, createApi, TIERS } from "@recast/api-core";
+import { afterEach as contractAfterEach, expect as contractExpect } from "vitest";
+import { withContractCheck } from "@recast/api-core/contract";
+import { MemoryKeyStore, MemoryUsageStore, createApi as rawCreateApi, TIERS } from "@recast/api-core";
+// Every response the SDK reads in these tests is checked against the API contract (packages/api-core/src/openapi.ts).
+const breaches: string[] = []; const createApi = (d: Parameters<typeof rawCreateApi>[0]) => withContractCheck(rawCreateApi(d), breaches);
+contractAfterEach(() => { contractExpect(breaches.splice(0), "responses that break the API contract").toEqual([]); });
 import { createResolver } from "@recast/resolve";
 import { AuthError, QuotaError, Recast, ValidationError } from "../src";
 

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createResolver } from "@recast/resolve";
 import { createRelease, parseOverrides } from "@recast/release";
 import { freshDb } from "@recast/store/testing";
-import { MemoryKeyStore, MemoryUsageStore, SqlKeyStore, createApi, createTenant, hashKey, setTenant, type ApiDeps } from "../src";
+import { MemoryKeyStore, MemoryUsageStore, SqlKeyStore, createApi as rawCreateApi, createTenant, hashKey, setTenant, type ApiDeps } from "../src";
 
 const INTERNAL = "sk_test_cohort_internal", PRIVATE = "sk_test_cohort_private1", PUBLIC = "sk_test_cohort_public01";
 let keys: MemoryKeyStore, usage: MemoryUsageStore;
@@ -13,6 +13,8 @@ beforeEach(async () => {
   await keys.add(PRIVATE, { tenantId: "t_priv", tier: "pro", cohort: "private" });
   await keys.add(PUBLIC, { tenantId: "t_pub", tier: "pro" });   // no cohort given: public, the narrowest
 });
+import { guard } from "./contract-guard";
+const createApi = (d: Parameters<typeof rawCreateApi>[0]) => guard(rawCreateApi(d));
 const mk = (extra: Partial<ApiDeps> = {}) => createApi({ resolver: createResolver(), keys, usage, ...extra });
 const call = async (api: ReturnType<typeof mk>, key: string, path: string, body?: unknown) => {
   const r = await api.handle(new Request("http://x" + path, { method: body === undefined ? "GET" : "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));

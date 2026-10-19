@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "contract:snapshot": "tsx scripts/contract-snapshot.ts"
   },
   "dependencies": {
     "@recast/core": "workspace:*",
@@ -18,10 +19,12 @@
     "vitest": "^3.2.0",
     "@types/node": "^22.0.0",
     "@recast/store": "workspace:*",
-    "@electric-sql/pglite": "^0.3.0"
+    "@electric-sql/pglite": "^0.3.0",
+    "ajv": "^8.17.1"
   },
   "exports": {
     ".": "./src/index.ts",
-    "./admin": "./src/admin.ts"
+    "./admin": "./src/admin.ts",
+    "./contract": "./src/contract.ts"
   }
 }

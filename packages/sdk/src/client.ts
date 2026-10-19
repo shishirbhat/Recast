@@ -114,6 +114,8 @@ export class Recast {
     };
     const { json } = await this.request("POST", "/v1/place", body, { "idempotency-key": uuid() });
     if (json.status === "outcome_unknown") return { status: "outcome_unknown", actionId: json.action_id, message: json.message, next: json.next };
+    // Only an explicit "placed" is success. A status this SDK version does not know is never reported as done.
+    if (json.status !== "placed") return { status: "outcome_unknown", actionId: json.action_id ?? json.receipt?.id ?? "", message: `the API answered '${String(json.status)}', which this SDK version does not know; upgrade @recast/sdk`, next: "check the placement before trying again" };
     const r = json.receipt;
     return {
       status: "placed",
