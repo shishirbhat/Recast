@@ -350,8 +350,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     const clean = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, "");
     let file = join(dir, clean);
     if (!file.startsWith(resolve(dir))) file = join(dir, "index.html");
-    if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-    if (!existsSync(file) && existsSync(file + ".html")) file += ".html";
+    // Next's export has both `join.html` and a `join/` folder of payloads: the page wins.
+    if (existsSync(file + ".html") && (!existsSync(file) || statSync(file).isDirectory())) file += ".html";
+    else if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
     if (!existsSync(file)) file = join(dir, "index.html");
     const immutable = file.includes(`${"_next"}/static`);
     res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream", "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache", ...SECURITY_HEADERS });

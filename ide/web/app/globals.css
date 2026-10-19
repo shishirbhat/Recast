@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+  Relay IDE — "paper & night".
+  Warm paper by day, warm night by evening. One signature colour (violet, after Wispr Flow's lavender),
+  one attention colour (saffron) used only for things that need a person. Everything else is ink on paper.
+  Collaborator colours are the only other hues on screen, because they carry meaning.
+*/
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --page: #f3eee5;
+  --panel: #fffdf9;
+  --panel-2: #f9f5ee;
+  --sunken: #ede6da;
+  --rule: #e4dbcd;
+  --rule-strong: #d3c7b4;
+  --ink: #1a1410;
+  --ink-2: #4b423a;
+  --muted: #7b7067;
+  --faint: #a69a8e;
+  --accent: #6747d9;
+  --accent-ink: #5133c0;
+  --accent-soft: #eee7ff;
+  --accent-line: #cdbcff;
+  --attention: #d9661f;
+  --attention-soft: #fdeedd;
+  --ok: #2b7a57;
+  --ok-soft: #e1f1e7;
+  --warn: #9a6512;
+  --warn-soft: #faf0d8;
+  --danger: #a3263b;
+  --danger-soft: #f9e6e8;
+  --selection: #e3d9ff;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 1px 2px rgb(60 40 20 / 0.05), 0 8px 24px -12px rgb(60 40 20 / 0.12);
+  --shadow-pop: 0 2px 6px rgb(60 40 20 / 0.08), 0 24px 48px -20px rgb(60 40 20 / 0.28);
+  --grain-opacity: 0.035;
+  --syn-keyword: #5a3bc9;
+  --syn-string: #2b7a57;
+  --syn-number: #b4561a;
+  --syn-type: #8a5a10;
+  --syn-fn: #1a1410;
+  --syn-prop: #4b423a;
+  --syn-comment: #8e8378;
+  --syn-punct: #8e8378;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #110e0c;
+  --panel: #191512;
+  --panel-2: #1e1916;
+  --sunken: #0d0b0a;
+  --rule: #2a2420;
+  --rule-strong: #3a322c;
+  --ink: #f2ebe0;
+  --ink-2: #cdc2b4;
+  --muted: #988c80;
+  --faint: #6f655c;
+  --accent: #b49bff;
+  --accent-ink: #c8b6ff;
+  --accent-soft: #261f3d;
+  --accent-line: #4a3c7a;
+  --attention: #f0954f;
+  --attention-soft: #33231a;
+  --ok: #6cc59a;
+  --ok-soft: #17291f;
+  --warn: #e7b65d;
+  --warn-soft: #2e2516;
+  --danger: #f2899a;
+  --danger-soft: #331a1f;
+  --selection: #3a2f63;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -14px rgb(0 0 0 / 0.6);
+  --shadow-pop: 0 2px 8px rgb(0 0 0 / 0.5), 0 30px 60px -24px rgb(0 0 0 / 0.8);
+  --grain-opacity: 0.05;
+  --syn-keyword: #c3adff;
+  --syn-string: #8fd1ad;
+  --syn-number: #f3a76c;
+  --syn-type: #e9c37a;
+  --syn-fn: #f2ebe0;
+  --syn-prop: #d6cabc;
+  --syn-comment: #8d8276;
+  --syn-punct: #7d7268;
+}
+
+@theme inline {
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-sunken: var(--sunken);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-attention: var(--attention);
+  --color-attention-soft: var(--attention-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --shadow-panel: var(--shadow);
+  --shadow-pop: var(--shadow-pop);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* A whisper of paper grain on the page, behind the panels. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  z-index: 0;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+.serif-em {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+
+/* Editor styling lives in components/Editor.tsx as a CodeMirror theme, so it wins over CodeMirror defaults. */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
