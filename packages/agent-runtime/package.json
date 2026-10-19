@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@recast/core": "workspace:*",
+    "@recast/release": "workspace:*",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
