@@ -71,11 +71,30 @@ test("two people edit the same file in the browser and see each other live", { s
     assert.equal(textA, await docText(b));
     assert.equal(textA, server.docs.get("src/ui.js")!.text.toString());
 
+    // IDE structure works for real: quick open, project search, the panel.
+    await a.keyboard.press("Control+P");
+    await a.getByTestId("palette-input").fill("serv");
+    await a.keyboard.press("Enter");
+    await a.locator("[role=tab]", { hasText: "server.js" }).waitFor();
+    await a.keyboard.press("Control+Shift+F");
+    await a.getByTestId("search-input").fill("getUser");
+    await a.getByText(/results in 2 files/).waitFor({ timeout: 5000 });
+    await a.keyboard.press("Control+Shift+P");
+    await a.getByTestId("palette-input").fill(">show problems");
+    await a.keyboard.press("Enter");
+    await a.getByText("T-api is built on user-api v1; the accepted contract is v2").waitFor();
+
     if (SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
+      await a.locator("[role=tab]", { hasText: "ui.js" }).locator("button").first().click();
       await a.getByTestId("task-T-ui").click();
       await a.waitForTimeout(600);
       await a.screenshot({ path: join(SHOTS, "ide-light.png") });
+      await a.keyboard.press("Control+Shift+P");
+      await a.getByTestId("palette-input").fill(">relay");
+      await a.waitForTimeout(300);
+      await a.screenshot({ path: join(SHOTS, "ide-palette.png") });
+      await a.keyboard.press("Escape");
       await b.screenshot({ path: join(SHOTS, "ide-light-kai.png") });
       const dark = await signIn(browser, server.url, server.members.invite("Lena Park", "viewer").token, "dark");
       await dark.evaluate(() => localStorage.setItem("relay.theme", "dark"));
@@ -84,6 +103,9 @@ test("two people edit the same file in the browser and see each other live", { s
       await dark.locator(".cm-content").waitFor();
       await dark.locator(".cm-ySelectionInfo").first().waitFor({ timeout: 5000 });
       await dark.getByText("contracts", { exact: true }).click();
+      await dark.keyboard.press("Control+Shift+F");
+      await dark.getByTestId("search-input").fill("user");
+      await dark.getByText(/results in/).waitFor();
       await dark.waitForTimeout(600);
       await dark.screenshot({ path: join(SHOTS, "ide-dark.png") });
       const fresh = await browser.newContext({ viewport: { width: 1440, height: 880 }, deviceScaleFactor: 2 });

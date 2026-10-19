@@ -7,11 +7,29 @@ import { api, ApiError } from "@/lib/api";
 import type { ContractVersion, Integration, Member, ProjectState, RelayEvent, Task, Why } from "@/lib/types";
 import { Button, Pill, SectionLabel, StatePill, timeAgo } from "./ui";
 
-type Tab = "tasks" | "contracts" | "activity";
+export type CoordTab = "tasks" | "contracts";
 
-export function Coordination({ state, events, onOpenFile, refresh, notify }: { state: ProjectState; events: RelayEvent[]; onOpenFile: (p: string) => void; refresh: () => void; notify: (msg: string, tone?: "ok" | "danger") => void }) {
-  const [tab, setTab] = useState<Tab>("tasks");
-  const [selected, setSelected] = useState<string | null>(null);
+export function Coordination({
+  state,
+  onOpenFile,
+  refresh,
+  notify,
+  tab,
+  setTab,
+  selected,
+  setSelected,
+  newTaskNonce,
+}: {
+  state: ProjectState;
+  onOpenFile: (p: string) => void;
+  refresh: () => void;
+  notify: (msg: string, tone?: "ok" | "danger") => void;
+  tab: CoordTab;
+  setTab: (t: CoordTab) => void;
+  selected: string | null;
+  setSelected: (id: string | null) => void;
+  newTaskNonce: number;
+}) {
   const task = state.tasks.find((t) => t.id === selected) ?? null;
 
   const act = async (fn: () => Promise<unknown>, done?: string) => {
@@ -27,12 +45,13 @@ export function Coordination({ state, events, onOpenFile, refresh, notify }: { s
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1 border-b border-rule px-3 py-2.5">
-        {(["tasks", "contracts", "activity"] as Tab[]).map((t) => (
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-rule px-3">
+        <span className="mr-auto pl-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Relay</span>
+        {(["tasks", "contracts"] as CoordTab[]).map((t) => (
           <button
             key={t}
             onClick={() => (setTab(t), setSelected(null))}
-            className={`relative h-8 rounded-full px-3.5 text-[13px] font-medium capitalize transition-colors ${tab === t ? "text-ink" : "text-muted hover:text-ink"}`}
+            className={`relative h-7 rounded-full px-3 text-[12.5px] font-medium capitalize transition-colors ${tab === t ? "text-ink" : "text-muted hover:text-ink"}`}
           >
             {tab === t && <motion.span layoutId="coord-tab" className="absolute inset-0 rounded-full bg-sunken" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
             <span className="relative">{t}</span>
@@ -45,11 +64,9 @@ export function Coordination({ state, events, onOpenFile, refresh, notify }: { s
             {task ? (
               <TaskDetail task={task} state={state} onBack={() => setSelected(null)} onOpenFile={onOpenFile} act={act} />
             ) : tab === "tasks" ? (
-              <TaskList state={state} onSelect={setSelected} act={act} />
-            ) : tab === "contracts" ? (
-              <Contracts state={state} act={act} />
+              <TaskList state={state} onSelect={setSelected} act={act} newTaskNonce={newTaskNonce} />
             ) : (
-              <ActivityFeed events={events} members={state.members} />
+              <Contracts state={state} act={act} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -96,8 +113,11 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
   );
 }
 
-function TaskList({ state, onSelect, act }: { state: ProjectState; onSelect: (id: string) => void; act: Act }) {
+function TaskList({ state, onSelect, act, newTaskNonce }: { state: ProjectState; onSelect: (id: string) => void; act: Act; newTaskNonce: number }) {
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    if (newTaskNonce > 0) setCreating(true);
+  }, [newTaskNonce]);
   const canEdit = state.me.role !== "viewer";
   const groups = useMemo(() => {
     const g = { needs: [] as Task[], moving: [] as Task[], done: [] as Task[] };
@@ -600,24 +620,4 @@ export function describe(e: RelayEvent, members: Member[]): string {
     default:
       return `${e.type} ${e.taskId ?? ""}`;
   }
-}
-
-function ActivityFeed({ events, members }: { events: RelayEvent[]; members: Member[] }) {
-  const shown = events.filter((e) => e.type !== "agent.tool").slice(-80).reverse();
-  return (
-    <div>
-      <h2 className="px-1 pb-3 pt-1 text-[26px] leading-none">
-        <span className="serif-em">What</span> <span className="serif-em text-muted">happened</span>
-      </h2>
-      {shown.length === 0 && <p className="px-1 text-[13px] text-muted">Quiet so far.</p>}
-      <ol className="space-y-0.5">
-        {shown.map((e) => (
-          <li key={e.id} className="flex gap-3 rounded-lg px-1 py-1.5 text-[12.5px] hover:bg-sunken">
-            <span className="w-12 shrink-0 pt-px text-[11px] text-faint">{new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-            <span className={e.type.includes("deny") || (e.type === "enforcement.decision" && e.data.decision === "deny") || e.type.includes("conflict") ? "text-danger" : "text-ink-2"}>{describe(e, members)}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
 }

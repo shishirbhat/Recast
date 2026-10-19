@@ -12,7 +12,7 @@ import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts"
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
-import { listProjectFiles, resolveProjectPath, readText } from "./files.ts";
+import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject } from "./files.ts";
 import { AgentRuns } from "./runs.ts";
 
 export interface ServerOptions {
@@ -225,6 +225,16 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (method === "GET" && parts[0] === "files") {
       requireMember(req, "read");
       return json(res, 200, { files: listProjectFiles(root) });
+    }
+    if (method === "GET" && parts[0] === "search") {
+      requireMember(req, "read");
+      docs.flushAll(); // search what collaborators see, not a stale disk
+      return json(res, 200, searchProject(root, url.searchParams.get("q") ?? ""));
+    }
+    if (method === "GET" && parts[0] === "git") {
+      requireMember(req, "read");
+      docs.flushAll();
+      return json(res, 200, gitStatus(root));
     }
     if (method === "POST" && parts[0] === "files") {
       const m = requireMember(req, "edit");

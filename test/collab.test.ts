@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join as pjoin } from "node:path";
@@ -230,6 +230,26 @@ test("the IDE API goes through the engine: the integration gate cannot be bypass
     const why = await api(server, editor.cookie, "GET", "/api/tasks/T-ui/why");
     assert.ok(why.body.gaps.some((g: string) => /T-api/.test(g)));
     assert.equal(why.body.ladder.humanApproved, false);
+  } finally {
+    await server.close();
+  }
+});
+
+test("search and source-control endpoints see shared edits and never leak secrets", async () => {
+  const { server, repo } = await testServer({ "src/app.js": "const token = readToken();\n", ".env": "TOKEN=hunter2\n" });
+  try {
+    writeFileSync(pjoin(repo, ".env"), "TOKEN=hunter2 token\n");
+    const ed = await join(server, "Ed");
+    const c = await client(server, ed.cookie, "src/app.js");
+    after(() => c.close());
+    c.text.insert(0, "// rotate the token weekly\n");
+    await until(() => server.docs.get("src/app.js")!.text.toString().startsWith("// rotate"), 2000, "applied");
+    const found = (await api(server, ed.cookie, "GET", "/api/search?q=TOKEN")).body;
+    assert.deepEqual(found.hits.map((h: { path: string; line: number }) => `${h.path}:${h.line}`), ["src/app.js:1", "src/app.js:2"]);
+    const git = (await api(server, ed.cookie, "GET", "/api/git")).body;
+    assert.deepEqual(git.changes, [{ path: "src/app.js", status: "modified" }], ".env is never reported");
+    assert.equal(git.branch, "main");
+    assert.equal((await api(server, null, "GET", "/api/search?q=x")).status, 401);
   } finally {
     await server.close();
   }

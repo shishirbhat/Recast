@@ -10,7 +10,7 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 
 | Component | Status |
 |---|---|
-| Core engine: tasks and state machine, versioned contracts, intents, deterministic conflict rules, evidence, completion gate, append-only events | **Implemented and unit-tested** (26 tests) |
+| Core engine: tasks and state machine, versioned contracts, intents, deterministic conflict rules, evidence, completion gate, append-only events | **Implemented and unit-tested** |
 | Claude Code pre-action hook adapter (fail-closed) | **Tested against the real provider** (Claude Code 2.1.303) |
 | Relay MCP server (9 tools, bound to one task per process) | **Tested against the real provider** (Claude Code over stdio) |
 | Diff-time backstop (`relay check`) | **Implemented and tested.** Also run after real-provider sessions |
@@ -20,6 +20,8 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 | Cursor | **Docs only.** Needs a desktop test |
 | Cross-task integration gate (`relay integrate`) | **Implemented and tested** (replays real run 3). Exercised against the real provider only through the per-task block |
 | Benchmark vs. baseline workflow | **Not started** |
+| Collaborative IDE (server, Yjs sync, presence, auth, IDE workbench UI) | **Implemented and tested** (real clients, two-browser E2E). Not yet tested by independent users |
+| Agent runs from the IDE (worktrees, stale input, 3-way apply, combined gate) | **Tested with a simulated agent only.** No real Claude Code run from the IDE yet |
 | VS Code extension | **Not started** |
 | Validation with independent users | **None** |
 
@@ -31,7 +33,7 @@ Requires Node ≥ 22.18 (types are stripped natively; there is no build step) an
 
 ```sh
 npm install
-npm run typecheck && npm test        # 26 tests, no model calls
+npm run typecheck && npm test        # 41 tests, no model calls
 RELAY_REAL_PROVIDER=1 npm run test:real   # runs real `claude -p`; costs model usage
 ```
 
@@ -50,9 +52,29 @@ relay integrate check T-ui,T-api --cwd . --verify "npm run test:integration"
 relay integrate approve <integration-id> --cwd .
 ```
 
+## Relay IDE (collaborative, browser-based)
+
+```sh
+npm install && (cd ide/web && npm install && npm run build)
+./bin/relay ide --cwd /path/to/your/repo        # prints a one-time owner sign-in link
+./bin/relay ide invite "Kai Chen" --role editor  # one-time link for a collaborator
+```
+
+A standard IDE layout: command centre and palette (Ctrl/⌘+P, Ctrl/⌘+Shift+P), Explorer / Search / Source Control, tabs, a Problems / Agents / Activity panel, a Relay side bar, and a status bar. Underneath it:
+- Live multi-person editing (Yjs CRDT) with named cursors and selections.
+- Tasks, contracts and integration review go through the same engine as the CLI.
+- Agent runs happen in isolated worktrees and are applied with a 3-way merge only after Relay's checks and a person's approval.
+
+Tests:
+- `npm test`: 41 tests, including real y-websocket clients and simulated-agent orchestration.
+- `RELAY_E2E=1 node --test test/e2e/ide.e2e.test.ts`: two real Chromium sessions.
+
+Screenshots are in `docs/screenshots/`.
+
 ## Docs
 
 - [docs/01-phase0-audit.md](docs/01-phase0-audit.md): repository and provider audit, plus the first hook probe
 - [docs/02-specs.md](docs/02-specs.md): architecture, state machine, conflict rules, hook protocol, MCP tools, security model
 - [docs/03-findings.md](docs/03-findings.md): real-provider results, capability matrix, known limitations, next steps
 - `docs/evidence/`: raw JSON from real-provider runs
+- [docs/07-ide-architecture-audit.md](docs/07-ide-architecture-audit.md), [docs/08-ide-architecture.md](docs/08-ide-architecture.md): IDE audit and architecture decisions

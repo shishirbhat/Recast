@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, FileCode2, FileText, FilePlus2, Folder, FolderOpen } from "lucide-react";
 import type { Member } from "@/lib/types";
-import { IconButton, SectionLabel } from "./ui";
+import { IconButton } from "./ui";
 
 interface Node {
   name: string;
@@ -68,7 +68,7 @@ export function FileTree({
           <div key={n.path}>
             <button
               onClick={() => setOpen((s) => (s.has(n.path) ? (s.delete(n.path), new Set(s)) : new Set(s.add(n.path))))}
-              className="group flex h-7 w-full items-center gap-1.5 rounded-lg pr-2 text-[13px] text-ink-2 hover:bg-sunken"
+              className="group flex h-[22px] w-full items-center gap-1.5 pr-2 text-[13px] text-ink-2 hover:bg-hover"
               style={{ paddingLeft: 8 + depth * 14 }}
             >
               <ChevronRight size={13} className={`text-faint transition-transform ${isOpen ? "rotate-90" : ""}`} />
@@ -86,7 +86,7 @@ export function FileTree({
           key={n.path}
           onClick={() => onOpen(n.path)}
           data-testid={`file-${n.path}`}
-          className={`group flex h-7 w-full items-center gap-1.5 rounded-lg pr-2 text-[13px] transition-colors ${isActive ? "bg-accent-soft font-medium text-ink" : "text-ink-2 hover:bg-sunken"}`}
+          className={`group flex h-[22px] w-full items-center gap-1.5 pr-2 text-[13px] ${isActive ? "bg-accent-soft text-ink outline outline-1 -outline-offset-1 outline-accent-line" : "text-ink-2 hover:bg-hover"}`}
           style={{ paddingLeft: 22 + depth * 14 }}
         >
           {CODE.test(n.name) ? <FileCode2 size={14} className={isActive ? "text-accent" : "text-faint"} /> : <FileText size={14} className={isActive ? "text-accent" : "text-faint"} />}
@@ -102,18 +102,15 @@ export function FileTree({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-3 pt-3">
-        <SectionLabel
-          right={
-            canEdit && (
-              <IconButton label="New file" onClick={() => setCreating(true)} className="size-6">
-                <FilePlus2 size={14} />
-              </IconButton>
-            )
-          }
-        >
-          Files
-        </SectionLabel>
+      <div className="px-2">
+        <div className="flex h-6.5 items-center justify-between pl-2 pr-0.5">
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2">Files</span>
+          {canEdit && (
+            <IconButton label="New file" onClick={() => setCreating(true)} className="size-5.5 rounded-md">
+              <FilePlus2 size={13} />
+            </IconButton>
+          )}
+        </div>
         {creating && (
           <form
             className="mb-2"
@@ -129,12 +126,12 @@ export function FileTree({
               autoFocus
               placeholder="src/new-file.ts"
               onBlur={() => setCreating(false)}
-              className="h-8 w-full rounded-lg border border-accent-line bg-panel px-2.5 font-mono text-[12.5px] outline-none"
+              className="h-6.5 w-full rounded border border-accent bg-editor px-2 font-mono text-[12.5px] outline-none"
             />
           </form>
         )}
       </div>
-      <nav aria-label="Project files" className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+      <nav aria-label="Project files" className="min-h-0 flex-1 overflow-y-auto pb-3">
         {render(tree, 0)}
       </nav>
     </div>

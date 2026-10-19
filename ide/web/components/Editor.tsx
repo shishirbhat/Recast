@@ -77,8 +77,23 @@ export function languageFor(path: string): Extension {
   return [];
 }
 
-export function Editor({ session, readOnly, onCursor }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void }) {
+export function Editor({ session, readOnly, onCursor, reveal }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null }) {
   const host = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+
+  // Jump to a line (from search results, problems, quick open) once the document has synced.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !reveal) return;
+    const go = () => {
+      const n = Math.min(Math.max(1, reveal.line), view.state.doc.lines);
+      const line = view.state.doc.line(n);
+      view.dispatch({ selection: { anchor: line.from, head: line.to }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+      view.focus();
+    };
+    if (session.status === "synced") go();
+    else return session.subscribe(() => session.status === "synced" && go());
+  }, [reveal, session]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -120,7 +135,11 @@ export function Editor({ session, readOnly, onCursor }: { session: DocSession; r
         ],
       }),
     });
-    return () => view.destroy();
+    viewRef.current = view;
+    return () => {
+      viewRef.current = null;
+      view.destroy();
+    };
   }, [session, readOnly, onCursor]);
 
   return <div ref={host} className="h-full min-h-0" data-testid="editor" />;

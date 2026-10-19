@@ -1,0 +1,3 @@
+#!/bin/sh
+# SIMULATED AGENT wrapper (orchestration tests only; not a provider integration).
+exec node --disable-warning=ExperimentalWarning "$(dirname "$0")/simulated-agent.ts" "$@"

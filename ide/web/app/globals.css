@@ -42,6 +42,13 @@
   --shadow: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 1px 2px rgb(60 40 20 / 0.05), 0 8px 24px -12px rgb(60 40 20 / 0.12);
   --shadow-pop: 0 2px 6px rgb(60 40 20 / 0.08), 0 24px 48px -20px rgb(60 40 20 / 0.28);
   --grain-opacity: 0.035;
+  --chrome: #ebe4d8;
+  --chrome-ink: #6f655b;
+  --sidebar: #f7f2ea;
+  --editor: #fffdf9;
+  --hover: #ece5d9;
+  --status-bg: #5b3fd0;
+  --status-fg: #fbf8ff;
   --syn-keyword: #5a3bc9;
   --syn-string: #2b7a57;
   --syn-number: #b4561a;
@@ -80,6 +87,13 @@
   --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -14px rgb(0 0 0 / 0.6);
   --shadow-pop: 0 2px 8px rgb(0 0 0 / 0.5), 0 30px 60px -24px rgb(0 0 0 / 0.8);
   --grain-opacity: 0.05;
+  --chrome: #0b0908;
+  --chrome-ink: #8c8176;
+  --sidebar: #15120f;
+  --editor: #1a1613;
+  --hover: #26201c;
+  --status-bg: #3a2c74;
+  --status-fg: #ece6ff;
   --syn-keyword: #c3adff;
   --syn-string: #8fd1ad;
   --syn-number: #f3a76c;
@@ -94,6 +108,13 @@
   --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --color-chrome: var(--chrome);
+  --color-chrome-ink: var(--chrome-ink);
+  --color-sidebar: var(--sidebar);
+  --color-editor: var(--editor);
+  --color-hover: var(--hover);
+  --color-status-bg: var(--status-bg);
+  --color-status-fg: var(--status-fg);
   --color-page: var(--page);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
@@ -132,7 +153,7 @@ body {
 }
 
 /* A whisper of paper grain on the page, behind the panels. */
-body::before {
+body:not(.workbench)::before {
   content: "";
   position: fixed;
   inset: 0;

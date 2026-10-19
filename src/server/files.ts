@@ -125,3 +125,65 @@ export function splice(a: string, b: string): { index: number; remove: number; i
   }
   return { index: start, remove: endA - start, insert: b.slice(start, endB) };
 }
+
+export interface SearchHit {
+  path: string;
+  line: number;
+  text: string;
+}
+
+/**
+ * Literal, case-insensitive search across shared files with git's own grep (tracked + untracked, never ignored).
+ * Secret paths are filtered out; results are capped so a broad query can't flood the client.
+ */
+export function searchProject(root: string, query: string, limit = 300): { hits: SearchHit[]; truncated: boolean } {
+  if (!query || query.length > 200) return { hits: [], truncated: false };
+  let out = "";
+  try {
+    out = execFileSync("git", ["grep", "-n", "-I", "-i", "-F", "--untracked", "--full-name", "-e", query, "--", ":/"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  } catch (e) {
+    const err = e as { status?: number; stdout?: string };
+    if (err.status === 1) return { hits: [], truncated: false }; // no matches
+    throw e;
+  }
+  const hits: SearchHit[] = [];
+  for (const row of out.split("\n")) {
+    const m = /^(.*?):(\d+):(.*)$/.exec(row);
+    if (!m || isSecretPath(m[1]!)) continue;
+    hits.push({ path: m[1]!, line: Number(m[2]), text: m[3]!.slice(0, 240) });
+    if (hits.length >= limit) return { hits, truncated: true };
+  }
+  return { hits, truncated: false };
+}
+
+export interface GitStatus {
+  branch: string | null;
+  head: string | null;
+  changes: { path: string; status: string }[];
+}
+
+/** Working-tree changes against HEAD, as `git status` reports them, minus secrets and Relay's own files. */
+export function gitStatus(root: string): GitStatus {
+  const run = (args: string[], trim = true) => {
+    try {
+      const out = execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      return trim ? out.trim() : out;
+    } catch {
+      return null;
+    }
+  };
+  // Never trim porcelain output: its first column is significant (" M path").
+  const raw = run(["status", "--porcelain=v1", "-z", "--untracked-files=all"], false) ?? "";
+  const changes: { path: string; status: string }[] = [];
+  const parts = raw.split("\0").filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i]!;
+    const code = entry.slice(0, 2);
+    const path = entry.slice(3);
+    if (code[0] === "R" || code[0] === "C") i++; // renames carry the old path as the next entry
+    if (isSecretPath(path)) continue;
+    const status = code === "??" ? "untracked" : code.includes("D") ? "deleted" : code.includes("A") ? "added" : code.includes("R") ? "renamed" : "modified";
+    changes.push({ path, status });
+  }
+  return { branch: run(["rev-parse", "--abbrev-ref", "HEAD"]), head: run(["rev-parse", "--short", "HEAD"]), changes };
+}

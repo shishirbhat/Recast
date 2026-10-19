@@ -1,5 +1,5 @@
-import { IDE } from "@/components/IDE";
+import { Workbench } from "@/components/workbench/Workbench";
 
 export default function Page() {
-  return <IDE />;
+  return <Workbench />;
 }
