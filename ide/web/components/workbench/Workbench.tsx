@@ -223,10 +223,10 @@ function MenuBar({ commands, compact }: { commands: Command[]; compact: boolean 
           <Menu size={15} />
         </button>
         {open !== null && (
-          <div role="menu" className="absolute left-0 top-full z-50 mt-0.5 max-h-[70vh] w-60 overflow-y-auto rounded-md border border-rule-strong bg-panel-2 py-1 shadow-pop">
+          <div role="menu" className="glass absolute left-0 top-full z-50 mt-1 max-h-[70vh] w-64 overflow-y-auto rounded-md border border-rule-strong p-1">
             {MENUS.map(([name], i) => (
               <div key={name}>
-                <p className="px-3 pt-1.5 text-[11px] uppercase tracking-[0.04em] text-faint">{name}</p>
+                <p className="micro px-2.5 pb-0.5 pt-2 text-faint">{name}</p>
                 {actionable(i).map((id) => (
                   <MenuItem key={id} c={byId.get(id)!} onRun={() => run(id)} />
                 ))}
@@ -264,15 +264,15 @@ function MenuBar({ commands, compact }: { commands: Command[]; compact: boolean 
             aria-expanded={open === i}
             onClick={() => (setOpen(open === i ? null : i), setItem(0))}
             onMouseEnter={() => open !== null && open !== i && (setOpen(i), setItem(0))}
-            className={`h-[26px] rounded-sm px-2 text-[13px] ${open === i ? "bg-hover text-ink" : "text-chrome-ink hover:bg-hover hover:text-ink"}`}
+            className={`h-[24px] rounded-sm px-2 text-[12.5px] transition-colors ${open === i ? "bg-hover text-ink" : "text-chrome-ink hover:bg-hover hover:text-ink"}`}
           >
             {name}
           </button>
           {open === i && (
-            <div role="menu" aria-label={name} className="absolute left-0 top-full z-50 mt-0.5 min-w-60 rounded-md border border-rule-strong bg-panel-2 py-1 shadow-pop">
+            <div role="menu" aria-label={name} className="glass absolute left-0 top-full z-50 mt-1 min-w-64 rounded-md border border-rule-strong p-1">
               {entries(i).map((e, k) =>
                 e === "-" ? (
-                  <div key={`sep${k}`} role="separator" className="my-1 h-px bg-rule" />
+                  <div key={`sep${k}`} role="separator" className="mx-1.5 my-1 h-px bg-rule" />
                 ) : (
                   <MenuItem key={e} c={byId.get(e)!} focused={actionable(i)[item] === e} onRun={() => run(e)} onHover={() => setItem(actionable(i).indexOf(e))} />
                 ),
@@ -294,10 +294,10 @@ function MenuItem({ c, focused, onRun, onHover }: { c: Command; focused?: boolea
       title={reason ?? undefined}
       onClick={onRun}
       onMouseEnter={onHover}
-      className={`flex h-[24px] w-full items-center gap-6 px-3 text-left text-[13px] ${reason ? "cursor-default text-faint" : focused ? "bg-accent text-white" : "text-ink-2 hover:bg-accent hover:text-white"}`}
+      className={`flex h-[26px] w-full items-center gap-6 rounded-sm px-2.5 text-left text-[12.5px] ${reason ? "cursor-default text-faint" : focused ? "bg-hover text-ink shadow-[inset_2px_0_0_var(--accent)]" : "text-ink-2 hover:bg-hover hover:text-ink hover:shadow-[inset_2px_0_0_var(--accent)]"}`}
     >
       <span className="truncate">{c.title}</span>
-      {c.keybinding && <span className={`ml-auto shrink-0 text-[12px] ${focused && !reason ? "text-white/80" : "text-faint"}`}>{keyLabel(c.keybinding)}</span>}
+      {c.keybinding && <span className={`ml-auto shrink-0 font-mono text-[11px] ${focused && !reason ? "text-muted" : "text-faint"}`}>{keyLabel(c.keybinding)}</span>}
     </button>
   );
 }
@@ -494,6 +494,7 @@ export function Workbench() {
       { id: "view.explorer", category: "View", title: "Explorer", keybinding: "Mod+Shift+E", run: () => (set({ view: "explorer", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.search", category: "View", title: "Search", run: () => (set({ view: "search", sidebar: true }), setLastOpened("sidebar"), setSearchNonce((n) => n + 1)) },
       { id: "view.scm", category: "View", title: "Source Control", keywords: ["git"], keybinding: "Mod+Shift+G", run: () => (set({ view: "scm", sidebar: true }), setLastOpened("sidebar")) },
+      { id: "github.ship", category: "GitHub", title: "Ship Changes or Merge Pull Request…", keywords: ["github", "push", "pr", "pull request", "merge", "deploy"], when: () => ownerOnly, run: () => (set({ view: "scm", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.run", category: "View", title: "Run", keywords: ["scripts", "npm"], keybinding: "Mod+Shift+D", run: () => (set({ view: "run", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.extensions", category: "View", title: "Extensions", keybinding: "Mod+Shift+X", run: () => (set({ view: "extensions", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.community", category: "View", title: "Community", keywords: ["people", "members", "invite"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
@@ -577,13 +578,13 @@ export function Workbench() {
   const eol = session && session.text.toString().includes("\r\n") ? "CRLF" : "LF";
 
   const activities: { id: View; icon: React.ReactNode; label: string; badge?: number; cmd: string }[] = [
-    { id: "explorer", icon: <Files size={22} strokeWidth={1.5} />, label: "Explorer", cmd: "view.explorer" },
-    { id: "search", icon: <Search size={22} strokeWidth={1.5} />, label: "Search", cmd: "search.inFiles" },
-    { id: "scm", icon: <GitBranch size={22} strokeWidth={1.5} />, label: "Source Control", badge: git.size || undefined, cmd: "view.scm" },
-    { id: "run", icon: <Play size={22} strokeWidth={1.5} />, label: "Run", cmd: "view.run" },
-    { id: "extensions", icon: <Blocks size={22} strokeWidth={1.5} />, label: "Extensions", cmd: "view.extensions" },
-    { id: "community", icon: <Users size={22} strokeWidth={1.5} />, label: "Community", badge: online.size > 1 ? online.size : undefined, cmd: "view.community" },
-    { id: "relay", icon: <Bot size={22} strokeWidth={1.5} />, label: "Relay", badge: needsPerson || undefined, cmd: "view.relay" },
+    { id: "explorer", icon: <Files size={20} strokeWidth={1.5} />, label: "Explorer", cmd: "view.explorer" },
+    { id: "search", icon: <Search size={20} strokeWidth={1.5} />, label: "Search", cmd: "search.inFiles" },
+    { id: "scm", icon: <GitBranch size={20} strokeWidth={1.5} />, label: "Source Control", badge: git.size || undefined, cmd: "view.scm" },
+    { id: "run", icon: <Play size={20} strokeWidth={1.5} />, label: "Run", cmd: "view.run" },
+    { id: "extensions", icon: <Blocks size={20} strokeWidth={1.5} />, label: "Extensions", cmd: "view.extensions" },
+    { id: "community", icon: <Users size={20} strokeWidth={1.5} />, label: "Community", badge: online.size > 1 ? online.size : undefined, cmd: "view.community" },
+    { id: "relay", icon: <Bot size={20} strokeWidth={1.5} />, label: "Relay", badge: needsPerson || undefined, cmd: "view.relay" },
   ];
   const kb = (id: string) => commands.find((c) => c.id === id)?.keybinding;
   const tip = (label: string, id: string) => (kb(id) ? `${label} (${keyLabel(kb(id)!)})` : label);
@@ -591,15 +592,19 @@ export function Workbench() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-chrome text-ink">
       {/* ===================== Title bar ===================== */}
-      <header style={{ height: TITLE_H }} className="relative z-30 flex shrink-0 items-center gap-1 border-b border-rule bg-chrome pl-2 pr-1.5">
+      <header style={{ height: TITLE_H }} className="relative z-30 flex shrink-0 select-none items-center gap-1 border-b border-rule bg-chrome pl-2 pr-1.5">
         <span className="grid w-8 place-items-center" aria-hidden>
           <Mark size={16} />
         </span>
         <MenuBar commands={commands} compact={fit.compactMenu} />
         <div className="absolute left-1/2 top-1/2 w-[min(38vw,520px)] -translate-x-1/2 -translate-y-1/2">
-          <button onClick={() => setPalette({ open: true, mode: "files" })} data-testid="command-center" aria-label={`Search files and commands (${keyLabel("Mod+P")})`} className="flex h-[24px] w-full items-center justify-center gap-2 rounded-md border border-rule bg-sunken/60 px-2 text-[12.5px] text-muted hover:border-rule-strong hover:bg-sunken">
-            <Search size={12} />
-            <span className="truncate">{s.project.name}</span>
+          <button onClick={() => setPalette({ open: true, mode: "files" })} data-testid="command-center" aria-label={`Search files and commands (${keyLabel("Mod+P")})`} className="group flex h-[24px] w-full items-center gap-2 rounded-sm border border-rule bg-sidebar px-2 text-[12px] text-muted transition-colors hover:border-rule-strong hover:text-ink-2">
+            <Search size={12} strokeWidth={1.75} className="shrink-0 text-faint group-hover:text-accent" />
+            <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 truncate">
+              <span className="truncate text-ink-2">{s.project.name}</span>
+              {s.project.head && <span className="hidden font-mono text-[10.5px] text-faint md:inline">@{s.project.head}</span>}
+            </span>
+            <kbd className="hidden shrink-0 font-mono text-[10.5px] text-faint lg:inline">{keyLabel("Mod+P")}</kbd>
           </button>
         </div>
         <div className="ml-auto flex items-center gap-0.5">
@@ -645,23 +650,23 @@ export function Workbench() {
                 title={tip(a.label, a.cmd)}
                 data-testid={`activity-${a.id}`}
                 onClick={() => showView(a.id)}
-                className={`relative grid h-12 w-12 place-items-center ${on ? "text-ink" : "text-faint hover:text-ink-2"}`}
+                className={`relative grid h-11 w-12 place-items-center transition-colors ${on ? "text-ink" : "text-faint hover:text-ink-2"}`}
               >
-                {on && <span className="absolute inset-y-0 left-0 w-[2px] bg-ink" />}
+                {on && <motion.span layoutId="activity-indicator" transition={{ type: "spring", stiffness: 520, damping: 40 }} className="absolute inset-y-2.5 left-0 w-[2px] bg-accent" />}
                 {a.icon}
-                {a.badge !== undefined && <span className="absolute bottom-2 right-2 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">{a.badge}</span>}
+                {a.badge !== undefined && <span className="tnum absolute bottom-1.5 right-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-sm bg-accent px-[3px] font-mono text-[9.5px] font-semibold text-accent-fg">{a.badge}</span>}
               </button>
             );
           })}
           <div className="mt-auto flex flex-col items-center pb-1">
             {[
-              { id: "account" as View, icon: <CircleUserRound size={22} strokeWidth={1.5} />, label: "Accounts", cmd: "view.account" },
-              { id: "settings" as View, icon: <Settings size={22} strokeWidth={1.5} />, label: "Manage", cmd: "view.settings" },
+              { id: "account" as View, icon: <CircleUserRound size={20} strokeWidth={1.5} />, label: "Accounts", cmd: "view.account" },
+              { id: "settings" as View, icon: <Settings size={20} strokeWidth={1.5} />, label: "Manage", cmd: "view.settings" },
             ].map((a) => {
               const on = fit.sidebar && layout.view === a.id;
               return (
-                <button key={a.id} role="tab" aria-selected={on} aria-label={a.label} title={tip(a.label, a.cmd)} data-testid={`activity-${a.id}`} onClick={() => showView(a.id)} className={`relative grid h-12 w-12 place-items-center ${on ? "text-ink" : "text-faint hover:text-ink-2"}`}>
-                  {on && <span className="absolute inset-y-0 left-0 w-[2px] bg-ink" />}
+                <button key={a.id} role="tab" aria-selected={on} aria-label={a.label} title={tip(a.label, a.cmd)} data-testid={`activity-${a.id}`} onClick={() => showView(a.id)} className={`relative grid h-11 w-12 place-items-center transition-colors ${on ? "text-ink" : "text-faint hover:text-ink-2"}`}>
+                  {on && <motion.span layoutId="activity-indicator" transition={{ type: "spring", stiffness: 520, damping: 40 }} className="absolute inset-y-2.5 left-0 w-[2px] bg-accent" />}
                   {a.icon}
                 </button>
               );
@@ -711,7 +716,7 @@ export function Workbench() {
                 </div>
               )}
               {layout.view === "search" && <SearchView onOpen={open} focusNonce={searchNonce} />}
-              {layout.view === "scm" && <SourceControlView onOpen={open} tick={events.length} />}
+              {layout.view === "scm" && <SourceControlView onOpen={open} tick={events.length} canShip={me!.role === "owner"} notify={notify} />}
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
               {layout.view === "extensions" && <ExtensionsView />}
               {layout.view === "community" && <CommunityView state={s} online={online} where={where} onInvite={invite} />}
@@ -727,14 +732,14 @@ export function Workbench() {
         <div className="flex min-w-0 flex-1 flex-col border-l border-rule bg-editor" data-testid="editor-group">
           <main className="flex min-h-0 flex-1 flex-col" aria-label="Editor">
             {tabs.length > 0 && (
-              <div className="flex h-[35px] shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-sidebar" role="tablist" aria-label="Open editors">
+              <div className="flex h-[35px] shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-sidebar " role="tablist" aria-label="Open editors">
                 {tabs.map((t) => {
                   const on = t === active;
                   const here = (presence.get(t) ?? []).filter((id) => id !== me!.id);
                   const offline = sessions.current.get(t)?.pendingOffline;
                   return (
-                    <div key={t} role="tab" aria-selected={on} data-testid={`tab-${t}`} onMouseDown={(e) => e.button === 1 && (e.preventDefault(), closeTab(t))} className={`group relative flex min-w-0 shrink-0 items-center gap-1.5 border-r border-rule pl-3 pr-1 text-[13px] ${on ? "bg-editor text-ink" : "text-muted hover:text-ink"}`}>
-                      {on && <span className="absolute inset-x-0 top-0 h-px bg-accent" />}
+                    <div key={t} role="tab" aria-selected={on} data-testid={`tab-${t}`} onMouseDown={(e) => e.button === 1 && (e.preventDefault(), closeTab(t))} className={`group relative flex min-w-0 shrink-0 items-center gap-1.5 border-r border-rule pl-3 pr-1 text-[12.5px] transition-colors ${on ? "bg-editor text-ink" : "border-b text-muted hover:bg-hover/50 hover:text-ink"}`}>
+                      {on && <motion.span layoutId="tab-indicator" transition={{ type: "spring", stiffness: 520, damping: 42 }} className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
                       <button onClick={() => setActive(t)} className="max-w-48 truncate" title={t}>
                         {t.split("/").pop()}
                       </button>
@@ -747,16 +752,17 @@ export function Workbench() {
                     </div>
                   );
                 })}
+                <div className="min-w-4 flex-1 border-b border-rule" />
               </div>
             )}
             {session ? (
               <>
-                <div className="flex h-[22px] shrink-0 items-center justify-between px-4 text-[12px] text-muted">
+                <div className="flex h-[24px] shrink-0 items-center justify-between px-4 text-[12px] text-muted">
                   <nav aria-label="Breadcrumbs" className="min-w-0 truncate">
                     {active!.split("/").map((seg, i, all) => (
                       <span key={i}>
                         <span className={i === all.length - 1 ? "text-ink-2" : ""}>{seg}</span>
-                        {i < all.length - 1 && <span className="px-1 text-faint">›</span>}
+                        {i < all.length - 1 && <span className="px-1.5 font-mono text-faint">/</span>}
                       </span>
                     ))}
                   </nav>
@@ -801,12 +807,12 @@ export function Workbench() {
           <>
             <Sash dir="x" label="Secondary side bar width" value={fit.rw} min={SECONDARY.min} max={Math.min(SECONDARY.max, win.w - ACTIVITY_W - 300)} onChange={(v) => set({ secondaryW: v })} />
             <aside aria-label="Secondary side bar" style={{ width: fit.rw }} className="flex shrink-0 flex-col overflow-hidden border-l border-rule bg-sidebar" data-testid="secondary-sidebar">
-              <div className="flex h-[35px] shrink-0 items-center gap-3 px-3" role="tablist" aria-label="Relay">
+              <div className="flex h-[35px] shrink-0 items-center gap-4 border-b border-rule px-3" role="tablist" aria-label="Relay">
                 {(["agent", "tasks", "contracts"] as RightTab[]).map((t) => (
-                  <button key={t} role="tab" aria-selected={layout.rightTab === t} data-testid={`right-tab-${t}`} onClick={() => (set({ rightTab: t }), t !== "agent" && setSelectedTask(null))} className={`relative h-full text-[11px] font-medium uppercase tracking-[0.04em] ${layout.rightTab === t ? "text-ink" : "text-muted hover:text-ink"}`}>
+                  <button key={t} role="tab" aria-selected={layout.rightTab === t} data-testid={`right-tab-${t}`} onClick={() => (set({ rightTab: t }), t !== "agent" && setSelectedTask(null))} className={`micro relative h-full transition-colors ${layout.rightTab === t ? "text-ink" : "text-faint hover:text-ink-2"}`}>
                     {t}
-                    {t === "tasks" && needsPerson > 0 && <span className="ml-1 rounded-sm bg-accent px-1 text-[10px] text-white">{needsPerson}</span>}
-                    {layout.rightTab === t && <span className="absolute inset-x-0 bottom-1.5 h-px bg-ink" />}
+                    {t === "tasks" && needsPerson > 0 && <span className="tnum ml-1.5 rounded-sm bg-accent px-1 py-px text-[9.5px] text-accent-fg">{needsPerson}</span>}
+                    {layout.rightTab === t && <motion.span layoutId="right-tab-indicator" transition={{ type: "spring", stiffness: 520, damping: 42 }} className="absolute inset-x-0 bottom-0 h-[2px] bg-accent" />}
                   </button>
                 ))}
                 <button aria-label="Close secondary side bar" title="Close" onClick={() => set({ secondary: false })} className="ml-auto grid size-6 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink">
@@ -826,10 +832,10 @@ export function Workbench() {
       </div>
 
       {/* ===================== Status bar ===================== */}
-      <footer style={{ height: STATUS_H }} className="flex shrink-0 items-stretch border-t border-rule bg-status-bg text-[12px] text-status-fg" aria-label="Status bar">
-        <span title={live ? "Connected to the Relay server" : "Reconnecting to the Relay server"} className="flex items-center gap-1.5 bg-remote px-2.5 text-white">
-          <Mark size={11} />
-          {live ? "Relay" : "Reconnecting…"}
+      <footer style={{ height: STATUS_H }} className="tnum flex shrink-0 select-none items-stretch border-t border-rule bg-status-bg font-mono text-[11px] text-status-fg" aria-label="Status bar">
+        <span title={live ? "Connected to the Relay server" : "Reconnecting to the Relay server"} className={`flex items-center gap-1.5 px-2.5 font-semibold tracking-[0.06em] ${live ? "bg-remote text-remote-fg" : "bg-warn-soft text-warn"}`}>
+          <span className={`size-1.5 rounded-full ${live ? "live-dot bg-remote-fg" : "bg-warn"}`} />
+          {live ? "RELAY" : "RECONNECTING"}
         </span>
         <StatusItem title="Branch / HEAD" onClick={() => showView("scm")}>
           <GitBranch size={12} /> {s.project.head ?? "–"}
@@ -866,10 +872,10 @@ export function Workbench() {
             {notes.length > 0 && <span>{notes.length}</span>}
           </StatusItem>
           {bell && (
-            <div role="dialog" aria-label="Notifications" className="absolute bottom-full right-1 z-50 mb-1 w-96 rounded-md border border-rule-strong bg-panel-2 shadow-pop">
-              <div className="flex h-8 items-center justify-between border-b border-rule px-3 text-[11px] uppercase tracking-[0.04em] text-muted">
+            <div role="dialog" aria-label="Notifications" className="glass absolute bottom-full right-1 z-50 mb-1.5 w-96 overflow-hidden rounded-md border border-rule-strong font-sans">
+              <div className="micro flex h-8 items-center justify-between border-b border-rule px-3 text-muted">
                 Notifications
-                <button className="normal-case text-[12px] text-accent-ink hover:underline" onClick={() => setNotes([])}>
+                <button className="font-sans text-[12px] normal-case tracking-normal text-accent-ink hover:underline" onClick={() => setNotes([])}>
                   Clear all
                 </button>
               </div>
@@ -891,8 +897,9 @@ export function Workbench() {
       <div className="pointer-events-none fixed bottom-8 right-3 z-50 flex flex-col items-end gap-2" aria-live="polite">
         <AnimatePresence>
           {toasts.map((t) => (
-            <motion.div key={t.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} role="status" className={`pointer-events-auto max-w-md rounded-md border px-3 py-2 text-[12.5px] shadow-pop ${t.tone === "danger" ? "border-danger/40 bg-panel-2 text-danger" : "border-rule-strong bg-panel-2 text-ink"}`}>
-              {t.msg}
+            <motion.div key={t.id} layout initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 12 }} transition={{ type: "spring", stiffness: 480, damping: 36 }} role="status" className={`glass pointer-events-auto flex max-w-md items-start gap-2.5 rounded-md border border-rule-strong py-2 pl-2.5 pr-3 text-[12.5px] ${t.tone === "danger" ? "text-danger" : "text-ink"}`}>
+              <span className={`mt-[5px] size-1.5 shrink-0 rounded-full ${t.tone === "danger" ? "bg-danger" : "bg-ok"}`} />
+              <span>{t.msg}</span>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -978,45 +985,54 @@ function RelayView({ state, onTask, onNewTask }: { state: ProjectState; onTask: 
 function EmptyEditor({ commands, recent, onOpen }: { commands: Command[]; recent: string[]; onOpen: (p: string) => void }) {
   const rows = ["palette.commands", "palette.files", "search.inFiles", "agent.focus", "terminal.toggle"].map((id) => commands.find((c) => c.id === id)).filter(Boolean) as Command[];
   return (
-    <div className="grid flex-1 place-items-center overflow-y-auto p-8" data-testid="empty-editor">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-3 text-muted">
-          <Mark size={44} />
-          <span className="text-[15px]">Relay</span>
+    <div className="dot-grid grid flex-1 place-items-center overflow-y-auto p-8" data-testid="empty-editor">
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.2, 0.7, 0.2, 1] }} className="ticks w-full max-w-[400px] border border-rule bg-editor/90 p-6">
+        <div className="mb-6 flex items-center gap-3">
+          <Mark size={30} />
+          <div>
+            <p className="text-[17px] font-semibold tracking-[-0.01em] text-ink">Relay</p>
+            <p className="micro mt-0.5 text-faint">One project · any model · in sync</p>
+          </div>
         </div>
-        <div className="space-y-1">
+        <div className="divide-y divide-rule border-y border-rule">
           {rows.map((c) => {
             const reason = availability(c);
             return (
-              <button key={c.id} onClick={() => execute(c)} disabled={!!reason} title={reason ?? undefined} className="flex w-full items-center justify-between rounded-sm px-2 py-1 text-[13px] text-muted hover:bg-hover hover:text-ink disabled:opacity-50">
-                <span>{c.title.replace(/…$/, "")}</span>
-                {c.keybinding && <kbd className="font-sans text-[12px] text-faint">{keyLabel(c.keybinding)}</kbd>}
+              <button key={c.id} onClick={() => execute(c)} disabled={!!reason} title={reason ?? undefined} className="group flex h-8 w-full items-center justify-between px-1 text-[12.5px] text-ink-2 transition-colors hover:text-ink disabled:opacity-45">
+                <span className="flex items-center gap-2">
+                  <span className="h-px w-2 bg-rule-strong transition-all group-hover:w-3 group-hover:bg-accent" />
+                  {c.title.replace(/…$/, "")}
+                </span>
+                {c.keybinding && <kbd className="rounded-sm border border-rule px-1.5 py-px font-mono text-[10.5px] text-muted">{keyLabel(c.keybinding)}</kbd>}
               </button>
             );
           })}
         </div>
         {recent.length > 0 && (
-          <div className="mt-8">
-            <p className="mb-1 px-2 text-[11px] uppercase tracking-[0.04em] text-faint">Recent</p>
+          <div className="mt-6">
+            <p className="micro mb-1.5 px-1 text-faint">Recent</p>
             {recent.slice(0, 5).map((p) => (
-              <button key={p} onClick={() => onOpen(p)} className="block w-full truncate rounded-sm px-2 py-0.5 text-left text-[13px] text-accent-ink hover:bg-hover">
+              <button key={p} onClick={() => onOpen(p)} className="block w-full truncate rounded-sm px-1 py-0.5 text-left font-mono text-[12px] text-ink-2 hover:text-accent-ink">
                 {p}
               </button>
             ))}
           </div>
         )}
-        <p className="mt-8 px-2 text-center text-[11.5px] text-faint">{isMac ? "⌘" : "Ctrl"}+P opens files · type &gt; for commands</p>
-      </div>
+        <p className="mt-6 px-1 font-mono text-[10.5px] text-faint">{isMac ? "⌘" : "Ctrl"}+P files · &gt; commands</p>
+      </motion.div>
     </div>
   );
 }
 
 function Splash({ message }: { message?: string }) {
   return (
-    <div className="grid h-screen place-items-center bg-chrome">
-      <div className="flex flex-col items-center gap-3 text-center">
+    <div className="dot-grid grid h-screen place-items-center bg-chrome">
+      <div className="flex flex-col items-center gap-4 text-center">
         <Mark size={28} />
-        <p className="text-[13px] text-muted">{message ?? "Opening the project…"}</p>
+        <div className="h-px w-24 overflow-hidden bg-rule">
+          {!message && <motion.div className="h-full w-8 bg-accent" animate={{ x: [-32, 96] }} transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }} />}
+        </div>
+        <p className="micro text-muted">{message ?? "Opening the project"}</p>
       </div>
     </div>
   );
@@ -1024,14 +1040,12 @@ function Splash({ message }: { message?: string }) {
 
 function SignedOut() {
   return (
-    <div className="grid h-screen place-items-center bg-chrome p-6">
-      <div className="max-w-sm rounded-md border border-rule bg-sidebar p-6 text-center">
-        <div className="flex justify-center">
-          <Mark size={28} />
-        </div>
-        <h1 className="mt-4 text-[18px] font-medium">You&apos;re not signed in</h1>
+    <div className="dot-grid grid h-screen place-items-center bg-chrome p-6">
+      <div className="ticks max-w-sm border border-rule bg-sidebar p-6">
+        <Mark size={26} />
+        <h1 className="mt-4 text-[18px] font-semibold tracking-[-0.01em]">You&apos;re not signed in</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">Ask the project owner for an invite. They can create one with</p>
-        <code className="mt-2 inline-block rounded-sm bg-sunken px-2 py-1 font-mono text-[12px]">relay ide invite &lt;your name&gt;</code>
+        <code className="mt-3 block rounded-sm border border-rule bg-sunken px-2 py-1.5 font-mono text-[12px]">relay ide invite &lt;your name&gt;</code>
       </div>
     </div>
   );

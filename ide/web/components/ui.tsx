@@ -18,8 +18,8 @@ export function Mark({ size = 22 }: { size?: number }) {
 type ButtonTone = "primary" | "quiet" | "ghost" | "danger";
 export function Button({ tone = "quiet", size = "md", className = "", children, ...rest }: ComponentProps<"button"> & { tone?: ButtonTone; size?: "sm" | "md" }) {
   const tones: Record<ButtonTone, string> = {
-    primary: "bg-accent text-white hover:brightness-110",
-    quiet: "bg-sunken text-ink border border-rule hover:bg-hover",
+    primary: "bg-accent text-accent-fg hover:brightness-110 active:translate-y-px",
+    quiet: "bg-sunken text-ink border border-rule hover:border-rule-strong hover:bg-hover active:translate-y-px",
     ghost: "text-ink-2 hover:bg-sunken hover:text-ink",
     danger: "bg-danger-soft text-danger hover:brightness-95",
   };
@@ -36,7 +36,7 @@ export function Button({ tone = "quiet", size = "md", className = "", children, 
 
 export function IconButton({ label, children, className = "", ...rest }: ComponentProps<"button"> & { label: string }) {
   return (
-    <button aria-label={label} title={label} className={`grid size-8 place-items-center rounded-full text-muted transition-colors hover:bg-sunken hover:text-ink ${className}`} {...rest}>
+    <button aria-label={label} title={label} className={`grid size-8 place-items-center rounded-sm text-muted transition-colors hover:bg-sunken hover:text-ink ${className}`} {...rest}>
       {children}
     </button>
   );
@@ -44,7 +44,7 @@ export function IconButton({ label, children, className = "", ...rest }: Compone
 
 const STATE_STYLE: Record<TaskState, { label: string; cls: string; dot: string }> = {
   proposed: { label: "Proposed", cls: "bg-sunken text-muted", dot: "bg-faint" },
-  queued: { label: "Ready", cls: "bg-panel-2 text-ink-2 ring-1 ring-rule", dot: "bg-muted" },
+  queued: { label: "Ready", cls: "text-ink-2 ring-1 ring-inset ring-rule-strong", dot: "bg-muted" },
   running: { label: "Working", cls: "bg-accent-soft text-accent-ink", dot: "bg-accent animate-pulse" },
   blocked: { label: "Blocked", cls: "bg-danger-soft text-danger", dot: "bg-danger" },
   review_required: { label: "In review", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
@@ -56,7 +56,7 @@ const STATE_STYLE: Record<TaskState, { label: string; cls: string; dot: string }
 export function StatePill({ state }: { state: TaskState }) {
   const s = STATE_STYLE[state];
   return (
-    <span className={`inline-flex h-[18px] items-center gap-1 rounded-sm px-1.5 text-[11px] font-medium ${s.cls}`}>
+    <span className={`inline-flex h-[18px] shrink-0 items-center gap-1 rounded-sm px-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] ${s.cls}`}>
       <span className={`size-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>
@@ -100,7 +100,7 @@ export function Avatar({ name, color, size = 28, ring = false, title }: { name: 
 export function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-1 pb-2 pt-1">
-      <span className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">{children}</span>
+      <span className="micro text-muted">{children}</span>
       {right}
     </div>
   );

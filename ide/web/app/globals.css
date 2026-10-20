@@ -1,12 +1,15 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
-@import "@fontsource-variable/jetbrains-mono";
-@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
 /*
-  Phase 1 (structure): a restrained neutral palette. One accent for focus, selection and active state;
-  semantic colours only where they carry meaning (errors, warnings, approvals, collaborator identity).
-  The expressive Relay identity comes in a later visual pass; token names stay stable so it can swap values.
+  Relay visual identity: an instrument panel, not a poster.
+  - Cool graphite neutrals (dark) and cool paper (light); no gradients, no glows.
+  - One accent, signal orange, reserved for focus, the active thing, and the one primary action in view.
+  - Semantic colours only where they carry meaning (error, warning, approved, collaborator identity).
+  - Hairline rules do the structural work; mono micro-labels carry metadata.
+  - Radius rule: controls 4px, floating surfaces 8px, people round.
 */
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -14,98 +17,105 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --chrome: #181818;
-  --chrome-ink: #9d9d9d;
-  --sidebar: #1b1b1b;
-  --editor: #1f1f1f;
-  --panel: #1f1f1f;
-  --panel-2: #252526;
-  --page: #181818;
-  --sunken: #2a2a2a;
-  --hover: #2a2d2e;
-  --rule: #2b2b2b;
-  --rule-strong: #3c3c3c;
-  --ink: #d4d4d4;
-  --ink-2: #bdbdbd;
-  --muted: #9a9a9a;
-  --faint: #6e6e6e;
-  --accent: #7f71f5;
-  --accent-ink: #b3a9ff;
-  --accent-soft: #2d2a4a;
-  --accent-line: #4b4385;
-  --attention: #e2964f;
-  --attention-soft: #3a2b1d;
-  --ok: #6cc59a;
-  --ok-soft: #1d3127;
-  --warn: #d7ba5e;
-  --warn-soft: #342d18;
-  --danger: #f1707b;
-  --danger-soft: #3b1f23;
-  --selection: #34306a;
-  --status-bg: #181818;
-  --status-fg: #a8a8a8;
-  --remote-bg: #6a5cf0;
+  --chrome: #0a0b0d;
+  --chrome-ink: #8a8f99;
+  --sidebar: #0e0f12;
+  --editor: #111216;
+  --panel: #111216;
+  --panel-2: #16171c;
+  --page: #0a0b0d;
+  --sunken: #1a1c21;
+  --hover: #1b1d23;
+  --rule: #1e2027;
+  --rule-strong: #2b2e37;
+  --ink: #e7e9ed;
+  --ink-2: #c2c6ce;
+  --muted: #8a8f9a;
+  --faint: #5a5f6a;
+  --accent: #ff6b2c;
+  --accent-ink: #ff8f5e;
+  --accent-fg: #0a0b0d;
+  --accent-soft: #2a1a12;
+  --accent-line: #6e3418;
+  --attention: #e9b44c;
+  --attention-soft: #2b2414;
+  --ok: #5fd39a;
+  --ok-soft: #12261d;
+  --warn: #e9b44c;
+  --warn-soft: #2b2414;
+  --danger: #ff5d6e;
+  --danger-soft: #2e1519;
+  --selection: #263042;
+  --status-bg: #0a0b0d;
+  --status-fg: #8a8f99;
+  --remote-bg: #ff6b2c;
+  --remote-fg: #0a0b0d;
+  --overlay: rgb(22 23 28 / 0.82);
   --shadow: none;
-  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
-  --syn-keyword: #b8a6ff;
-  --syn-string: #9ccfa9;
-  --syn-number: #e6b07a;
-  --syn-type: #6fc1d8;
-  --syn-fn: #e3dcc8;
-  --syn-prop: #a9c2e0;
-  --syn-comment: #7a8a7a;
-  --syn-punct: #8a8a8a;
+  --shadow-pop: 0 18px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --grid-dot: rgb(255 255 255 / 0.045);
+  --syn-keyword: #e3a184;
+  --syn-string: #a9d6a0;
+  --syn-number: #e9c46a;
+  --syn-type: #7ec8e8;
+  --syn-fn: #eceef2;
+  --syn-prop: #b3bfd3;
+  --syn-comment: #5d6573;
+  --syn-punct: #7a808c;
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --chrome: #f3f3f3;
-  --chrome-ink: #5f5f5f;
-  --sidebar: #f8f8f8;
-  --editor: #ffffff;
-  --panel: #ffffff;
-  --panel-2: #f6f6f6;
-  --page: #f3f3f3;
-  --sunken: #ececec;
-  --hover: #e8e8e8;
-  --rule: #e5e5e5;
-  --rule-strong: #d0d0d0;
-  --ink: #1f1f1f;
-  --ink-2: #3b3b3b;
-  --muted: #616161;
-  --faint: #8f8f8f;
-  --accent: #5b4ce0;
-  --accent-ink: #4a3cc9;
-  --accent-soft: #ebe8ff;
-  --accent-line: #c4bcff;
-  --attention: #c66a12;
-  --attention-soft: #fdf0e1;
-  --ok: #217a50;
-  --ok-soft: #e3f3ea;
-  --warn: #8a6a00;
-  --warn-soft: #faf2d4;
-  --danger: #c4314b;
-  --danger-soft: #fbe7ea;
-  --selection: #dcd7ff;
-  --status-bg: #f3f3f3;
-  --status-fg: #4e4e4e;
-  --remote-bg: #5b4ce0;
+  --chrome: #eceef1;
+  --chrome-ink: #5c626d;
+  --sidebar: #f3f4f6;
+  --editor: #fbfbfc;
+  --panel: #fbfbfc;
+  --panel-2: #ffffff;
+  --page: #eceef1;
+  --sunken: #e5e7eb;
+  --hover: #e3e5e9;
+  --rule: #dcdfe4;
+  --rule-strong: #c6cad2;
+  --ink: #101217;
+  --ink-2: #2b2f37;
+  --muted: #5c626e;
+  --faint: #8b909a;
+  --accent: #e5531b;
+  --accent-ink: #c2420e;
+  --accent-fg: #ffffff;
+  --accent-soft: #fde9df;
+  --accent-line: #f4b393;
+  --attention: #a86b00;
+  --attention-soft: #fbf0d6;
+  --ok: #1b7a4c;
+  --ok-soft: #e1f3e9;
+  --warn: #8f6200;
+  --warn-soft: #fbf0d6;
+  --danger: #c92a42;
+  --danger-soft: #fbe5e8;
+  --selection: #d3dbea;
+  --status-bg: #eceef1;
+  --status-fg: #4e545e;
+  --remote-bg: #e5531b;
+  --remote-fg: #ffffff;
+  --overlay: rgb(255 255 255 / 0.86);
   --shadow: none;
-  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.06);
-  --syn-keyword: #5b3cc4;
-  --syn-string: #1f7a4d;
-  --syn-number: #a55312;
-  --syn-type: #0f6f8a;
-  --syn-fn: #3b2f00;
-  --syn-prop: #1d4f87;
-  --syn-comment: #6a7a6a;
-  --syn-punct: #6b6b6b;
+  --shadow-pop: 0 18px 48px -14px rgb(16 18 23 / 0.22), 0 0 0 1px rgb(16 18 23 / 0.07);
+  --grid-dot: rgb(16 18 23 / 0.07);
+  --syn-keyword: #b2491c;
+  --syn-string: #1f7a45;
+  --syn-number: #9a5b00;
+  --syn-type: #0f6c8c;
+  --syn-fn: #101217;
+  --syn-prop: #2c4f80;
+  --syn-comment: #8b919b;
+  --syn-punct: #6b707a;
 }
 
 @theme inline {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Ubuntu, "Helvetica Neue", sans-serif;
-  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --color-chrome: var(--chrome);
   --color-chrome-ink: var(--chrome-ink);
   --color-sidebar: var(--sidebar);
@@ -126,6 +136,9 @@
   --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
+  --color-accent-fg: var(--accent-fg);
+  --color-remote-fg: var(--remote-fg);
+  --color-overlay: var(--overlay);
   --color-accent-soft: var(--accent-soft);
   --color-accent-line: var(--accent-line);
   --color-attention: var(--attention);
@@ -138,6 +151,8 @@
   --color-danger-soft: var(--danger-soft);
   --shadow-panel: var(--shadow);
   --shadow-pop: var(--shadow-pop);
+  --radius-sm: 4px;
+  --radius-md: 8px;
 }
 
 html,
@@ -148,28 +163,95 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 13px;
+  font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
+}
+
+/* Metadata voice: mono, small caps-like, tracked. Used for labels, counts, ids, readouts. */
+.micro {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Floating surfaces: translucent with blur where supported and wanted; solid otherwise. */
+.glass {
+  background: var(--panel-2);
+  box-shadow: var(--shadow-pop);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .glass {
+    background: var(--overlay);
+    backdrop-filter: blur(18px) saturate(1.2);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--panel-2);
+    backdrop-filter: none;
+  }
+}
+
+/* Blueprint field for empty surfaces: a dot grid, no colour. */
+.dot-grid {
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -8px -8px;
+}
+
+/* Registration marks on a framed element (corner ticks). */
+.ticks {
+  position: relative;
+}
+.ticks::before,
+.ticks::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  border-color: var(--rule-strong);
+  border-style: solid;
+}
+.ticks::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+.ticks::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+@keyframes relay-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot {
+  animation: relay-live 2.4s ease-in-out infinite;
 }
 
 ::selection {
   background: var(--selection);
 }
 
-:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+@layer base {
+  :focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+    border-radius: 2px;
+  }
 }
 
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--rule-strong) transparent;
-}
-
-/* Kept for the join page; the workbench itself does not use display serif in this phase. */
-.serif-em {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
 }
 
 .xterm {

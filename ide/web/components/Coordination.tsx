@@ -54,9 +54,9 @@ export function Coordination({
           <button
             key={t}
             onClick={() => (setTab(t), setSelected(null))}
-            className={`relative h-7 rounded-full px-3 text-[12.5px] font-medium capitalize transition-colors ${tab === t ? "text-ink" : "text-muted hover:text-ink"}`}
+            className={`relative h-7 rounded-sm px-3 text-[12.5px] font-medium capitalize transition-colors ${tab === t ? "text-ink" : "text-muted hover:text-ink"}`}
           >
-            {tab === t && <motion.span layoutId="coord-tab" className="absolute inset-0 rounded-full bg-sunken" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
+            {tab === t && <motion.span layoutId="coord-tab" className="absolute inset-0 rounded-sm bg-sunken" transition={{ type: "spring", stiffness: 500, damping: 38 }} />}
             <span className="relative">{t}</span>
           </button>
         ))}
@@ -218,7 +218,7 @@ function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone
           <span className="mb-1 block text-[11.5px] font-medium text-muted">Depends on contracts</span>
           <div className="flex flex-wrap gap-1.5">
             {accepted.map((c) => (
-              <label key={c.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-rule px-2.5 py-1 text-[12px] has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft">
+              <label key={c.id} className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-rule px-2.5 py-1 text-[12px] has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft">
                 <input type="checkbox" name="contracts" value={c.id} className="accent-[var(--accent)]" /> {c.id}
               </label>
             ))}
@@ -333,7 +333,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
         <SectionLabel>Scope</SectionLabel>
         <div className="flex flex-wrap gap-1.5">
           {task.scope.map((p) => (
-            <button key={p} onClick={() => !p.endsWith("/") && onOpenFile(p)} className="inline-flex items-center gap-1.5 rounded-lg bg-sunken px-2 py-1 font-mono text-[12px] text-ink-2 hover:bg-accent-soft">
+            <button key={p} onClick={() => !p.endsWith("/") && onOpenFile(p)} className="inline-flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-1 font-mono text-[12px] text-ink-2 hover:bg-accent-soft">
               <FileCode2 size={12} /> {p}
             </button>
           ))}
@@ -347,7 +347,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
             const cur = current(c);
             const stale = cur !== undefined && cur > v;
             return (
-              <div key={c} className="flex items-center justify-between rounded-xl px-1 py-1.5 text-[13px]">
+              <div key={c} className="flex items-center justify-between rounded-sm px-1 py-1.5 text-[13px]">
                 <span className="font-mono">{c}</span>
                 <span className="flex items-center gap-1.5">
                   <Pill tone={stale ? "danger" : "ok"}>built on v{v}</Pill>
@@ -363,7 +363,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
         <div className="border-y border-rule py-3">
           <SectionLabel right={<Pill tone={run.status === "running" ? "accent" : run.status === "failed" ? "danger" : "neutral"}>{run.status}</Pill>}>Agent run</SectionLabel>
           {run.staleInputs.map((s) => (
-            <p key={s.path} className="mb-2 rounded-lg bg-attention-soft px-2.5 py-1.5 text-[12px] text-ink-2">
+            <p key={s.path} className="mb-2 rounded-sm bg-attention-soft px-2.5 py-1.5 text-[12px] text-ink-2">
               <strong className="text-attention">{s.by}</strong> edited <span className="font-mono">{s.path}</span> after the agent started. Its copy is older.
             </p>
           ))}
@@ -526,7 +526,7 @@ function Contracts({ state, act }: { state: ProjectState; act: Act }) {
               <span className="font-mono text-[13px] font-semibold">{c.id}</span>
               {cur && <Pill tone="ok">v{cur.version} accepted</Pill>}
             </div>
-            {cur && <pre className="mt-2 whitespace-pre-wrap rounded-xl bg-sunken p-2.5 font-mono text-[12px] text-ink-2">{cur.definition}</pre>}
+            {cur && <pre className="mt-2 whitespace-pre-wrap rounded-sm bg-sunken p-2.5 font-mono text-[12px] text-ink-2">{cur.definition}</pre>}
             <ol className="mt-3 space-y-1.5">
               {c.history
                 .slice()

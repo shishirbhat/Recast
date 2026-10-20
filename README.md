@@ -69,6 +69,25 @@ A standard IDE workbench (VS Code / Cursor / Antigravity structure):
 - **Panel tabs**: Problems, Output, Agents, Activity.
 - **Agent panel**: requests become scoped tasks.
 - **Status bar.**
+- **Ship to GitHub** from Source Control: one click ships and merges into the default branch; or open a pull request and merge it after review (see below).
+
+### GitHub: ship and merge
+
+Give the Relay server a token and the Source Control view gets two buttons:
+- **Ship to main**: pushes the shared workspace as a new `relay/ship-*` branch, opens a pull request and merges it.
+- **Open pull request for review**: does the same without merging. A **Merge into main** button appears once the PR is open.
+
+```sh
+GITHUB_TOKEN=ghp_... ./bin/relay ide --cwd /path/to/repo   # or have `gh auth login` done; RELAY_GITHUB_REPO=owner/name overrides the origin remote
+```
+
+- **Owners only**, enforced by the server.
+- **Ship gate.** Blocked by unresolved edit conflicts, agents mid-run, or nothing to ship. Warnings cover unapproved tasks, unapplied agent proposals, and secret-looking files, which are always left out.
+- **Your checkout is never touched.** The commit is built in a temporary index, so the working tree, index and current branch stay as they are.
+- **The token stays on the server.** It never goes to browsers, logs or command lines; git gets it through `GIT_CONFIG_*` environment variables.
+- **After a merge,** if you're on the default branch and the merged tree matches your files, the local branch moves to the merge without changing any file.
+- **If GitHub refuses the merge** (branch protection, required checks, conflicts), the PR stays open and the reason is shown.
+- **Tested against a mock GitHub API** with a real git remote. The real api.github.com hasn't been exercised yet.
 
 Underneath it:
 - Live multi-person editing (Yjs CRDT) with named cursors and selections.
@@ -76,10 +95,10 @@ Underneath it:
 - Agent runs happen in isolated worktrees and are applied with a 3-way merge only after Relay's checks and a person's approval.
 
 Tests:
-- `npm test`: 45 tests, including real y-websocket clients, real PTYs and simulated-agent orchestration.
-- `RELAY_E2E=1 node --test test/e2e/*.e2e.test.ts`: two-person live editing, plus workbench structure (panes, narrow windows, activities, palette, menus, terminal, save).
+- `npm test`: 52 tests, including real y-websocket clients, real PTYs, simulated-agent orchestration, and GitHub ship/merge (mock API, real git remote).
+- `RELAY_E2E=1 node --test test/e2e/*.e2e.test.ts`: two-person live editing, plus workbench structure (panes, narrow windows, activities, palette, menus, terminal, save), plus one-click ship from the browser.
 
-Screenshots are in `docs/screenshots/`.
+Screenshots are in `docs/screenshots/` (`v2-*` show the current visual identity).
 
 ## Docs
 

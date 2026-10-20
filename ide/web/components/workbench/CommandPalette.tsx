@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { ChevronRight, FileCode2, Search } from "lucide-react";
 import { availability, execute, fuzzy, keyLabel } from "@/lib/commands";
 import type { Command } from "@/lib/commands";
@@ -80,15 +81,18 @@ export function CommandPalette({ open, mode, files, openEditors, commands, onClo
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50" onMouseDown={() => close()}>
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: -4, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.14, ease: [0.2, 0.7, 0.2, 1] }}
         role="dialog"
         aria-modal="true"
         aria-label={isCmd ? "Command palette" : "Go to file"}
         onMouseDown={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-[34px] w-[min(600px,94vw)] -translate-x-1/2 overflow-hidden rounded-md border border-rule-strong bg-panel-2 shadow-pop"
+        className="glass absolute left-[calc(50%-min(300px,47vw))] top-[38px] w-[min(600px,94vw)] overflow-hidden rounded-md border border-rule-strong"
       >
-        <div className="flex items-center gap-2 border-b border-rule px-2.5">
-          {isCmd ? <ChevronRight size={14} className="text-muted" /> : <Search size={13} className="text-muted" />}
+        <div className="flex items-center gap-2 border-b border-rule px-3">
+          {isCmd ? <ChevronRight size={14} className="text-accent" /> : <Search size={13} className="text-accent" />}
           <input
             ref={input}
             value={q}
@@ -101,7 +105,7 @@ export function CommandPalette({ open, mode, files, openEditors, commands, onClo
               else if (e.key === "Tab") e.preventDefault();
             }}
             placeholder={isCmd ? "Type the name of a command to run" : "Search files by name (append > to run commands)"}
-            className="h-8 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
+            className="h-10 flex-1 bg-transparent text-[13.5px] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
             role="combobox"
             aria-expanded="true"
             aria-controls="palette-list"
@@ -110,11 +114,11 @@ export function CommandPalette({ open, mode, files, openEditors, commands, onClo
           />
         </div>
         {notice && (
-          <p role="alert" className="border-b border-rule bg-warn-soft px-3 py-1.5 text-[12px] text-warn">
+          <p role="alert" className="border-b border-rule bg-warn-soft px-3 py-1.5 font-mono text-[11.5px] text-warn">
             {notice}
           </p>
         )}
-        <div ref={list} id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto py-1">
+        <div ref={list} id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto p-1">
           {items.length === 0 && <p className="px-3 py-2 text-[12.5px] text-muted">{isCmd ? "No matching commands" : "No matching files"}</p>}
           {items.map((it, i) => (
             <div
@@ -127,27 +131,33 @@ export function CommandPalette({ open, mode, files, openEditors, commands, onClo
               onMouseMove={() => setSel(i)}
               onClick={() => choose(i)}
               title={it.kind === "cmd" && it.reason ? it.reason : undefined}
-              className={`flex h-[24px] cursor-default items-center gap-2 px-3 text-[13px] ${i === sel ? "bg-accent-soft text-ink" : "text-ink-2"}`}
+              className={`flex h-[28px] cursor-default items-center gap-2 rounded-sm px-2.5 text-[13px] ${i === sel ? "bg-hover text-ink shadow-[inset_2px_0_0_var(--accent)]" : "text-ink-2"}`}
             >
               {it.kind === "file" ? (
                 <>
                   <FileCode2 size={13} className="shrink-0 text-faint" />
                   <span>{it.path.split("/").pop()}</span>
-                  <span className="truncate text-[12px] text-faint">{it.path.split("/").slice(0, -1).join("/")}</span>
-                  {it.open && <span className="ml-auto text-[11px] text-faint">open</span>}
+                  <span className="truncate font-mono text-[11px] text-faint">{it.path.split("/").slice(0, -1).join("/")}</span>
+                  {it.open && <span className="micro ml-auto text-faint">open</span>}
                 </>
               ) : (
                 <>
                   <span className={it.reason ? "text-faint" : "text-muted"}>{it.c.category}:</span>
                   <span className={`truncate ${it.reason ? "text-faint" : ""}`}>{it.c.title}</span>
-                  {it.reason && <span className="truncate text-[11.5px] text-faint">— {it.reason}</span>}
-                  {it.c.keybinding && <kbd className="ml-auto shrink-0 rounded-sm border border-rule px-1 font-sans text-[11px] text-muted">{keyLabel(it.c.keybinding)}</kbd>}
+                  {it.reason && <span className="truncate text-[11.5px] text-faint">· {it.reason}</span>}
+                  {it.c.keybinding && <kbd className="ml-auto shrink-0 rounded-sm border border-rule px-1.5 font-mono text-[10.5px] text-muted">{keyLabel(it.c.keybinding)}</kbd>}
                 </>
               )}
             </div>
           ))}
         </div>
-      </div>
+        <div className="flex h-[24px] items-center gap-3 border-t border-rule px-3 font-mono text-[10.5px] text-faint">
+          <span>↑↓ select</span>
+          <span>↵ {isCmd ? "run" : "open"}</span>
+          <span>esc close</span>
+          <span className="ml-auto">{items.length} {isCmd ? "commands" : "files"}</span>
+        </div>
+      </motion.div>
     </div>
   );
 }

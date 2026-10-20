@@ -5,13 +5,14 @@ import { Bot, CircleAlert, FileCode2, GitBranch, RefreshCw, TriangleAlert, X } f
 import { api } from "@/lib/api";
 import type { Member, ProjectState, RelayEvent } from "@/lib/types";
 import { describe } from "../Coordination";
+import { GitHubPanel } from "./GitHub";
 
 /* ---------- small shared pieces ---------- */
 
 export function ViewHeader({ title, actions }: { title: string; actions?: React.ReactNode }) {
   return (
     <div className="flex h-[35px] shrink-0 items-center justify-between pl-5 pr-2">
-      <span className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">{title}</span>
+      <span className="micro text-muted">{title}</span>
       <span className="flex items-center">{actions}</span>
     </div>
   );
@@ -21,10 +22,10 @@ export function Section({ title, count, children, defaultOpen = true }: { title:
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-t border-rule first:border-t-0">
-      <button onClick={() => setOpen((o) => !o)} className="flex h-6.5 w-full items-center gap-1 px-2 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2 hover:bg-hover">
+      <button onClick={() => setOpen((o) => !o)} className="micro flex h-6.5 w-full items-center gap-1 px-2 text-ink-2 hover:bg-hover">
         <span className={`inline-block w-3 text-center text-faint transition-transform ${open ? "rotate-90" : ""}`}>›</span>
         {title}
-        {count !== undefined && count > 0 && <span className="ml-auto mr-1 rounded-full bg-sunken px-1.5 text-[10.5px] font-semibold text-muted">{count}</span>}
+        {count !== undefined && count > 0 && <span className="tnum ml-auto mr-1 rounded-sm border border-rule px-1 text-[10px] text-muted">{count}</span>}
       </button>
       {open && <div className="pb-1.5">{children}</div>}
     </div>
@@ -93,7 +94,7 @@ export function SearchView({ onOpen, focusNonce }: { onOpen: (path: string, line
               <FileCode2 size={13} className="text-faint" />
               <span className="font-medium text-ink">{path.split("/").pop()}</span>
               <span className="truncate text-[11.5px] text-faint">{path.split("/").slice(0, -1).join("/")}</span>
-              <span className="ml-auto rounded-full bg-sunken px-1.5 text-[10.5px] text-muted">{hits.length}</span>
+              <span className="tnum ml-auto rounded-sm border border-rule px-1 text-[10px] text-muted">{hits.length}</span>
             </button>
             {hits.map((h) => (
               <button key={h.line} onClick={() => onOpen(h.path, h.line)} className="flex h-6 w-full items-center gap-2 pl-8 pr-3 text-left font-mono text-[12px] text-ink-2 hover:bg-hover">
@@ -118,7 +119,7 @@ const STATUS_LETTER: Record<string, { l: string; cls: string }> = {
   renamed: { l: "R", cls: "text-accent-ink" },
 };
 
-export function SourceControlView({ onOpen, tick }: { onOpen: (path: string) => void; tick: number }) {
+export function SourceControlView({ onOpen, tick, canShip, notify }: { onOpen: (path: string) => void; tick: number; canShip: boolean; notify: (msg: string, tone?: "ok" | "danger") => void }) {
   const [st, setSt] = useState<{ branch: string | null; head: string | null; changes: { path: string; status: string }[] } | null>(null);
   const load = () => void api<typeof st>("GET", "/git").then(setSt);
   useEffect(load, [tick]);
@@ -136,8 +137,8 @@ export function SourceControlView({ onOpen, tick }: { onOpen: (path: string) => 
         <span className="inline-flex items-center gap-1.5">
           <GitBranch size={12} /> {st?.branch ?? "…"} <span className="font-mono text-faint">{st?.head}</span>
         </span>
-        <p className="mt-1.5 leading-snug">Relay never commits for you. Commit from your terminal as usual; agent work arrives here only after approval.</p>
       </div>
+      <GitHubPanel canShip={canShip} tick={tick} notify={notify} />
       <Section title="Changes" count={st?.changes.length}>
         {st?.changes.length === 0 && <p className="px-5 py-1 text-[12.5px] text-muted">Working tree clean.</p>}
         {st?.changes.map((c) => (
@@ -198,7 +199,7 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
         {tabs.map(([id, label, n]) => (
           <button key={id} role="tab" aria-selected={tab === id} data-testid={`panel-tab-${id}`} onClick={() => setTab(id)} className={`relative flex h-full items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.04em] ${tab === id ? "text-ink" : "text-muted hover:text-ink"}`}>
             {label}
-            {!!n && <span className={`rounded-full px-1.5 text-[10.5px] ${id === "problems" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>{n}</span>}
+            {!!n && <span className={`tnum rounded-sm px-1 font-mono text-[10px] ${id === "problems" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>{n}</span>}
             {tab === id && <span className="absolute inset-x-0 bottom-1 h-px bg-ink" />}
           </button>
         ))}

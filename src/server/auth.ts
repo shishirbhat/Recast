@@ -17,7 +17,7 @@ export interface Member {
  * Participant colors: distinct hues at similar lightness so none dominates, each readable as a
  * cursor on both the light and the dark editor background.
  */
-export const PRESENCE_COLORS = ["#8b5cf6", "#e0703a", "#2f8f6b", "#d1497a", "#3b7dd8", "#b8892a", "#0f9aa8", "#9a5bd1"];
+export const PRESENCE_COLORS = ["#8b5cf6", "#5aa0e0", "#2f8f6b", "#d1497a", "#7d9a3a", "#b8892a", "#0f9aa8", "#9a5bd1"];
 
 const SESSION_DAYS = 7;
 const INVITE_HOURS = 72;

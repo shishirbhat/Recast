@@ -43,7 +43,7 @@ function TerminalView({ initialId, visible, focusNonce, theme, onSession, onExit
     (async () => {
       const [{ Terminal }, { FitAddon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
       if (disposed || !host.current) return;
-      const t = new Terminal({ fontFamily: "'JetBrains Mono Variable', ui-monospace, Menlo, monospace", fontSize: 12.5, lineHeight: 1.25, cursorBlink: true, allowProposedApi: false, theme: themeFromCss(), scrollback: 5000 });
+      const t = new Terminal({ fontFamily: "'Geist Mono Variable', ui-monospace, Menlo, monospace", fontSize: 12.5, lineHeight: 1.25, cursorBlink: true, allowProposedApi: false, theme: themeFromCss(), scrollback: 5000 });
       const f = new FitAddon();
       t.loadAddon(f);
       t.open(host.current);

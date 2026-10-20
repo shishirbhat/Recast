@@ -12,6 +12,8 @@ import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts"
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
+import { GitHub } from "./github.ts";
+import type { GitHubOptions, MergeMethod } from "./github.ts";
 import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject } from "./files.ts";
 import { AgentRuns } from "./runs.ts";
 import { TerminalService } from "./terminal.ts";
@@ -29,6 +31,8 @@ export interface ServerOptions {
   claudeBin?: string;
   /** Allow the integrated terminal even when listening on a non-loopback address. */
   allowTerminal?: boolean;
+  /** GitHub delivery. The token never leaves the server. */
+  github?: GitHubOptions;
 }
 
 export interface RelayServer {
@@ -40,6 +44,7 @@ export interface RelayServer {
   collab: CollabService;
   runs: AgentRuns;
   terminals: TerminalService;
+  github: GitHub;
   close(): Promise<void>;
 }
 
@@ -155,6 +160,17 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const host = opts.host ?? "127.0.0.1";
   const terminals = new TerminalService(root, { loopback: ["127.0.0.1", "::1", "localhost"].includes(host), allowRemote: opts.allowTerminal === true });
   const project = { name: basename(root), root };
+  const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
+  const preflight = () => {
+    const tasks = relay.listTasks();
+    const all = tasks.flatMap((t) => runs.forTask(t.id));
+    return {
+      conflicts: docs.conflicts().length,
+      runningAgents: all.filter((r) => r.status === "running" || r.status === "starting").length,
+      awaitingReview: tasks.filter((t) => t.state === "review_required").map((t) => t.id),
+      unappliedProposals: [...new Set(all.filter((r) => r.status === "finished").map((r) => r.taskId))],
+    };
+  };
   const allow = limiter(40);
 
   const memberFrom = (req: IncomingMessage): Member | undefined => members.fromSession(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
@@ -276,6 +292,43 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       requireMember(req, "read");
       docs.flushAll();
       return json(res, 200, gitStatus(root));
+    }
+    if (parts[0] === "github") {
+      if (method === "GET" && parts.length === 1) {
+        requireMember(req, "read");
+        docs.flushAll();
+        const status = await github.status();
+        return json(res, 200, { ...status, checks: github.checks(preflight(), status.connected) });
+      }
+      if (method === "POST" && parts[1] === "refresh") {
+        requireMember(req, "approve");
+        github.refresh();
+        return json(res, 200, {});
+      }
+      if (method === "POST" && parts[1] === "ship") {
+        // Publishing to GitHub is consequential: owners only, through Relay's ship gate.
+        const m = requireMember(req, "approve");
+        const b = await readBody(req);
+        docs.flushAll();
+        const shipped = await github.ship({ title: str(b.title, "title", 200).trim(), body: typeof b.body === "string" ? b.body.slice(0, 20000) : undefined, by: m }, preflight());
+        relay.record("github.shipped", actorFor(m), { pr: shipped.pr.number, url: shipped.pr.url, files: shipped.files.length, leftOut: shipped.secrets });
+        if (b.merge !== true) return json(res, 201, shipped);
+        // The pull request exists either way; a refused merge (branch protection, required checks) is reported, not thrown.
+        try {
+          const merged = await github.merge({ number: shipped.pr.number, method: b.method as MergeMethod | undefined });
+          relay.record("github.merged", actorFor(m), { pr: merged.pr.number, sha: merged.sha, method: merged.method });
+          return json(res, 201, { ...shipped, merged });
+        } catch (e) {
+          return json(res, 201, { ...shipped, mergeError: (e as Error).message });
+        }
+      }
+      if (method === "POST" && parts[1] === "merge") {
+        const m = requireMember(req, "approve");
+        const b = await readBody(req);
+        const merged = await github.merge({ number: typeof b.number === "number" ? b.number : undefined, method: b.method as MergeMethod | undefined });
+        relay.record("github.merged", actorFor(m), { pr: merged.pr.number, sha: merged.sha, method: merged.method });
+        return json(res, 200, merged);
+      }
     }
     if (method === "POST" && parts[0] === "files") {
       const m = requireMember(req, "edit");
@@ -512,6 +565,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     collab,
     runs,
     terminals,
+    github,
     async close() {
       clearInterval(feed);
       terminals.close();

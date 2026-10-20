@@ -125,3 +125,69 @@ Cause: sidebar widths are persisted absolute pixels and are never clamped agains
 - Typography: reintroduce the display face only in empty states, the join page and the agent welcome, never in panes.
 - Give the status-bar remote block and the agent composer Relay's signature treatment; keep the panes calm.
 - Keep collaborator colours as the only non-semantic hues in the editor.
+
+---
+
+## Visual identity pass and GitHub delivery (2026-10-20)
+
+### Design read
+A dense developer tool for engineers in an instrument-panel language. Built on Tailwind v4 tokens, Geist and Geist Mono, and restrained Motion. The structure is unchanged from Phase 1 (VS Code/Cursor/Antigravity layout); only token values and component finish changed.
+
+### Rules now in force (`app/globals.css`)
+- **Neutrals.** Cool graphite in dark mode (`#0a0b0d` chrome to `#111216` editor); cool paper in light mode (`#eceef1` to `#fbfbfc`). No warm cream, no gradients, no glows.
+- **One accent, signal orange** (`#ff6b2c` dark, `#e5531b` light). It marks:
+  - the active activity, tab and side-bar tab (2 px indicators animated with a shared layout);
+  - focus rings and the selected palette or menu row (an inset 2 px bar);
+  - badges;
+  - the status-bar remote block;
+  - the single primary action in view.
+
+  Collaborator colours were adjusted so no participant is drawn in the accent.
+- **Type.** Geist for the UI. Geist Mono for code, the terminal and the "metadata voice" (`.micro`: 10.5 px, uppercase, tracked), which is used for view headers, section labels, state pills, keybindings, counts, ids and the whole status bar (tabular figures). The display serif is gone; the join page emphasises within the same family.
+- **Radius.** Controls 4 px, floating surfaces 8 px, people and status dots round.
+- **Floating surfaces** (palette, menus, notifications, toasts) use `.glass`:
+  - translucent with an 18 px backdrop blur where supported;
+  - solid under `prefers-reduced-transparency` or without `backdrop-filter`.
+- **Splashes:**
+  - a dot-grid field with corner registration ticks (empty editor, splash, sign-in screens);
+  - a pulsing live dot in the remote block;
+  - a scanning hairline loader;
+  - a palette footer with keyboard hints and a result count.
+- **Motion.** Palette scale-in in 140 ms, spring-driven indicators, toast enter and exit. `MotionConfig reducedMotion="user"` and the CSS reduced-motion rule turn it off for people who ask.
+- **Fixed during review:** the global focus rule sat outside a CSS layer, so it overrode Tailwind's `outline-none`, which put an orange ring on the palette input. It now lives in `@layer base`.
+
+### GitHub delivery (`src/server/github.ts`, `components/workbench/GitHub.tsx`)
+- **Endpoints:**
+  - `GET /api/github`: status plus ship-gate checks.
+  - `POST /api/github/ship` with `{ title, body?, merge? }`.
+  - `POST /api/github/merge`.
+  - `POST /api/github/refresh`: re-read credentials.
+
+  Ship and merge are owner-only, enforced server-side, and recorded as `github.shipped` and `github.merged` events.
+- **Ship.** Builds a commit in a temporary index: `read-tree HEAD`, then `add -A` excluding secret-looking paths and Relay's database. It then pushes to `relay/ship-<timestamp>` and opens a PR against the default branch. The working tree, index and branch are never touched.
+- **Merge.**
+  - Waits up to 15 s while GitHub computes mergeability.
+  - Uses the first merge method the repository allows (squash, then merge, then rebase).
+  - Deletes the ship branch.
+  - Fast-forwards the local default branch with a mixed reset, only when it's an ancestor of the merge and the merged tree equals the files on disk; otherwise it says why it left things alone.
+  - A refused merge (branch protection, required checks) leaves the PR open and reports the reason.
+- **Token.** Read from `GITHUB_TOKEN`, `GH_TOKEN` or `gh auth token`. It is never returned, logged or put on a command line.
+
+### Tests run
+- `npm test`: **52/52**. The new `test/github.test.ts` has 7 tests against a **mock** GitHub REST API (`test/github-mock.ts`) and a **real** bare git remote. They cover:
+  - remote parsing;
+  - status;
+  - the token never appearing in responses or request bodies;
+  - owner-only rules;
+  - the untouched checkout;
+  - secrets left out;
+  - merge waiting on mergeability;
+  - local fast-forward;
+  - one-click ship and merge;
+  - a refused merge;
+  - a conflict;
+  - the ship gate;
+  - the not-connected state.
+- `RELAY_E2E=1`: workbench **7/7**, two-person editing **1/1**, and the new `github.e2e.test.ts` **1/1** (one-click ship from the browser; an editor sees the disabled button with its reason).
+- Root and web type-checks are clean; `next build` succeeds.
+- **Not verified:** the real api.github.com, pushing over HTTPS with a real token, and repositories with required status checks (only simulated through the mock's refusal).
