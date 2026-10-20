@@ -112,20 +112,76 @@ export function SearchView({ onOpen, focusNonce }: { onOpen: (path: string, line
 
 /* ---------- Source control ---------- */
 
-const STATUS_LETTER: Record<string, { l: string; cls: string }> = {
-  modified: { l: "M", cls: "text-warn" },
-  added: { l: "A", cls: "text-ok" },
-  untracked: { l: "U", cls: "text-ok" },
-  deleted: { l: "D", cls: "text-danger" },
-  renamed: { l: "R", cls: "text-accent-ink" },
-};
+interface GitFile {
+  path: string;
+  staged: string | null;
+  unstaged: string | null;
+}
+interface GitStateResp {
+  branch: string | null;
+  head: string | null;
+  upstream: string | null;
+  ahead: number | null;
+  behind: number | null;
+  files: GitFile[];
+  conflicted: string[];
+  hasRemote: boolean;
+  branches: { name: string; current: boolean }[];
+  log: { sha: string; author: string; date: string; subject: string }[];
+}
+const LETTER_CLS: Record<string, string> = { M: "text-warn", A: "text-ok", "?": "text-ok", D: "text-danger", R: "text-accent-ink", U: "text-danger" };
 
-export function SourceControlView({ onOpen, tick, canShip, notify }: { onOpen: (path: string) => void; tick: number; canShip: boolean; notify: (msg: string, tone?: "ok" | "danger") => void }) {
-  const [st, setSt] = useState<{ branch: string | null; head: string | null; changes: { path: string; status: string }[] } | null>(null);
-  const load = () => void api<typeof st>("GET", "/git").then(setSt);
+/** Source control: real git status, staged and unstaged diffs, stage/unstage, commit, branches, pull/push, history. */
+export function SourceControlView({ onOpen, onDiff, tick, canShip, canEdit, notify }: { onOpen: (path: string) => void; onDiff: (path: string, staged: boolean) => void; tick: number; canShip: boolean; canEdit: boolean; notify: (msg: string, tone?: "ok" | "danger") => void }) {
+  const [st, setSt] = useState<GitStateResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [newBranch, setNewBranch] = useState<string | null>(null);
+  const load = () => void api<GitStateResp>("GET", "/git/state").then((x) => (setSt(x), setErr(null)), (e) => setErr(e instanceof Error ? e.message : String(e)));
   useEffect(load, [tick]);
+  const run = async (label: string, method: "POST", path: string, body?: unknown, done?: string) => {
+    setBusy(label);
+    try {
+      const r = await api<{ message?: string; sha?: string }>(method, path, body);
+      notify(done ?? r.message ?? `${label} done.`);
+      return r;
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e), "danger");
+      return null;
+    } finally {
+      setBusy(null);
+      load();
+    }
+  };
+  const staged = st?.files.filter((f) => f.staged && f.staged !== "U") ?? [];
+  const changes = st?.files.filter((f) => f.unstaged && f.staged !== "U") ?? [];
+  const commit = async () => {
+    const r = await run("Commit", "POST", "/git/commit", { message: msg });
+    if (r?.sha) (notify(`Committed ${r.sha}.`), setMsg(""));
+  };
+  const row = (f: GitFile, side: "staged" | "unstaged") => {
+    const letter = side === "staged" ? f.staged! : f.unstaged === "?" ? "U" : f.unstaged!;
+    return (
+      <div key={`${side}:${f.path}`} className="group flex h-6 items-center gap-1.5 pl-5 pr-2 text-[13px] hover:bg-hover" data-testid={`scm-${side}-${f.path}`}>
+        <button onClick={() => (f.unstaged === "?" && side === "unstaged" ? onOpen(f.path) : onDiff(f.path, side === "staged"))} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={side === "staged" ? "Show staged diff" : "Show working-tree diff"}>
+          <FileCode2 size={13} className="shrink-0 text-faint" />
+          <span className={letter === "D" ? "text-muted line-through" : "text-ink"}>{f.path.split("/").pop()}</span>
+          <span className="truncate text-[11.5px] text-faint">{f.path.split("/").slice(0, -1).join("/")}</span>
+        </button>
+        {canEdit && (
+          <button aria-label={side === "staged" ? `Unstage ${f.path}` : `Stage ${f.path}`} title={side === "staged" ? "Unstage" : "Stage"} onClick={() => void run(side === "staged" ? "Unstage" : "Stage", "POST", `/git/${side === "staged" ? "unstage" : "stage"}`, { paths: [f.path] }, `${side === "staged" ? "Unstaged" : "Staged"} ${f.path}.`)} className="grid size-5 place-items-center rounded-sm font-mono text-[13px] text-muted opacity-0 hover:bg-sunken hover:text-ink focus-visible:opacity-100 group-hover:opacity-100">
+            {side === "staged" ? "−" : "+"}
+          </button>
+        )}
+        <span className={`w-3 text-center font-mono text-[11.5px] font-bold ${LETTER_CLS[letter] ?? "text-muted"}`} title={letter === "U" && f.unstaged === "?" ? "untracked" : undefined}>
+          {f.unstaged === "?" && side === "unstaged" ? "U" : letter}
+        </span>
+      </div>
+    );
+  };
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="scm-view">
       <ViewHeader
         title="Source Control"
         actions={
@@ -134,23 +190,116 @@ export function SourceControlView({ onOpen, tick, canShip, notify }: { onOpen: (
           </button>
         }
       />
-      <div className="px-4 pb-2 text-[12px] text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <GitBranch size={12} /> {st?.branch ?? "…"} <span className="font-mono text-faint">{st?.head}</span>
-        </span>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {err && <p className="px-4 pb-2 text-[12px] text-danger">{err}</p>}
+        <div className="space-y-2 px-3 pb-3">
+          <div className="flex items-center gap-1.5 text-[12px]">
+            <GitBranch size={12} className="text-muted" />
+            <select
+              aria-label="Branch"
+              value={st?.branch ?? ""}
+              disabled={!canShip || !st || busy !== null}
+              title={canShip ? "Switch branch" : "Only project owners can switch branches (it changes files for everyone)"}
+              onChange={(e) => void run("Switch", "POST", "/git/switch", { name: e.target.value })}
+              className="h-[24px] min-w-0 flex-1 rounded-sm border border-rule bg-editor px-1 font-mono text-[12px] text-ink disabled:opacity-60"
+              data-testid="branch-select"
+            >
+              {!st?.branch && <option value="">detached {st?.head}</option>}
+              {st?.branches.map((b) => (
+                <option key={b.name} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {canEdit && (
+              <button onClick={() => setNewBranch(newBranch === null ? "" : null)} className="h-[24px] shrink-0 rounded-sm border border-rule px-2 text-[11.5px] text-ink-2 hover:bg-hover">
+                New
+              </button>
+            )}
+          </div>
+          {newBranch !== null && (
+            <form
+              className="flex gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run("Branch", "POST", "/git/branch", { name: newBranch, switch: canShip }, canShip ? `Created and switched to ${newBranch}.` : `Created ${newBranch}.`).then(() => setNewBranch(null));
+              }}
+            >
+              <input autoFocus value={newBranch} onChange={(e) => setNewBranch(e.target.value)} placeholder="feature/name" aria-label="New branch name" className="h-[24px] min-w-0 flex-1 rounded-sm border border-rule bg-sunken px-2 font-mono text-[12px] outline-none focus:border-accent" />
+              <button disabled={!newBranch.trim()} className="h-[24px] rounded-sm bg-accent px-2 text-[11.5px] text-accent-fg disabled:opacity-40">
+                {canShip ? "Create + switch" : "Create"}
+              </button>
+            </form>
+          )}
+          {st?.upstream && (
+            <p className="tnum font-mono text-[10.5px] text-faint">
+              {st.upstream} · ↑{st.ahead ?? 0} ↓{st.behind ?? 0}
+            </p>
+          )}
+          {canEdit && (
+            <>
+              <textarea
+                value={msg}
+                onChange={(e) => setMsg(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && staged.length && msg.trim()) (e.preventDefault(), void commit());
+                }}
+                rows={2}
+                placeholder={staged.length ? "Commit message (Ctrl+Enter)" : "Stage changes to commit"}
+                aria-label="Commit message"
+                className="w-full resize-none rounded-sm border border-rule bg-sunken px-2 py-1 text-[12.5px] outline-none focus:border-accent"
+                data-testid="commit-message"
+              />
+              <button onClick={() => void commit()} disabled={!staged.length || !msg.trim() || busy !== null} className="flex h-[26px] w-full items-center justify-center rounded-sm bg-accent text-[12.5px] font-medium text-accent-fg hover:brightness-110 active:translate-y-px disabled:opacity-40" data-testid="commit">
+                {busy === "Commit" ? "Committing…" : `Commit ${staged.length ? `${staged.length} staged file${staged.length > 1 ? "s" : ""}` : ""}`}
+              </button>
+            </>
+          )}
+          {st?.hasRemote && canShip && (
+            <div className="flex gap-1.5">
+              <button onClick={() => void run("Pull", "POST", "/git/pull")} disabled={busy !== null} className="h-[24px] flex-1 rounded-sm border border-rule text-[11.5px] text-ink-2 hover:bg-hover disabled:opacity-40">
+                {busy === "Pull" ? "Pulling…" : "Pull"}
+              </button>
+              <button onClick={() => void run("Push", "POST", "/git/push")} disabled={busy !== null} className="h-[24px] flex-1 rounded-sm border border-rule text-[11.5px] text-ink-2 hover:bg-hover disabled:opacity-40">
+                {busy === "Push" ? "Pushing…" : "Push"}
+              </button>
+            </div>
+          )}
+        </div>
+        {st && st.conflicted.length > 0 && (
+          <Section title="Merge conflicts" count={st.conflicted.length}>
+            {st.conflicted.map((p) => (
+              <button key={p} onClick={() => onOpen(p)} className="flex h-6 w-full items-center gap-1.5 pl-5 pr-3 text-[13px] text-danger hover:bg-hover">
+                <TriangleAlert size={12} /> {p}
+              </button>
+            ))}
+          </Section>
+        )}
+        <Section title="Staged changes" count={staged.length}>
+          {staged.length === 0 && <p className="px-5 py-1 text-[12px] text-muted">Nothing staged.</p>}
+          {staged.map((f) => row(f, "staged"))}
+        </Section>
+        <Section title="Changes" count={changes.length}>
+          {changes.length === 0 && <p className="px-5 py-1 text-[12px] text-muted">Working tree clean.</p>}
+          {changes.length > 1 && canEdit && (
+            <button onClick={() => void run("Stage", "POST", "/git/stage", { paths: changes.map((f) => f.path) }, `Staged ${changes.length} files.`)} className="ml-5 text-[11.5px] text-accent-ink hover:underline">
+              Stage all
+            </button>
+          )}
+          {changes.map((f) => row(f, "unstaged"))}
+        </Section>
+        <GitHubPanel canShip={canShip} tick={tick} notify={notify} />
+        <Section title="Recent commits" count={st?.log.length} defaultOpen={false}>
+          {st?.log.map((c) => (
+            <div key={c.sha} className="px-5 py-1">
+              <p className="truncate text-[12.5px] text-ink-2">{c.subject}</p>
+              <p className="font-mono text-[10.5px] text-faint">
+                {c.sha} · {c.author} · {new Date(c.date).toLocaleDateString()}
+              </p>
+            </div>
+          ))}
+        </Section>
       </div>
-      <GitHubPanel canShip={canShip} tick={tick} notify={notify} />
-      <Section title="Changes" count={st?.changes.length}>
-        {st?.changes.length === 0 && <p className="px-5 py-1 text-[12.5px] text-muted">Working tree clean.</p>}
-        {st?.changes.map((c) => (
-          <button key={c.path} onClick={() => c.status !== "deleted" && onOpen(c.path)} className="flex h-6 w-full items-center gap-1.5 pl-5 pr-3 text-[13px] hover:bg-hover">
-            <FileCode2 size={13} className="text-faint" />
-            <span className={c.status === "deleted" ? "text-muted line-through" : "text-ink"}>{c.path.split("/").pop()}</span>
-            <span className="truncate text-[11.5px] text-faint">{c.path.split("/").slice(0, -1).join("/")}</span>
-            <span className={`ml-auto font-mono text-[11.5px] font-bold ${STATUS_LETTER[c.status]?.cls}`}>{STATUS_LETTER[c.status]?.l}</span>
-          </button>
-        ))}
-      </Section>
     </div>
   );
 }

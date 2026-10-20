@@ -7,13 +7,15 @@ import type { WebSocket } from "ws";
 import { Relay } from "../core/engine.ts";
 import { RelayError, TASK_STATES } from "../core/types.ts";
 import type { TaskState } from "../core/types.ts";
-import { repoRoot, resolveCommit } from "../git.ts";
+import { repoRoot, resolveCommit, showAt } from "../git.ts";
+import { createHash, randomUUID } from "node:crypto";
 import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts";
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
+import * as gitops from "./gitops.ts";
 import { authorKind, authorTotals, lineAuthors, sessionDiff, sessions as editSessions } from "./attribution.ts";
 import { ImpactService } from "../analysis/impact.ts";
 import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
@@ -170,6 +172,16 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const project = { name: basename(root), root };
   const impact = new ImpactService(relay, root, resolve(opts.dbPath));
   const records = new Records(relay, root);
+  relay.db.exec(`CREATE TABLE IF NOT EXISTS review_comments (
+    id TEXT PRIMARY KEY, task_id TEXT NOT NULL, path TEXT NOT NULL, line INTEGER NOT NULL, body TEXT NOT NULL,
+    author TEXT NOT NULL, revision TEXT NOT NULL, created_at TEXT NOT NULL, resolved_at TEXT
+  )`);
+  /** The content hash of the version of `path` a task's review is looking at (agent worktree or shared workspace). */
+  const reviewBlob = (taskId: string, path: string): string => {
+    const run = runs.forTask(taskId).at(-1);
+    const text = run && run.status !== "applied" ? (() => { try { return readFileSync(join(run.worktree, path), "utf8"); } catch { return ""; } })() : (docs.get(path)?.text.toString() ?? readText(root, path) ?? "");
+    return createHash("sha1").update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest("hex");
+  };
   const freshGraph = () => (impact.graph.refresh(listProjectFiles(root)), impact.graph);
   runs.attachContext((taskId) => records.contextText(taskId, freshGraph()));
   const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
@@ -301,10 +313,60 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       docs.flushAll(); // search what collaborators see, not a stale disk
       return json(res, 200, searchProject(root, url.searchParams.get("q") ?? ""));
     }
-    if (method === "GET" && parts[0] === "git") {
+    if (method === "GET" && parts[0] === "git" && parts.length === 1) {
       requireMember(req, "read");
       docs.flushAll();
       return json(res, 200, gitStatus(root));
+    }
+    if (parts[0] === "git" && parts[1]) {
+      // Git workflow. Anything that changes files for everyone (switch, pull) or reaches a remote (push) is owner-only.
+      const op = parts[1];
+      if (method === "GET" && op === "state") {
+        requireMember(req, "read");
+        docs.flushAll();
+        return json(res, 200, { ...gitops.gitState(root), branches: gitops.branches(root), log: gitops.log(root, 20) });
+      }
+      if (method === "GET" && op === "diff") {
+        requireMember(req, "read");
+        const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
+        docs.flushAll();
+        return json(res, 200, { path, ...gitops.diffSides(root, path, url.searchParams.get("staged") === "1", docs.get(path)?.text.toString() ?? readText(root, path)) });
+      }
+      if (method === "POST") {
+        const b = await readBody(req);
+        const paths = () => strList(b.paths, "paths").map((p) => resolveProjectPath(root, p));
+        if (op === "stage" || op === "unstage") {
+          requireMember(req, "edit");
+          docs.flushAll();
+          (op === "stage" ? gitops.stage : gitops.unstage)(root, paths());
+          return json(res, 200, gitops.gitState(root));
+        }
+        if (op === "commit") {
+          const m = requireMember(req, "edit");
+          docs.flushAll();
+          const c = gitops.commit(root, str(b.message, "message", 5000), m);
+          relay.record("git.committed", actorFor(m), { sha: c.sha, files: c.files, message: String(b.message).split("\n")[0]!.slice(0, 120) });
+          return json(res, 201, c);
+        }
+        if (op === "branch") {
+          const sw = b.switch === true;
+          const m = requireMember(req, sw ? "approve" : "edit");
+          gitops.createBranch(root, str(b.name, "name", 200), sw);
+          relay.record("git.branch_created", actorFor(m), { name: b.name, switched: sw });
+          return json(res, 201, { name: b.name });
+        }
+        if (op === "switch" || op === "pull" || op === "push") {
+          const m = requireMember(req, "approve");
+          docs.flushAll();
+          let message = "";
+          if (op === "switch") (gitops.switchBranch(root, str(b.name, "name", 200)), (message = `Switched to ${b.name}.`));
+          else if (op === "pull") message = gitops.pull(root, await github.gitEnv());
+          else message = gitops.push(root, await github.gitEnv());
+          if (op !== "push") docs.checkAll(); // shared documents pick up the new file contents now
+          relay.record(`git.${op === "switch" ? "branch_switched" : op === "pull" ? "pulled" : "pushed"}`, actorFor(m), { name: b.name ?? null, message: message.slice(0, 300) });
+          return json(res, 200, { message, state: gitops.gitState(root) });
+        }
+      }
     }
     if (parts[0] === "investigations") {
       const sources = (v: unknown): Source[] => {
@@ -405,6 +467,36 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       });
       const a = collab.participants().find((p) => p.memberId === id);
       return json(res, 200, { id, sessions: ss, files: [...files.values()], surviving, now: a ? { path: a.path, at: new Date(a.at).toISOString() } : null });
+    }
+    if (parts[0] === "reviews") {
+      // Line comments pinned to the exact revision (blob hash) of the file they were made on.
+      if (method === "GET") {
+        requireMember(req, "read");
+        const task = str(url.searchParams.get("task"), "task", 64);
+        const path = url.searchParams.get("path");
+        const current = (p: string) => reviewBlob(task, p);
+        const rows = relay.db.prepare(`SELECT * FROM review_comments WHERE task_id = ? ${path ? "AND path = ?" : ""} ORDER BY created_at`).all(...(path ? [task, path] : [task])) as Record<string, string | number>[];
+        return json(res, 200, { comments: rows.map((r) => ({ id: r.id, path: r.path, line: r.line, body: r.body, author: r.author, revision: r.revision, createdAt: r.created_at, resolved: !!r.resolved_at, outdated: current(String(r.path)) !== r.revision })) });
+      }
+      if (method === "POST" && parts.length === 1) {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req);
+        const task = relay.requireTask(str(b.task, "task", 64)).id;
+        const path = resolveProjectPath(root, str(b.path, "path", 512));
+        const line = Number(b.line);
+        if (!Number.isInteger(line) || line < 1) throw new HttpError(400, "invalid", "line must be a positive integer");
+        const id = randomUUID();
+        const revision = reviewBlob(task, path);
+        relay.db.prepare("INSERT INTO review_comments (id, task_id, path, line, body, author, revision, created_at) VALUES (?,?,?,?,?,?,?,?)").run(id, task, path, line, str(b.body, "body", 5000), m.name, revision, new Date().toISOString());
+        relay.record("review.commented", actorFor(m), { path, line, revision: revision.slice(0, 12) }, task);
+        return json(res, 201, { id, revision });
+      }
+      if (method === "POST" && parts[2] === "resolve") {
+        const m = requireMember(req, "edit");
+        relay.db.prepare("UPDATE review_comments SET resolved_at = ? WHERE id = ?").run(new Date().toISOString(), parts[1] ?? "");
+        relay.record("review.resolved", actorFor(m), { comment: parts[1] });
+        return json(res, 200, {});
+      }
     }
     if (method === "GET" && parts[0] === "diagnostics") {
       // Syntax errors from the TypeScript parser (JS/TS) or JSON.parse, on the shared document's current text.
@@ -527,6 +619,26 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       }
       const id = parts[1] ?? "";
       if (method === "GET" && parts[2] === "why") return json(res, 200, why((requireMember(req, "read"), id)));
+      if (method === "GET" && parts[2] === "diff") {
+        // A task's change to one file: agent work (snapshot vs worktree) or a person's (base vs shared workspace).
+        requireMember(req, "read");
+        const task = relay.requireTask(id);
+        const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
+        const run = runs.forTask(id).at(-1);
+        docs.flushAll();
+        if (run && run.status !== "applied") {
+          const after = (() => {
+            try {
+              return readFileSync(join(run.worktree, path), "utf8");
+            } catch {
+              return "";
+            }
+          })();
+          return json(res, 200, { path, before: showAt(root, run.snapshot, path) ?? "", after, beforeLabel: `snapshot ${run.snapshot.slice(0, 7)}`, afterLabel: `${run.provider} worktree` });
+        }
+        const base = task.baseCommit ?? "HEAD";
+        return json(res, 200, { path, before: showAt(root, base, path) ?? "", after: docs.get(path)?.text.toString() ?? readText(root, path) ?? "", beforeLabel: `base ${base.slice(0, 7)}`, afterLabel: "shared workspace" });
+      }
       if (method === "GET" && parts[2] === "change") {
         requireMember(req, "read");
         docs.flushAll();

@@ -247,7 +247,8 @@ export class GitHub {
   }
 
   /** Environment that hands git the token for https remotes without exposing it on the command line. */
-  private async pushEnv(): Promise<NodeJS.ProcessEnv> {
+  /** Environment that lets git authenticate to GitHub over https with the server-side token (never on argv). */
+  async gitEnv(): Promise<NodeJS.ProcessEnv> {
     const env: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
     const url = tryGit(this.root, ["remote", "get-url", this.remote]) ?? "";
     const tok = await this.resolveToken();
@@ -296,7 +297,7 @@ export class GitHub {
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
     const branch = `relay/ship-${stamp}`;
     try {
-      git(this.root, ["push", "--quiet", this.remote, `${commit}:refs/heads/${branch}`], await this.pushEnv());
+      git(this.root, ["push", "--quiet", this.remote, `${commit}:refs/heads/${branch}`], await this.gitEnv());
     } catch (e) {
       const msg = String((e as { stderr?: string }).stderr ?? (e as Error).message).replace(/Authorization:[^\n]*/gi, "Authorization: [hidden]").trim();
       throw new RelayError("invalid", `git push failed: ${msg.split("\n").slice(-3).join(" ")}`);
@@ -341,7 +342,7 @@ export class GitHub {
 
   private async syncLocal(base: string, shipBranch: string): Promise<string> {
     try {
-      git(this.root, ["fetch", "--quiet", this.remote, `refs/heads/${base}:refs/remotes/${this.remote}/${base}`], await this.pushEnv());
+      git(this.root, ["fetch", "--quiet", this.remote, `refs/heads/${base}:refs/remotes/${this.remote}/${base}`], await this.gitEnv());
     } catch {
       return `Merged on GitHub. Couldn't fetch ${base}; pull it when convenient.`;
     }

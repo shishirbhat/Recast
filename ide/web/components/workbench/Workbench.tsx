@@ -22,6 +22,8 @@ import { FileTree } from "../FileTree";
 import { Avatar, Mark, StatePill } from "../ui";
 import { AgentPanel } from "./AgentPanel";
 import { PeopleView } from "./People";
+import { DiffView, diffTabId, diffTabLabel, parseDiffTab } from "./DiffView";
+import type { DiffSpec } from "./DiffView";
 import { RecordsPanel } from "./Records";
 import { CommandPalette } from "./CommandPalette";
 import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
@@ -423,7 +425,15 @@ export function Workbench() {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
 
-  const session = me && active ? sessionFor(active, me) : null;
+  // Diff tabs live in the same tab strip; only real file tabs have a collaborative session.
+  const activePath = active && !active.startsWith("diff:") ? active : null;
+  const activeDiff = active ? parseDiffTab(active) : null;
+  const session = me && activePath ? sessionFor(activePath, me) : null;
+  const openDiff = useCallback((d: DiffSpec) => {
+    const id = diffTabId(d);
+    setTabs((t) => (t.includes(id) ? t : [...t, id]));
+    setActive(id);
+  }, []);
   const { status, pending, peers } = useSessionState(session);
   const onCursor = useCallback((l: number, c: number) => setCursor([l, c]), []);
 
@@ -432,13 +442,13 @@ export function Workbench() {
   useEffect(() => {
     setSyntax(null);
     setAuthors(null);
-    if (!session || !active) return;
+    if (!session || !activePath) return;
     let t: ReturnType<typeof setTimeout> | null = null;
     let live = true;
     const fetchAll = () => {
-      void api<{ problems: SyntaxProblem[] }>("GET", `/diagnostics?path=${encodeURIComponent(active)}`).then((r) => live && setSyntax(r.problems), () => {});
+      void api<{ problems: SyntaxProblem[] }>("GET", `/diagnostics?path=${encodeURIComponent(activePath)}`).then((r) => live && setSyntax(r.problems), () => {});
       if (showAuthors)
-        void api<{ lines: { line: number; kind: string; authors: string[] }[] }>("GET", `/attribution?path=${encodeURIComponent(active)}`).then((r) => {
+        void api<{ lines: { line: number; kind: string; authors: string[] }[] }>("GET", `/attribution?path=${encodeURIComponent(activePath)}`).then((r) => {
           if (!live) return;
           const m = new Map<number, LineMark>();
           for (const l of r.lines) {
@@ -463,7 +473,7 @@ export function Workbench() {
       if (t) clearTimeout(t);
       session.doc.off("update", on);
     };
-  }, [session, active, showAuthors, memberColors]);
+  }, [session, activePath, showAuthors, memberColors]);
 
   // Follow mode: open whatever file the followed person is in, and keep their caret in view. Esc stops.
   const jumpTo = useCallback(
@@ -580,7 +590,7 @@ export function Workbench() {
       { id: "palette.files", category: "Go", title: "Go to File…", keywords: ["open", "quick open"], keybinding: "Mod+P", run: () => setPalette({ open: true, mode: "files" }) },
       { id: "palette.commands", category: "View", title: "Command Palette…", keywords: ["commands"], keybinding: "Mod+Shift+P", run: () => setPalette({ open: true, mode: "commands" }) },
       { id: "file.newFile", category: "File", title: "New File…", when: () => viewOnly, run: () => (set({ sidebar: true, view: "explorer" }), document.querySelector<HTMLButtonElement>("[aria-label='New file']")?.click()) },
-      { id: "file.save", category: "File", title: "Save", keywords: ["write", "flush"], keybinding: "Mod+S", when: () => (!active ? "Open a file first" : viewOnly), run: () => active && void api("POST", "/save", { path: active }).then(() => notify(`Saved ${active} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")) },
+      { id: "file.save", category: "File", title: "Save", keywords: ["write", "flush"], keybinding: "Mod+S", when: () => (!activePath ? "Open a file first" : viewOnly), run: () => activePath && void api("POST", "/save", { path: activePath }).then(() => notify(`Saved ${activePath} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")) },
       { id: "view.closeEditor", category: "View", title: "Close Editor", keybinding: "Mod+Alt+W", when: () => (active ? null : "No editor is open"), run: () => active && closeTab(active) },
       { id: "view.closeAllEditors", category: "View", title: "Close All Editors", when: () => (tabs.length ? null : "No editors are open"), run: () => [...tabs].forEach(closeTab) },
       { id: "edit.undo", category: "Edit", title: "Undo (your edits)", keybinding: "Mod+Z", when: needEditor, run: onEditor(() => session?.undoManager.undo()) },
@@ -689,14 +699,14 @@ export function Workbench() {
 
   const fit = allocate(layout, win.w, win.h, lastOpened);
   const presence = new Map(s.presence.map((p) => [p.path, p.members]));
-  if (active) presence.set(active, [...new Set([...(presence.get(active) ?? []), me!.id, ...peers.map((p) => p.id)])]);
+  if (activePath) presence.set(activePath, [...new Set([...(presence.get(activePath) ?? []), me!.id, ...peers.map((p) => p.id)])]);
   const online = new Set([...presence.values()].flat());
   const membersById = new Map(s.members.map((m) => [m.id, m]));
   const where = (id: string) => [...presence.entries()].find(([, ms]) => ms.includes(id))?.[0];
   const problems = problemsOf(s);
   const needsPerson = s.tasks.filter((t) => t.state === "review_required" || t.state === "proposed" || t.state === "blocked").length;
   const runningAgents = s.tasks.flatMap((t) => t.runs).filter((r) => r.status === "running").length;
-  const ext = active?.split(".").pop() ?? "";
+  const ext = activePath?.split(".").pop() ?? "";
   const eol = session && session.text.toString().includes("\r\n") ? "CRLF" : "LF";
 
   const activities: { id: View; icon: React.ReactNode; label: string; badge?: number; cmd: string }[] = [
@@ -838,7 +848,7 @@ export function Workbench() {
                 </div>
               )}
               {layout.view === "search" && <SearchView onOpen={open} focusNonce={searchNonce} />}
-              {layout.view === "scm" && <SourceControlView onOpen={open} tick={events.length} canShip={me!.role === "owner"} notify={notify} />}
+              {layout.view === "scm" && <SourceControlView onOpen={open} onDiff={(p, staged) => openDiff({ kind: staged ? "staged" : "working", path: p })} tick={events.length} canShip={me!.role === "owner"} canEdit={me!.role !== "viewer"} notify={notify} />}
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
               {layout.view === "extensions" && <ExtensionsView />}
               {layout.view === "community" && <PeopleView me={me!} members={s.members} presence={feed} tick={events.length} following={following} onOpen={open} onJump={jumpTo} onFollow={setFollowing} onInvite={invite} notify={notify} />}
@@ -862,8 +872,8 @@ export function Workbench() {
                   return (
                     <div key={t} role="tab" aria-selected={on} data-testid={`tab-${t}`} onMouseDown={(e) => e.button === 1 && (e.preventDefault(), closeTab(t))} className={`group relative flex min-w-0 shrink-0 items-center gap-1.5 border-r border-rule pl-3 pr-1 text-[12.5px] transition-colors ${on ? "bg-editor text-ink" : "border-b text-muted hover:bg-hover/50 hover:text-ink"}`}>
                       {on && <motion.span layoutId="tab-indicator" transition={{ type: "spring", stiffness: 520, damping: 42 }} className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
-                      <button onClick={() => setActive(t)} className="max-w-48 truncate" title={t}>
-                        {t.split("/").pop()}
+                      <button onClick={() => setActive(t)} className="max-w-56 truncate" title={t}>
+                        {parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()}
                       </button>
                       {here.slice(0, 3).map((id) => (
                         <span key={id} title={`${membersById.get(id)?.name} is here`} className="size-1.5 shrink-0 rounded-full" style={{ background: membersById.get(id)?.color }} />
@@ -877,7 +887,9 @@ export function Workbench() {
                 <div className="min-w-4 flex-1 border-b border-rule" />
               </div>
             )}
-            {session ? (
+            {activeDiff ? (
+              <DiffView spec={activeDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
+            ) : session ? (
               <>
                 <div className="flex h-[24px] shrink-0 items-center justify-between px-4 text-[12px] text-muted">
                   <nav aria-label="Breadcrumbs" className="min-w-0 truncate">
@@ -916,7 +928,7 @@ export function Workbench() {
                 members={s.members}
                 onTask={showTask}
                 onOpen={open}
-                syntax={active && syntax ? syntax.map((p) => ({ ...p, path: active })) : []}
+                syntax={activePath && syntax ? syntax.map((p) => ({ ...p, path: activePath })) : []}
                 onClose={() => set({ panel: false })}
                 output={<OutputPanel tick={events.length} />}
                 terminal={<TerminalPanel availability={termCaps} visible={layout.panel && panelTab === "terminal"} focusNonce={termFocus} newNonce={termNew} theme={theme} run={termRun} />}
@@ -948,7 +960,7 @@ export function Workbench() {
                 ) : layout.rightTab === "agent" ? (
                   <AgentPanel state={s} files={files} activeFile={active} onOpenTask={showTask} onOpenFile={open} notify={notify} refresh={refresh} focusNonce={agentNonce} />
                 ) : (
-                  <Coordination embedded state={s} onOpenFile={open} refresh={refresh} notify={notify} tab={layout.rightTab as CoordTab} setTab={(t) => set({ rightTab: t })} selected={selectedTask} setSelected={setSelectedTask} newTaskNonce={newTaskNonce} />
+                  <Coordination embedded state={s} onOpenFile={open} onOpenDiff={(task, p) => openDiff({ kind: "task", task, path: p })} refresh={refresh} notify={notify} tab={layout.rightTab as CoordTab} setTab={(t) => set({ rightTab: t })} selected={selectedTask} setSelected={setSelectedTask} newTaskNonce={newTaskNonce} />
                 )}
               </div>
             </aside>

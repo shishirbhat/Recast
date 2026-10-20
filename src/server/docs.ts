@@ -406,6 +406,11 @@ export class DocStore {
     );
   }
 
+  /** Re-read every open document from disk (after a branch switch or pull changed files underneath them). */
+  checkAll(): void {
+    for (const e of this.entries.values()) this.checkDisk(e);
+  }
+
   /** Compare disk with what the server last wrote; anything else is an external change. */
   checkDisk(entry: DocEntry): void {
     let disk: string | null;

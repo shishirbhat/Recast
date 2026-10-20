@@ -12,6 +12,7 @@ export type CoordTab = "tasks" | "contracts";
 export function Coordination({
   state,
   onOpenFile,
+  onOpenDiff,
   refresh,
   notify,
   tab,
@@ -23,6 +24,8 @@ export function Coordination({
 }: {
   state: ProjectState;
   onOpenFile: (p: string) => void;
+  /** Open a task's change to one file as a diff. */
+  onOpenDiff?: (task: string, path: string) => void;
   refresh: () => void;
   notify: (msg: string, tone?: "ok" | "danger") => void;
   tab: CoordTab;
@@ -65,7 +68,7 @@ export function Coordination({
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={task ? `t:${task.id}` : tab} initial={{ opacity: 0, x: task ? 12 : 0, y: task ? 0 : 4 }} animate={{ opacity: 1, x: 0, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }} className="p-3">
             {task ? (
-              <TaskDetail task={task} state={state} onBack={() => setSelected(null)} onOpenFile={onOpenFile} act={act} />
+              <TaskDetail task={task} state={state} onBack={() => setSelected(null)} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} act={act} />
             ) : tab === "tasks" ? (
               <TaskList state={state} onSelect={setSelected} act={act} newTaskNonce={newTaskNonce} />
             ) : (
@@ -249,6 +252,7 @@ interface ChangeStage {
   detail: string;
 }
 interface ChangeRec {
+  files: { path: string; inScope: boolean }[];
   stages: ChangeStage[];
   blockers: string[];
   security: { detail: string }[];
@@ -297,7 +301,7 @@ function Ladder({ change }: { change: ChangeRec | null }) {
   );
 }
 
-function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; state: ProjectState; onBack: () => void; onOpenFile: (p: string) => void; act: Act }) {
+function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task: Task; state: ProjectState; onBack: () => void; onOpenFile: (p: string) => void; onOpenDiff?: (task: string, path: string) => void; act: Act }) {
   const [why, setWhy] = useState<Why | null>(null);
   const [change, setChange] = useState<ChangeRec | null>(null);
   const [integration, setIntegration] = useState<Integration | null>(null);
@@ -347,6 +351,17 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
       <div className="border-y border-rule py-3">
         <SectionLabel>How far it got</SectionLabel>
         <Ladder change={change} />
+        {change && change.files.length > 0 && (
+          <div className="mt-3" data-testid="changed-files">
+            <p className="micro mb-1 text-faint">Changed files · open the diff</p>
+            {change.files.map((f) => (
+              <button key={f.path} onClick={() => (onOpenDiff ? onOpenDiff(task.id, f.path) : onOpenFile(f.path))} className="flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left font-mono text-[12px] text-ink-2 hover:bg-hover hover:text-ink">
+                <span className="truncate">{f.path}</span>
+                {!f.inScope && <span className="micro ml-auto text-danger">out of scope</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {why && visibleGaps(task, why).length > 0 && (
