@@ -7,7 +7,7 @@ import type { WebSocket } from "ws";
 import { Relay } from "../core/engine.ts";
 import { RelayError, TASK_STATES } from "../core/types.ts";
 import type { TaskState } from "../core/types.ts";
-import { repoRoot, resolveCommit, showAt } from "../git.ts";
+import { relayOwnFiles, repoRoot, resolveCommit, showAt, workspaceFingerprint } from "../git.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts";
 import type { Member } from "./auth.ts";
@@ -16,6 +16,7 @@ import { DocStore } from "./docs.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
 import * as gitops from "./gitops.ts";
+import { TestRunner } from "./testrunner.ts";
 import { authorKind, authorTotals, lineAuthors, sessionDiff, sessions as editSessions } from "./attribution.ts";
 import { ImpactService } from "../analysis/impact.ts";
 import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
@@ -172,6 +173,13 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const project = { name: basename(root), root };
   const impact = new ImpactService(relay, root, resolve(opts.dbPath));
   const records = new Records(relay, root);
+  const tests = new TestRunner(relay.db, root, () => workspaceFingerprint(root, relayOwnFiles(root, resolve(opts.dbPath))));
+  tests.onChange = () => {
+    const r = tests.running();
+    if (r && r.status !== "running") return;
+    // Live progress goes to subscribers as a lightweight event; the full record is persisted when the run ends.
+    pushTests();
+  };
   relay.db.exec(`CREATE TABLE IF NOT EXISTS review_comments (
     id TEXT PRIMARY KEY, task_id TEXT NOT NULL, path TEXT NOT NULL, line INTEGER NOT NULL, body TEXT NOT NULL,
     author TEXT NOT NULL, revision TEXT NOT NULL, created_at TEXT NOT NULL, resolved_at TEXT
@@ -498,6 +506,28 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         return json(res, 200, {});
       }
     }
+    if (parts[0] === "tests") {
+      if (method === "GET") {
+        requireMember(req, "read");
+        docs.flushAll();
+        return json(res, 200, { discover: tests.discover(listProjectFiles(root)), latest: tests.latest() });
+      }
+      if (method === "POST" && parts[1] === "run") {
+        // Tests execute project code on this machine: owners only, like verification commands.
+        const m = requireMember(req, "approve");
+        const b = await readBody(req);
+        docs.flushAll();
+        const run = tests.start({ files: strList(b.files, "files"), names: strList(b.names, "names"), by: m.name, projectFiles: listProjectFiles(root) });
+        relay.record("tests.started", actorFor(m), { runId: run.id, command: run.command });
+        return json(res, 202, run);
+      }
+      if (method === "POST" && parts[1] === "stop") {
+        const m = requireMember(req, "approve");
+        const stopped = tests.stop();
+        if (stopped) relay.record("tests.stopped", actorFor(m), {});
+        return json(res, 200, { stopped });
+      }
+    }
     if (method === "GET" && parts[0] === "diagnostics") {
       // Syntax errors from the TypeScript parser (JS/TS) or JSON.parse, on the shared document's current text.
       requireMember(req, "read");
@@ -802,6 +832,17 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     }, 250);
   };
   collab.onPresence = pushPresence;
+  let testsTimer: NodeJS.Timeout | null = null;
+  const pushTests = () => {
+    if (testsTimer) return;
+    testsTimer = setTimeout(() => {
+      testsTimer = null;
+      const r = tests.latest();
+      if (!r) return;
+      const msg = JSON.stringify({ type: "tests", run: { ...r, output: r.output.slice(-20_000) } });
+      for (const ws of eventClients) if (ws.readyState === ws.OPEN && ws.bufferedAmount < 1 << 20) ws.send(msg);
+    }, 200);
+  };
   // This process's own events are pushed at once; the poll picks up events from hooks, MCP servers and the CLI.
   relay.onEvent = pump;
   const feed = setInterval(pump, 200);
@@ -869,6 +910,8 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     async close() {
       clearInterval(feed);
       if (presenceTimer) clearTimeout(presenceTimer);
+      if (testsTimer) clearTimeout(testsTimer);
+      tests.close();
       docs.closeSessions();
       relay.onEvent = null;
       terminals.close();

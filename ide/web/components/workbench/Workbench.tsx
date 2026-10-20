@@ -29,6 +29,7 @@ import { CommandPalette } from "./CommandPalette";
 import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
+import { TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { BottomPanel, Section, SearchView, SourceControlView, ViewHeader, problemsOf } from "./Views";
 import type { PanelTab } from "./Views";
 
@@ -312,7 +313,7 @@ function MenuItem({ c, focused, onRun, onHover }: { c: Command; focused?: boolea
    =================================================================================================== */
 
 export function Workbench() {
-  const { load, events, files, live, presence: feed, refresh, refreshFiles } = useProject();
+  const { load, events, files, live, presence: feed, testRun, setTestRun, refresh, refreshFiles } = useProject();
   const win = useWindowSize();
   const [theme, setTheme] = useState<Theme>("dark");
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
@@ -620,6 +621,10 @@ export function Workbench() {
       { id: "layout.togglePanel", category: "View", title: "Toggle Panel", keybinding: "Mod+J", run: () => setLayout((l) => ({ ...l, panel: !l.panel })) },
       { id: "layout.reset", category: "View", title: "Reset Layout", run: () => setLayout(DEFAULT_LAYOUT) },
       { id: "panel.problems", category: "View", title: "Problems", keybinding: "Mod+Shift+M", run: () => openPanel("problems") },
+      { id: "tests.show", category: "Test", title: "Show Tests", keywords: ["test results"], run: () => openPanel("tests") },
+      { id: "tests.runAll", category: "Test", title: "Run All Tests", keywords: ["test"], when: () => ownerOnly ?? (testRun?.status === "running" ? "Tests are already running" : null), run: () => (openPanel("tests"), void runTests({}, notify)) },
+      { id: "tests.rerunFailed", category: "Test", title: "Rerun Failed Tests", when: () => ownerOnly ?? (failedNames(testRun).length ? null : "No failed tests in the latest run"), run: () => (openPanel("tests"), void runTests(rerunFailed(testRun), notify)) },
+      { id: "tests.stop", category: "Test", title: "Stop Tests", when: () => ownerOnly ?? (testRun?.status === "running" ? null : "No tests are running"), run: () => void stopTests() },
       { id: "panel.output", category: "View", title: "Output", keybinding: "Mod+Shift+U", run: () => openPanel("output") },
       { id: "panel.agents", category: "View", title: "Agent Activity", run: () => openPanel("agents") },
       { id: "panel.impact", category: "Relay", title: "Show Change Impact", keywords: ["dependency", "consumers", "affected tests", "blast radius", "map"], run: () => openPanel("impact") },
@@ -664,7 +669,7 @@ export function Workbench() {
     ];
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs.wrap, showAuthors, following, feed, jumpTo]);
+  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs.wrap, showAuthors, following, feed, jumpTo, testRun, notify]);
 
   /*
     Keyboard. Bound chords dispatch through the registry in the capture phase, so workbench shortcuts work even when
@@ -931,6 +936,8 @@ export function Workbench() {
                 syntax={activePath && syntax ? syntax.map((p) => ({ ...p, path: activePath })) : []}
                 onClose={() => set({ panel: false })}
                 output={<OutputPanel tick={events.length} />}
+                tests={<TestsPanel run={testRun} setRun={setTestRun} canRun={me?.role === "owner"} onOpen={open} notify={notify} />}
+                testFailures={testRun && !testRun.stale ? failedNames(testRun).length : 0}
                 terminal={<TerminalPanel availability={termCaps} visible={layout.panel && panelTab === "terminal"} focusNonce={termFocus} newNonce={termNew} theme={theme} run={termRun} />}
               />
             </section>

@@ -97,3 +97,34 @@ test("viewers can read diffs but can't stage, commit or switch", { skip }, async
   assert.equal(await v.getByTestId("commit").count(), 0);
   assert.equal(await v.getByTestId("branch-select").isDisabled(), true);
 });
+
+test("tests panel: a real run with per-test results, open a failure at its line, rerun failed, out of date after an edit", { skip, timeout: 120_000 }, async () => {
+  const { writeFileSync, mkdirSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  mkdirSync(join(repo, "test"), { recursive: true });
+  writeFileSync(join(repo, "test/math.test.mjs"), 'import { test } from "node:test";\nimport assert from "node:assert/strict";\ntest("adds", () => assert.equal(1 + 1, 2));\ntest("breaks", () => {\n  assert.equal(1 + 1, 3);\n});\n');
+  const p = await signIn("Tess", "owner");
+  await p.keyboard.press("Control+Shift+P");
+  await p.keyboard.type("Run All Tests");
+  await p.keyboard.press("Enter");
+  const panel = p.getByTestId("tests-panel");
+  await panel.getByTestId("tests-summary").filter({ hasText: /^Failed · \d+ passed, 1 failed$/ }).waitFor({ timeout: 30_000 });
+  assert.ok((await panel.getByTestId("test-pass").count()) >= 2, "the project's own test and the new one both pass");
+  await panel.getByTestId("test-fail").click();
+  await panel.getByRole("button", { name: "test/math.test.mjs:4" }).click();
+  await p.locator("[data-testid^='tab-'][aria-selected=true]", { hasText: "math.test.mjs" }).waitFor();
+  assert.equal(await p.getByTestId("panel-tab-tests").locator("span").first().textContent(), "1", "failure count on the tab");
+
+  await panel.getByTestId("tests-rerun-failed").click();
+  await panel.getByTestId("tests-summary").filter({ hasText: /^Failed · 0 passed, 1 failed$/ }).waitFor({ timeout: 30_000 });
+  assert.match(await panel.innerText(), /node --test test\/math\.test\.mjs\n/, "only the failing file is rerun");
+
+  writeFileSync(join(repo, "test/math.test.mjs"), 'import { test } from "node:test";\ntest("adds", () => {});\n');
+  await p.reload();
+  await p.getByTestId("empty-editor").waitFor();
+  await p.keyboard.press("Control+Shift+P");
+  await p.keyboard.type("Show Tests");
+  await p.keyboard.press("Enter");
+  await p.getByTestId("tests-stale").waitFor({ timeout: 10_000 });
+  assert.deepEqual(p.errors, []);
+});

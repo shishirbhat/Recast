@@ -10,6 +10,23 @@ export interface Presence {
   participants: { memberId: string; path: string; at: number; typedAt: number | null; typing: boolean }[];
 }
 
+/** The latest test run (or the one in progress), as the server reports it. */
+export interface TestRunView {
+  id: string;
+  command: string;
+  runner: "node-test" | "npm-script";
+  files: string[];
+  revision: string;
+  status: "running" | "passed" | "failed" | "stopped" | "error";
+  exitCode: number | null;
+  startedAt: string;
+  endedAt: string | null;
+  startedBy: string;
+  results: { name: string; file: string | null; line: number | null; status: "pass" | "fail" | "skip" | "todo"; durationMs: number | null; error: string | null }[];
+  output: string;
+  stale: boolean;
+}
+
 export type Load = { kind: "loading" } | { kind: "signed-out" } | { kind: "error"; message: string } | { kind: "ready"; state: ProjectState };
 
 /**
@@ -22,6 +39,7 @@ export function useProject() {
   const [files, setFiles] = useState<string[]>([]);
   const [live, setLive] = useState(false);
   const [presence, setPresence] = useState<Presence>({ online: [], participants: [] });
+  const [testRun, setTestRun] = useState<TestRunView | null>(null);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -59,7 +77,8 @@ export function useProject() {
       ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/events`);
       ws.onopen = () => setLive(true);
       ws.onmessage = (m) => {
-        const msg = JSON.parse(String(m.data)) as { type: string; events: RelayEvent[] } & Presence;
+        const msg = JSON.parse(String(m.data)) as { type: string; events: RelayEvent[]; run?: TestRunView } & Presence;
+        if (msg.type === "tests") return setTestRun(msg.run ?? null);
         if (msg.type === "presence") return setPresence({ online: msg.online, participants: msg.participants });
         if (msg.type !== "events") return;
         setEvents((prev) => [...prev, ...msg.events].slice(-400));
@@ -80,5 +99,5 @@ export function useProject() {
     };
   }, [refresh, refreshFiles, soon]);
 
-  return { load, events, files, live, presence, refresh, refreshFiles };
+  return { load, events, files, live, presence, testRun, setTestRun, refresh, refreshFiles };
 }

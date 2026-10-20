@@ -331,14 +331,15 @@ export function problemsOf(state: ProjectState): Problem[] {
   return out;
 }
 
-export type PanelTab = "terminal" | "problems" | "impact" | "output" | "agents" | "activity";
+export type PanelTab = "terminal" | "problems" | "tests" | "impact" | "output" | "agents" | "activity";
 
-export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output, syntax = [] }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode; syntax?: { path: string; line: number; col: number; message: string }[] }) {
+export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output, tests, testFailures = 0, syntax = [] }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode; tests: React.ReactNode; testFailures?: number; syntax?: { path: string; line: number; col: number; message: string }[] }) {
   const problems = [...syntax.map((p) => ({ severity: "error" as const, text: `${p.path}:${p.line}:${p.col} ${p.message}`, path: p.path, line: p.line, taskId: undefined as string | undefined })), ...problemsOf(state)];
   const runs = state.tasks.flatMap((t) => t.runs.map((r) => ({ ...r, taskId: t.id }))).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const tabs: [PanelTab, string, number?][] = [
     ["terminal", "Terminal"],
     ["problems", "Problems", problems.length],
+    ["tests", "Tests", testFailures],
     ["impact", "Impact"],
     ["output", "Output"],
     ["agents", "Agents", runs.filter((r) => r.status === "running").length],
@@ -350,7 +351,7 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
         {tabs.map(([id, label, n]) => (
           <button key={id} role="tab" aria-selected={tab === id} data-testid={`panel-tab-${id}`} onClick={() => setTab(id)} className={`micro relative flex h-full items-center gap-1.5 transition-colors ${tab === id ? "text-ink" : "text-faint hover:text-ink-2"}`}>
             {label}
-            {!!n && <span className={`tnum rounded-sm px-1 font-mono text-[10px] ${id === "problems" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>{n}</span>}
+            {!!n && <span className={`tnum rounded-sm px-1 font-mono text-[10px] ${id === "problems" || id === "tests" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>{n}</span>}
             {tab === id && <span className="absolute inset-x-0 bottom-0 h-[2px] bg-accent" />}
           </button>
         ))}
@@ -360,13 +361,14 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
       </div>
       {/* The terminal stays mounted while other tabs are shown, so its sessions keep running. */}
       <div className={`min-h-0 flex-1 ${tab === "terminal" ? "" : "hidden"}`}>{terminal}</div>
+      {tab === "tests" && <div className="min-h-0 flex-1">{tests}</div>}
       {tab === "output" && <div className="min-h-0 flex-1 overflow-y-auto">{output}</div>}
       {tab === "impact" && (
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           <ImpactPanel tick={events.length} onOpen={onOpen} onTask={onTask} />
         </div>
       )}
-      <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" || tab === "impact" ? "hidden" : ""}`}>
+      <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" || tab === "impact" || tab === "tests" ? "hidden" : ""}`}>
         {tab === "problems" &&
           (problems.length === 0 ? (
             <p className="px-4 py-2 font-sans text-[13px] text-muted">No coordination problems. Contracts, tasks and shared files agree.</p>
