@@ -25,8 +25,9 @@ export function localBackend(resolver: Resolver = createResolver()): Backend {
 }
 
 /** Calls the hosted Recast API with the tenant's key, so usage, limits and corrections consent apply as for any API client. */
-export function remoteBackend(opts: { apiKey: string; baseUrl?: string; fetch?: typeof fetch }): Backend {
-  const base = (opts.baseUrl ?? "https://api.recast.dev").replace(/\/+$/, ""); const f = opts.fetch ?? fetch;
+export function remoteBackend(opts: { apiKey: string; baseUrl: string; fetch?: typeof fetch }): Backend {
+  if (!opts.baseUrl) throw new Error("RECAST_API_URL is required with RECAST_API_KEY: an API key is never sent to a guessed address");
+  const base = opts.baseUrl.replace(/\/+$/, ""); const f = opts.fetch ?? fetch;
   async function call(path: string, init: RequestInit = {}) {
     let res: Response;
     try { res = await f(base + path, { ...init, headers: { authorization: `Bearer ${opts.apiKey}`, "content-type": "application/json", ...(init.headers ?? {}) } }); }
@@ -49,5 +50,5 @@ export function remoteBackend(opts: { apiKey: string; baseUrl?: string; fetch?: 
 }
 
 export function backendFromEnv(env: NodeJS.ProcessEnv): Backend {
-  return env.RECAST_API_KEY ? remoteBackend({ apiKey: env.RECAST_API_KEY, ...(env.RECAST_API_URL ? { baseUrl: env.RECAST_API_URL } : {}) }) : localBackend();
+  return env.RECAST_API_KEY ? remoteBackend({ apiKey: env.RECAST_API_KEY, baseUrl: env.RECAST_API_URL ?? "" }) : localBackend();
 }

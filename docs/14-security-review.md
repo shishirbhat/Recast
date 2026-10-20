@@ -43,6 +43,7 @@ No platform master key is distributed. Credentials are never written to the audi
 | R3 | The gateway forwarded to upstream tools **without a timeout**: a hung tool held requests open indefinitely | medium (availability) | 30 s timeout; unknown outcome audited; budget kept | `agent-runtime/test/spaces.test.ts` |
 | R4 | Malformed Space input (`tools: [null]`) caused a 500 instead of a 400 | low | validated as objects first | `spaces.test.ts` |
 | R5 | `max`/`min` constraints on **strings** always refused (fail-closed bug found by the pilot) | low (usability) | they now bound the string's length, as for lists | `bridge.test.ts` |
+| R7 | The SDK and the MCP server's remote mode defaulted to `https://api.recast.dev`, a domain this project does not control: a developer who left out `baseUrl` would have sent their API key to whoever owns it | **high** (before any release) | no default: the SDK requires `baseUrl`, and MCP remote mode refuses to start without `RECAST_API_URL`; the API's landing page uses the `api.recast.example` placeholder | `packages/sdk/test/mechanics.test.ts`, `packages/mcp/test/mcp.test.ts` |
 | R6 | Dependency audit: production dependencies clean (`pnpm audit --prod`: none). **Dev tooling:** vitest/@vitest/mocker (moderate), tinypool (2 critical, prototype pollution in worker options), braces (high, via the overlay's build tooling) | dev-only | not fixed here: vitest 4 is a major upgrade across all packages; to do as its own change | — |
 
 Found and fixed earlier, recorded for completeness:

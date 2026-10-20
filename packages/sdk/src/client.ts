@@ -4,7 +4,8 @@ import type { BatchItemResult, BridgeInfo, CorrectionInput, ObjectType, PlaceInp
 
 export interface RecastConfig {
   apiKey: string;
-  baseUrl?: string;                 // default https://api.recast.dev
+  /** Required until there is a hosted Recast API with a published address: a key must never go to a guessed host. */
+  baseUrl: string;
   maxRetries?: number;              // default 2 (so up to 3 attempts)
   timeoutMs?: number;               // default 15000
   cacheTtlMs?: number;              // default 24h; 0 turns the cache off
@@ -27,7 +28,8 @@ export class Recast {
 
   constructor(config: RecastConfig) {
     if (!config?.apiKey) throw new RecastError("apiKey is required", "config");
-    this.cfg = { baseUrl: "https://api.recast.dev", maxRetries: 2, timeoutMs: 15_000, cacheTtlMs: 24 * 3600_000, ...config };
+    if (!config.baseUrl) throw new RecastError("baseUrl is required: the address your Recast contact gave you", "config");
+    this.cfg = { maxRetries: 2, timeoutMs: 15_000, cacheTtlMs: 24 * 3600_000, ...config };
     this.cfg.baseUrl = this.cfg.baseUrl.replace(/\/+$/, "");
   }
   private now = () => (this.cfg.now ?? Date.now)();
