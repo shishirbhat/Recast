@@ -21,9 +21,11 @@ const palette = async (p: Page, cmd: string) => {
   await p.keyboard.press("Enter");
 };
 const extra: Record<string, (p: Page) => Promise<void>> = {
-  tasks: (p) => palette(p, "Relay Tasks"),
+  attention: (p) => p.getByTestId("attention").click(),
+  tasks: async (p) => (await p.keyboard.press("Escape"), await palette(p, "Relay Tasks")),
+  task: (p) => p.getByTestId("task-T-api").click(),
+  agents2: (p) => palette(p, "Agents"),
   problems: (p) => palette(p, "Problems"),
-  agents: (p) => palette(p, "Agent Activity"),
   scm: (p) => palette(p, "Source Control"),
   people: (p) => palette(p, "People"),
 };

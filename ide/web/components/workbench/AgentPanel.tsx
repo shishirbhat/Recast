@@ -30,10 +30,63 @@ function ActivityRow({ a }: { a: Task["runs"][number]["activity"][number] }) {
   );
 }
 
+type AgentState = { label: string; tone: string; dot: string; rank: number };
+/** One word for where an agent is. Only "needs review", "blocked" and "failed" ask anything of a person. */
+function agentState(t: Task): AgentState {
+  const run = t.runs.at(-1);
+  if (t.state === "blocked") return { label: "Blocked", tone: "text-danger", dot: "bg-danger", rank: 0 };
+  if (t.state === "failed" || run?.status === "failed") return { label: "Failed", tone: "text-danger", dot: "bg-danger", rank: 0 };
+  if (t.state === "review_required") return { label: "Needs review", tone: "text-warn", dot: "bg-warn", rank: 1 };
+  if (run?.status === "running") return { label: "Working", tone: "text-ink-2", dot: "bg-accent", rank: 2 };
+  if (t.state === "completed") return { label: "Done", tone: "text-muted", dot: "bg-ok", rank: 4 };
+  if (t.state === "cancelled" || run?.status === "cancelled") return { label: "Stopped", tone: "text-muted", dot: "bg-faint", rank: 4 };
+  return { label: "Waiting", tone: "text-muted", dot: "bg-faint", rank: 3 };
+}
+
+/** Every task an agent has worked on, most urgent first, with the tasks it shares a contract with. */
+function AgentOverview({ state, onOpenTask }: { state: ProjectState; onOpenTask: (id: string) => void }) {
+  const agents = state.tasks
+    .filter((t) => t.runs.length > 0)
+    .map((t) => ({ t, s: agentState(t) }))
+    .sort((a, b) => a.s.rank - b.s.rank || b.t.updatedAt.localeCompare(a.t.updatedAt));
+  if (!agents.length) return null;
+  const partners = (t: Task) => state.tasks.filter((o) => o.id !== t.id && o.state !== "cancelled" && o.state !== "completed" && Object.keys(o.contracts).some((c) => c in t.contracts)).map((o) => o.id);
+  const shown = agents.filter((a) => a.s.rank < 4).length ? agents.filter((a) => a.s.rank < 4) : agents.slice(0, 3);
+  return (
+    <div className="px-3 pt-3" data-testid="agent-overview">
+      <p className="micro mb-1 px-1 text-muted">Agents</p>
+      {shown.map(({ t, s }) => {
+        const p = partners(t);
+        return (
+          <button key={t.id} onClick={() => onOpenTask(t.id)} className="flex w-full items-start gap-2 rounded-sm px-1 py-1.5 text-left hover:bg-hover" data-testid={`agent-row-${t.id}`}>
+            <span className={`mt-[7px] size-1.5 shrink-0 rounded-full ${s.dot}`} />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-2">
+                <span className="truncate text-[13px] text-ink">{t.objective}</span>
+                <span className={`ml-auto shrink-0 text-[12px] ${s.tone}`}>{s.label}</span>
+              </span>
+              <span className="block truncate text-[11.5px] text-faint">
+                {t.id}
+                {p.length > 0 && ` · shares ${Object.keys(t.contracts).join(", ")} with ${p.join(", ")}`}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+      {agents.length > shown.length && <p className="px-1 pt-1 text-[11.5px] text-faint">{agents.length - shown.length} finished earlier</p>}
+    </div>
+  );
+}
+
 function Thread({ task, me, onOpenTask, onOpenFile }: { task: Task; me: string; onOpenTask: (id: string) => void; onOpenFile: (p: string) => void }) {
   const run = task.runs.at(-1);
   const bottom = useRef<HTMLDivElement>(null);
+  const [showTools, setShowTools] = useState(false);
   useEffect(() => bottom.current?.scrollIntoView({ block: "end" }), [run?.activity.length]);
+  // What the agent says, and anything Relay refused or that went wrong, are shown; routine tool calls are counted and
+  // available on request.
+  const tools = run?.activity.filter((a) => a.kind === "tool").length ?? 0;
+  const visible = run?.activity.filter((a) => showTools || a.kind !== "tool") ?? [];
   return (
     <div className="space-y-3 px-4 py-3">
       <div className="ml-6 rounded-md bg-sunken px-3 py-2">
@@ -55,10 +108,15 @@ function Thread({ task, me, onOpenTask, onOpenFile }: { task: Task; me: string; 
       {run && (
         <div className="space-y-1.5">
           <p className="flex items-center gap-1.5 text-[12px] text-muted">
-            <Bot size={12} /> Claude Code · {run.status}
+            <Bot size={12} /> Claude Code · {agentState(task).label.toLowerCase()}
             {run.costUsd !== null && <span className="text-faint">· ${run.costUsd.toFixed(2)}</span>}
+            {tools > 0 && (
+              <button onClick={() => setShowTools((v) => !v)} className="ml-auto text-[11.5px] text-muted hover:text-ink" data-testid="toggle-tool-calls">
+                {showTools ? "Hide" : "Show"} {tools} tool call{tools === 1 ? "" : "s"}
+              </button>
+            )}
           </p>
-          {run.activity.map((a, i) => (
+          {visible.map((a, i) => (
             <ActivityRow key={i} a={a} />
           ))}
           {run.staleInputs.map((s) => (
@@ -166,16 +224,21 @@ export function AgentPanel({ state, files, activeFile, onOpenTask, onOpenFile, n
         {task ? (
           <Thread task={task} me={state.me.id} onOpenTask={onOpenTask} onOpenFile={onOpenFile} />
         ) : (
-          <div className="flex h-full flex-col justify-end px-4 pb-4">
-            <div className="mb-auto" />
-            <div className="mb-4 flex items-center gap-2 text-ink">
-              <Mark size={18} />
-              <span className="text-[15px] font-medium">Relay agent</span>
-            </div>
-            <p className="text-[12.5px] leading-relaxed text-muted">Every request becomes a scoped task. The agent works in its own worktree under Relay&apos;s hooks; nothing reaches the shared project until Relay checks it and a person approves.</p>
+          <div className="flex h-full flex-col">
+            <AgentOverview state={state} onOpenTask={onOpenTask} />
+            <div className="mt-auto px-4 pb-4 pt-6">
+            {!state.tasks.some((t) => t.runs.length > 0) && (
+              <>
+                <div className="mb-2 flex items-center gap-2 text-ink">
+                  <Mark size={16} />
+                  <span className="text-[14px] font-medium">Ask an agent</span>
+                </div>
+                <p className="text-[12.5px] leading-relaxed text-muted">A request becomes a scoped task. The agent works in its own copy of the project; nothing reaches the shared files until Relay checks it and a person approves.</p>
+              </>
+            )}
             {threads.length > 0 && (
               <div className="mt-4">
-                <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-faint">Past requests</p>
+                <p className="micro mb-1 text-muted">Your requests</p>
                 {threads.slice(0, 6).map((t) => (
                   <button key={t.id} onClick={() => setCurrent(t.id)} className="flex h-[24px] w-full items-center gap-2 rounded-sm px-1 text-left text-[12.5px] text-ink-2 hover:bg-hover">
                     <span className="truncate">{t.objective}</span>
@@ -184,6 +247,7 @@ export function AgentPanel({ state, files, activeFile, onOpenTask, onOpenFile, n
                 ))}
               </div>
             )}
+            </div>
           </div>
         )}
       </div>

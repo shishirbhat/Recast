@@ -71,10 +71,11 @@ test("panes: toggle both side bars and the panel; resize with the keyboard; edit
   assert.ok((await width(p, "editor-group")) > editor0, "editor grows when the primary side bar closes");
   await p.keyboard.press("Control+B");
   assert.equal(await visible(p, "primary-sidebar"), true);
-  await p.keyboard.press("Control+Alt+B");
-  assert.equal(await visible(p, "secondary-sidebar"), false);
+  assert.equal(await visible(p, "secondary-sidebar"), false, "the Relay side bar starts closed: the editor comes first");
   await p.keyboard.press("Control+Alt+B");
   assert.equal(await visible(p, "secondary-sidebar"), true);
+  await p.keyboard.press("Control+Alt+B");
+  assert.equal(await visible(p, "secondary-sidebar"), false);
   await p.keyboard.press("Control+J");
   assert.equal(await visible(p, "bottom-panel"), true);
   await p.keyboard.press("Control+J");
@@ -90,11 +91,13 @@ test("panes: toggle both side bars and the panel; resize with the keyboard; edit
 test("narrow windows collapse panes instead of crushing the editor", { skip }, async () => {
   const p = await signIn("owner", 1440);
   await openFile(p, "src/ui.js");
+  await p.keyboard.press("Control+Alt+B");
+  assert.equal(await visible(p, "secondary-sidebar"), true, "both side bars fit beside a comfortable editor at 1440");
   for (const w of [1100, 900, 700, 560]) {
     await p.setViewportSize({ width: w, height: 760 });
     await p.waitForTimeout(150);
     const editor = await width(p, "editor-group");
-    assert.ok(editor >= 300, `editor is ${editor}px at ${w}px`);
+    assert.ok(editor >= (w >= 900 ? 480 : 300), `editor is ${editor}px at ${w}px`);
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `no horizontal scroll at ${w}`);
   }
   assert.equal(await visible(p, "secondary-sidebar"), false, "the Relay side bar hides first");
@@ -112,7 +115,6 @@ test("every activity opens its own view, and switching keeps open editors", { sk
     ["run", /^run$/i],
     ["extensions", /^extensions$/i],
     ["community", /^people$/i],
-    ["relay", /^relay$/i],
     ["account", /^account$/i],
     ["settings", /^settings$/i],
     ["explorer", /^explorer$/i],
@@ -123,6 +125,11 @@ test("every activity opens its own view, and switching keeps open editors", { sk
     assert.match(header, title, `${id} view header`);
     assert.equal(await visible(p, "tab-src/ui.js"), true, `editor tab survives switching to ${id}`);
   }
+  // Relay's tasks live in one place, the Relay side bar; its activity opens and closes that bar.
+  await p.getByTestId("activity-relay").click();
+  await p.getByTestId("secondary-sidebar").getByRole("tab", { name: "Tasks", selected: true }).waitFor();
+  await p.getByTestId("activity-relay").click();
+  assert.equal(await visible(p, "secondary-sidebar"), false);
   // Clicking the active activity again collapses the side bar, as in VS Code.
   await p.getByTestId("activity-explorer").click();
   assert.equal(await visible(p, "primary-sidebar"), false);

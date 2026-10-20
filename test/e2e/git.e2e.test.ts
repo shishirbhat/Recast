@@ -78,7 +78,7 @@ test("edit, diff, stage, commit, branch; task diff with a revision-pinned review
   await p.locator(".cm-content").click();
   await p.keyboard.press("Control+End");
   await p.keyboard.type("\nexport const reviewed = true;");
-  await p.getByTestId("right-tab-tasks").click();
+  await p.getByTestId("activity-relay").click();
   await p.getByTestId("task-T-ui").click();
   await p.getByTestId("changed-files").getByText("src/ui.js").click();
   const diff = p.getByTestId("diff-view");

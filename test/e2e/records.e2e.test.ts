@@ -37,6 +37,7 @@ async function signIn(name: string, role: "owner" | "editor") {
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
   await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("activity-relay").click();
   await page.getByTestId("right-tab-records").click();
   return Object.assign(page, { errors });
 }

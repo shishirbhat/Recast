@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, Bot, Check, CircleAlert, FileCode2, GitMerge, Play, Plus, ShieldCheck, Square, UserRound } from "lucide-react";
+import { ArrowLeft, Bot, Check, ChevronRight, CircleAlert, FileCode2, GitMerge, Play, Plus, ShieldCheck, Square, UserRound } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ContractVersion, Integration, Member, ProjectState, RelayEvent, Task, Why } from "@/lib/types";
 import { Button, Pill, SectionLabel, StatePill, timeAgo } from "./ui";
@@ -52,7 +52,7 @@ export function Coordination({
   return (
     <div className="flex h-full flex-col">
       <div className={`flex h-10 shrink-0 items-center gap-1 border-b border-rule px-3 ${embedded ? "hidden" : ""}`}>
-        <span className="mr-auto pl-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Relay</span>
+        <span className="micro mr-auto pl-1 text-muted">Relay</span>
         {(["tasks", "contracts"] as CoordTab[]).map((t) => (
           <button
             key={t}
@@ -105,7 +105,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
           </Pill>
         ))}
         {run && (
-          <Pill tone={run.status === "running" ? "accent" : run.status === "failed" ? "danger" : "neutral"}>
+          <Pill tone={run.status === "failed" ? "danger" : "neutral"}>
             <Bot size={11} /> Claude Code · {run.status}
           </Pill>
         )}
@@ -137,8 +137,7 @@ function TaskList({ state, onSelect, act, newTaskNonce }: { state: ProjectState;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between px-1 pt-1">
-        <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">Tasks</h2>
+      <div className="flex items-end justify-end px-1 pt-1">
         {canEdit && (
           <Button tone="quiet" size="sm" onClick={() => setCreating((v) => !v)}>
             <Plus size={13} /> Task
@@ -331,6 +330,91 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
   const current = (cid: string) => state.contracts.find((c) => c.id === cid)?.history.filter((h) => h.status === "accepted").at(-1)?.version;
   const move = (to: string, done: string) => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/transition`, { to }), done);
 
+  const staleContracts = Object.entries(task.contracts).flatMap(([c, v]) => {
+    const cur = current(c);
+    return cur !== undefined && cur > v ? [`Built on ${c} v${v}, but v${cur} is accepted; it has to be updated to v${cur} before it can be integrated.`] : [];
+  });
+  const gaps = [...staleContracts, ...(why ? visibleGaps(task, why).filter((g) => !staleContracts.length || !/contract .* v\d+ .*accepted|superseded/i.test(g)) : [])];
+  const stage = (id: string) => change?.stages.find((x) => x.id === id);
+  const tested = stage("tested");
+  const contractStage = stage("contracts");
+  const decided = task.state === "completed" || task.state === "cancelled";
+  // What approving will do, in plain words, so the decision is never implicit.
+  const consequence =
+    task.state === "proposed"
+      ? "Approving the plan lets a person or an agent start work within this scope. Nothing in the project changes yet."
+      : partners.length > 0
+        ? `${task.id} shares a contract with ${partners.join(", ")}, so it can only be approved together with them, after Relay checks the combined change.`
+        : agentTask
+          ? `Approving applies the agent's changes${change?.files.length ? ` to ${change.files.length} file${change.files.length === 1 ? "" : "s"}` : ""} to the shared project. Everyone sees them immediately, and the change can be reverted from source control.`
+          : `Approving marks ${task.id} complete. The files are already in the shared project.`;
+  const testLine = !tested
+    ? { tone: "text-muted", text: "…" }
+    : tested.state === "done"
+      ? { tone: "text-ok", text: `Passed on the current files. ${tested.detail}` }
+      : tested.state === "failed"
+        ? { tone: "text-danger", text: `Failed. ${tested.detail}` }
+        : tested.state === "stale"
+          ? { tone: "text-warn", text: `Passed on an earlier version; the files changed since, so they need to run again. ${tested.detail}` }
+          : tested.state === "missing"
+            ? { tone: "text-warn", text: `Not run yet. ${tested.detail}` }
+            : { tone: "text-muted", text: "No verification command is set for this task, so nothing was tested." };
+
+  const actions = canEdit && (
+    <div className="flex flex-wrap gap-2" data-testid="task-actions">
+      {task.state === "proposed" && isOwner && (
+        <Button tone="primary" size="sm" onClick={() => move("queued", `${task.id} is ready to work on.`)}>
+          <Check size={13} /> Approve plan
+        </Button>
+      )}
+      {task.state === "queued" && (
+        <>
+          <Button tone="primary" size="sm" onClick={() => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/run`), "Claude Code started in its own worktree.")}>
+            <Play size={13} /> Run with Claude Code
+          </Button>
+          <Button tone="quiet" size="sm" onClick={() => move("running", `You're on ${task.id}.`)}>
+            <UserRound size={13} /> I&apos;ll take it
+          </Button>
+        </>
+      )}
+      {task.state === "running" && !agentTask && (
+        <Button tone="primary" size="sm" onClick={() => move("review_required", "Submitted for review.")}>
+          Submit for review
+        </Button>
+      )}
+      {run?.status === "running" && (
+        <Button tone="danger" size="sm" onClick={() => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/cancel-run`), "Agent stopped.")}>
+          <Square size={12} /> Stop agent
+        </Button>
+      )}
+      {task.state === "review_required" && !agentTask && (
+        <Button tone="quiet" size="sm" onClick={() => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/check`), "Relay ran its checks.")}>
+          <ShieldCheck size={13} /> Run Relay checks
+        </Button>
+      )}
+      {task.state === "review_required" && partners.length > 0 && (
+        <Button tone="quiet" size="sm" onClick={() => act(async () => setIntegration(await api<Integration>("POST", "/integrations/check", { tasks: [task.id, ...partners] })), undefined)}>
+          <GitMerge size={13} /> Check with {partners.join(", ")}
+        </Button>
+      )}
+      {task.state === "review_required" && isOwner && partners.length === 0 && (
+        <Button
+          tone="primary"
+          size="sm"
+          onClick={() => (agentTask ? act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/apply`), "Approved. The agent's changes are now in the shared project.") : move("completed", `${task.id} approved.`))}
+        >
+          <ShieldCheck size={13} /> {agentTask ? "Approve & apply" : "Approve"}
+        </Button>
+      )}
+      {(task.state === "failed" || task.state === "blocked") && isOwner && (
+        <Button tone="quiet" size="sm" onClick={() => move("queued", `${task.id} is back in the queue.`)}>
+          Requeue
+        </Button>
+      )}
+    </div>
+  );
+
+  const row = "grid grid-cols-[92px_1fr] gap-3 py-1.5 text-[12.5px] leading-snug";
   return (
     <div className="space-y-5">
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-[12.5px] text-muted hover:text-ink">
@@ -341,93 +425,71 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
           <span className="font-mono text-[12px] text-muted">{task.id}</span>
           <StatePill state={task.state} />
         </div>
-        <h2 className="mt-1.5 text-[14px] font-medium leading-snug text-ink">{task.objective}</h2>
-        <p className="mt-2 flex items-center gap-1.5 text-[12px] text-muted">
+        <h2 className="mt-1.5 text-[15px] font-medium leading-snug text-ink">{task.objective}</h2>
+        <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-muted">
           {agentTask ? <Bot size={12} /> : <UserRound size={12} />}
           {agentTask ? "Claude Code" : (task.agent ?? task.owner ?? "unassigned")} · updated {timeAgo(task.updatedAt)}
         </p>
       </div>
 
-      <div className="border-y border-rule py-3">
-        <SectionLabel>How far it got</SectionLabel>
-        <Ladder change={change} />
-        {change && change.files.length > 0 && (
-          <div className="mt-3" data-testid="changed-files">
-            <p className="micro mb-1 text-faint">Changed files · open the diff</p>
-            {change.files.map((f) => (
-              <button key={f.path} onClick={() => (onOpenDiff ? onOpenDiff(task.id, f.path) : onOpenFile(f.path))} className="flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left font-mono text-[12px] text-ink-2 hover:bg-hover hover:text-ink">
-                <span className="truncate">{f.path}</span>
-                {!f.inScope && <span className="micro ml-auto text-danger">out of scope</span>}
-              </button>
-            ))}
+      {/* The decision first: what changed, what was tested, what's unresolved, and what approving does. */}
+      {!decided && (
+        <section className="divide-y divide-rule border-y border-rule" data-testid="review-summary" aria-label="Review summary">
+          <div className={row}>
+            <span className="text-muted">Changed</span>
+            {change === null ? (
+              <span className="text-muted">…</span>
+            ) : change.files.length === 0 ? (
+              <span className="text-muted">No file changes recorded yet.</span>
+            ) : (
+              <span data-testid="changed-files">
+                {change.files.map((f) => (
+                  <button key={f.path} title="Open the diff" onClick={() => (onOpenDiff ? onOpenDiff(task.id, f.path) : onOpenFile(f.path))} className="mr-3 inline-flex items-center gap-1 font-mono text-[12px] text-ink-2 hover:text-ink hover:underline">
+                    {f.path}
+                    {!f.inScope && <span className="font-sans text-[11.5px] text-danger">out of scope</span>}
+                  </button>
+                ))}
+              </span>
+            )}
           </div>
-        )}
-      </div>
-
-      {why && visibleGaps(task, why).length > 0 && (
-        <div className="border-l-2 border-danger bg-danger-soft/50 px-3 py-2">
-          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-danger">
-            <CircleAlert size={14} /> Why it can&apos;t be approved yet
-          </p>
-          <ul className="mt-2 space-y-1.5">
-            {visibleGaps(task, why).map((g) => (
-              <li key={g} className="text-[12.5px] leading-snug text-ink-2">
-                {g}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div>
-        <SectionLabel>Scope</SectionLabel>
-        <div className="flex flex-wrap gap-1.5">
-          {task.scope.map((p) => (
-            <button key={p} onClick={() => !p.endsWith("/") && onOpenFile(p)} className="inline-flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-1 font-mono text-[12px] text-ink-2 hover:bg-accent-soft">
-              <FileCode2 size={12} /> {p}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {Object.keys(task.contracts).length > 0 && (
-        <div>
-          <SectionLabel>Contracts</SectionLabel>
-          {Object.entries(task.contracts).map(([c, v]) => {
-            const cur = current(c);
-            const stale = cur !== undefined && cur > v;
-            return (
-              <div key={c} className="flex items-center justify-between rounded-sm px-1 py-1.5 text-[13px]">
-                <span className="font-mono">{c}</span>
-                <span className="flex items-center gap-1.5">
-                  <Pill tone={stale ? "danger" : "ok"}>built on v{v}</Pill>
-                  {stale && <Pill tone="neutral">current v{cur}</Pill>}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {run && (
-        <div className="border-y border-rule py-3">
-          <SectionLabel right={<Pill tone={run.status === "running" ? "accent" : run.status === "failed" ? "danger" : "neutral"}>{run.status}</Pill>}>Agent run</SectionLabel>
-          {run.staleInputs.map((s) => (
-            <p key={s.path} className="mb-2 rounded-sm bg-attention-soft px-2.5 py-1.5 text-[12px] text-ink-2">
-              <strong className="text-attention">{s.by}</strong> edited <span className="font-mono">{s.path}</span> after the agent started. Its copy is older.
-            </p>
-          ))}
-          <ol className="max-h-56 space-y-1 overflow-y-auto font-mono text-[11.5px]">
-            {run.activity.filter((a) => a.kind !== "text").map((a, i) => (
-              <li key={i} className={`flex gap-2 ${a.kind === "denied" ? "text-danger" : a.kind === "error" ? "text-danger" : "text-ink-2"}`}>
-                <span className="w-14 shrink-0 text-faint">{new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                <span className="truncate">{a.kind === "tool" ? `${a.tool} ${a.target ?? ""}` : (a.detail ?? a.kind)}</span>
-              </li>
-            ))}
-          </ol>
-          {run.changedFiles.length > 0 && <p className="mt-2 text-[12px] text-muted">Changed: {run.changedFiles.join(", ")}</p>}
-          {run.costUsd !== null && <p className="mt-1 text-[11.5px] text-faint">Reported cost ${run.costUsd.toFixed(2)}</p>}
-        </div>
+          <div className={row}>
+            <span className="text-muted">Tests</span>
+            <span className={testLine.tone} data-testid="review-tests">
+              {testLine.text}
+            </span>
+          </div>
+          <div className={row}>
+            <span className="text-muted">Depends on</span>
+            {gaps.length > 0 ? (
+              <ul className={`space-y-1 ${task.state === "review_required" ? "text-danger" : "text-warn"}`} data-testid="review-blockers">
+                {gaps.map((g) => (
+                  <li key={g}>{g}</li>
+                ))}
+              </ul>
+            ) : !Object.keys(task.contracts).length ? (
+              <span className="text-muted">No shared contracts or partner tasks.</span>
+            ) : (
+              <span className={contractStage?.state === "done" ? "text-ok" : "text-ink-2"}>
+                {Object.entries(task.contracts)
+                  .map(([c, v]) => `${c} v${v}${current(c) !== undefined && current(c)! > v ? ` (v${current(c)} is accepted)` : ""}`)
+                  .join(", ")}
+                {contractStage && contractStage.state !== "done" && contractStage.state !== "n/a" ? `. ${contractStage.detail}` : ""}
+              </span>
+            )}
+          </div>
+          <div className={row}>
+            <span className="text-muted">Approval</span>
+            <span className="text-ink-2">{task.state === "review_required" || task.state === "proposed" ? (isOwner ? "Needed from you (an owner)." : "Needed from a project owner.") : "Not needed yet; the work isn't ready for review."}</span>
+          </div>
+          {(task.state === "review_required" || task.state === "proposed") && (
+            <div className={row}>
+              <span className="text-muted">If approved</span>
+              <span className="text-ink-2" data-testid="review-consequence">
+                {consequence}
+              </span>
+            </div>
+          )}
+        </section>
       )}
 
       {integration && (
@@ -446,80 +508,71 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
             ))}
           </ul>
           {integration.status === "passed" && isOwner && (
-            <Button
-              tone="primary"
-              size="sm"
-              className="mt-3"
-              onClick={() => act(() => api("POST", `/integrations/${integration.id}/approve`).then(() => setIntegration(null)), `Approved ${integration.tasks.join(" + ")} together.`)}
-            >
+            <Button tone="primary" size="sm" className="mt-3" onClick={() => act(() => api("POST", `/integrations/${integration.id}/approve`).then(() => setIntegration(null)), `Approved ${integration.tasks.join(" + ")} together.`)}>
               <ShieldCheck size={13} /> Approve all {integration.tasks.length}
             </Button>
           )}
         </div>
       )}
 
-      {canEdit && (
-        <div className="flex flex-wrap gap-2 border-t border-rule pt-4">
-          {task.state === "proposed" && isOwner && (
-            <Button tone="primary" size="sm" onClick={() => move("queued", `${task.id} is ready to work on.`)}>
-              <Check size={13} /> Approve plan
-            </Button>
-          )}
-          {task.state === "queued" && (
-            <>
-              <Button tone="primary" size="sm" onClick={() => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/run`), "Claude Code started in its own worktree.")}>
-                <Play size={13} /> Run with Claude Code
-              </Button>
-              <Button tone="quiet" size="sm" onClick={() => move("running", `You're on ${task.id}.`)}>
-                <UserRound size={13} /> I&apos;ll take it
-              </Button>
-            </>
-          )}
-          {task.state === "running" && !agentTask && (
-            <Button tone="primary" size="sm" onClick={() => move("review_required", "Submitted for review.")}>
-              Submit for review
-            </Button>
-          )}
-          {run?.status === "running" && (
-            <Button tone="danger" size="sm" onClick={() => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/cancel-run`), "Agent stopped.")}>
-              <Square size={12} /> Stop agent
-            </Button>
-          )}
-          {task.state === "review_required" && !agentTask && (
-            <Button tone="quiet" size="sm" onClick={() => act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/check`), "Relay ran its checks.")}>
-              <ShieldCheck size={13} /> Run Relay checks
-            </Button>
-          )}
-          {task.state === "review_required" && partners.length > 0 && (
-            <Button
-              tone="quiet"
-              size="sm"
-              onClick={() =>
-                act(async () => setIntegration(await api<Integration>("POST", "/integrations/check", { tasks: [task.id, ...partners] })), undefined)
-              }
-            >
-              <GitMerge size={13} /> Check with {partners.join(", ")}
-            </Button>
-          )}
-          {task.state === "review_required" && isOwner && partners.length === 0 && (
-            <Button
-              tone="primary"
-              size="sm"
-              onClick={() =>
-                agentTask
-                  ? act(() => api("POST", `/tasks/${encodeURIComponent(task.id)}/apply`), "Approved. The agent's changes are now in the shared project.")
-                  : move("completed", `${task.id} approved.`)
-              }
-            >
-              <ShieldCheck size={13} /> {agentTask ? "Approve & apply" : "Approve"}
-            </Button>
-          )}
-          {(task.state === "failed" || task.state === "blocked") && isOwner && (
-            <Button tone="quiet" size="sm" onClick={() => move("queued", `${task.id} is back in the queue.`)}>
-              Requeue
-            </Button>
-          )}
+      {actions}
+
+      {/* Evidence, on demand. */}
+      <details className="group" open={decided}>
+        <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />Evidence · how far it got</summary>
+        <div className="mt-3">
+          <Ladder change={change} />
         </div>
+      </details>
+
+      <details>
+        <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />Scope{Object.keys(task.contracts).length ? " and contracts" : ""}</summary>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {task.scope.map((p) => (
+            <button key={p} onClick={() => !p.endsWith("/") && onOpenFile(p)} className="inline-flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-1 font-mono text-[12px] text-ink-2 hover:bg-hover">
+              <FileCode2 size={12} /> {p}
+            </button>
+          ))}
+        </div>
+        {Object.entries(task.contracts).map(([c, v]) => {
+          const cur = current(c);
+          const stale = cur !== undefined && cur > v;
+          return (
+            <div key={c} className="mt-2 flex items-center justify-between px-1 text-[13px]">
+              <span className="font-mono">{c}</span>
+              <span className="flex items-center gap-1.5">
+                <Pill tone={stale ? "danger" : "ok"}>built on v{v}</Pill>
+                {stale && <Pill tone="neutral">current v{cur}</Pill>}
+              </span>
+            </div>
+          );
+        })}
+      </details>
+
+      {run && (
+        <details open={run.status === "failed"} data-testid="agent-log">
+          <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />
+            Agent log · {run.activity.filter((a) => a.kind !== "text").length} steps{run.status === "failed" ? " · failed" : ""}
+          </summary>
+          <div className="mt-2">
+            {run.staleInputs.map((s) => (
+              <p key={s.path} className="mb-2 rounded-sm bg-attention-soft px-2.5 py-1.5 text-[12px] text-ink-2">
+                <strong className="text-attention">{s.by}</strong> edited <span className="font-mono">{s.path}</span> after the agent started. Its copy is older.
+              </p>
+            ))}
+            <ol className="max-h-64 space-y-1 overflow-y-auto font-mono text-[11.5px]">
+              {run.activity
+                .filter((a) => a.kind !== "text")
+                .map((a, i) => (
+                  <li key={i} className={`flex gap-2 ${a.kind === "denied" || a.kind === "error" ? "text-danger" : "text-ink-2"}`}>
+                    <span className="w-14 shrink-0 text-faint">{new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                    <span className="min-w-0 break-words">{a.kind === "tool" ? `${a.tool} ${a.target ?? ""}` : (a.detail ?? a.kind)}</span>
+                  </li>
+                ))}
+            </ol>
+            {run.costUsd !== null && <p className="mt-1 text-[11.5px] text-faint">Reported cost ${run.costUsd.toFixed(2)}</p>}
+          </div>
+        </details>
       )}
     </div>
   );
@@ -539,7 +592,7 @@ function Contracts({ state, act }: { state: ProjectState; act: Act }) {
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between px-1 pt-1">
-        <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">Contracts</h2>
+        <h2 className="micro text-muted">Contracts</h2>
         {state.me.role !== "viewer" && (
           <Button tone="quiet" size="sm" onClick={() => setProposing("")}>
             <Plus size={13} /> Contract

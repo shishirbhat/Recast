@@ -80,7 +80,7 @@ export function FileTree({
           <div key={n.path}>
             <button
               onClick={() => setOpen((s) => (s.has(n.path) ? (s.delete(n.path), new Set(s)) : new Set(s.add(n.path))))}
-              className="group flex h-[22px] w-full items-center gap-1.5 pr-2 text-[13px] text-ink-2 hover:bg-hover"
+              className="group flex h-[24px] w-full items-center gap-1.5 pr-2 text-[13px] text-ink-2 hover:bg-hover"
               style={{ paddingLeft: 8 + depth * 14 }}
             >
               <ChevronRight size={13} className={`text-faint transition-transform ${isOpen ? "rotate-90" : ""}`} />
@@ -98,10 +98,10 @@ export function FileTree({
           key={n.path}
           onClick={() => onOpen(n.path)}
           data-testid={`file-${n.path}`}
-          className={`group flex h-[22px] w-full items-center gap-1.5 pr-2 text-[13px] ${isActive ? "bg-accent-soft text-ink outline outline-1 -outline-offset-1 outline-accent-line" : "text-ink-2 hover:bg-hover"}`}
+          className={`group flex h-[24px] w-full items-center gap-1.5 pr-2 text-[13px] ${isActive ? "bg-hover text-ink" : "text-ink-2 hover:bg-hover/60"}`}
           style={{ paddingLeft: 22 + depth * 14 }}
         >
-          {CODE.test(n.name) ? <FileCode2 size={14} className={isActive ? "text-accent" : "text-faint"} /> : <FileText size={14} className={isActive ? "text-accent" : "text-faint"} />}
+          {CODE.test(n.name) ? <FileCode2 size={14} className={isActive ? "text-ink-2" : "text-faint"} /> : <FileText size={14} className={isActive ? "text-ink-2" : "text-faint"} />}
           <span className={`truncate ${gitTone(gitStatus?.get(n.path))}`}>{n.name}</span>
           <span className="ml-auto flex items-center gap-0.5">
             {here.slice(0, 3).map((id) => (
@@ -117,7 +117,7 @@ export function FileTree({
     <div className="flex h-full flex-col">
       <div className="px-2">
         <div className="flex h-6.5 items-center justify-between pl-2 pr-0.5">
-          <span className="truncate text-[11px] font-bold uppercase tracking-[0.04em] text-ink-2">{title ?? "Files"}</span>
+          <span className="micro truncate text-ink-2">{title ?? "Files"}</span>
           {canEdit && (
             <IconButton label="New file" onClick={() => setCreating(true)} className="size-5.5 rounded-md">
               <FilePlus2 size={13} />

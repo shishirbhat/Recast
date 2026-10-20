@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, CircleAlert, FileCode2, GitBranch, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, FileCode2, GitBranch, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Member, ProjectState, RelayEvent } from "@/lib/types";
 import { describe } from "../Coordination";
@@ -12,8 +12,8 @@ import { ImpactPanel } from "./Impact";
 
 export function ViewHeader({ title, actions }: { title: string; actions?: React.ReactNode }) {
   return (
-    <div className="flex h-[35px] shrink-0 items-center justify-between pl-5 pr-2">
-      <span className="micro text-muted">{title}</span>
+    <div className="flex h-[38px] shrink-0 items-center justify-between pl-4 pr-2">
+      <span className="text-[13px] font-semibold text-ink">{title}</span>
       <span className="flex items-center">{actions}</span>
     </div>
   );
@@ -22,11 +22,11 @@ export function ViewHeader({ title, actions }: { title: string; actions?: React.
 export function Section({ title, count, children, defaultOpen = true }: { title: string; count?: number; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-t border-rule first:border-t-0">
-      <button onClick={() => setOpen((o) => !o)} className="micro flex h-6.5 w-full items-center gap-1 px-2 text-ink-2 hover:bg-hover">
+    <div className="pt-1 first:pt-0">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="micro flex h-7 w-full items-center gap-1 px-2 text-muted hover:text-ink">
         <span className={`inline-block w-3 text-center text-faint transition-transform ${open ? "rotate-90" : ""}`}>›</span>
         {title}
-        {count !== undefined && count > 0 && <span className="tnum ml-auto mr-1 rounded-sm border border-rule px-1 text-[10px] text-muted">{count}</span>}
+        {count !== undefined && count > 0 && <span className="tnum ml-auto mr-2 text-[11.5px] font-normal text-faint">{count}</span>}
       </button>
       {open && <div className="pb-1.5">{children}</div>}
     </div>
@@ -331,23 +331,21 @@ export function problemsOf(state: ProjectState): Problem[] {
   return out;
 }
 
-export type PanelTab = "terminal" | "problems" | "tests" | "impact" | "output" | "agents" | "activity";
+export type PanelTab = "terminal" | "problems" | "tests" | "impact" | "output" | "activity";
 
 export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output, tests, testFailures = 0, syntax = [] }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode; tests: React.ReactNode; testFailures?: number; syntax?: { path: string; line: number; col: number; message: string }[] }) {
   const problems = [...syntax.map((p) => ({ severity: "error" as const, text: `${p.path}:${p.line}:${p.col} ${p.message}`, path: p.path, line: p.line, taskId: undefined as string | undefined })), ...problemsOf(state)];
-  const runs = state.tasks.flatMap((t) => t.runs.map((r) => ({ ...r, taskId: t.id }))).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const tabs: [PanelTab, string, number?][] = [
     ["terminal", "Terminal"],
     ["problems", "Problems", problems.length],
     ["tests", "Tests", testFailures],
     ["impact", "Impact"],
     ["output", "Output"],
-    ["agents", "Agents", runs.filter((r) => r.status === "running").length],
     ["activity", "Activity"],
   ];
   return (
     <div className="flex h-full flex-col bg-editor">
-      <div role="tablist" aria-label="Panel" className="flex h-[35px] shrink-0 items-center gap-5 border-b border-rule pl-4 pr-2">
+      <div role="tablist" aria-label="Panel" className="flex h-[34px] shrink-0 items-center gap-5 pl-4 pr-2">
         {tabs.map(([id, label, n]) => (
           <button key={id} role="tab" aria-selected={tab === id} data-testid={`panel-tab-${id}`} onClick={() => setTab(id)} className={`micro relative flex h-full items-center gap-1.5 transition-colors ${tab === id ? "text-ink" : "text-faint hover:text-ink-2"}`}>
             {label}
@@ -371,7 +369,7 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
       <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" || tab === "impact" || tab === "tests" ? "hidden" : ""}`}>
         {tab === "problems" &&
           (problems.length === 0 ? (
-            <p className="px-4 py-2 font-sans text-[13px] text-muted">No coordination problems. Contracts, tasks and shared files agree.</p>
+            <p className="px-4 py-2 font-sans text-[13px] text-muted">No problems. The open file parses, and contracts, tasks and shared files agree.</p>
           ) : (
             problems.map((p, i) => (
               <button key={i} onClick={() => (p.taskId ? onTask(p.taskId) : p.path && onOpen(p.path, "line" in p ? (p.line as number) : undefined))} className="flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-hover">
@@ -379,27 +377,6 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
                 <span className="font-sans text-[13px] text-ink-2">{p.text}</span>
                 {p.taskId && <span className="ml-auto text-[11.5px] text-faint">{p.taskId}</span>}
               </button>
-            ))
-          ))}
-        {tab === "agents" &&
-          (runs.length === 0 ? (
-            <p className="px-4 py-2 font-sans text-[13px] text-muted">No agent runs yet. Start one from a ready task in the Relay side bar.</p>
-          ) : (
-            runs.map((r) => (
-              <div key={r.id} className="border-b border-rule/70 px-4 py-2 last:border-0">
-                <button onClick={() => onTask(r.taskId)} className="flex items-center gap-2 font-sans text-[13px] hover:underline">
-                  <Bot size={13} className="text-accent" /> <strong>{r.taskId}</strong> <span className="text-muted">· Claude Code · {r.status}</span>
-                  {r.costUsd !== null && <span className="text-faint">· ${r.costUsd.toFixed(2)}</span>}
-                </button>
-                <ol className="mt-1 space-y-px">
-                  {r.activity.filter((a) => a.kind !== "text").slice(-12).map((a, i) => (
-                    <li key={i} className={`flex gap-3 ${a.kind === "denied" || a.kind === "error" ? "text-danger" : "text-ink-2"}`}>
-                      <span className="w-16 shrink-0 text-faint">{new Date(a.at).toLocaleTimeString([], { hour12: false })}</span>
-                      <span className="truncate">{a.kind === "tool" ? `${a.tool} ${a.target ?? ""}` : (a.detail ?? a.kind)}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
             ))
           ))}
         {tab === "activity" &&

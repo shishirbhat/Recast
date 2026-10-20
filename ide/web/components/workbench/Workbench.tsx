@@ -29,6 +29,7 @@ import { CommandPalette } from "./CommandPalette";
 import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
+import { AttentionButton, attentionOf } from "./Attention";
 import { TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { BottomPanel, Section, SearchView, SourceControlView, ViewHeader, problemsOf } from "./Views";
 import type { PanelTab } from "./Views";
@@ -50,8 +51,8 @@ interface Layout {
   panelH: number;
   rightTab: RightTab;
 }
-const DEFAULT_LAYOUT: Layout = { view: "explorer", sidebar: true, secondary: true, panel: false, sidebarW: 260, secondaryW: 380, panelH: 240, rightTab: "agent" };
-const LAYOUT_KEY = "relay.layout.v2";
+const DEFAULT_LAYOUT: Layout = { view: "explorer", sidebar: true, secondary: false, panel: false, sidebarW: 260, secondaryW: 380, panelH: 240, rightTab: "agent" };
+const LAYOUT_KEY = "relay.layout.v3";
 const ACTIVITY_W = 48;
 const SIDEBAR = { min: 180, max: 600 };
 const SECONDARY = { min: 300, max: 720 };
@@ -83,7 +84,8 @@ function useWindowSize() {
  * for the current window so the editor never drops below a usable width. Preferences are never overwritten by it.
  */
 function allocate(l: Layout, w: number, h: number, lastOpened: "sidebar" | "secondary") {
-  const minEditor = w < 900 ? 300 : 420;
+  // The editor keeps a comfortable width; side bars give way first.
+  const minEditor = w < 900 ? 300 : w < 1280 ? 480 : 640;
   const avail = w - ACTIVITY_W;
   let sidebar = l.sidebar;
   let secondary = l.secondary;
@@ -180,8 +182,9 @@ const LANG: Record<string, string> = { js: "JavaScript", mjs: "JavaScript", cjs:
 interface Note {
   id: number;
   msg: string;
-  tone: "ok" | "danger";
+  tone: "ok" | "danger" | "attention";
   at: string;
+  action?: { label: string; run: () => void };
 }
 
 /* ===================================================================================================
@@ -193,7 +196,7 @@ const MENUS: [string, MenuEntry[]][] = [
   ["File", ["file.newFile", "file.save", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
   ["Edit", ["edit.undo", "edit.redo", "-", "edit.find", "search.inFiles"]],
   ["Selection", ["selection.all", "selection.line", "selection.expand", "selection.nextOccurrence"]],
-  ["View", ["palette.commands", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.extensions", "view.community", "view.relay", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "panel.problems", "panel.impact", "panel.output", "panel.agents", "-", "theme.toggle"]],
+  ["View", ["palette.commands", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.extensions", "view.community", "view.relay", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "panel.problems", "panel.impact", "panel.output", "panel.agents", "attention.show", "-", "theme.toggle"]],
   ["Go", ["palette.files", "go.line", "-", "go.nextEditor", "go.previousEditor"]],
   ["Run", ["view.run", "run.debug", "-", "relay.runActiveTask"]],
   ["Terminal", ["terminal.new", "terminal.toggle", "-", "view.run"]],
@@ -368,11 +371,13 @@ export function Workbench() {
   }, [layout]);
   const set = useCallback((patch: Partial<Layout>) => setLayout((l) => ({ ...l, ...patch })), []);
 
-  const notify = useCallback((msg: string, tone: "ok" | "danger" = "ok") => {
-    const n = { id: Date.now() + Math.random(), msg, tone, at: new Date().toISOString() };
+  // Toasts never pile up over the code: at most three, routine ones fade fast, problems stay longer, and every one can be
+  // dismissed. The full message stays in the notification list (capped at 50).
+  const notify = useCallback((msg: string, tone: Note["tone"] = "ok", action?: Note["action"]) => {
+    const n: Note = { id: Date.now() + Math.random(), msg, tone, at: new Date().toISOString(), action };
     setNotes((x) => [n, ...x].slice(0, 50));
-    setToasts((t) => [...t, n]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), tone === "danger" ? 7000 : 3800);
+    setToasts((t) => [...t, n].slice(-3));
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), tone === "ok" ? 3500 : 12000);
   }, []);
 
   const me = load.kind === "ready" ? load.state.me : null;
@@ -581,6 +586,39 @@ export function Workbench() {
   const activeTask: Task | undefined = state?.tasks.find((t) => t.id === selectedTask);
 
   /* ---------------- the command registry ---------------- */
+  /* ---------------- what needs a person, and what this file belongs to ---------------- */
+  const attention = useMemo(
+    () =>
+      state
+        ? attentionOf(state, testRun, {
+            openTask: showTask,
+            openContracts: () => (showRight("contracts"), setSelectedTask(null)),
+            openFile: (p) => open(p),
+            showTests: () => openPanel("tests"),
+          })
+        : [],
+    [state, testRun, showTask, showRight, open, openPanel],
+  );
+  // A new situation that needs a person raises one quiet notification; routine activity never does. Items already
+  // present when the workbench opened are only listed, not announced.
+  const announced = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!state) return;
+    const keys = attention.filter((a) => a.level !== "info").map((a) => a.key);
+    if (announced.current === null) return void (announced.current = new Set(keys));
+    for (const a of attention) {
+      if (a.level === "info" || announced.current.has(a.key)) continue;
+      announced.current.add(a.key);
+      notify(a.title, a.level === "block" ? "danger" : "attention", a.action);
+    }
+  }, [attention, state, notify]);
+  const fileTask = useMemo(() => {
+    if (!state || !activePath) return null;
+    const live = state.tasks.filter((t) => t.state !== "completed" && t.state !== "cancelled" && t.scope.some((sc) => sc === activePath || (sc.endsWith("/") && activePath.startsWith(sc))));
+    const rank = (t: Task) => (t.owner === state.me.id ? 0 : 2) + (t.state === "running" || t.state === "review_required" ? 0 : 1);
+    return live.sort((a, b) => rank(a) - rank(b))[0] ?? null;
+  }, [state, activePath]);
+
   const commands: Command[] = useMemo(() => {
     if (!state || !me) return [];
     const canEdit = me.role !== "viewer";
@@ -614,7 +652,8 @@ export function Workbench() {
       { id: "view.run", category: "View", title: "Run", keywords: ["scripts", "npm"], keybinding: "Mod+Shift+D", run: () => (set({ view: "run", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.extensions", category: "View", title: "Extensions", keybinding: "Mod+Shift+X", run: () => (set({ view: "extensions", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.community", category: "View", title: "People", keywords: ["people", "members", "invite"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
-      { id: "view.relay", category: "View", title: "Relay Tasks", keywords: ["coordination", "tasks"], run: () => (set({ view: "relay", sidebar: true }), setLastOpened("sidebar")) },
+      { id: "view.relay", category: "View", title: "Relay Tasks", keywords: ["coordination", "tasks"], run: () => (showRight("tasks"), setSelectedTask(null)) },
+      { id: "attention.show", category: "Relay", title: "What Needs Me", keywords: ["blocked", "review", "attention", "inbox", "next"], keybinding: "Mod+Shift+A", run: () => window.dispatchEvent(new Event("relay:attention")) },
       { id: "view.settings", category: "Preferences", title: "Settings and Keyboard Shortcuts", keywords: ["preferences", "keybindings"], keybinding: "Mod+,", run: () => (set({ view: "settings", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.account", category: "Account", title: "Account", run: () => (set({ view: "account", sidebar: true }), setLastOpened("sidebar")) },
       { id: "layout.toggleSidebar", category: "View", title: "Toggle Primary Side Bar", keybinding: "Mod+B", run: () => (setLayout((l) => ({ ...l, sidebar: !l.sidebar })), setLastOpened("sidebar")) },
@@ -627,7 +666,7 @@ export function Workbench() {
       { id: "tests.rerunFailed", category: "Test", title: "Rerun Failed Tests", when: () => ownerOnly ?? (failedNames(testRun).length ? null : "No failed tests in the latest run"), run: () => (openPanel("tests"), void runTests(rerunFailed(testRun), notify)) },
       { id: "tests.stop", category: "Test", title: "Stop Tests", when: () => ownerOnly ?? (testRun?.status === "running" ? null : "No tests are running"), run: () => void stopTests() },
       { id: "panel.output", category: "View", title: "Output", keybinding: "Mod+Shift+U", run: () => openPanel("output") },
-      { id: "panel.agents", category: "View", title: "Agent Activity", run: () => openPanel("agents") },
+      { id: "panel.agents", category: "View", title: "Agents", keywords: ["agent activity", "runs"], run: () => showRight("agent") },
       { id: "panel.impact", category: "Relay", title: "Show Change Impact", keywords: ["dependency", "consumers", "affected tests", "blast radius", "map"], run: () => openPanel("impact") },
       { id: "panel.activity", category: "View", title: "Project Activity", run: () => openPanel("activity") },
       { id: "terminal.toggle", category: "Terminal", title: "Toggle Terminal", keybinding: "Ctrl+`", run: () => (layout.panel && panelTab === "terminal" ? set({ panel: false }) : openPanel("terminal")) },
@@ -722,7 +761,6 @@ export function Workbench() {
     { id: "run", icon: <Play size={20} strokeWidth={1.5} />, label: "Run", cmd: "view.run" },
     { id: "extensions", icon: <Blocks size={20} strokeWidth={1.5} />, label: "Extensions", cmd: "view.extensions" },
     { id: "community", icon: <Users size={20} strokeWidth={1.5} />, label: "People", badge: online.size > 1 ? online.size : undefined, cmd: "view.community" },
-    { id: "relay", icon: <Bot size={20} strokeWidth={1.5} />, label: "Relay", badge: needsPerson || undefined, cmd: "view.relay" },
   ];
   const kb = (id: string) => commands.find((c) => c.id === id)?.keybinding;
   const tip = (label: string, id: string) => (kb(id) ? `${label} (${keyLabel(kb(id)!)})` : label);
@@ -765,12 +803,8 @@ export function Workbench() {
               {b.icon}
             </button>
           ))}
-          <button aria-label={tip("Settings", "view.settings")} title={tip("Settings", "view.settings")} onClick={() => showView("settings")} className="grid size-[26px] place-items-center rounded-sm text-chrome-ink hover:bg-hover hover:text-ink">
-            <Settings size={15} />
-          </button>
-          <button aria-label={`Account: ${me!.name}`} title={`Account: ${me!.name}`} onClick={() => showView("account")} className="ml-0.5 grid size-[26px] place-items-center rounded-sm hover:bg-hover">
-            <Avatar name={me!.name} color={me!.color} size={20} />
-          </button>
+          <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
+          <AttentionButton items={attention} />
         </div>
       </header>
 
@@ -792,10 +826,28 @@ export function Workbench() {
               >
                 {on && <motion.span layoutId="activity-indicator" transition={{ type: "spring", stiffness: 520, damping: 40 }} className="absolute inset-y-2.5 left-0 w-[2px] bg-accent" />}
                 {a.icon}
-                {a.badge !== undefined && <span className="tnum absolute bottom-1.5 right-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-sm bg-accent px-[3px] font-mono text-[9.5px] font-semibold text-accent-fg">{a.badge}</span>}
+                {a.badge !== undefined && <span className="tnum absolute bottom-1.5 right-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-sunken px-[3px] text-[10px] font-semibold text-ink-2 ring-1 ring-rule-strong">{a.badge}</span>}
               </button>
             );
           })}
+          {(() => {
+            const on = fit.secondary && layout.rightTab !== "agent";
+            return (
+              <button
+                role="tab"
+                aria-selected={on}
+                aria-label="Relay tasks"
+                title={tip("Relay tasks, contracts and records", "view.relay")}
+                data-testid="activity-relay"
+                onClick={() => (on ? set({ secondary: false }) : (showRight("tasks"), setSelectedTask(null)))}
+                className={`relative grid h-11 w-12 place-items-center transition-colors ${on ? "text-ink" : "text-faint hover:text-ink-2"}`}
+              >
+                {on && <span className="absolute inset-y-2.5 left-0 w-[2px] bg-accent" />}
+                <Bot size={20} strokeWidth={1.5} />
+                {needsPerson > 0 && <span className="tnum absolute bottom-1.5 right-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-sunken px-[3px] text-[10px] font-semibold text-ink-2 ring-1 ring-rule-strong">{needsPerson}</span>}
+              </button>
+            );
+          })()}
           <div className="mt-auto flex flex-col items-center pb-1">
             {[
               { id: "account" as View, icon: <CircleUserRound size={20} strokeWidth={1.5} />, label: "Accounts", cmd: "view.account" },
@@ -819,21 +871,7 @@ export function Workbench() {
               {layout.view === "explorer" && (
                 <div className="flex h-full min-h-0 flex-col">
                   <ViewHeader title="Explorer" />
-                  {tabs.length > 0 && (
-                    <Section title="Open Editors" count={tabs.length} defaultOpen={false}>
-                      {tabs.map((t) => (
-                        <div key={t} className={`group flex h-[22px] items-center gap-1.5 pl-5 pr-2 text-[13px] ${t === active ? "bg-hover text-ink" : "text-ink-2 hover:bg-hover"}`}>
-                          <button onClick={() => open(t)} className="min-w-0 truncate text-left">
-                            {t.split("/").pop()} <span className="text-[11.5px] text-faint">{t.split("/").slice(0, -1).join("/")}</span>
-                          </button>
-                          <button aria-label={`Close ${t}`} onClick={() => closeTab(t)} className="ml-auto text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
-                            <X size={12} />
-                          </button>
-                        </div>
-                      ))}
-                    </Section>
-                  )}
-                  <div className="min-h-0 flex-1 border-t border-rule">
+                  <div className="min-h-0 flex-1">
                     <FileTree
                       title={s.project.name}
                       files={files}
@@ -858,7 +896,6 @@ export function Workbench() {
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
               {layout.view === "extensions" && <ExtensionsView />}
               {layout.view === "community" && <PeopleView me={me!} members={s.members} presence={feed} tick={events.length} following={following} onOpen={open} onJump={jumpTo} onFollow={setFollowing} onInvite={invite} notify={notify} />}
-              {layout.view === "relay" && <RelayView state={s} onTask={showTask} onNewTask={() => execute(commands.find((c) => c.id === "relay.newTask")!)} />}
               {layout.view === "account" && <AccountView me={me!} onSignOut={signOut} />}
               {layout.view === "settings" && <SettingsView theme={theme} setTheme={setTheme} commands={commands} terminal={termCaps} onResetLayout={() => setLayout(DEFAULT_LAYOUT)} prefs={prefs} setPrefs={setPrefs} showAuthors={showAuthors} setShowAuthors={setShowAuthors} />}
             </aside>
@@ -897,7 +934,7 @@ export function Workbench() {
               <DiffView spec={activeDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
             ) : session ? (
               <>
-                <div className="flex h-[24px] shrink-0 items-center justify-between px-4 text-[12px] text-muted">
+                <div className="flex h-[28px] shrink-0 items-center justify-between gap-4 px-4 text-[12.5px] text-muted">
                   <nav aria-label="Breadcrumbs" className="min-w-0 truncate">
                     {active!.split("/").map((seg, i, all) => (
                       <span key={i}>
@@ -906,7 +943,14 @@ export function Workbench() {
                       </span>
                     ))}
                   </nav>
-                  <span className="flex shrink-0 items-center gap-1.5">
+                  <span className="flex shrink-0 items-center gap-3">
+                    {fileTask && (
+                      <button onClick={() => showTask(fileTask.id)} title={`This file is in ${fileTask.id}'s scope: ${fileTask.objective}`} data-testid="file-task" className="flex max-w-[360px] items-center gap-1.5 rounded-sm px-1.5 py-px hover:bg-hover">
+                        <span className="font-mono text-[11.5px] text-muted">{fileTask.id}</span>
+                        <span className="truncate text-ink-2">{fileTask.objective}</span>
+                        <StatePill state={fileTask.state} />
+                      </button>
+                    )}
                     {peers.map((p) => (
                       <span key={p.clientId} className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: p.color }}>
                         <span className="size-1.5 rounded-full" style={{ background: p.color }} /> {p.name}
@@ -950,11 +994,11 @@ export function Workbench() {
           <>
             <Sash dir="x" label="Secondary side bar width" value={fit.rw} min={SECONDARY.min} max={Math.min(SECONDARY.max, win.w - ACTIVITY_W - 300)} onChange={(v) => set({ secondaryW: v })} />
             <aside aria-label="Secondary side bar" style={{ width: fit.rw }} className="flex shrink-0 flex-col overflow-hidden border-l border-rule bg-sidebar" data-testid="secondary-sidebar">
-              <div className="flex h-[35px] shrink-0 items-center gap-4 border-b border-rule px-3" role="tablist" aria-label="Relay">
+              <div className="flex h-[38px] shrink-0 items-center gap-4 border-b border-rule px-3" role="tablist" aria-label="Relay">
                 {(["agent", "tasks", "contracts", "records"] as RightTab[]).map((t) => (
                   <button key={t} role="tab" aria-selected={layout.rightTab === t} data-testid={`right-tab-${t}`} onClick={() => (set({ rightTab: t }), t !== "agent" && setSelectedTask(null))} className={`micro relative h-full transition-colors ${layout.rightTab === t ? "text-ink" : "text-faint hover:text-ink-2"}`}>
-                    {t}
-                    {t === "tasks" && needsPerson > 0 && <span className="tnum ml-1.5 rounded-sm bg-accent px-1 py-px text-[9.5px] text-accent-fg">{needsPerson}</span>}
+                    {{ agent: "Agents", tasks: "Tasks", contracts: "Contracts", records: "Records" }[t]}
+                    {t === "tasks" && needsPerson > 0 && <span className="tnum ml-1.5 text-[11.5px] font-normal text-muted">{needsPerson}</span>}
                     {layout.rightTab === t && <motion.span layoutId="right-tab-indicator" transition={{ type: "spring", stiffness: 520, damping: 42 }} className="absolute inset-x-0 bottom-0 h-[2px] bg-accent" />}
                   </button>
                 ))}
@@ -977,20 +1021,26 @@ export function Workbench() {
       </div>
 
       {/* ===================== Status bar ===================== */}
-      <footer style={{ height: STATUS_H }} className="tnum flex shrink-0 select-none items-stretch border-t border-rule bg-status-bg font-mono text-[11px] text-status-fg" aria-label="Status bar">
-        <span title={live ? "Connected to the Relay server" : "Reconnecting to the Relay server"} className={`flex items-center gap-1.5 px-2.5 font-semibold tracking-[0.06em] ${live ? "bg-remote text-remote-fg" : "bg-warn-soft text-warn"}`}>
-          <span className={`size-1.5 rounded-full ${live ? "live-dot bg-remote-fg" : "bg-warn"}`} />
-          {live ? "RELAY" : "RECONNECTING"}
+      <footer style={{ height: STATUS_H }} className="tnum flex shrink-0 select-none items-stretch border-t border-rule bg-status-bg text-[11.5px] text-status-fg" aria-label="Status bar">
+        <span title={live ? "Connected to the Relay server" : "Reconnecting to the Relay server. Edits are kept and sent when the connection returns."} data-testid="connection" className={`flex items-center gap-1.5 px-3 ${live ? "" : "bg-warn-soft text-warn"}`}>
+          <span className={`size-1.5 rounded-full ${live ? "bg-ok" : "bg-warn"}`} />
+          {live ? "Connected" : "Reconnecting…"}
         </span>
         <StatusItem title="Branch / HEAD" onClick={() => showView("scm")}>
           <GitBranch size={12} /> {s.project.head ?? "–"}
           {git.size > 0 && <span>*</span>}
         </StatusItem>
         <StatusItem title="Problems" onClick={() => openPanel("problems")} testId="status-problems">
-          <CircleAlert size={12} /> {problems.filter((p) => p.severity === "error").length + (syntax?.length ?? 0)} <TriangleAlert size={12} className="ml-1" /> {problems.filter((p) => p.severity === "warning").length}
+          {problems.length + (syntax?.length ?? 0) === 0 ? (
+            "No problems"
+          ) : (
+            <>
+              <CircleAlert size={12} /> {problems.filter((p) => p.severity === "error").length + (syntax?.length ?? 0)} <TriangleAlert size={12} className="ml-1" /> {problems.filter((p) => p.severity === "warning").length}
+            </>
+          )}
         </StatusItem>
         {runningAgents > 0 && (
-          <StatusItem title="Agents working" onClick={() => openPanel("agents")}>
+          <StatusItem title="Agents working" onClick={() => showRight("agent")}>
             <Bot size={12} /> {runningAgents} working
           </StatusItem>
         )}
@@ -1003,7 +1053,6 @@ export function Workbench() {
             <StatusItem title="Go to Line" onClick={() => execute(commands.find((c) => c.id === "go.line")!)}>
               Ln {cursor[0]}, Col {cursor[1]}
             </StatusItem>
-            <StatusItem title="Encoding">UTF-8</StatusItem>
             <StatusItem title="End of line">{eol}</StatusItem>
             <StatusItem title="Language">{LANG[ext] ?? "Plain Text"}</StatusItem>
           </>
@@ -1028,16 +1077,17 @@ export function Workbench() {
             <div role="dialog" aria-label="Notifications" className="glass absolute bottom-full right-1 z-50 mb-1.5 w-96 overflow-hidden rounded-md border border-rule-strong font-sans">
               <div className="micro flex h-8 items-center justify-between border-b border-rule px-3 text-muted">
                 Notifications
-                <button className="font-sans text-[12px] normal-case tracking-normal text-accent-ink hover:underline" onClick={() => setNotes([])}>
+                <button className="text-[12px] font-normal text-accent-ink hover:underline" onClick={() => setNotes([])}>
                   Clear all
                 </button>
               </div>
               <div className="max-h-80 overflow-y-auto">
                 {notes.length === 0 && <p className="px-3 py-3 text-[12.5px] text-muted">No notifications.</p>}
                 {notes.map((n) => (
-                  <p key={n.id} className={`border-b border-rule px-3 py-2 text-[12.5px] ${n.tone === "danger" ? "text-danger" : "text-ink-2"}`}>
-                    {n.msg}
-                  </p>
+                  <div key={n.id} className="flex items-start gap-2 border-b border-rule px-3 py-2 text-[12.5px]">
+                    <p className={`min-w-0 flex-1 select-text whitespace-pre-wrap break-words ${n.tone === "danger" ? "text-danger" : "text-ink-2"}`}>{n.msg}</p>
+                    <span className="shrink-0 text-[11px] text-faint">{new Date(n.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1047,12 +1097,20 @@ export function Workbench() {
 
       <CommandPalette open={palette.open} mode={palette.mode} files={files} openEditors={[...new Set([...(active ? [active] : []), ...recent.filter((r) => tabs.includes(r))])]} commands={commands} onClose={() => setPalette((p) => ({ ...p, open: false }))} onOpenFile={(p) => open(p)} />
 
-      <div className="pointer-events-none fixed bottom-8 right-3 z-50 flex flex-col items-end gap-2" aria-live="polite">
+      <div className="pointer-events-none fixed bottom-9 right-4 z-50 flex flex-col items-end gap-2" aria-live="polite">
         <AnimatePresence>
           {toasts.map((t) => (
-            <motion.div key={t.id} layout initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, x: 12 }} transition={{ type: "spring", stiffness: 480, damping: 36 }} role="status" className={`glass pointer-events-auto flex max-w-md items-start gap-2.5 rounded-md border border-rule-strong py-2 pl-2.5 pr-3 text-[12.5px] ${t.tone === "danger" ? "text-danger" : "text-ink"}`}>
-              <span className={`mt-[5px] size-1.5 shrink-0 rounded-full ${t.tone === "danger" ? "bg-danger" : "bg-ok"}`} />
-              <span>{t.msg}</span>
+            <motion.div key={t.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }} role={t.tone === "danger" ? "alert" : "status"} data-testid="toast" className="glass pointer-events-auto flex max-w-md items-start gap-2.5 rounded-md border border-rule-strong py-2 pl-3 pr-1.5 text-[13px] text-ink">
+              <span className={`mt-[6px] size-1.5 shrink-0 rounded-full ${t.tone === "danger" ? "bg-danger" : t.tone === "attention" ? "bg-warn" : "bg-ok"}`} />
+              <span className={`min-w-0 flex-1 ${t.tone === "danger" ? "text-danger" : ""}`}>{t.msg}</span>
+              {t.action && (
+                <button onClick={() => (t.action!.run(), setToasts((x) => x.filter((y) => y.id !== t.id)))} className="h-[22px] shrink-0 rounded-sm px-2 text-[12px] font-medium text-accent-ink hover:bg-hover">
+                  {t.action.label}
+                </button>
+              )}
+              <button aria-label="Dismiss" title="Dismiss" onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))} className="grid size-[22px] shrink-0 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink">
+                <X size={12} />
+              </button>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -1074,118 +1132,47 @@ function StatusItem({ children, title, onClick, testId }: { children: React.Reac
   );
 }
 
-/** Relay's task overview in the primary side bar: filters plus a compact list; details open on the right. */
-function RelayView({ state, onTask, onNewTask }: { state: ProjectState; onTask: (id: string) => void; onNewTask: () => void }) {
-  const [filter, setFilter] = useState<"all" | "needs" | "mine" | "agents">("all");
-  const tasks = state.tasks.filter((t) =>
-    filter === "needs" ? ["review_required", "proposed", "blocked"].includes(t.state) : filter === "mine" ? t.owner === state.me.id : filter === "agents" ? t.runs.length > 0 : true,
-  );
-  const groups: [string, Task[]][] = [
-    ["Needs a person", tasks.filter((t) => ["review_required", "proposed", "blocked"].includes(t.state))],
-    ["In progress", tasks.filter((t) => ["queued", "running"].includes(t.state))],
-    ["Done", tasks.filter((t) => ["completed", "cancelled", "failed"].includes(t.state))],
-  ];
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ViewHeader
-        title="Relay"
-        actions={
-          state.me.role !== "viewer" && (
-            <button aria-label="New task" title="New task" onClick={onNewTask} className="grid size-6 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink">
-              +
-            </button>
-          )
-        }
-      />
-      <div className="flex gap-1 px-3 pb-2" role="radiogroup" aria-label="Filter tasks">
-        {(
-          [
-            ["all", "All"],
-            ["needs", "Needs me"],
-            ["mine", "Mine"],
-            ["agents", "Agents"],
-          ] as const
-        ).map(([id, label]) => (
-          <button key={id} role="radio" aria-checked={filter === id} onClick={() => setFilter(id)} className={`h-[22px] rounded-sm px-2 text-[12px] ${filter === id ? "bg-accent-soft text-ink" : "text-muted hover:bg-hover"}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {state.tasks.length === 0 && <p className="px-5 py-2 text-[12.5px] text-muted">No tasks yet. Ask the agent or create a task.</p>}
-        {groups.map(([label, list]) =>
-          list.length ? (
-            <Section key={label} title={label} count={list.length}>
-              {list.map((t) => (
-                <button key={t.id} onClick={() => onTask(t.id)} data-testid={`relay-task-${t.id}`} className="flex w-full items-center gap-2 py-1 pl-5 pr-3 text-left hover:bg-hover">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-ink">{t.objective}</span>
-                    <span className="block truncate font-mono text-[11px] text-faint">
-                      {t.id} · {Object.entries(t.contracts).map(([c, v]) => `${c} v${v}`).join(", ") || "no contracts"}
-                    </span>
-                  </span>
-                  <StatePill state={t.state} />
-                </button>
-              ))}
-            </Section>
-          ) : null,
-        )}
-      </div>
-    </div>
-  );
-}
-
+/** The empty editor: a short list of real starting points, no decoration. */
 function EmptyEditor({ commands, recent, onOpen }: { commands: Command[]; recent: string[]; onOpen: (p: string) => void }) {
-  const rows = ["palette.commands", "palette.files", "search.inFiles", "agent.focus", "terminal.toggle"].map((id) => commands.find((c) => c.id === id)).filter(Boolean) as Command[];
+  const rows = ["palette.files", "palette.commands", "search.inFiles", "agent.focus", "terminal.toggle"].map((id) => commands.find((c) => c.id === id)).filter(Boolean) as Command[];
   return (
-    <div className="dot-grid grid flex-1 place-items-center overflow-y-auto p-8" data-testid="empty-editor">
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.2, 0.7, 0.2, 1] }} className="ticks w-full max-w-[400px] border border-rule bg-editor/90 p-6">
-        <div className="mb-6 flex items-center gap-3">
-          <Mark size={30} />
-          <div>
-            <p className="text-[17px] font-semibold tracking-[-0.01em] text-ink">Relay</p>
-            <p className="micro mt-0.5 text-faint">One project · any model · in sync</p>
-          </div>
-        </div>
-        <div className="divide-y divide-rule border-y border-rule">
+    <div className="flex flex-1 overflow-y-auto" data-testid="empty-editor">
+      <div className="m-auto w-full max-w-[380px] px-8 py-10">
+        <Mark size={22} />
+        <p className="mt-4 text-[15px] font-semibold text-ink">Open a file to start</p>
+        <p className="mt-1 text-[13px] text-muted">Everything else stays out of the way until you need it.</p>
+        <div className="mt-6 space-y-0.5">
           {rows.map((c) => {
             const reason = availability(c);
             return (
-              <button key={c.id} onClick={() => execute(c)} disabled={!!reason} title={reason ?? undefined} className="group flex h-8 w-full items-center justify-between px-1 text-[12.5px] text-ink-2 transition-colors hover:text-ink disabled:opacity-45">
-                <span className="flex items-center gap-2">
-                  <span className="h-px w-2 bg-rule-strong transition-all group-hover:w-3 group-hover:bg-accent" />
-                  {c.title.replace(/…$/, "")}
-                </span>
-                {c.keybinding && <kbd className="rounded-sm border border-rule px-1.5 py-px font-mono text-[10.5px] text-muted">{keyLabel(c.keybinding)}</kbd>}
+              <button key={c.id} onClick={() => execute(c)} disabled={!!reason} title={reason ?? undefined} className="flex h-8 w-full items-center justify-between rounded-sm px-2 -mx-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink disabled:opacity-45">
+                {c.title.replace(/…$/, "")}
+                {c.keybinding && <kbd className="font-mono text-[11px] text-faint">{keyLabel(c.keybinding)}</kbd>}
               </button>
             );
           })}
         </div>
         {recent.length > 0 && (
-          <div className="mt-6">
-            <p className="micro mb-1.5 px-1 text-faint">Recent</p>
+          <div className="mt-7">
+            <p className="micro mb-1 text-muted">Recent</p>
             {recent.slice(0, 5).map((p) => (
-              <button key={p} onClick={() => onOpen(p)} className="block w-full truncate rounded-sm px-1 py-0.5 text-left font-mono text-[12px] text-ink-2 hover:text-accent-ink">
-                {p}
+              <button key={p} onClick={() => onOpen(p)} className="-mx-2 block w-full truncate rounded-sm px-2 py-1 text-left text-[13px] text-ink-2 hover:bg-hover hover:text-ink">
+                {p.split("/").pop()} <span className="text-[12px] text-faint">{p.split("/").slice(0, -1).join("/")}</span>
               </button>
             ))}
           </div>
         )}
-        <p className="mt-6 px-1 font-mono text-[10.5px] text-faint">{isMac ? "⌘" : "Ctrl"}+P files · &gt; commands</p>
-      </motion.div>
+      </div>
     </div>
   );
 }
 
 function Splash({ message }: { message?: string }) {
   return (
-    <div className="dot-grid grid h-screen place-items-center bg-chrome">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <Mark size={28} />
-        <div className="h-px w-24 overflow-hidden bg-rule">
-          {!message && <motion.div className="h-full w-8 bg-accent" animate={{ x: [-32, 96] }} transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }} />}
-        </div>
-        <p className="micro text-muted">{message ?? "Opening the project"}</p>
+    <div className="grid h-screen place-items-center bg-chrome">
+      <div className="flex max-w-md flex-col items-center gap-3 px-6 text-center">
+        <Mark size={26} />
+        <p className={`text-[13px] ${message ? "text-danger" : "text-muted"}`}>{message ? `Couldn't open the project: ${message}` : "Opening the project…"}</p>
       </div>
     </div>
   );
@@ -1193,8 +1180,8 @@ function Splash({ message }: { message?: string }) {
 
 function SignedOut() {
   return (
-    <div className="dot-grid grid h-screen place-items-center bg-chrome p-6">
-      <div className="ticks max-w-sm border border-rule bg-sidebar p-6">
+    <div className="grid h-screen place-items-center bg-chrome p-6">
+      <div className="max-w-sm p-6">
         <Mark size={26} />
         <h1 className="mt-4 text-[18px] font-semibold tracking-[-0.01em]">You&apos;re not signed in</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">Ask the project owner for an invite. They can create one with</p>
