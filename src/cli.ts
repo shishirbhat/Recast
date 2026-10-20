@@ -6,6 +6,7 @@ import { Relay } from "./core/engine.ts";
 import { RelayError, TASK_STATES } from "./core/types.ts";
 import type { Actor, TaskState } from "./core/types.ts";
 import { resolveCommit } from "./git.ts";
+import { ImpactService } from "./analysis/impact.ts";
 import { HOOK_MATCHER, runHook } from "./hooks/claude-code.ts";
 import { runMcp } from "./mcp/server.ts";
 import { startServer } from "./server/server.ts";
@@ -30,6 +31,7 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay integrate approve <integration-id> --cwd DIR                 human approval; completes all its tasks
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
+  relay impact [--base REF | --task ID] --cwd DIR   what a change affects: interfaces, consumers, tests, tasks, stale evidence
   relay events [task]
   relay ide [--port N] [--host ADDR] [--cwd DIR] [--allow-terminal]
                                                 start the collaborative IDE server (127.0.0.1:4747 by default);
@@ -234,6 +236,20 @@ async function main(): Promise<void> {
         print(ev, ev.map((e) => `${e.exitCode === 0 ? "PASS" : "FAIL"} ${e.command}`).join("\n") || "No verification commands on this task.");
         if (ev.some((e) => e.exitCode !== 0)) process.exitCode = 1;
         return;
+      }
+      case "impact": {
+        const r = new ImpactService(relay, resolve(o.cwd ?? process.cwd()), dbPath).compute({ base: o.base, taskId: o.task });
+        const lines = [
+          `Base ${r.base.slice(0, 7)} · ${r.changedFiles.length} changed file(s) · ${r.stats.files} modules (${r.stats.parsed} parsed, ${r.stats.cached} cached, ${r.stats.ms} ms)`,
+          ...r.interfaces.filter((i) => i.change !== "added").map((i) => `CHANGED  ${i.file}#${i.symbol} (${i.change})${i.before ? `: ${i.before} -> ${i.after ?? "removed"}` : ""}`),
+          ...r.consumers.map((c) => `CONSUMER ${c.evidence.detail}${c.breaks.map((b) => `\n         line ${b.line}: ${b.reason}`).join("")}`),
+          ...r.tests.map((t) => `TEST     ${t.chain.join(" -> ")}`),
+          ...r.tasks.map((t) => `TASK     ${t.taskId} (${t.state}): ${t.reasons.map((x) => `[${x.kind}] ${x.detail}`).join("; ")}`),
+          ...r.stale.map((s) => `STALE    ${s.taskId} ${s.kind}${s.command ? ` "${s.command}"` : ""}: ${s.reason}`),
+          ...r.suggestions.map((s) => `NEXT     ${s}`),
+          ...r.gaps.map((g) => `UNSEEN   ${g}`),
+        ];
+        return print(r, lines.join("\n"));
       }
       case "events": {
         const evs = relay.events(sub);

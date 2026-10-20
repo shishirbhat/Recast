@@ -286,3 +286,14 @@ test("integration gate: out-of-scope change, failing test, and a contract change
   relay.acceptContract("user-api", 3, HUMAN);
   assert.throws(() => relay.approveIntegration(ok.id, HUMAN, repo), /user-api changed since the integration check/);
 });
+
+test("verification commands don't inherit test-runner context (a nested `node --test` must really run)", () => {
+  // This file runs under `node --test`, so NODE_TEST_CONTEXT is set here; Relay must not pass it on.
+  assert.ok(process.env.NODE_TEST_CONTEXT, "precondition: running under node --test");
+  const { relay, repo } = scenario();
+  relay.claim("T-ui", AGENT_A);
+  const db = (relay as unknown as { db: import("node:sqlite").DatabaseSync }).db;
+  db.prepare("UPDATE tasks SET verify = ? WHERE id = 'T-ui'").run(JSON.stringify(['node -e "process.exit(process.env.NODE_TEST_CONTEXT ? 7 : 0)"']));
+  const [ev] = relay.runVerification("T-ui", repo);
+  assert.equal(ev!.exitCode, 0);
+});

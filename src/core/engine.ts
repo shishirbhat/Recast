@@ -6,6 +6,16 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { openDb, tx } from "./db.ts";
 import { canTransition } from "./statemachine.ts";
 import { evaluateEdit, inScope, isProtected, normalizePath } from "./conflicts.ts";
+
+/**
+ * Environment for commands Relay runs as verification. Runner-context variables inherited from whatever started Relay must
+ * not leak in: e.g. NODE_TEST_CONTEXT makes a nested `node --test` skip every file and exit 0, which would be a false pass.
+ */
+function verificationEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) if (k.startsWith("NODE_TEST_") || k === "VITEST" || k === "JEST_WORKER_ID") delete env[k];
+  return env;
+}
 import { changedFiles, repoRoot, workspaceFingerprint } from "../git.ts";
 import type {
   Actor,
@@ -497,7 +507,7 @@ export class Relay {
     const tree = workspaceFingerprint(cwd, own);
     const commands = [...new Set([...tasks.flatMap((t) => t.verify), ...integrationVerify])];
     const results = commands.map((command) => {
-      const r = spawnSync(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs });
+      const r = spawnSync(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, env: verificationEnv() });
       const timedOut = r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
       const output = (timedOut ? "[timed out]\n" : "") + (r.stdout ?? "") + (r.stderr ?? "");
       return { command, exitCode: timedOut ? null : (r.status ?? null), output: output.slice(0, OUTPUT_LIMIT) };
@@ -609,7 +619,7 @@ export class Relay {
     const task = this.requireTask(taskId);
     const tree = workspaceFingerprint(cwd, this.ownFiles(cwd));
     return task.verify.map((cmd) => {
-      const r = spawnSync(cmd, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs });
+      const r = spawnSync(cmd, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, env: verificationEnv() });
       const timedOut = r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
       return this.recordEvidence({
         taskId,

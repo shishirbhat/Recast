@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { Member, ProjectState, RelayEvent } from "@/lib/types";
 import { describe } from "../Coordination";
 import { GitHubPanel } from "./GitHub";
+import { ImpactPanel } from "./Impact";
 
 /* ---------- small shared pieces ---------- */
 
@@ -181,26 +182,27 @@ export function problemsOf(state: ProjectState): Problem[] {
   return out;
 }
 
-export type PanelTab = "terminal" | "problems" | "output" | "agents" | "activity";
+export type PanelTab = "terminal" | "problems" | "impact" | "output" | "agents" | "activity";
 
-export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode }) {
+export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode }) {
   const problems = problemsOf(state);
   const runs = state.tasks.flatMap((t) => t.runs.map((r) => ({ ...r, taskId: t.id }))).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const tabs: [PanelTab, string, number?][] = [
     ["terminal", "Terminal"],
     ["problems", "Problems", problems.length],
+    ["impact", "Impact"],
     ["output", "Output"],
     ["agents", "Agents", runs.filter((r) => r.status === "running").length],
     ["activity", "Activity"],
   ];
   return (
     <div className="flex h-full flex-col bg-editor">
-      <div role="tablist" aria-label="Panel" className="flex h-[35px] shrink-0 items-center gap-4 pl-4 pr-2">
+      <div role="tablist" aria-label="Panel" className="flex h-[35px] shrink-0 items-center gap-5 border-b border-rule pl-4 pr-2">
         {tabs.map(([id, label, n]) => (
-          <button key={id} role="tab" aria-selected={tab === id} data-testid={`panel-tab-${id}`} onClick={() => setTab(id)} className={`relative flex h-full items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.04em] ${tab === id ? "text-ink" : "text-muted hover:text-ink"}`}>
+          <button key={id} role="tab" aria-selected={tab === id} data-testid={`panel-tab-${id}`} onClick={() => setTab(id)} className={`micro relative flex h-full items-center gap-1.5 transition-colors ${tab === id ? "text-ink" : "text-faint hover:text-ink-2"}`}>
             {label}
             {!!n && <span className={`tnum rounded-sm px-1 font-mono text-[10px] ${id === "problems" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>{n}</span>}
-            {tab === id && <span className="absolute inset-x-0 bottom-1 h-px bg-ink" />}
+            {tab === id && <span className="absolute inset-x-0 bottom-0 h-[2px] bg-accent" />}
           </button>
         ))}
         <button aria-label="Close panel" title="Close panel" onClick={onClose} className="ml-auto grid size-6 place-items-center rounded text-muted hover:bg-hover hover:text-ink">
@@ -210,7 +212,12 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
       {/* The terminal stays mounted while other tabs are shown, so its sessions keep running. */}
       <div className={`min-h-0 flex-1 ${tab === "terminal" ? "" : "hidden"}`}>{terminal}</div>
       {tab === "output" && <div className="min-h-0 flex-1 overflow-y-auto">{output}</div>}
-      <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" ? "hidden" : ""}`}>
+      {tab === "impact" && (
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          <ImpactPanel tick={events.length} onOpen={onOpen} onTask={onTask} />
+        </div>
+      )}
+      <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" || tab === "impact" ? "hidden" : ""}`}>
         {tab === "problems" &&
           (problems.length === 0 ? (
             <p className="px-4 py-2 font-sans text-[13px] text-muted">No coordination problems. Contracts, tasks and shared files agree.</p>

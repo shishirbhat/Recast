@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 
 function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", env: env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
@@ -43,5 +43,23 @@ export function workspaceFingerprint(cwd: string, exclude: readonly string[] = [
     return git(cwd, ["write-tree"], env).trim();
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Relay's own database files when the database lives inside the repository (they are never project changes). */
+export function relayOwnFiles(root: string, dbPath: string): string[] {
+  if (dbPath === ":memory:") return [];
+  const rel = relative(realpathSync(root), resolvePath(dbPath));
+  if (rel.startsWith("..") || isAbsolute(rel)) return [];
+  const p = rel.split(sep).join("/");
+  return [p, `${p}-wal`, `${p}-shm`, `${p}-journal`];
+}
+
+/** File content at a revision, or null if it doesn't exist there. */
+export function showAt(cwd: string, rev: string, path: string): string | null {
+  try {
+    return execFileSync("git", ["show", `${rev}:${path}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 16 * 1024 * 1024 });
+  } catch {
+    return null;
   }
 }

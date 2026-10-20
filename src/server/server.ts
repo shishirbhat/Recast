@@ -12,6 +12,7 @@ import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts"
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
+import { ImpactService } from "../analysis/impact.ts";
 import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
 import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject } from "./files.ts";
@@ -45,6 +46,7 @@ export interface RelayServer {
   runs: AgentRuns;
   terminals: TerminalService;
   github: GitHub;
+  impact: ImpactService;
   close(): Promise<void>;
 }
 
@@ -160,6 +162,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const host = opts.host ?? "127.0.0.1";
   const terminals = new TerminalService(root, { loopback: ["127.0.0.1", "::1", "localhost"].includes(host), allowRemote: opts.allowTerminal === true });
   const project = { name: basename(root), root };
+  const impact = new ImpactService(relay, root, resolve(opts.dbPath));
   const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
   const preflight = () => {
     const tasks = relay.listTasks();
@@ -292,6 +295,15 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       requireMember(req, "read");
       docs.flushAll();
       return json(res, 200, gitStatus(root));
+    }
+    if (method === "GET" && parts[0] === "impact") {
+      // The live dependency map: changed interfaces, consumers, tests, affected tasks, stale verification.
+      requireMember(req, "read");
+      docs.flushAll();
+      const task = url.searchParams.get("task") ?? undefined;
+      const base = url.searchParams.get("base") ?? undefined;
+      if (base && !/^[\w./~^@-]{1,100}$/.test(base)) throw new HttpError(400, "invalid", "Invalid base revision");
+      return json(res, 200, impact.compute({ base, taskId: task }));
     }
     if (parts[0] === "github") {
       if (method === "GET" && parts.length === 1) {
@@ -566,6 +578,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     runs,
     terminals,
     github,
+    impact,
     async close() {
       clearInterval(feed);
       terminals.close();
