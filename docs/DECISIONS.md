@@ -125,3 +125,14 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Alternatives:** an always-on overlay (gets in the way of ordinary browsing and selection); a UI-only toggle (the extension's tabs could disagree, and a content script could still capture); a hard-coded destination list (it would offer what Recast cannot do); a full-screen review sheet (it took over the page).
 - **Why:** the person decides when Recast acts, every tab agrees on it, and the module can only offer what a bridge really performs.
 - **Change if:** a native shell exists (the same model is drawn in a desktop window and the command becomes global), or a destination needs settings before it can be offered (then the registry entry carries a "set up" step instead of "not connected").
+
+### D24. How much Recast asks is the person's choice (agreed with the founder 2026-10-20; not built yet)
+- **Decision:** on first sign-in, the production app asks how much confirmation the person wants, and they can change it later in Settings. The level sets how often Recast stops to ask ("Done?", "Move to calendar?").
+  - **None:** the person picks where it goes, and it goes there. No further confirmation.
+  - **High:** every step is confirmed, as in the clay-desk artifact today (review, then "Add to calendar", then "Done").
+  - Levels in between are to be defined.
+- **How it fits the trust model (for the build):** the level is an input to `checkConsent`/`assessRisk`, stored per person. The rest of the lifecycle does not change: receipts, unknown outcomes reconciled rather than resent, and undo where the destination allows it.
+- **Open questions to settle before building:**
+  - Does "None" also cover actions that reach other people or cannot be undone (sending an email, inviting attendees), or do those keep one confirmation?
+  - What happens when something required is missing, such as a time or a recipient? Recast cannot place without it, so it must still ask for that.
+- **Status:** not implemented. Today every placement asks (confirm, or hold for high risk).
