@@ -5,7 +5,8 @@ import { Check, CircleSlash, Copy, LogOut, Play, Puzzle, RefreshCw, SquareTermin
 import { api, ApiError } from "@/lib/api";
 import { keyLabel } from "@/lib/commands";
 import type { Command } from "@/lib/commands";
-import type { EditorPrefs } from "../Editor";
+import { CODE_FONTS, UI_FONTS } from "../Editor";
+import type { CodeFont, EditorPrefs, UiFont } from "../Editor";
 import type { Member, ProjectState } from "@/lib/types";
 import type { Theme } from "@/lib/theme";
 import { Avatar } from "../ui";
@@ -211,11 +212,33 @@ export function SettingsView({ theme, setTheme, commands, terminal, onResetLayou
             <RefreshCw size={12} className="text-muted" /> Reset layout
           </button>
         </Section>
+        <Section title="Typefaces">
+          <label className="flex items-center justify-between px-5 py-1 text-[13px]">
+            <span className="text-ink-2">Interface</span>
+            <select value={prefs.uiFont} onChange={(e) => setPrefs({ ...prefs, uiFont: e.target.value as UiFont })} className="h-[24px] rounded-sm border border-rule bg-editor px-1.5 text-[12.5px] text-ink" aria-label="Interface font" data-testid="pref-uiFont">
+              {Object.entries(UI_FONTS).map(([k, f]) => (
+                <option key={k} value={k}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center justify-between px-5 py-1 text-[13px]">
+            <span className="text-ink-2">Code</span>
+            <select value={prefs.codeFont} onChange={(e) => setPrefs({ ...prefs, codeFont: e.target.value as CodeFont })} className="h-[24px] rounded-sm border border-rule bg-editor px-1.5 text-[12.5px] text-ink" aria-label="Code font" data-testid="pref-codeFont">
+              {Object.entries(CODE_FONTS).map(([k, f]) => (
+                <option key={k} value={k}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </Section>
         <Section title="Editor">
           {(
             [
               ["Font size", "fontSize", [11, 12, 13, 14, 15, 16, 18, 20]],
-              ["Line height", "lineHeight", [1.4, 1.5, 1.6, 1.7, 1.8]],
+              ["Line height", "lineHeight", [1.4, 1.5, 1.6, 1.65, 1.7, 1.8]],
               ["Tab size", "tabSize", [2, 4, 8]],
             ] as const
           ).map(([label, key, opts]) => (

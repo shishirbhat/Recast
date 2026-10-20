@@ -16,7 +16,7 @@ import type { Member, ProjectState, Task } from "@/lib/types";
 import { useProject } from "@/lib/useProject";
 import { Coordination } from "../Coordination";
 import type { CoordTab } from "../Coordination";
-import { DEFAULT_PREFS, Editor } from "../Editor";
+import { DEFAULT_PREFS, Editor, applyFonts } from "../Editor";
 import type { EditorPrefs, LineMark, SyntaxProblem } from "../Editor";
 import { FileTree } from "../FileTree";
 import { Avatar, Mark, StatePill } from "../ui";
@@ -360,6 +360,7 @@ export function Workbench() {
     } catch {}
   }, [prefs, showAuthors]);
   useEffect(() => applyTheme(theme), [theme]);
+  useEffect(() => applyFonts(prefs), [prefs.uiFont, prefs.codeFont]);
   useEffect(() => {
     try {
       localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));

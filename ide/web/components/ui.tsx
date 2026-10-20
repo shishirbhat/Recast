@@ -42,21 +42,24 @@ export function IconButton({ label, children, className = "", ...rest }: Compone
   );
 }
 
+/* Ordinary states are quiet text with a dot; only states that need a person carry a tint. */
 const STATE_STYLE: Record<TaskState, { label: string; cls: string; dot: string }> = {
-  proposed: { label: "Proposed", cls: "bg-sunken text-muted", dot: "bg-faint" },
-  queued: { label: "Ready", cls: "text-ink-2 ring-1 ring-inset ring-rule-strong", dot: "bg-muted" },
-  running: { label: "Working", cls: "bg-accent-soft text-accent-ink", dot: "bg-accent animate-pulse" },
+  proposed: { label: "Proposed", cls: "text-muted", dot: "bg-faint" },
+  queued: { label: "Ready", cls: "text-ink-2", dot: "bg-muted" },
+  running: { label: "Working", cls: "text-ink-2", dot: "bg-accent" },
   blocked: { label: "Blocked", cls: "bg-danger-soft text-danger", dot: "bg-danger" },
-  review_required: { label: "In review", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
+  review_required: { label: "Needs review", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
   failed: { label: "Failed", cls: "bg-danger-soft text-danger", dot: "bg-danger" },
-  cancelled: { label: "Cancelled", cls: "bg-sunken text-faint line-through", dot: "bg-faint" },
-  completed: { label: "Approved", cls: "bg-ok-soft text-ok", dot: "bg-ok" },
+  cancelled: { label: "Cancelled", cls: "text-faint line-through", dot: "bg-faint" },
+  completed: { label: "Approved", cls: "text-ok", dot: "bg-ok" },
 };
+
+export const stateLabel = (s: TaskState) => STATE_STYLE[s].label;
 
 export function StatePill({ state }: { state: TaskState }) {
   const s = STATE_STYLE[state];
   return (
-    <span className={`inline-flex h-[18px] shrink-0 items-center gap-1 rounded-sm px-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] ${s.cls}`}>
+    <span className={`inline-flex h-[20px] shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-[11.5px] font-medium ${s.cls}`}>
       <span className={`size-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>

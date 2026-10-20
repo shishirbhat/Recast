@@ -1,14 +1,25 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/figtree/wght-italic.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/400-italic.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/jetbrains-mono/wght-italic.css";
+@import "@fontsource-variable/fira-code";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
 /*
-  Relay visual identity: an instrument panel, not a poster.
-  - Cool graphite neutrals (dark) and cool paper (light); no gradients, no glows.
+  Relay visual identity: a calm instrument for long sessions.
+  - Soft graphite (dark) and soft paper (light): strong text contrast without glare; no gradients, no glows.
   - One accent, signal orange, reserved for focus, the active thing, and the one primary action in view.
+    Ordinary activity (an agent working, a sync) is never orange or red.
   - Semantic colours only where they carry meaning (error, warning, approved, collaborator identity).
-  - Hairline rules do the structural work; mono micro-labels carry metadata.
+  - Hierarchy comes from spacing and type weight first; hairline rules only where regions meet.
+  - Labels are sentence case in the UI face; mono is for code, ids and numbers.
   - Radius rule: controls 4px, floating surfaces 8px, people round.
 */
 
@@ -17,19 +28,19 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --chrome: #0a0b0d;
+  --chrome: #0d0e11;
   --chrome-ink: #8a8f99;
-  --sidebar: #0e0f12;
-  --editor: #111216;
-  --panel: #111216;
+  --sidebar: #101215;
+  --editor: #14161a;
+  --panel: #14161a;
   --panel-2: #16171c;
   --page: #0a0b0d;
   --sunken: #1a1c21;
   --hover: #1b1d23;
   --rule: #1e2027;
   --rule-strong: #2b2e37;
-  --ink: #e7e9ed;
-  --ink-2: #c2c6ce;
+  --ink: #dcdfe5;
+  --ink-2: #b9bec8;
   --muted: #8a8f9a;
   --faint: #5a5f6a;
   --accent: #ff6b2c;
@@ -46,10 +57,10 @@
   --danger: #ff5d6e;
   --danger-soft: #2e1519;
   --selection: #263042;
-  --status-bg: #0a0b0d;
+  --status-bg: #0d0e11;
   --status-fg: #8a8f99;
-  --remote-bg: #ff6b2c;
-  --remote-fg: #0a0b0d;
+  --remote-bg: transparent;
+  --remote-fg: #8a8f99;
   --overlay: rgb(22 23 28 / 0.82);
   --shadow: none;
   --shadow-pop: 0 18px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.04);
@@ -58,7 +69,7 @@
   --syn-string: #a9d6a0;
   --syn-number: #e9c46a;
   --syn-type: #7ec8e8;
-  --syn-fn: #eceef2;
+  --syn-fn: #dcdfe5;
   --syn-prop: #b3bfd3;
   --syn-comment: #5d6573;
   --syn-punct: #7a808c;
@@ -68,17 +79,17 @@
   color-scheme: light;
   --chrome: #eceef1;
   --chrome-ink: #5c626d;
-  --sidebar: #f3f4f6;
-  --editor: #fbfbfc;
-  --panel: #fbfbfc;
+  --sidebar: #f1f2f3;
+  --editor: #f8f8f7;
+  --panel: #f8f8f7;
   --panel-2: #ffffff;
   --page: #eceef1;
   --sunken: #e5e7eb;
   --hover: #e3e5e9;
   --rule: #dcdfe4;
   --rule-strong: #c6cad2;
-  --ink: #101217;
-  --ink-2: #2b2f37;
+  --ink: #1c1f25;
+  --ink-2: #353a43;
   --muted: #5c626e;
   --faint: #8b909a;
   --accent: #e5531b;
@@ -97,8 +108,8 @@
   --selection: #d3dbea;
   --status-bg: #eceef1;
   --status-fg: #4e545e;
-  --remote-bg: #e5531b;
-  --remote-fg: #ffffff;
+  --remote-bg: transparent;
+  --remote-fg: #4e545e;
   --overlay: rgb(255 255 255 / 0.86);
   --shadow: none;
   --shadow-pop: 0 18px 48px -14px rgb(16 18 23 / 0.22), 0 0 0 1px rgb(16 18 23 / 0.07);
@@ -107,15 +118,15 @@
   --syn-string: #1f7a45;
   --syn-number: #9a5b00;
   --syn-type: #0f6c8c;
-  --syn-fn: #101217;
+  --syn-fn: #1c1f25;
   --syn-prop: #2c4f80;
   --syn-comment: #8b919b;
   --syn-punct: #6b707a;
 }
 
 @theme inline {
-  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: var(--ui-font), -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--code-font), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --color-chrome: var(--chrome);
   --color-chrome-ink: var(--chrome-ink);
   --color-sidebar: var(--sidebar);
@@ -155,6 +166,12 @@
   --radius-md: 8px;
 }
 
+:root {
+  /* Chosen in Settings → Appearance; these are the defaults. */
+  --ui-font: "Figtree Variable";
+  --code-font: "IBM Plex Mono";
+}
+
 html,
 body {
   height: 100%;
@@ -162,18 +179,17 @@ body {
   background: var(--chrome);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 13px;
-  font-feature-settings: "ss01", "cv11";
+  font-size: 13.5px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Metadata voice: mono, small caps-like, tracked. Used for labels, counts, ids, readouts. */
+/* Section and tab labels: the UI face, sentence case, a step smaller and a step heavier. Never shouted. */
 .micro {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .tnum {
   font-variant-numeric: tabular-nums;
@@ -233,8 +249,9 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+/* Live indicators are steady: nothing blinks in the corner of a developer's eye. */
 .live-dot {
-  animation: relay-live 2.4s ease-in-out infinite;
+  animation: none;
 }
 
 ::selection {

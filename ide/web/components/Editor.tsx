@@ -90,8 +90,21 @@ export interface EditorPrefs {
   lineHeight: number;
   tabSize: number;
   wrap: boolean;
+  uiFont: UiFont;
+  codeFont: CodeFont;
 }
-export const DEFAULT_PREFS: EditorPrefs = { fontSize: 13, lineHeight: 1.6, tabSize: 2, wrap: false };
+export const UI_FONTS = { figtree: { label: "Figtree", css: '"Figtree Variable"' }, geist: { label: "Geist", css: '"Geist Variable"' }, system: { label: "System", css: "system-ui" } } as const;
+export const CODE_FONTS = { plex: { label: "IBM Plex Mono", css: '"IBM Plex Mono"' }, jetbrains: { label: "JetBrains Mono", css: '"JetBrains Mono Variable"' }, fira: { label: "Fira Code", css: '"Fira Code Variable"' }, geist: { label: "Geist Mono", css: '"Geist Mono Variable"' } } as const;
+export type UiFont = keyof typeof UI_FONTS;
+export type CodeFont = keyof typeof CODE_FONTS;
+export const DEFAULT_PREFS: EditorPrefs = { fontSize: 14, lineHeight: 1.65, tabSize: 2, wrap: false, uiFont: "figtree", codeFont: "plex" };
+
+/** Apply the chosen typefaces to the whole IDE (UI chrome, editor, diffs, terminal read the same variables). */
+export function applyFonts(p: EditorPrefs): void {
+  const root = document.documentElement.style;
+  root.setProperty("--ui-font", (UI_FONTS[p.uiFont] ?? UI_FONTS.figtree).css);
+  root.setProperty("--code-font", (CODE_FONTS[p.codeFont] ?? CODE_FONTS.plex).css);
+}
 
 /** One line's author, as the authorship gutter shows it. */
 export interface LineMark {
