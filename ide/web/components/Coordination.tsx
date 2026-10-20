@@ -477,7 +477,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
             {gaps.length > 0 ? (
               <ul className={`space-y-1 ${task.state === "review_required" ? "text-danger" : "text-warn"}`} data-testid="review-blockers">
                 {gaps.map((g) => (
-                  <li key={g}>{g}</li>
+                  <li key={g}>{g[0]!.toUpperCase() + g.slice(1)}</li>
                 ))}
               </ul>
             ) : !Object.keys(task.contracts).length ? (

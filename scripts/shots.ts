@@ -33,7 +33,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH 
 try {
   for (const [w, h] of [[1440, 900], [1100, 720], [820, 640]] as const) {
     const { token } = server.members.invite(`Maya${w}`, "owner");
-    const page = await (await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 })).newPage();
+    const page = await (await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, colorScheme: process.env.THEME === "dark" ? "dark" : "light" })).newPage();
     await page.goto(`${server.url}/join#${token}`);
     await page.waitForURL(`${server.url}/`);
     await page.getByTestId("empty-editor").waitFor();

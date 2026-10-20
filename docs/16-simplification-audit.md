@@ -112,4 +112,4 @@ Final run: 76 unit tests and 24 browser tests passing, and both type-checks clea
 - **Agents in validation are simulated.** A real Claude Code run was proven in earlier phases (docs/09), but it was not repeated for this UI pass.
 - **Split editors and project-wide replace** are still not built (tracked separately).
 - **Notices** stack at the bottom right. When the Relay side bar is open they can cover its lower edge (the agent composer) for up to 12 s; they never sit over the editor at the default layout.
-- **Visual review** was done from screenshots at 1440, 1100, 1024, 900 and 820 px in the light theme. The dark theme uses the same tokens but was not re-screenshotted in this pass.
+- **Visual review** was done from screenshots at 1440, 1100, 1024, 900 and 820 px in the light theme, and at 1440 px in the dark theme. Dark was not checked at the smaller sizes.
