@@ -90,6 +90,9 @@ export type ClumpEvent =
   | { type: "dismiss"; now: number }
   | { type: "discard"; id: string; now: number };
 
+/** An event as a host sends it: the clock reading is added where the state lives. */
+export type ClumpInput = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
+
 export type ClumpEffect =
   | { type: "commit"; op: Operation; consent: Consent; destinationId: string }
   | { type: "reconcile"; op: Operation; destinationId: string }

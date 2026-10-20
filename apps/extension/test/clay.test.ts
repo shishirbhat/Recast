@@ -22,10 +22,13 @@ beforeAll(async () => {
 });
 afterAll(async () => { await ctx?.close(); server?.close(); });
 
-/** What the person does with the shortcut (Alt+Shift+R) or the toolbar button: bring Recast into this tab. */
+const tabIdOf = (u: string) => sw.evaluate(async (u) => (await chrome.tabs.query({ url: u })).sort((a, b) => b.id! - a.id!)[0]!.id!, u);
+/** What the person does with the shortcut (Alt+Shift+R): the worker's command handler, for this tab. */
+const command = async (p: Page) => { const id = await tabIdOf(p.url()); await sw.evaluate((id) => (globalThis as any).recastClay.invoke(id), id); };
+/** Open a page and invoke Recast there: brought in (and turned on if it was off). */
 async function openTab(fixture: string): Promise<Page> {
   const page = await ctx.newPage(); await page.goto(`${base}/${fixture}`);
-  await sw.evaluate(async (u) => { const t = (await chrome.tabs.query({ url: u })).sort((a, b) => b.id! - a.id!)[0]; await (globalThis as any).recastClay.activate(t!.id); }, `${base}/${fixture}`);
+  await command(page);
   await page.locator("recast-clay").waitFor({ state: "attached", timeout: 10000 });
   return page;
 }
@@ -40,13 +43,14 @@ async function drag(p: Page, from: string, to: string) {
 }
 async function altDrag(p: Page, from: string, to: string) {
   const a = await centre(p, from); await p.mouse.move(a.x, a.y); await p.keyboard.down("Alt"); await p.mouse.down(); await p.keyboard.up("Alt");
-  await p.mouse.move(a.x + 10, a.y + 10, { steps: 3 }); const b = await centre(p, to); await p.mouse.move(b.x, b.y, { steps: 10 }); await p.mouse.move(b.x + 1, b.y + 1); await p.waitForTimeout(150); await p.mouse.up();
+  await p.mouse.move(a.x + 10, a.y + 10, { steps: 3 }); await atRest(p, to); const b = await centre(p, to); await p.mouse.move(b.x, b.y, { steps: 10 }); await p.mouse.move(b.x + 1, b.y + 1); await p.waitForTimeout(150); await p.mouse.up();
 }
 
 describe("cross-tab carry in the browser extension", () => {
   it("Maya, lifted in one tab and carried to another, is pressed into the restaurant; closing her tab loses nothing; the time joins; the calendar page takes it", async () => {
     // 1. Profile tab: Alt + press on Maya's name lifts her. The button is still held when the person switches tabs.
     const profile = await openTab("profile.html");
+    expect((await stored()).armed).toBe(true);
     const m = await centre(profile, "#maya"); await profile.mouse.move(m.x, m.y); await profile.keyboard.down("Alt"); await profile.mouse.down(); await profile.keyboard.up("Alt");
     await profile.mouse.move(m.x + 30, m.y + 20, { steps: 4 });
     await until(async () => (await stored())?.carried === "obj-1");
@@ -57,10 +61,12 @@ describe("cross-tab carry in the browser extension", () => {
     await restaurant.locator(item("obj-1")).waitFor();
     expect(await restaurant.locator("recast-clay >> .hint").innerText()).toBe("In hand: Maya Rao. Drag it onto something on this page.");
     await drag(restaurant, item("obj-1"), "#dakshin");
-    await until(async () => { const s = await stored(); return s.phase === "idle" && s.desk.length === 1 && !s.carried; });
+    // Two things pressed together: the composition exists and the glass module opens on it.
+    await until(async () => { const s = await stored(); return s.phase === "composed" && s.desk.length === 1 && !s.carried; });
     let s = await stored(); const id = s.desk[0];
     expect(s.objects[id].ingredients.map((f: any) => [f.kind, f.text])).toEqual([["place", expect.stringContaining("Dakshin")], ["person", "Maya Rao"]]);
     await until(async () => (await restaurant.locator("recast-clay >> .clay-item").count()) === 1);
+    expect(await restaurant.locator("recast-clay >> .rg").getAttribute("data-mode")).toBe("composed");
 
     // 3. The tab Maya came from closes; the object never belonged to it.
     await profile.close(); await new Promise((r) => setTimeout(r, 300));
@@ -68,7 +74,7 @@ describe("cross-tab carry in the browser extension", () => {
 
     // 4. The time on the restaurant page, Alt-dragged onto the object in the tray, joins it.
     await altDrag(restaurant, "#table-time", item(id));
-    await until(async () => (await stored()).objects[id]?.ingredients.length === 3 && (await stored()).phase === "idle");
+    await until(async () => (await stored()).objects[id]?.ingredients.length === 3 && (await stored()).phase === "composed");
     expect(await restaurant.locator(item(id)).getAttribute("aria-label")).toMatch(/^Meet Maya at Dakshin, .*made of 3 pieces$/);
 
     // 5. Calendar tab: the object is in the tray there too; dropping it on a slot opens a review in that tab, nothing written.
@@ -84,6 +90,51 @@ describe("cross-tab carry in the browser extension", () => {
     s = await stored(); expect(s.placement.destinationId).toMatch(/^\d+:week$/);
     await cal.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await cal.locator("#events li").count()) === 0);
+    await restaurant.close(); await cal.close();
+  }, 120_000);
+
+  it("the module's selector: Calendar is unavailable until a calendar is open; chosen, Recast brings its tab to the front; then off, the page is just a page", async () => {
+    await until(async () => (await stored()).destinations.length === 0);
+    const restaurant = await openTab("restaurant.html");
+    const id = (await stored()).focus as string;
+    expect((await stored()).phase).toBe("idle");                       // brought along: on, with the composition ready
+    expect(await restaurant.locator("recast-clay >> .rg-title").innerText()).toBe("Meet Maya at Dakshin is ready");
+    await command(restaurant); await until(async () => (await stored()).phase === "composed");
+    await command(restaurant); expect((await stored()).phase).toBe("composed");          // again: no second module
+    expect(await restaurant.locator("recast-clay").count()).toBe(1); expect(await restaurant.locator("recast-clay >> .rg").count()).toBe(1);
+    await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await stored()).phase === "choosing");
+    expect(await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")).toBe("true");
+    expect(await restaurant.locator("recast-clay >> .rg-reason").innerText()).toBe("Google Calendar is not connected here");
+    // A calendar page with Recast in it connects a (stand-in) calendar; the selector in the restaurant tab sees it.
+    const cal = await openTab("calendar.html"); await restaurant.bringToFront();
+    await until(async () => (await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")) === "false");
+    expect(await restaurant.locator("recast-clay >> .rg-reason").innerText()).toMatch(/^Google Calendar: add to calendar\. A local stand-in/);
+    await restaurant.locator("recast-clay >> button", { hasText: "Open" }).click();
+    await until(async () => (await stored()).phase === "previewing");
+    const calTab = await tabIdOf(cal.url());
+    await until(() => sw.evaluate(async (id) => { const t = await chrome.tabs.get(id); return t.active && (await chrome.windows.get(t.windowId)).focused; }, calTab));
+    expect(await cal.locator("#events li").count()).toBe(0);           // choosing and reviewing write nothing
+    await cal.locator("recast-clay >> button", { hasText: "Add to calendar" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(await cal.locator("#events li").count()).toBe(1);
+    await cal.locator("recast-clay >> button", { hasText: "Done" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    // Escape with nothing open turns Recast off; Alt + press on the page then does nothing.
+    await restaurant.bringToFront(); await restaurant.keyboard.press("Escape");
+    await until(async () => (await stored()).armed === false);
+    const before = Object.keys((await stored()).objects).length;
+    const t = (await restaurant.locator("#table-time").boundingBox())!;
+    await restaurant.keyboard.down("Alt"); await restaurant.mouse.click(t.x + 5, t.y + 5); await restaurant.keyboard.up("Alt");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(Object.keys((await stored()).objects).length).toBe(before);
+    expect(await restaurant.locator("recast-clay >> .rg").isHidden()).toBe(true);
+    expect((await stored()).objects[id]).toBeTruthy();                 // off, and the composition is kept for the session
+    // The popup's button does what the shortcut does.
+    const extId = new URL(sw.url()).host; const tabId = await tabIdOf(restaurant.url());
+    const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);
+    await popup.getByRole("button", { name: /Clump things on this page/ }).click();
+    await until(async () => (await stored()).armed === true);
     await restaurant.close(); await cal.close();
   }, 120_000);
 

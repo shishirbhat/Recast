@@ -7,9 +7,9 @@
 import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
-import { commandEvents, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { commandEvents, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
-import { createGlass, GLASS_CSS, type GlassIntent } from "@recast/overlay/src/glass";
+import { createGlass, GLASS_CSS, intentEvents, type GlassIntent } from "@recast/overlay/src/glass";
 
 const params = new URLSearchParams(location.search);
 const NOW = () => (params.get("now") ? Date.parse(params.get("now")!) : Date.now());
@@ -71,9 +71,7 @@ const clay = createClay($("#clay"), {
 const SHORTCUT = "Alt+Shift+R";
 const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: SHORTCUT, theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
 
-/** The event without its clock reading, for every member of the union (plain Omit would collapse the union). */
-type Input = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
-function dispatch(e: Input) {
+function dispatch(e: ClumpInput) {
   const r = reduceClump(state, { ...e, now: NOW() } as ClumpEvent);
   lastError = r.error ?? "";
   const before = state; state = r.state;
@@ -94,30 +92,11 @@ function invoke(fromKeyboard: boolean) {
   if (fromKeyboard && glass.well()) glass.focus();
 }
 function objectInModule(): string | null { return state.placement?.objectId ?? state.inspecting ?? state.focus; }
-/** Close the module back to the pill: one step at a time, as Escape would, but never past "on". */
-function closeModule() {
-  for (let i = 0; i < 5; i++) { const e = escapeEvent(state); if (!e || e.type === "disarm") break; dispatch(e); if (state.phase === "idle") break; }
-}
+function closeModule() { for (const e of intentEvents({ type: "close" }, state)) dispatch(e); }
 function onIntent(i: GlassIntent) {
-  const id = objectInModule();
-  switch (i.type) {
-    case "turnOff": dispatch({ type: "disarm" }); break;
-    case "reopen": dispatch({ type: "openModule" }); glass.focus(); break;
-    case "close": closeModule(); break;
-    case "back": { const e = escapeEvent(state); if (e && e.type !== "disarm") dispatch(e); break; }
-    case "openWheel": dispatch({ type: "openWheel" }); setTimeout(() => glass.focus(), 0); break;
-    case "select": dispatch({ type: "select", choice: i.choice }); break;
-    case "pick": dispatch({ type: "pickDestination", destinationId: i.destinationId }); setTimeout(() => glass.focus(), 0); break;
-    case "inspect": if (id) dispatch({ type: "inspect", id }); setTimeout(() => glass.focus(), 0); break;
-    case "remove": if (id) dispatch({ type: "remove", objectId: id, ingredientId: i.ingredientId }); break;
-    case "answer": if (id) dispatch({ type: "answer", objectId: id, field: i.field, value: i.value }); break;
-    case "choose": if (id) dispatch({ type: "choose", objectId: id, field: i.field, ingredientId: i.ingredientId }); break;
-    case "place": dispatch({ type: "place", consent: i.heldMs !== undefined ? { kind: "hold", heldMs: i.heldMs } : { kind: "confirm" } }); break;
-    case "undo": dispatch({ type: "undo" }); break;
-    case "dismiss": dispatch({ type: "dismiss" }); break;
-    case "reconcile": dispatch({ type: "reconcile" }); break;
-    case "confirmMerge": dispatch({ type: "confirmMerge", yes: i.yes }); break;
-  }
+  for (const e of intentEvents(i, state)) dispatch(e);
+  // Keep the keyboard in the module as it changes shape.
+  if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0);
 }
 
 async function perform(eff: ClumpEffect) {

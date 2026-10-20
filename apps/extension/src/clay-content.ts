@@ -1,49 +1,49 @@
 // The clay layer inside one tab. Injected only where the person invoked Recast (activeTab), so it never runs on a page
-// uninvited. It recognises pieces on the page (Alt + drag a name, a place or a time), shows your objects in a small tray,
-// and talks to the service worker, which holds the one shared state. The object you carry is not tied to a tab: in any tab
-// you bring Recast into, it appears "in hand" in the tray, ready to be dragged onto something there.
+// uninvited, and inert while Recast is off. With Recast on it recognises pieces on the page (Alt + drag a name, a place or
+// a time), keeps your loose pieces on a small shelf, and shows the glass action module when two things have been pressed
+// together. It talks to the service worker, which holds the one shared state, so the object you carry is not tied to a tab:
+// in any tab you bring Recast into it is "in hand" on the shelf, ready to be dragged onto something there.
 // A tab cannot follow the pointer while another tab is in front, so carrying across tabs is: switch tabs, then pick the
-// object up from the tray. Everything else (merging, reviewing, placing) is the same as on a single page.
+// object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
 import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
-import { viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
+import { escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
+import { createGlass, GLASS_CSS, intentEvents } from "@recast/overlay/src/glass";
 import type { EventInput, ToBackground, ToTab } from "./clay-messages.js";
 
 declare global { interface Window { __recastClay?: boolean } }
 
 const send = <T = { state: ClumpState; error?: string }>(m: ToBackground) => chrome.runtime.sendMessage(m) as Promise<T>;
 
-const CONTRACTS: Record<string, CapabilityContract> = {
-  calendar: { destination: "page.calendar", app: "Calendar", targetKind: "Calendar", reliability: "structured-interface", accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.location", "Event.timezone", "Event.description"] }] },
-  drafts: { destination: "page.drafts", app: "Mail", targetKind: "Drafts", reliability: "structured-interface", accepts: [{ relationId: "message-draft-entry", effect: "Save as draft", dataMoved: ["Message.to", "Message.snippet"] }] },
-};
+/** A page declares a destination with data-recast-kind; it performs the registry's contract for that kind, as a stand-in. */
+const KINDS: Record<string, CapabilityContract> = { calendar: CONTRACTS.googleCalendarEvent, drafts: CONTRACTS.gmailMessageDraft };
 
-const TRAY_CSS = `
+const SHELF_CSS = `
 :host { all: initial; }
-.tray { position: fixed; right: 16px; bottom: 16px; width: 300px; max-height: 60vh; overflow: auto; pointer-events: auto; background: rgba(250,249,246,.94); border: 1px solid #e6e2da; border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,.16); padding: 10px 12px; font: 13px/1.4 system-ui, sans-serif; color: #1a1a1a; }
-.tray h2 { margin: 0; font: 600 12px/1.3 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #625f5a; }
+.tray { position: fixed; right: 16px; bottom: 16px; width: 280px; max-height: 50vh; overflow: auto; pointer-events: auto; box-sizing: border-box; padding: 10px 12px; border-radius: 18px;
+  font: 13px/1.4 "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: rgb(29, 29, 31);
+  background: rgba(246, 246, 248, 0.8); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%);
+  border: 0.5px solid rgba(0,0,0,.10); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 10px 30px rgba(0,0,0,.16); }
+.tray[hidden] { display: none; }
+.tray h2 { margin: 0; font-family: inherit; font-weight: 600; font-size: 11px; line-height: 1.3; letter-spacing: .06em; text-transform: uppercase; color: rgb(77, 77, 82); }
 .tray .hint { margin: 4px 0 0; min-height: 1em; }
 .tray .slots { position: relative; }
-.sheet { position: fixed; right: 16px; top: 16px; width: 320px; max-height: 70vh; overflow: auto; pointer-events: auto; background: #fff; color: #1a1a1a; border: 1px solid #e6e2da; border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.2); padding: 16px; font: 14px/1.45 system-ui, sans-serif; display: flex; flex-direction: column; gap: 10px; }
-.sheet[hidden] { display: none; }
-.sheet h2 { margin: 0; font-size: 18px; }
-.sheet ul { margin: 0; padding-left: 18px; }
-.sheet .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.sheet button { border: 0; border-radius: 999px; padding: 8px 14px; background: #1a1a1a; color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
-.sheet button.ghost { background: transparent; color: #1a1a1a; box-shadow: inset 0 0 0 1px #d6d2ca; }
-.sheet input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #d6d2ca; border-radius: 8px; font: inherit; }
 .clay-host { position: fixed; inset: 0; pointer-events: none; }
-@media (prefers-color-scheme: dark) { .tray { background: rgba(29,27,25,.94); border-color: #34302b; color: #f3f1ec; } .tray h2 { color: #b0aba3; } .sheet { background: #1d1b19; color: #f3f1ec; border-color: #34302b; } .sheet button { background: #f3f1ec; color: #1a1a1a; } .sheet button.ghost { color: #f3f1ec; box-shadow: inset 0 0 0 1px #46413a; } .sheet input { background: #141311; color: #f3f1ec; border-color: #46413a; } }
+@media (max-width: 900px) { .tray { top: 16px; bottom: auto; width: 240px; } }
+@media (prefers-color-scheme: dark) { .tray { background: rgba(28, 28, 30, 0.8); color: rgb(245, 245, 247); border-color: rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 10px 30px rgba(0,0,0,.5); } .tray h2 { color: rgb(199, 199, 204); } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .tray { background: rgb(242, 242, 245); } }
+@media (prefers-reduced-transparency: reduce) { .tray { background: rgb(242, 242, 245); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 `;
 
 async function main() {
   const host = document.createElement("recast-clay");
   host.style.cssText = "all: initial; position: fixed; inset: 0; z-index: 2147483646; pointer-events: none;";
   const shadow = host.attachShadow({ mode: "open" });
-  shadow.innerHTML = `<style>${CLAY_CSS}${TRAY_CSS}</style><div class="clay"></div>
-    <section class="tray" aria-label="Your Recast objects"><h2>Your objects</h2><p class="hint" role="status" aria-live="polite"></p><div class="slots"></div></section>
-    <section class="sheet" role="dialog" aria-label="Recast" hidden></section>`;
+  shadow.innerHTML = `<style>${CLAY_CSS}${GLASS_CSS}${SHELF_CSS}</style>
+    <section class="tray" aria-label="Your Recast objects" hidden><h2>Your objects</h2><p class="hint" role="status" aria-live="polite"></p><div class="slots"></div></section>
+    <div class="glass"></div><div class="clay"></div>`;
   document.documentElement.appendChild(host);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => shadow.querySelector<T>(s)!;
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -53,12 +53,19 @@ async function main() {
   let pointer = { x: 0, y: 0 };
   let pageTarget: { el: Element; fragment: Fragment } | null = null;
   let iDropped = false;
+  let error = "";
   const log = new InMemoryEventLog();
 
   const clay = createClay($(".clay"), { onPointerDown: (id, e) => pressObject(id, e) });
+  const glass = createGlass($(".glass"), {
+    onIntent: async (i) => { for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
+    onLayout: () => requestAnimationFrame(() => render()),
+    shortcut: "Alt+Shift+R",
+  });
 
   async function dispatch(event: EventInput) {
     const r = await send({ type: "dispatch", event });
+    error = r.error ?? "";
     if (r.error) hint(r.error.charAt(0).toUpperCase() + r.error.slice(1));
     return r;
   }
@@ -83,72 +90,47 @@ async function main() {
 
   function destinations(): DestinationSpec[] {
     return [...document.querySelectorAll<HTMLElement>("[data-recast-dest]")].flatMap((el) => {
-      const contract = CONTRACTS[el.dataset["recastKind"] ?? ""]; if (!contract) return [];
+      const contract = KINDS[el.dataset["recastKind"] ?? ""]; if (!contract) return [];
       const slots = [...el.querySelectorAll<HTMLElement>("[data-recast-slot]")].map((s) => ({ id: s.dataset["recastSlot"]!, label: s.textContent!.trim().slice(0, 80), ...(s.dataset["start"] ? { start: s.dataset["start"] } : {}) }));
-      return [{ id: el.dataset["recastDest"]!, label: el.dataset["recastLabel"] ?? contract.app, contract, ...(slots.length ? { slots } : {}) }];
+      // The page performs the registry's contract itself: a stand-in for the provider, and said so in the module.
+      return [{ id: el.dataset["recastDest"]!, label: el.dataset["recastLabel"] ?? contract.app, contract, standIn: true, ...(slots.length ? { slots } : {}) }];
     });
   }
 
   // ---- drawing --------------------------------------------------------------------------------------------------------
   function render() {
-    const tray = $(".slots").getBoundingClientRect(); const items: ClayItem[] = [];
-    let y = tray.y + 26;
+    glass.update(moduleModel(state, REGISTRY), error && !state.carried ? { error } : {});
+    const well = glass.well();
+    const inModule = state.placement?.objectId ?? state.inspecting ?? state.focus;
+    const inWell = well && inModule && state.desk.includes(inModule) && state.carried !== inModule ? inModule : null;
+    const tray = $(".tray"); const shelf = state.desk.filter((id) => id !== inWell);
     const carriedHere = state.carried && localCarry;
-    if (state.carried && !carriedHere) { items.push(item(state.carried, tray.x + tray.width / 2, y, "carried")); y += 60; }
-    for (const id of state.desk) { const v = state.target?.kind === "object" && state.target.id === id ? (state.verdict?.ok ? "accepts" : "refuses") : "rest"; items.push(item(id, tray.x + tray.width / 2, y, v)); y += 58; }
+    tray.hidden = !state.armed || (!shelf.length && !(state.carried && !carriedHere));
+    const items: ClayItem[] = [];
+    if (!tray.hidden) {
+      const box = $(".slots").getBoundingClientRect(); let y = box.y + 26;
+      if (state.carried && !carriedHere) { items.push(item(state.carried, box.x + box.width / 2, y, "carried")); y += 60; }
+      for (const id of shelf) { items.push(item(id, box.x + box.width / 2, y, targetMode(id))); y += 58; }
+      $(".slots").style.height = `${Math.max(40, y - box.y - 20)}px`;
+    }
+    if (inWell && well) items.push(item(inWell, well.x, well.y, targetMode(inWell), true));
     if (carriedHere) items.push(item(state.carried!, pointer.x, pointer.y, "carried"));
-    $(".slots").style.height = `${Math.max(40, y - tray.y - 20)}px`;
-    clay.update(items);
-    for (const it of items) { const l = clay.label(it.id)!; l.tabIndex = 0; l.setAttribute("role", "button"); }
-    if (!state.carried && !state.desk.length) hint("Hold Alt and drag a name, place or time to pick it up.");
-    else if (state.carried && !localCarry) hint(`In hand: ${viewOf(state, state.carried).label}. Drag it onto something on this page.`);
-    else if (state.last) hint(state.last.text);
-    renderSheet();
+    clay.update(state.armed ? items : []);
+    for (const it of items) { const l = clay.label(it.id); if (l) { l.tabIndex = 0; l.setAttribute("role", "button"); } }
+    if (state.carried && !localCarry) hint(`In hand: ${viewOf(state, state.carried).label}. Drag it onto something on this page.`);
+    else if (!error && state.last) hint(state.last.text);
   }
-  function item(id: string, x: number, y: number, mode: ClayItem["mode"]): ClayItem {
+  const targetMode = (id: string): ClayItem["mode"] => (state.target?.kind === "object" && state.target.id === id ? (state.verdict?.ok ? "accepts" : "refuses") : "rest");
+  function item(id: string, x: number, y: number, mode: ClayItem["mode"], inWell = false): ClayItem {
     const v = viewOf(state, id); const f = state.objects[id]!.ingredients[0]!;
     const kind: ClayItem["kind"] = v.type === "Event" ? "event" : v.type === "Message" ? "message" : v.type === "People" ? "people" : f.kind;
-    return { id, x, y, label: v.label, detail: v.type === "Fragment" ? v.summary[0]! : v.summary.join(" · "), count: state.objects[id]!.ingredients.length, kind, mode, proposed: v.proposed };
+    return { id, x, y, label: v.label, ...(inWell ? {} : { detail: v.type === "Fragment" ? v.summary[0]! : v.summary.join(" · ") }), count: state.objects[id]!.ingredients.length, kind, mode, proposed: v.proposed };
   }
-
-  function renderSheet() {
-    const sheet = $(".sheet"); let html = "";
-    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-    const mine = state.placement && state.placement.destinationId.startsWith(`${myTab}:`);
-    if (state.phase === "inspecting" && state.inspecting && document.visibilityState === "visible" && inspectHere) {
-      const c = state.objects[state.inspecting]!; const v = viewOf(state, state.inspecting);
-      html = `<h2>${esc(v.label)}</h2><ul>${c.ingredients.map((f) => `<li>${esc(f.kind)}: ${esc(f.text)} <small>from ${esc(f.source?.title ?? f.source?.url ?? "")}</small>${c.ingredients.length > 1 ? ` <button class="ghost" data-remove="${esc(f.id)}">Take out</button>` : ""}</li>`).join("")}</ul><div class="row"><button data-act="close">Done</button></div>`;
-    } else if (mine && ["previewing", "executing", "succeeded", "failed", "unknown"].includes(state.phase)) {
-      const p = state.placement!; const v = viewOf(state, p.objectId);
-      html = `<h2>${state.phase === "previewing" ? "Add it?" : state.phase === "succeeded" ? "Added" : state.phase === "executing" ? "Adding…" : state.phase === "unknown" ? "No answer" : "Not added"}</h2><p>${esc(v.label)}</p>`;
-      for (const m of v.missing) html += `<div><strong>${esc(m.field)}</strong>: ${esc(m.reason)}<div class="row">${(m.suggestions ?? []).map((s) => `<button class="ghost" data-answer="${m.field}" data-value="${esc(s)}">Use “${esc(s)}”</button>`).join("")}<input data-field="${m.field}" aria-label="${esc(m.field)}"><button class="ghost" data-set="${m.field}">Set</button></div></div>`;
-      if (state.phase === "previewing") html += `<div class="row">${p.op ? `<button data-act="place">${esc(p.op.proposal.effect)}</button>` : ""}<button class="ghost" data-act="cancel">Not now</button></div>`;
-      if (state.phase === "succeeded") html += `<div class="row">${p.undoable ? `<button class="ghost" data-act="undo">Undo</button>` : ""}<button data-act="dismiss">Done</button></div>`;
-      if (state.phase === "unknown") html += `<p>${esc(p.message ?? "")}. Recast will ask, not send it again.</p><div class="row"><button data-act="reconcile">Check</button></div>`;
-    }
-    if (sheet.dataset["html"] !== html) { sheet.innerHTML = html; sheet.dataset["html"] = html; }
-    sheet.hidden = !html;
-  }
-  let inspectHere = false;
-  $(".sheet").addEventListener("click", (e) => {
-    const b = (e.target as HTMLElement).closest("button"); if (!b) return;
-    const id = state.placement?.objectId ?? state.inspecting!;
-    if (b.dataset["answer"]) void dispatch({ type: "answer", objectId: id, field: b.dataset["answer"] as never, value: b.dataset["value"]! });
-    else if (b.dataset["set"]) { const v = (shadow.querySelector<HTMLInputElement>(`input[data-field="${b.dataset["set"]}"]`)!).value.trim(); if (v) void dispatch({ type: "answer", objectId: id, field: b.dataset["set"] as never, value: v }); }
-    else if (b.dataset["remove"]) void dispatch({ type: "remove", objectId: id, ingredientId: b.dataset["remove"] });
-    else switch (b.dataset["act"]) {
-      case "place": void dispatch({ type: "place", consent: { kind: "confirm" } }); break;
-      case "cancel": void dispatch({ type: "cancel" }); break;
-      case "undo": void dispatch({ type: "undo" }); break;
-      case "dismiss": void dispatch({ type: "dismiss" }); break;
-      case "reconcile": void dispatch({ type: "reconcile" }); break;
-      case "close": inspectHere = false; void dispatch({ type: "inspect", id: null }); break;
-    }
-  });
 
   // ---- pointer ---------------------------------------------------------------------------------------------------------
   let press: { id: string; x: number; y: number; started: boolean } | null = null;
   function pressObject(id: string, e: PointerEvent) {
+    if (!state.armed) return;
     e.preventDefault(); pointer = { x: e.clientX, y: e.clientY };
     press = { id, x: e.clientX, y: e.clientY, started: false };
   }
@@ -159,7 +141,8 @@ async function main() {
     const r = await dispatch({ type: "pickUp", id }); if (!r.error) { localCarry = true; state = r.state; render(); }
   }
   addEventListener("pointerdown", async (e) => {
-    if (!e.altKey || e.composedPath().includes(host) || state.carried) return;
+    // Off, or without Alt: the page gets the pointer, so selecting text and dragging work as usual.
+    if (!state.armed || !e.altKey || e.composedPath().includes(host) || state.carried) return;
     const f = fragmentAt(e.target as Element); if (!f) { hint("Recast does not recognise that as a person, place, time or title. Select the words and try again."); return; }
     e.preventDefault(); e.stopPropagation(); pointer = { x: e.clientX, y: e.clientY };
     const r = await dispatch({ type: "capture", fragment: f, carry: true }); state = r.state; localCarry = true; render();
@@ -170,7 +153,7 @@ async function main() {
     if (localCarry && state.carried) { void hitTest(); render(); }
   }, true);
   addEventListener("pointerup", async () => {
-    if (press && !press.started) { const id = press.id; press = null; if (state.carried === id) return; inspectHere = true; await dispatch({ type: "inspect", id }); return; }
+    if (press && !press.started) { const id = press.id; press = null; if (state.carried === id) return; await dispatch({ type: "inspect", id }); return; }
     press = null;
     if (!localCarry || !state.carried) return;
     await hitTest(); localCarry = false;
@@ -184,7 +167,12 @@ async function main() {
     }
     iDropped = true; await dispatch({ type: "drop" });
   }, true);
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && (state.carried || state.phase === "previewing" || state.phase === "inspecting")) { localCarry = false; void dispatch({ type: "cancel" }); } }, true);
+  addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !state) return;
+    const ev = escapeEvent(state); if (!ev) return;
+    e.preventDefault(); localCarry = false; const wasOpen = glass.well() !== null;
+    void dispatch(ev).then((r) => { state = r.state; render(); if (wasOpen && glass.well()) glass.focus(); });
+  }, true);
 
   let lastTargetKey = "";
   async function hitTest() {
@@ -205,7 +193,7 @@ async function main() {
     const el = document.querySelector<HTMLElement>(`[data-recast-dest="${CSS.escape(destId)}"]`)!;
     const list = () => el.querySelector("[data-recast-list]") ?? el;
     return {
-      describe: () => CONTRACTS[el.dataset["recastKind"]!]!,
+      describe: () => KINDS[el.dataset["recastKind"]!]!,
       async execute(op: Operation) {
         const li = document.createElement("li"); li.dataset["placed"] = op.proposal.relationId; li.id = `recast-${op.opId}`;
         li.textContent = op.dataMoved.filter((d) => ["Event.title", "Event.start", "Event.location", "Message.to", "Message.snippet"].includes(d.path)).map((d) => d.value).join(" · ");
@@ -239,13 +227,13 @@ async function main() {
       if (!state.carried) localCarry = false;
       render();
     } else if (msg.type === "effect") void perform(msg.effect);
+    else if (msg.type === "focus") glass.focus();
   });
   const first = await send<{ state: ClumpState; tabId: number }>({ type: "get" });
   state = first.state; myTab = first.tabId;
   const dests = destinations(); if (dests.length) state = (await send({ type: "destinations", destinations: dests })).state;
   addEventListener("resize", render); document.addEventListener("visibilitychange", render);
   render();
-  (window as unknown as { recastClayTab: unknown }).recastClayTab = { get state() { return state; }, host };
 }
 
 if (!window.__recastClay) { window.__recastClay = true; void main(); }

@@ -118,6 +118,9 @@ importers:
 
   apps/extension:
     dependencies:
+      '@recast/bridges':
+        specifier: workspace:*
+        version: link:../../packages/bridges
       '@recast/core':
         specifier: workspace:*
         version: link:../../packages/core

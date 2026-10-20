@@ -50,6 +50,8 @@ Screen element → extraction → evidence and object → composition of pieces 
 | Clumps | `packages/core/src/clump.ts` | `mergeClumps`, `removeIngredient`, `viewClump` → type, missing, conflicts, candidate | local, pure | U | |
 | Clump state machine | `packages/interaction/src/clump-machine.ts` | `reduceClump(state, event) → {state, effects, error}`; JSON state | local, pure | U (11), H | |
 | Clay renderer | `packages/overlay/src/clay.ts` | `createClay(host).update(items)`, `fuse()` | local, SVG | H | |
+| Action module | `packages/interaction/src/wheel.ts` (`moduleModel`, `wheelEntries`, `commandEvents`, `escapeEvent`), `packages/overlay/src/glass.ts` (`createGlass`, `intentEvents`) | state + `REGISTRY` → one model → one glass module; intents → machine events | local | U, H | `docs/21-glass-module.md` |
+| Bridge registry (data) | `packages/bridges/src/contracts.ts` (`REGISTRY`) | the contracts every picker lists; no network code | local | U | specs in `specs.ts` perform them |
 | Interaction state machine | `packages/interaction/src/{machine,view}.ts` | `reduce(state, event) → {state, effects}`; `selectView` | local, pure | U (32) | single object per carry today |
 | Overlay | `packages/overlay/src/{components,store,motion}.tsx` | `mountOverlay({onUndo}).update(view)` | local, shadow DOM | H | |
 | Propose, plan, risk | `packages/core/src/{propose,trust,operate}.ts` | `propose(obj, contract)`, `plan`, `assessRisk`, `checkConsent` | local | U | consent: release, confirm or hold ≥600 ms |

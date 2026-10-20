@@ -80,6 +80,9 @@ async function main() {
   const qs = __RECAST_TEST__ ? new URLSearchParams(location.search).get("tabId") : null;
   const tabId = qs && /^\d+$/.test(qs) ? Number(qs) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
   if (tabId === undefined) { $("status").textContent = "No tab to read."; return; }
+  // The explicit alternative to the shortcut: the worker brings Recast into this tab (activeTab, granted by opening this
+  // popup) and turns it on, or reopens a composition. The popup then gets out of the way.
+  $("clump").addEventListener("click", () => { void chrome.runtime.sendMessage({ type: "invoke", tabId }).then(() => window.close()); });
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ["page.js"] });
     const c = await inTab<Capture>(tabId, (() => (globalThis as unknown as { __recast: { capture(): unknown } }).__recast.capture()) as never);

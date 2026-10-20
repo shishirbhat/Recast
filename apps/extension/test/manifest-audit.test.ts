@@ -37,13 +37,16 @@ describe("production manifest: least privilege", () => {
 describe("built code: no dynamic execution, no network, no storage, no unsafe HTML", () => {
   it("the service worker keeps state only in session storage and talks to no network", () => {
     const src = read("dist/background.js");
-    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(local|sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.(create|update)/, /chrome\.downloads/]) {
+    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(local|sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.create/, /chrome\.downloads/]) {
       expect(src, String(pat)).not.toMatch(pat);
     }
     expect(src).toContain("chrome.storage.session");
+    // The only tab change it makes: bringing a destination's tab to the front when the person chose it in the module.
+    expect(read("src/background.ts").match(/chrome\.(tabs|windows)\.update\([^)]*\)/g)).toEqual(["chrome.tabs.update(tabId, { active: true })", "chrome.windows.update(t.windowId, { focused: true })"]);
   });
-  it("the clay layer in the page has no network and no storage of its own", () => {
+  it("the clay layer in the page has no network and no storage of its own (the registry it reads is data only)", () => {
     const src = read("dist/clay-content.js");
+    expect(src).toContain("google-calendar.calendar");
     for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /document\.cookie/]) {
       expect(src, String(pat)).not.toMatch(pat);
     }
@@ -51,11 +54,21 @@ describe("built code: no dynamic execution, no network, no storage, no unsafe HT
   for (const f of ["dist/page.js", "dist/popup.js"]) {
     it(`${f}`, () => {
       const src = read(f);
-      for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /\bimport\s*\(/, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /chrome\.cookies/, /document\.cookie/, /chrome\.tabs\.(create|update)/, /chrome\.downloads/, /chrome\.runtime\.sendMessage/]) {
+      for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /\bimport\s*\(/, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /chrome\.cookies/, /document\.cookie/, /chrome\.tabs\.(create|update)/, /chrome\.downloads/]) {
         expect(src, String(pat)).not.toMatch(pat);
       }
     });
   }
+  it("the page script sends nothing; the popup sends exactly one message, the Recast command for the tab it was opened on", () => {
+    expect(read("dist/page.js")).not.toMatch(/chrome\.runtime\.sendMessage/);
+    expect(read("src/popup.ts").match(/chrome\.runtime\.sendMessage\([^)]*\)/g)).toEqual(['chrome.runtime.sendMessage({ type: "invoke", tabId })']);
+  });
+  it("the worker accepts the command and activation only from the extension's own pages, never from a content script", () => {
+    const src = read("src/background.ts");
+    expect(src).toMatch(/msg\.type === "invoke" && fromExtensionPage\(sender\)/);
+    expect(src).toMatch(/msg\.type === "activate" && fromExtensionPage\(sender\)/);
+    expect(src).toMatch(/sender\.id === chrome\.runtime\.id && !!sender\.url\?\.startsWith\(chrome\.runtime\.getURL\(""\)\)/);
+  });
   it("the popup never parses page-controlled strings as HTML", () => {
     const src = read("src/popup.ts");
     for (const pat of [/innerHTML/, /outerHTML/, /insertAdjacentHTML/, /document\.write/, /DOMParser/, /createContextualFragment/]) expect(src, String(pat)).not.toMatch(pat);

@@ -6,7 +6,7 @@
 // have been pressed together, a destination selector, a review, a receipt. The clay object itself is not drawn here: the
 // module leaves a well, and the host places the real blob in it (`well()`), so the composition stays one tangible object.
 import type { AnswerField, EventField } from "@recast/core";
-import type { ModuleModel, WheelEntry, WheelKey } from "@recast/interaction";
+import { escapeEvent, reduceClump, type ClumpInput, type ClumpState, type ModuleModel, type WheelEntry, type WheelKey } from "@recast/interaction";
 
 export type GlassIntent =
   | { type: "turnOff" } | { type: "reopen" } | { type: "close" } | { type: "back" }
@@ -14,6 +14,37 @@ export type GlassIntent =
   | { type: "inspect" } | { type: "remove"; ingredientId: string }
   | { type: "answer"; field: AnswerField; value: string } | { type: "choose"; field: EventField; ingredientId: string }
   | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean };
+
+/** The state-machine events for what the person asked the module for. Shared by every host, so they behave the same. */
+export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
+  const id = s.placement?.objectId ?? s.inspecting ?? s.focus;
+  switch (i.type) {
+    case "turnOff": return [{ type: "disarm" }];
+    case "reopen": return [{ type: "openModule" }];
+    case "back": { const e = escapeEvent(s); return e && e.type !== "disarm" ? [e] : []; }
+    case "close": {
+      // Back to the pill, one step at a time as Escape would go, but never past "on": closing is not turning off.
+      const out: ClumpInput[] = []; let t = s;
+      for (let n = 0; n < 5 && t.phase !== "idle"; n++) {
+        const e = escapeEvent(t); if (!e || e.type === "disarm") break;
+        out.push(e); t = reduceClump(t, { ...e, now: t.now } as never).state;
+      }
+      return out;
+    }
+    case "openWheel": return [{ type: "openWheel" }];
+    case "select": return [{ type: "select", choice: i.choice }];
+    case "pick": return [{ type: "pickDestination", destinationId: i.destinationId }];
+    case "inspect": return id ? [{ type: "inspect", id }] : [];
+    case "remove": return id ? [{ type: "remove", objectId: id, ingredientId: i.ingredientId }] : [];
+    case "answer": return id ? [{ type: "answer", objectId: id, field: i.field, value: i.value }] : [];
+    case "choose": return id ? [{ type: "choose", objectId: id, field: i.field, ingredientId: i.ingredientId }] : [];
+    case "place": return [{ type: "place", consent: i.heldMs !== undefined ? { kind: "hold", heldMs: i.heldMs } : { kind: "confirm" } }];
+    case "undo": return [{ type: "undo" }];
+    case "dismiss": return [{ type: "dismiss" }];
+    case "reconcile": return [{ type: "reconcile" }];
+    case "confirmMerge": return [{ type: "confirmMerge", yes: i.yes }];
+  }
+}
 
 export interface Glass {
   update(model: ModuleModel, extra?: { error?: string }): void;

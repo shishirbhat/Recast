@@ -89,7 +89,8 @@ Permissions: `activeTab`, `scripting`, `storage` (used for session storage only)
 - **No pointer continuity across real tabs.** A browser does not deliver a drag from one tab to another. In the extension the object waits in the tray of the next tab, and the person drags it from there. Carrying "in the hand" across tabs exists only on the harness page.
 - **Per-tab activation.** Recast has to be invoked in each tab (the `activeTab` model). That is deliberate; broad host access was not requested.
 - **Session only.** Objects are lost when the browser closes or the extension is reloaded.
-- **Keyboard in the extension:** only Escape. The full keyboard path (Space to lift, Tab to targets, Enter to drop, arrow keys between tabs) exists on the harness page.
+- **Keyboard in the extension:** Escape, and the glass module's own keys once focus is in it (`docs/21-glass-module.md`). The full page-level keyboard path (Space to lift, Tab to targets, Enter to drop, arrow keys between tabs) exists on the harness page.
+- **Since `docs/21-glass-module.md`:** Recast is off until invoked, and the review opens in the glass action module instead of a sheet.
 - **Recognition** is the element classifier's: a name, an address block, a time or a heading. Anything else needs a selection. Maya's e-mail address is not read from the fixture profile, so a message to her asks for one.
 - **Not on Windows.** The native shell does not exist (task #23).
 - Release state: under `consumer.compose` (`internal`).

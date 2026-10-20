@@ -8,8 +8,12 @@ export type ToBackground =
   | { type: "get" }
   | { type: "dispatch"; event: EventInput }
   | { type: "destinations"; destinations: DestinationSpec[] }
-  | { type: "activate"; tabId: number };
+  | { type: "activate"; tabId: number }
+  /** From the toolbar popup only: the same as the keyboard command, for the tab the person is looking at. */
+  | { type: "invoke"; tabId: number };
 
 export type ToTab =
   | { type: "state"; state: ClumpState }
-  | { type: "effect"; effect: ClumpEffect };
+  | { type: "effect"; effect: ClumpEffect }
+  /** Recast was invoked from the keyboard here: move focus into the module. */
+  | { type: "focus" };
