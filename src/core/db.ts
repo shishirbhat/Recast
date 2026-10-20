@@ -99,6 +99,43 @@ CREATE TABLE IF NOT EXISTS doc_updates (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS doc_updates_doc ON doc_updates(doc, seq);
+-- Load-time snapshots: the document's full state as of upto_seq. The update log itself is kept as history.
+CREATE TABLE IF NOT EXISTS doc_snapshots (
+  doc TEXT NOT NULL,
+  upto_seq INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (doc, upto_seq)
+);
+-- Which participant (or server origin) owns each Yjs client ID in a document. Every surviving character carries one.
+CREATE TABLE IF NOT EXISTS doc_clients (
+  doc TEXT NOT NULL,
+  client_id INTEGER NOT NULL,
+  author TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (doc, client_id)
+);
+-- Edit sessions: consecutive edits by one author in one document (gaps under 5 minutes), with what they inserted and deleted.
+CREATE TABLE IF NOT EXISTS doc_sessions (
+  id TEXT PRIMARY KEY,
+  doc TEXT NOT NULL,
+  author TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT NOT NULL,
+  first_seq INTEGER NOT NULL,
+  last_seq INTEGER NOT NULL,
+  base_seq INTEGER NOT NULL,
+  inserted INTEGER NOT NULL,
+  deleted INTEGER NOT NULL,
+  ws_inserted INTEGER NOT NULL,
+  ws_deleted INTEGER NOT NULL,
+  edits INTEGER NOT NULL,
+  line_min INTEGER,
+  line_max INTEGER,
+  closed INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS doc_sessions_author ON doc_sessions(author, started_at);
+CREATE INDEX IF NOT EXISTS doc_sessions_doc ON doc_sessions(doc, started_at);
 -- What the server last wrote to disk for each document, to tell its own writes from external ones.
 CREATE TABLE IF NOT EXISTS doc_files (
   doc TEXT PRIMARY KEY,

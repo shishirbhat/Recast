@@ -101,6 +101,9 @@ export class Members {
 
   revoke(id: string): void {
     this.db.prepare("UPDATE members SET revoked_at = ? WHERE id = ?").run(now(), id);
+    // Sessions and unused invites die with membership, so a revoked person can't come back on an old cookie or link.
+    this.db.prepare("DELETE FROM sessions WHERE member_id = ?").run(id);
+    this.db.prepare("DELETE FROM invites WHERE member_id = ?").run(id);
     this.db.prepare("DELETE FROM sessions WHERE member_id = ?").run(id);
   }
 }

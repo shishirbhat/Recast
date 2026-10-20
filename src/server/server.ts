@@ -13,6 +13,7 @@ import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { changeRecord } from "../analysis/change.ts";
+import { authorKind, authorTotals, lineAuthors, sessionDiff, sessions as editSessions } from "./attribution.ts";
 import { ImpactService } from "../analysis/impact.ts";
 import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
 import type { EntryKind, Source } from "../knowledge/records.ts";
@@ -359,6 +360,86 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       requireMember(req, "read");
       return json(res, 200, records.contextFor(str(url.searchParams.get("task"), "task", 64), freshGraph()));
     }
+    if (method === "GET" && parts[0] === "people" && parts.length === 1) {
+      // Humans (members) and agents, with live presence and historical totals. Server origins are reported separately.
+      requireMember(req, "read");
+      const live = new Map(collab.participants().map((a) => [a.memberId, a]));
+      const totals = new Map(authorTotals(relay.db).map((t) => [t.author, t]));
+      const online = new Set([...eventMembers.values(), ...live.keys()]);
+      const status = (id: string) => {
+        const a = live.get(id);
+        if (!a) return online.has(id) ? "online" : "offline";
+        const idle = Date.now() - a.at;
+        return idle < 60_000 ? "active" : idle < 600_000 ? "idle" : "away";
+      };
+      const humans = members.list().map((m) => ({ ...m, kind: "human" as const, status: status(m.id), path: live.get(m.id)?.path ?? null, lastActive: live.get(m.id) ? new Date(live.get(m.id)!.at).toISOString() : (totals.get(m.id)?.lastAt ?? null), typing: !!live.get(m.id)?.typedAt && Date.now() - live.get(m.id)!.typedAt! < 3000, totals: totals.get(m.id) ?? null }));
+      const agents = [...totals.values()].filter((t) => authorKind(t.author) === "agent").map((t) => ({ id: t.author, name: t.author.replace(/^agent:/, ""), kind: "agent" as const, role: "agent", color: "#9a9faa", status: "offline", path: null, lastActive: t.lastAt, typing: false, totals: t }));
+      const origins = [...totals.values()].filter((t) => ["disk", "unknown", "baseline"].includes(authorKind(t.author)));
+      return json(res, 200, { people: [...humans, ...agents], origins });
+    }
+    if (method === "GET" && parts[0] === "people" && parts[1]) {
+      requireMember(req, "read");
+      const id = decodeURIComponent(parts[1]);
+      const ss = editSessions(relay.db, { author: id, limit: 1000 });
+      const files = new Map<string, { path: string; inserted: number; deleted: number; wsInserted: number; wsDeleted: number; sessions: number; lastAt: string }>();
+      for (const x of ss) {
+        const f = files.get(x.path) ?? { path: x.path, inserted: 0, deleted: 0, wsInserted: 0, wsDeleted: 0, sessions: 0, lastAt: x.endedAt };
+        f.inserted += x.inserted;
+        f.deleted += x.deleted;
+        f.wsInserted += x.wsInserted;
+        f.wsDeleted += x.wsDeleted;
+        f.sessions++;
+        if (x.endedAt > f.lastAt) f.lastAt = x.endedAt;
+        files.set(x.path, f);
+      }
+      // Surviving lines: read from the live documents (files that no longer exist are reported as such).
+      const surviving = [...files.keys()].map((path) => {
+        try {
+          if (readText(root, path) === null && !docs.get(path)) return { path, exists: false, lines: [] as number[], shared: [] as number[] };
+          const la = lineAuthors(docs, path);
+          return { path, exists: true, lines: la.filter((l) => l.kind !== "shared" && l.authors[0] === id).map((l) => l.line), shared: la.filter((l) => l.kind === "shared" && l.authors.includes(id)).map((l) => l.line) };
+        } catch {
+          return { path, exists: false, lines: [], shared: [] };
+        }
+      });
+      const a = collab.participants().find((p) => p.memberId === id);
+      return json(res, 200, { id, sessions: ss, files: [...files.values()], surviving, now: a ? { path: a.path, at: new Date(a.at).toISOString() } : null });
+    }
+    if (method === "GET" && parts[0] === "attribution") {
+      requireMember(req, "read");
+      const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
+      return json(res, 200, { path, lines: lineAuthors(docs, path) });
+    }
+    if (method === "GET" && parts[0] === "sessions" && parts[1] && parts[2] === "diff") {
+      requireMember(req, "read");
+      const d = sessionDiff(relay.db, docs, parts[1]);
+      if (!d) throw new HttpError(404, "not_found", "No such edit session");
+      return json(res, 200, d);
+    }
+    if (method === "GET" && parts[0] === "history") {
+      requireMember(req, "read");
+      const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
+      const seq = url.searchParams.get("seq");
+      if (seq !== null) {
+        const text = docs.textAt(path, Number(seq));
+        if (text === null) throw new HttpError(404, "not_found", "That revision is older than the retained history");
+        return json(res, 200, { path, seq: Number(seq), text });
+      }
+      return json(res, 200, { path, sessions: editSessions(relay.db, { path, limit: 200 }) });
+    }
+    if (method === "POST" && parts[0] === "members" && parts[2] === "revoke") {
+      // Revocation is immediate: sessions, invites, open documents, the event feed and terminals all end now.
+      const m = requireMember(req, "admin");
+      const id = decodeURIComponent(parts[1] ?? "");
+      if (!members.get(id)) throw new HttpError(404, "not_found", "No such member");
+      if (id === m.id) throw new HttpError(400, "invalid", "You can't revoke yourself");
+      members.revoke(id);
+      collab.disconnectMember(id);
+      for (const [ws, mid] of eventMembers) if (mid === id) ws.close(4401, "access revoked");
+      const terminalsClosed = terminals.killMember(id);
+      relay.record("member.revoked", actorFor(m), { member: id, terminalsClosed });
+      return json(res, 200, { revoked: id, terminalsClosed });
+    }
     if (method === "GET" && parts[0] === "impact") {
       // The live dependency map: changed interfaces, consumers, tests, affected tasks, stale verification.
       requireMember(req, "read");
@@ -581,6 +662,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   // ---------- WebSockets: /collab/<doc> and /events ----------
   const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 * 1024 });
   const eventClients = new Set<WebSocket>();
+  const eventMembers = new Map<WebSocket, string>();
   let lastSeq = relay.events().at(-1)?.seq ?? 0;
   const pump = () => {
     const fresh = relay.eventsSince(lastSeq);
@@ -589,6 +671,17 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     const msg = JSON.stringify({ type: "events", events: fresh });
     for (const ws of eventClients) if (ws.readyState === ws.OPEN && ws.bufferedAmount < 1 << 20) ws.send(msg);
   };
+  // Presence (ephemeral, never stored): who is online, where, and whether they're typing. Throttled to 4 per second.
+  let presenceTimer: NodeJS.Timeout | null = null;
+  const pushPresence = () => {
+    if (presenceTimer) return;
+    presenceTimer = setTimeout(() => {
+      presenceTimer = null;
+      const msg = JSON.stringify({ type: "presence", online: [...new Set(eventMembers.values())], participants: collab.participants().map((a) => ({ ...a, typing: !!a.typedAt && Date.now() - a.typedAt < 3000 })) });
+      for (const ws of eventClients) if (ws.readyState === ws.OPEN && ws.bufferedAmount < 1 << 20) ws.send(msg);
+    }, 250);
+  };
+  collab.onPresence = pushPresence;
   // This process's own events are pushed at once; the poll picks up events from hooks, MCP servers and the CLI.
   relay.onEvent = pump;
   const feed = setInterval(pump, 200);
@@ -618,7 +711,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       if (url.pathname === "/events") {
         return wss.handleUpgrade(req, socket, head, (ws) => {
           eventClients.add(ws);
-          ws.on("close", () => eventClients.delete(ws));
+          eventMembers.set(ws, member.id);
+          ws.on("close", () => (eventClients.delete(ws), eventMembers.delete(ws), pushPresence()));
+          pushPresence();
         });
       }
       const m = /^\/collab\/(.+)$/.exec(url.pathname);
@@ -653,6 +748,8 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     records,
     async close() {
       clearInterval(feed);
+      if (presenceTimer) clearTimeout(presenceTimer);
+      docs.closeSessions();
       relay.onEvent = null;
       terminals.close();
       runs.close();

@@ -325,3 +325,18 @@ test("events recorded by the server are pushed to /events subscribers at once, n
     await server.close();
   }
 });
+
+test("outside edits are detected by the real watcher even after Relay has saved the file (regression)", async () => {
+  const { server, repo } = await testServer({ "a.txt": "one\n" });
+  try {
+    const ca = await client(server, (await join(server, "Ada")).cookie, "a.txt");
+    // Relay saves with an atomic rename; the old file-level watch went deaf after this.
+    ca.text.insert(0, "zero\n");
+    await until(() => readFileSync(pjoin(repo, "a.txt"), "utf8") === "zero\none\n", 3000, "relay saved");
+    writeFileSync(pjoin(repo, "a.txt"), "zero\none\ntwo\n"); // no checkDisk call: the watcher has to notice
+    await until(() => ca.text.toString() === "zero\none\ntwo\n", 3000, "outside edit noticed");
+    ca.close();
+  } finally {
+    await server.close();
+  }
+});

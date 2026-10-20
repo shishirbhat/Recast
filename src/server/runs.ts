@@ -262,7 +262,7 @@ export class AgentRuns {
    * Merge a worktree's changes (relative to `snapshot`) into the shared documents with a 3-way merge per file.
    * All-or-nothing: if any file conflicts, nothing is applied and the conflicts are returned.
    */
-  private mergeInto(worktree: string, snapshot: string, files: string[]): { applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[] } {
+  private mergeInto(worktree: string, snapshot: string, files: string[], label: string): { applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[] } {
     if (!this.docs) throw new RelayError("invalid", "No document store attached");
     const plans: { path: string; text: string }[] = [];
     const conflicts: { path: string; text: string }[] = [];
@@ -281,7 +281,7 @@ export class AgentRuns {
       (m.clean ? plans : conflicts).push({ path, text: m.text });
     }
     if (conflicts.length) return { applied: [], conflicts, skipped };
-    for (const p of plans) this.docs.applyText(p.path, p.text, "agent");
+    for (const p of plans) this.docs.applyText(p.path, p.text, `agent:${label}`);
     this.docs.flushAll();
     return { applied: plans.map((p) => p.path), conflicts: [], skipped };
   }
@@ -297,7 +297,7 @@ export class AgentRuns {
     const dry = this.dryRun(run.worktree, run.snapshot, files);
     if (dry.length) return { applied: [], conflicts: dry, skipped: [] };
     this.relay.transition(taskId, "completed", actorFor(by), { expectedFrom: "review_required", cwd: run.worktree });
-    const result = this.mergeInto(run.worktree, run.snapshot, files);
+    const result = this.mergeInto(run.worktree, run.snapshot, files, `${run.provider}:${run.taskId}`);
     run.status = "applied";
     this.relay.record("agent.changes_applied", actorFor(by), { runId: run.id, ...result, conflicts: result.conflicts.map((c) => c.path) }, taskId);
     return result;
@@ -366,7 +366,7 @@ export class AgentRuns {
     const dry = this.dryRun(dir, snapshot, files);
     if (dry.length) return { integration: integ, applied: [], conflicts: dry, skipped: [] };
     const approved = this.relay.approveIntegration(integrationId, actorFor(by), dir);
-    const result = this.mergeInto(dir, snapshot, files);
+    const result = this.mergeInto(dir, snapshot, files, `${this.adapter.id}:${integ.tasks.join("+")}`);
     for (const id of integ.tasks) for (const r of this.runs.values()) if (r.taskId === id && r.status === "finished") r.status = "applied";
     this.relay.record("agent.changes_applied", actorFor(by), { integrationId, ...result, conflicts: [] });
     return { integration: approved, ...result };

@@ -153,6 +153,13 @@ export class TerminalService {
     return true;
   }
 
+  /** End every terminal a member owns (on revocation). */
+  killMember(memberId: string): number {
+    const ids = [...this.sessions.values()].filter((s) => s.owner === memberId).map((s) => s.id);
+    for (const id of ids) this.kill(id);
+    return ids.length;
+  }
+
   close(): void {
     for (const id of [...this.sessions.keys()]) this.kill(id);
   }

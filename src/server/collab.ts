@@ -4,7 +4,8 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type { WebSocket } from "ws";
-import type { DocStore, DocEntry } from "./docs.ts";
+import { DocStore } from "./docs.ts";
+import type { DocEntry } from "./docs.ts";
 import type { Member } from "./auth.ts";
 import { can } from "./auth.ts";
 
@@ -57,13 +58,32 @@ function awarenessIsOwn(update: Uint8Array, conn: Conn, room: Room): boolean {
   return true;
 }
 
+/** Live, ephemeral activity per member: where they are and when they last typed or moved. Never persisted. */
+export interface Activity {
+  memberId: string;
+  path: string;
+  at: number;
+  typedAt: number | null;
+}
+
 export class CollabService {
   private rooms = new Map<string, Room>();
+  private activity = new Map<string, Activity>();
+  /** Called (throttled by the caller) whenever presence changes: someone joins, leaves, types or moves. */
+  onPresence: (() => void) | null = null;
   private store: DocStore;
   private pinger: NodeJS.Timeout;
 
   constructor(store: DocStore) {
     this.store = store;
+    // Edits are attributed to the member whose authenticated connection sent them.
+    store.attributor = (origin) => {
+      for (const r of this.rooms.values()) {
+        const c = r.conns.get(origin as WebSocket);
+        if (c) return c.member.id;
+      }
+      return undefined;
+    };
     this.pinger = setInterval(() => this.heartbeat(), PING_MS);
   }
 
@@ -99,6 +119,18 @@ export class CollabService {
     return room;
   }
 
+  private touch(memberId: string, path: string, typed: boolean): void {
+    const t = Date.now();
+    const a = this.activity.get(memberId);
+    this.activity.set(memberId, { memberId, path, at: t, typedAt: typed ? t : a?.path === path ? a.typedAt : null });
+    this.onPresence?.();
+  }
+
+  /** Each connected member's current file and last activity (ephemeral). */
+  participants(): Activity[] {
+    return [...this.activity.values()];
+  }
+
   /** Who is in which document right now (ephemeral). */
   presence(): { path: string; members: string[] }[] {
     return [...this.rooms.entries()].map(([path, r]) => ({ path, members: [...new Set([...r.conns.values()].map((c) => c.member.id))] }));
@@ -121,6 +153,26 @@ export class CollabService {
           const syncType = decoding.peekVarUint(dec);
           // Viewers may ask for state (step 1) but never send content (step 2 or updates).
           if (syncType !== syncProtocol.messageYjsSyncStep1 && !can(conn.member.role, "edit")) return;
+          if (syncType === syncProtocol.messageYjsSyncStep2 || syncType === syncProtocol.messageYjsUpdate) {
+            // Content updates are checked before they touch the document: every struct must be authored by a client ID
+            // this member owns (or a new one, which is then bound to them). Claiming someone else's edits is refused.
+            decoding.readVarUint(dec);
+            const update = decoding.readVarUint8Array(dec);
+            const clients = DocStore.clientsIn(update);
+            const foreign = clients.find((c) => {
+              const owner = this.store.clientOwner(path, c);
+              return owner !== undefined && owner !== conn.member.id;
+            });
+            if (foreign !== undefined) {
+              this.store.reject(path, conn.member.id, "update claims another participant's edits");
+              ws.close(4403, "update rejected");
+              return;
+            }
+            this.store.claimClients(path, clients, conn.member.id);
+            Y.applyUpdate(room.entry.doc, update, ws);
+            this.touch(conn.member.id, path, true);
+            return;
+          }
           const enc = encoding.createEncoder();
           encoding.writeVarUint(enc, MESSAGE_SYNC);
           syncProtocol.readSyncMessage(dec, enc, room.entry.doc, ws);
@@ -136,6 +188,7 @@ export class CollabService {
             decoding.readVarString(d2);
           }
           awarenessProtocol.applyAwarenessUpdate(room.awareness, update, ws);
+          this.touch(conn.member.id, path, false);
         } else if (type === MESSAGE_QUERY_AWARENESS) {
           this.sendAwareness(ws, room);
         }
@@ -146,6 +199,8 @@ export class CollabService {
 
     ws.on("close", () => {
       room.conns.delete(ws);
+      if (![...this.rooms.values()].some((r) => [...r.conns.values()].some((c) => c.member.id === member.id))) this.activity.delete(member.id);
+      this.onPresence?.();
       awarenessProtocol.removeAwarenessStates(room.awareness, [...conn.clientIds], null);
       if (room.conns.size === 0) {
         this.store.flush(room.entry);
@@ -155,6 +210,7 @@ export class CollabService {
       }
     });
 
+    this.touch(member.id, path, false);
     // Start the sync handshake and send who is already here.
     const enc = encoding.createEncoder();
     encoding.writeVarUint(enc, MESSAGE_SYNC);
