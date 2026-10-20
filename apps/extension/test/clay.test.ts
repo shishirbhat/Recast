@@ -23,7 +23,7 @@ beforeAll(async () => {
 afterAll(async () => { await ctx?.close(); server?.close(); });
 
 const tabIdOf = (u: string) => sw.evaluate(async (u) => (await chrome.tabs.query({ url: u })).sort((a, b) => b.id! - a.id!)[0]!.id!, u);
-/** What the person does with the shortcut (Alt+Shift+R): the worker's command handler, for this tab. */
+/** What the person does to bring Recast into a tab (the toolbar, or Alt+Shift+R): the worker's command handler, for this tab. */
 const command = async (p: Page) => { const id = await tabIdOf(p.url()); await sw.evaluate((id) => (globalThis as any).recastClay.invoke(id), id); };
 /** Open a page and invoke Recast there: brought in (and turned on if it was off). */
 async function openTab(fixture: string): Promise<Page> {
@@ -130,6 +130,11 @@ describe("cross-tab carry in the browser extension", () => {
     expect(Object.keys((await stored()).objects).length).toBe(before);
     expect(await restaurant.locator("recast-clay >> .rg").isHidden()).toBe(true);
     expect((await stored()).objects[id]).toBeTruthy();                 // off, and the composition is kept for the session
+    // Control twice, in a tab Recast is in: on again. A Ctrl+C in between does not count.
+    await restaurant.keyboard.press("Control+c"); await restaurant.keyboard.press("Control"); await restaurant.keyboard.press("Control");
+    await until(async () => { const x = await stored(); return x.armed === true && x.phase === "composed"; });   // on, and the composition reopened
+    await restaurant.keyboard.press("Escape"); await until(async () => (await stored()).phase === "idle");      // one step back: closed
+    await restaurant.keyboard.press("Escape"); await until(async () => (await stored()).armed === false);       // then off
     // The popup's button does what the shortcut does.
     const extId = new URL(sw.url()).host; const tabId = await tabIdOf(restaurant.url());
     const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);

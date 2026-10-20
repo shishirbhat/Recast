@@ -7,7 +7,7 @@
 import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
-import { commandEvents, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { commandEvents, createDoubleTap, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents, type GlassIntent } from "@recast/overlay/src/glass";
 
@@ -68,7 +68,10 @@ const clay = createClay($("#clay"), {
   reducedMotion,
   onPointerDown: (id, e) => startObjectPress(id, e),
 });
-const SHORTCUT = "Alt+Shift+R";
+// The trigger: press Control twice (Control on a Mac, Ctrl on Windows). The button in the bar does the same.
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const SHORTCUT = MAC ? "⌃ ⌃" : "Ctrl Ctrl";
+const SHORTCUT_WORDS = MAC ? "press Control twice" : "press Ctrl twice";
 const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: SHORTCUT, theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
 
 function dispatch(e: ClumpInput) {
@@ -85,7 +88,7 @@ function dispatch(e: ClumpInput) {
 }
 
 // ---- the trigger and the module -----------------------------------------------------------------------------------
-/** The one Recast command (the button in the bar, or Alt+Shift+R): on; reopen the composition; off. Never a second module. */
+/** The one Recast command (the button in the bar, or Control twice): on; reopen the composition; off. Never a second module. */
 function invoke(fromKeyboard: boolean) {
   const evs = commandEvents(state);
   for (const e of evs) dispatch(e);
@@ -131,7 +134,7 @@ function fragmentOf(el: HTMLElement): Fragment {
   return {
     id: `${el.id}-${++captureSeq}`, kind, text, confidence: 0.9, ...(Object.keys(value).length ? { value } : {}),
     evidence: [{ locator: { kind: "css", value: `#${el.id}` }, excerpt: text }],
-    source: { app: "browser", url: tab.dataset["url"]!, title: tab.dataset["title"]! },
+    source: { app: "browser", url: tab.dataset["url"]!, title: el.dataset["sourceTitle"] ?? tab.dataset["title"]! },
   };
 }
 const centreOf = (el: Element) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
@@ -181,7 +184,7 @@ function renderModule() {
   for (const el of $$(".grab")) { el.tabIndex = state.armed ? 0 : -1; if (state.armed) el.setAttribute("role", "button"); else el.removeAttribute("role"); }
   $("#desk-empty").textContent = state.armed
     ? "Drag a highlighted name, place or time onto another to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up."
-    : `Recast is off, so pages behave normally. Press Recast in the address bar (or ${SHORTCUT}) to start picking things up.`;
+    : `Recast is off, so pages behave normally. Press Recast in the address bar, or ${SHORTCUT_WORDS}, to start picking things up.`;
 }
 function renderPass() {
   const spots = deskSpots(); const t = performance.now();
@@ -199,7 +202,7 @@ function renderPass() {
     if (a && a.until <= t) anchors.delete(id);
     const targetMode = state.target?.kind === "object" && state.target.id === id ? (state.verdict?.ok ? "accepts" : "refuses") : null;
     // In the module's well the facts are shown under it, so the object carries only its name.
-    items.push({ id, x: spot.x, y: spot.y, label: v.label, ...(id === inWell ? {} : v.type !== "Fragment" ? { detail: v.summary.join(" · ") } : { detail: v.summary[0]! }), count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode: carried ? "carried" : targetMode ?? "rest", proposed: v.proposed, focused: false });
+    items.push({ id, x: spot.x, y: spot.y, label: v.label, ...(id === inWell && glass.el.dataset["mode"] === "choosing" && innerWidth > 520 ? { compact: true } : {}), ...(id === inWell ? {} : v.type !== "Fragment" ? { detail: v.summary.join(" · ") } : { detail: v.summary[0]! }), count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode: carried ? "carried" : targetMode ?? "rest", proposed: v.proposed, focused: false });
   }
   clay.update(items);
   for (const it of items) { const el = clay.label(it.id)!; el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-description", it.mode === "carried" ? "in hand. Tab to a target, Enter to drop, Escape to put back" : "Enter to open, Space to pick up"); }
@@ -375,10 +378,14 @@ addEventListener("focusin", (e) => {
   const el = e.target as HTMLElement;
   if (state.carried && mode === "keyboard") { const t = targetOfElement(el); pageTarget = t.piece ?? null; if (JSON.stringify(t.target) !== JSON.stringify(state.target)) dispatch({ type: "approach", target: t.target }); else render(); }
 });
+// Control twice, from anywhere on the page. Control used in a shortcut (Ctrl+C), held, or with a click never counts.
+const doubleTap = createDoubleTap();
+addEventListener("keydown", (e) => { if (doubleTap({ type: "keydown", key: e.key, repeat: e.repeat, at: e.timeStamp })) invoke(true); }, true);
+addEventListener("keyup", (e) => { if (doubleTap({ type: "keyup", key: e.key, at: e.timeStamp })) invoke(true); }, true);
+addEventListener("pointerdown", (e) => { doubleTap({ type: "pointerdown", at: e.timeStamp }); }, true);
+addEventListener("blur", (e) => { doubleTap({ type: "blur", at: e.timeStamp }); });
 addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
-  // The Recast command. e.code, not e.key: on a Mac, Option+Shift+R types a character instead of "R".
-  if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === "KeyR") { e.preventDefault(); invoke(true); return; }
   if (e.key === "Escape") {
     const ev = escapeEvent(state);
     if (ev) { e.preventDefault(); pageTarget = null; const wasModule = !moduleClosed(); dispatch(ev); if (wasModule && !moduleClosed()) glass.focus(); }
@@ -418,6 +425,7 @@ for (const el of $$(".grab")) {
 }
 for (const b of $$("[role=tab]")) b.addEventListener("click", () => { if (!state.carried) showTab(b.dataset["for"]!); });
 $("#recast-trigger").addEventListener("click", (e) => invoke((e as PointerEvent).detail === 0));
+$(".trigger-kbd").textContent = SHORTCUT;
 $<HTMLInputElement>("#silent").addEventListener("change", (e) => { bridges["cal"]!.silent = (e.target as HTMLInputElement).checked; });
 addEventListener("resize", () => render()); addEventListener("scroll", () => render(), { passive: true, capture: true });
 const style = document.createElement("style"); style.textContent = CLAY_CSS + GLASS_CSS; document.head.appendChild(style);

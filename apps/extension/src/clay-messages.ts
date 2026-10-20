@@ -10,7 +10,9 @@ export type ToBackground =
   | { type: "destinations"; destinations: DestinationSpec[] }
   | { type: "activate"; tabId: number }
   /** From the toolbar popup only: the same as the keyboard command, for the tab the person is looking at. */
-  | { type: "invoke"; tabId: number };
+  | { type: "invoke"; tabId: number }
+  /** Control pressed twice in a tab Recast is already in: the Recast command for that tab. */
+  | { type: "command" };
 
 export type ToTab =
   | { type: "state"; state: ClumpState }

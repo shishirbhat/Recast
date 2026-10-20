@@ -1,13 +1,15 @@
-# 21. The Recast trigger and the glass action module
+# 21. The Recast trigger and the glass instrument
 
 **Level reached:**
-- **U:** state machine 14 tests, glass contrast 7, bridges 4 new.
-- **H:** Chromium on the clay page, 18 tests including touch, keyboard, reduced motion, and axe in light and dark on every module state.
-- **H, F:** the real MV3 extension in Chromium, 3 cross-tab tests.
+- **U:** state machine 14 tests, the Control-twice detector 6, glass contrast 7, bridges 4 new.
+- **H:** Chromium on the clay page, 21 tests: mouse wheel, trackpad-style scrolling, touch, keyboard, Control twice, reduced motion, reduced transparency, and axe in light and dark on every state.
+- **H, F:** the real MV3 extension in Chromium, 3 cross-tab tests (Control twice included).
 
 Every placement goes to a local stand-in. Nothing reaches Google. Not **R**, not **P**, not native.
 
-Screenshots (`docs/images/glass/`): off, the pill, the module (light), the selector (dark), the review on a phone, and the selector in the real extension.
+Screenshots (`docs/images/glass/`): the pill, the resting capsule, the wheel (light, dark, phone), the review, and the receipt (dark).
+
+**What the screenshots are:** the try-it page in a desktop-sized browser. The tabs, the address bar, the pages and the "Your objects" bar are a simulated browser that serves as the demo's backdrop. Recast itself is only the glass instrument and the clay object floating over it. There is no native desktop app.
 
 ## Acceptance journey, and where it is proven
 > With Recast inactive, ordinary browsing behaves normally. I activate Recast, pick up Maya, merge her with a restaurant, and obtain one composed clay object. A compact frosted-glass module appears without taking over the screen. I scroll through Calendar, Mail, Tasks, and other supported destinations, choose one, inspect the preview, and complete the action through Recast's existing trust model.
@@ -21,24 +23,27 @@ Proven by `apps/harness/test/clay.test.ts` ("acceptance: …", "the trigger", "k
 - **The extension's cross-tab architecture:** the worker owns the state in `storage.session`, tabs render it, and effects run in the tab that owns the destination.
 - **The bridge registry's contracts.** They now live as plain data in `packages/bridges/src/contracts.ts`, so the extension's page script can read them without any network code.
 
-## Trigger
+## Trigger: press Control twice
 | Where | How | What it does |
 |---|---|---|
-| Extension | **Alt+Shift+R** (the existing `recast-clay` command), or the toolbar popup's "Clump things on this page" | In a tab Recast is not in yet, it brings Recast there (activeTab) and turns it on. In a tab it is already in, it turns Recast on, reopens the composition, or turns it off (`commandEvents`). |
-| Clay page | The "Recast" button in the simulated browser bar, or Alt+Shift+R | The same `commandEvents` |
+| Clay page | **Control twice** (Control on a Mac, Ctrl on Windows and Linux), or the "Recast" button in the simulated browser bar | `commandEvents`: on; reopen the composition; or off |
+| Extension, in a tab Recast is in | **Control twice** | the same |
+| Extension, a tab Recast is not in yet | the toolbar popup's "Clump things on this page", or Alt+Shift+R (the `recast-clay` command) | brings Recast into the tab (activeTab) and turns it on |
 
+- **What counts as "twice"** (`packages/interaction/src/double-tap.ts`, 6 unit tests):
+  - Control pressed and released on its own, each press under 300 ms, the two within 400 ms.
+  - These never count: Control used in a shortcut (Ctrl+C), Ctrl+click, a held Control (auto-repeat or a long press), leaving the window, or Shift, Alt or ⌘ pressed twice.
+- **Why the extension still has a first-time shortcut:** a browser extension cannot listen for keys on a page it was not invited into without access to every site. Recast deliberately doesn't ask for that. Once it is in a tab, Control twice works there.
+- **Known overlaps, stated rather than tested:**
+  - macOS lets people set Dictation to "Press Control key twice". Anyone who has chosen that will start both.
+  - Screen readers stop speaking when Control is pressed. The trigger still works, and the button is there as an alternative.
 - **Off is the default.** With Recast off:
   - the machine refuses `capture` and `pickUp`;
   - pieces on the page are plain text (no highlight, ordinary selection, not focusable as Recast targets);
   - in the extension, Alt+press is ignored;
   - no module is shown.
-- **Turning off:** Escape when nothing is open, the × on the pill, or the command when nothing is made yet. Off puts an object in hand back and closes an unwritten review. The composition is kept for the session.
-- **Shortcut choice:** Alt+Shift+R was already this extension's command.
-  - It is not one of Chrome's built-in shortcuts that I know of on Windows or Linux. I did not check ChromeOS or macOS.
-  - On macOS, Option+Shift+R types "‰" in text fields, and an extension command captures it while Recast is installed.
-  - People can rebind it at `chrome://extensions/shortcuts`.
-  - The clay page matches on `e.code` (KeyR), so it works when Option changes the character.
-- **Capture gesture in the extension:** Alt+press (with Recast on). Without Alt, the page keeps its own drag and selection even while Recast is on.
+- **Turning off:** Escape when nothing is open, the × on the pill, or Control twice when nothing is made yet. Off puts an object in hand back and closes an unwritten review. The composition is kept for the session.
+- **Capture gesture in the extension:** Alt+press (with Recast on). Without Alt, the page keeps its own drag and selection.
 
 ## Module lifecycle
 One module, rendered from one pure model (`moduleModel(state, REGISTRY)` in `packages/interaction/src/wheel.ts`) by one component (`createGlass`, `packages/overlay/src/glass.ts`).
@@ -50,14 +55,14 @@ One module, rendered from one pure model (`moduleModel(state, REGISTRY)` in `pac
 | Carrying, with a composition | the module stays open with the object in its well: "Drop it on the object to add it" |
 | Carrying, no composition | pill: "Carrying Maya Rao" |
 | `merging` | pill while the fusion plays |
-| `composed`: a merge has settled | the composition in the well, 2–3 facts, **Choose where it goes ↵**, **Look inside** |
-| `choosing` | the destination selector |
-| `previewing` | the review: fields with their origin, what is still needed, assumptions, risk, a stand-in note |
+| `composed`: a merge has settled | the **resting capsule**: the object in its well, "Ready to place", one glass button **Choose where it goes ›**, and a small Look inside |
+| `choosing` | the capsule opens: the object on the left (drawn compact), facts under it, the **wheel** on the right sharing its centre line |
+| `previewing` | the wheel contracts into the review: the destination's icon, fields with their origin, what is still needed, assumptions, risk, a stand-in note, **Confirm: Add to calendar** and **Cancel** |
 | `executing` | "Adding to Calendar…", no buttons |
-| `succeeded` | "Added to Calendar", only after the destination's receipt. Undo only if reversible |
+| `succeeded` | the receipt: the destination's icon with an ember check, "Added to Calendar", only after the destination's receipt. Undo only if reversible |
 | `unknown` | "No answer from Calendar"; **Check Calendar** reconciles, never resends |
 | `failed` | the reason; Close |
-| `inspecting` | the ingredients with their sources; Take out |
+| `inspecting` | the ingredients with their sources and how sure Recast is of each ("sure 90%"); Take out |
 | `confirmingMerge` | Combine / Keep apart |
 
 - **Escape steps back one level at a time.** Review → selector → module → pill → off. It does nothing while writing or while an outcome is unknown, and Recast cannot be turned off then.
@@ -67,42 +72,51 @@ One module, rendered from one pure model (`moduleModel(state, REGISTRY)` in `pac
 
 ### Size and position
 - **Pill:** width fits its content.
-- **Module:** `min(340px, 100vw − 32px)` wide.
+- **Capsule** 360 px, **wheel** 470 px, **review** 390 px, **receipt** 340 px wide, each `min(…, 100vw − 32px)`.
 - **Height grows only as needed:**
-  - module about 235 px;
-  - selector about 400 px;
+  - capsule about 190 px;
+  - wheel about 370 px;
+  - receipt about 190 px;
   - review up to the viewport less 24 px, scrolling inside.
 - **Desktop:** bottom-centre, floating above the clay page's desk when there is room.
-- **Phone (≤ 480 px):** 16 px from each edge.
+- **Phone (≤ 520 px):** 16 px from each edge; in the wheel state the object sits above the wheel.
 - **Extension:** the shelf of loose pieces sits bottom-right; on windows narrower than 900 px it moves to the top-right, so it doesn't overlap the module.
 - **Tested:** 1200×800 and 390×844 on the clay page (no horizontal scroll; the module stays inside the screen), and 1280×800 and 760×760 in the extension (screenshots).
 
 ### Material
-- **Glass:** translucent tint (80%), backdrop blur 28 px with saturation 170%, a hairline border, a top edge highlight, and two soft shadows.
-- **Fallbacks:** solid colour without `backdrop-filter`, with `prefers-reduced-transparency`, and with `prefers-contrast: more`.
-- **Contrast:** checked in a unit test over glass composited on pure black and on pure white, and on the solid fallback. Ink and secondary text are at least 4.5:1 in both schemes. axe finds no serious or critical violations on the pill, module, selector, review and inspection, in light and dark.
+- **Optical glass:**
+  - a warm ivory tint (78%), or warm charcoal in dark, slightly lighter at the top where light falls;
+  - backdrop blur 22 px with saturation 180% and a touch of brightness;
+  - a hairline rim, bright along the top edge and fading round the sides;
+  - two shadows, contact and ambient.
+- **A specular highlight** drifts toward the pointer over the surface. It is static with reduced motion and absent with reduced transparency.
+- **Glass is used for the instrument only.** The clay object stays opaque and tactile (a soft top highlight and inner shade), distinct from the glass around it.
+- **Type and accent:** Instrument Serif for page display moments, Inter for the interface, JetBrains Mono for numbers. Ember orange marks the lens rim, the primary action's ring, the receipt check and focus, and never long text.
+- **Fallbacks:** solid colour without `backdrop-filter`, with `prefers-reduced-transparency` (tested in Chromium: no blur, no gradient, solid ivory), and with `prefers-contrast: more`.
+- **Contrast:** checked in a unit test over glass composited on pure black and on pure white, and on the solid fallback. Ink and secondary text are at least 4.5:1 in both schemes. axe finds no serious or critical violations on the pill, capsule, wheel, review and inspection, in light and dark.
 - **Motion:**
-  - the outline is revealed from the old shape to the new (clip-path, 200 ms), so layout and the well are final at once;
-  - activation fades in 160 ms;
-  - the selector glides 180 ms;
-  - the receipt check draws 260 ms.
-  - With reduced motion, none of these run and everything still works.
-  - The fusion is unchanged.
+  - the outline is revealed from the old shape to the new (clip-path, 220 ms), so layout and the well are final at once;
+  - activation rises and scales in over 180 ms;
+  - the wheel settles with a critically damped ease (about 150 ms, no overshoot, no spin);
+  - each settle gives one "tick" (the lens rim brightens and the chosen icon firms, 160 ms);
+  - the receipt makes one small scale (260 ms) and draws its check.
+  - Nothing moves perpetually. With reduced motion none of this runs and everything works.
 
-## The destination selector
-- **A short vertical drum.** The chosen place sits in a raised capsule in the middle, with one neighbour visible above and below.
-- **Not colour alone:** the chosen row is larger and bold and shows ↵; unavailable rows are struck through and say "Unavailable", with the reason under the drum.
-- **Mouse:**
-  - the scroll wheel moves one row per notch (trackpad deltas are accumulated);
-  - clicking a row selects it; clicking the selected row opens it.
-- **Touch:** a vertical swipe of 36 px moves one row.
+## The destination wheel
+- **A short cylinder, turning behind a fixed glass lens.** Rows sit on the cylinder 24° apart. The chosen one faces you inside the lens, which has an ember rim on its leading edge. Its neighbours tilt away with perspective, shrinking and fading, so the wheel reads as a physical drum. It was chosen over a radial dial because it stays usable at phone width.
+- **Not colour alone:** the chosen row is bold, its icon inverts with an ember ring, and it shows ↵. Unavailable rows are struck through and say "Unavailable", with the reason under the wheel.
+- **Mouse wheel:** one row per notch.
+- **Trackpad:** the cylinder follows the fingers (with a little resistance at the ends), then snaps to the nearest row. No free-spinning momentum.
+- **Click:** a neighbour turns the wheel to it; clicking the chosen row opens it.
+- **Touch:** drag the cylinder; it snaps when you let go.
 - **Keyboard:**
   - ↑/↓ (and ←/→), Home/End;
   - Enter or Space opens;
   - Escape goes back.
-  - Focus moves into the selector when it opens.
+  - Focus moves into the wheel when it opens.
 - **Selecting writes nothing.** Opening an unavailable row only nudges its reason.
-- **Opening is not execution.** It leads to the review, and `pickDestination` with an unfit destination is refused, so the selector stays open.
+- **Opening is not execution.** It leads to the review, and `pickDestination` with an unfit destination is refused, so the wheel stays open.
+- **Focus never lands on Cancel first.** When the review opens, focus goes to what is still needed, else to Confirm. This was a real bug found by the keyboard test: a stray Enter could throw away a review.
 
 ### What is listed, and when it is available
 The entries come from `REGISTRY` (`packages/bridges/src/contracts.ts`), in five places:
@@ -159,11 +173,18 @@ The worker's only tab or window change is `tabs.update({active: true})` and `win
   - Next step: OAuth apps (#22), then a real `HttpBridge` destination in the extension's worker, which needs host permissions for the Google APIs and its own review.
 - **Selector keys in the extension** work once focus is in the module. The command focuses it (via a `focus` message). The full page-level keyboard path (Tab between pieces) remains a clay-page feature.
 
+## Photographs
+No reference photos are in the repository; there are only screenshots. The restaurant page therefore has a **photo slot** (`[data-photo-slot]`).
+- It holds an SVG illustration of the storefront, labelled as an illustration, with one hotspot over the sign.
+- With Recast on, the sign is a piece you can pick up. Its provenance says "Photo of the storefront · Dakshin" (tested).
+- A real photo replaces the illustration without code changes, because the hotspot is placed in percentages.
+- Reading text out of a real photo is not implemented: the hotspot is declared by the page.
+
 ## Commands and results
 ```
 pnpm --filter @recast/bridges test        # 36 (4 new: Gmail message draft, registry)
-pnpm --filter @recast/interaction test    # 69 (14 new: trigger, module, selector, Escape)
-pnpm --filter @recast/overlay test        # 11 (7 new: glass contrast and fallbacks)
-pnpm --filter @recast/harness test        # 44 (clay page 18: 13 updated, 5 new)
-pnpm --filter @recast/extension test      # 22 (cross-tab 3, manifest audit 12, e2e 7)
+pnpm --filter @recast/interaction test    # 75 (trigger, module, selector, Escape, Control twice)
+pnpm --filter @recast/overlay test        # 11 (glass contrast and fallbacks)
+pnpm --filter @recast/harness test        # 47 (clay page 21)
+pnpm --filter @recast/extension test      # 22 (cross-tab 3 incl. Control twice, manifest audit 12, e2e 7)
 ```

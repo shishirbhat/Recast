@@ -37,6 +37,8 @@ async function open(o: { theme?: "light" | "dark"; phone?: boolean; motion?: "re
 const st = (p: Page) => p.evaluate(() => (globalThis as any).recast.state);
 const centre = async (p: Page, sel: string) => { const b = (await p.locator(sel).first().boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 const objectSel = (id: string) => `.clay-item[data-id="${id}"]`;
+/** The Recast trigger: Control pressed and released twice (Ctrl on Windows and Linux). */
+const controlTwice = async (p: Page) => { await p.keyboard.press("Control"); await p.keyboard.press("Control"); };
 const settled = (p: Page) => p.waitForFunction(() => { const s = (globalThis as any).recast.state; return s.phase !== "merging" && s.phase !== "executing"; });
 
 /** Press on a piece or object, travel (optionally pausing over a tab to open it), and let go over a target. */
@@ -73,6 +75,9 @@ describe("pressing pieces into one object (mouse)", () => {
     const label = page.locator(objectSel(id));
     // It sits in the module's well; the facts are written under it there.
     expect(await label.getAttribute("aria-label")).toBe("Meet Maya at Dakshin, made of 3 pieces");
+    expect(await page.locator(".rg").getAttribute("data-mode")).toBe("composed");
+    expect(await page.locator(".rg-title").innerText()).toBe("Ready to place");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
     expect(await page.locator(".rg-facts").innerText()).toMatch(/^Maya Rao\s+Dakshin\s+Fri, 23 Oct, 7:30 PM$/);   // the dots between them are drawn by CSS
     expect(await label.getAttribute("class")).toContain("composed");
     expect(await page.locator("#hint").innerText()).toBe("Now one object: Meet Maya at Dakshin");
@@ -116,7 +121,7 @@ describe("pressing pieces into one object (mouse)", () => {
     const id = await makeDinner(page);
     await page.locator(objectSel(id)).click();
     expect(await page.locator(".rg-title").innerText()).toBe("Inside this object");
-    expect(await page.locator(".rg-ingredients").innerText()).toMatch(/person\s*Maya Rao\s*from Maya Rao · Profile/i);
+    expect(await page.locator(".rg-ingredients").innerText()).toMatch(/person\s*Maya Rao\s*from Maya Rao · Profile · sure 90%/i);
     await page.getByRole("button", { name: "Take Maya Rao out" }).click();
     const s = await st(page); expect(s.desk).toHaveLength(2); expect(s.objects[id].ingredients.map((f: any) => f.text)).toEqual(["Dakshin", "Friday, 7:30 PM"]);
     expect(await page.locator(objectSel(id)).getAttribute("aria-label")).toMatch(/^Meet at Dakshin, /);
@@ -253,12 +258,16 @@ describe("the trigger", () => {
     expect(await page.locator("#recast-trigger").getAttribute("aria-pressed")).toBe("false");
     expect(errors).toEqual([]); await ctx.close();
   });
-  it("the button and Alt+Shift+R turn it on and off; Escape turns it off; there is only ever one module", async () => {
+  it("the button and Control twice turn it on and off; Ctrl+C and a held Control do not; Escape turns it off; only ever one module", async () => {
     const { page, ctx } = await open({ off: true });
-    await page.keyboard.press("Alt+Shift+R");
+    expect(await page.locator(".trigger-kbd").innerText()).toMatch(/^(Ctrl Ctrl|⌃ ⌃)$/);
+    await page.keyboard.press("Control+c"); await page.keyboard.press("Control+c");
+    await page.keyboard.down("Control"); await page.waitForTimeout(450); await page.keyboard.up("Control"); await page.keyboard.press("Control");
+    expect((await st(page)).armed).toBe(false);
+    await page.waitForTimeout(450); await controlTwice(page);
     expect((await st(page)).armed).toBe(true); expect(await page.locator(".rg").getAttribute("data-mode")).toBe("pill");
     expect(await page.locator("#recast-trigger").getAttribute("aria-pressed")).toBe("true");
-    await page.keyboard.press("Alt+Shift+R"); expect((await st(page)).armed).toBe(false); expect(await page.locator(".rg").isHidden()).toBe(true);
+    await page.waitForTimeout(450); await controlTwice(page); expect((await st(page)).armed).toBe(false); expect(await page.locator(".rg").isHidden()).toBe(true);
     await page.locator("#recast-trigger").click(); expect((await st(page)).armed).toBe(true);
     await page.keyboard.press("Escape"); expect((await st(page)).armed).toBe(false);
     await page.locator("#recast-trigger").click(); await page.locator("#recast-trigger").click(); await page.locator("#recast-trigger").click();
@@ -326,12 +335,12 @@ describe("the glass module and the destination selector", () => {
     expect(steps).toEqual(["choosing", "composed", "idle"]);
     expect(await page.locator(".rg").getAttribute("data-mode")).toBe("pill");
     expect(await page.locator(".rg-title").innerText()).toBe("Meet Maya at Dakshin is ready");
-    await key("Alt+Shift+R"); expect((await st(page)).phase).toBe("composed");
-    await key("Alt+Shift+R"); expect((await st(page)).phase).toBe("composed");    // invoking again: no second module
+    await controlTwice(page); expect((await st(page)).phase).toBe("composed");
+    await page.waitForTimeout(450); await controlTwice(page); expect((await st(page)).phase).toBe("composed");    // invoking again: no second module
     expect(await page.locator(".rg").count()).toBe(1);
     await key("Escape"); await key("Escape"); expect((await st(page)).armed).toBe(false);
     expect((await st(page)).focus).not.toBeNull();                                // off, and the composition is kept
-    await key("Alt+Shift+R"); expect(await st(page)).toMatchObject({ armed: true, phase: "composed" });
+    await controlTwice(page); expect(await st(page)).toMatchObject({ armed: true, phase: "composed" });
     expect(errors).toEqual([]); await ctx.close();
   });
   it("More lists the rest of the registry, each with its reason; nothing that is not in the registry appears", async () => {
@@ -345,6 +354,40 @@ describe("the glass module and the destination selector", () => {
     const opts = await page.locator(".rg-opt").evaluateAll((els) => els.map((e) => [e.querySelector(".rg-label")!.textContent, e.getAttribute("aria-disabled")]));
     expect(opts).toEqual([["Google Calendar", "true"], ["Gmail", "true"], ["Google Sheets", "true"], ["Back", "false"]]);
     expect(await page.locator(".rg-reason").innerText()).toBe("Google Calendar takes people or places; this is an event");
+    await ctx.close();
+  });
+  it("the wheel: trackpad scrolling turns the cylinder and it snaps to a row; clicking a neighbour selects it, never opens it", async () => {
+    const { page, ctx } = await open();
+    await drag(page, "#maya", "#dakshin", "#tab-restaurant");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    const d = await centre(page, ".rg-drum"); await page.mouse.move(d.x, d.y);
+    // Small deltas every frame, as a trackpad sends them: ≈1.2 rows in all.
+    await page.evaluate(async () => { const el = document.querySelector(".rg-drum")!; for (let i = 0; i < 6; i++) { el.dispatchEvent(new WheelEvent("wheel", { deltaY: 9, bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, 16)); } });
+    await expect.poll(async () => (await st(page)).choice).toBe("mail");
+    expect(await page.locator(".rg-opt.on .rg-label").innerText()).toBe("Mail");
+    await page.locator("#rg-opt-calendar").click();
+    await expect.poll(async () => (await st(page)).choice).toBe("calendar");
+    expect((await st(page)).phase).toBe("choosing");                   // a click on a neighbour only turns the wheel
+    await page.locator("#rg-opt-calendar").click();
+    expect((await st(page)).phase).toBe("previewing");                 // a click on the chosen one opens it
+    await ctx.close();
+  });
+  it("the sign in the photo is a piece: pressed into Maya, the object remembers it came from the photo", async () => {
+    const { page, ctx } = await open();
+    await drag(page, "#maya", "#dakshin-sign", "#tab-restaurant");
+    const s = await st(page);
+    expect(s.objects[s.focus].ingredients.map((f: any) => [f.kind, f.text, f.source.title])).toEqual([["place", "Dakshin", "Photo of the storefront · Dakshin"], ["person", "Maya Rao", "Maya Rao · Profile"]]);
+    await ctx.close();
+  });
+  it("with reduced transparency the module is solid, and still works", async () => {
+    const { page, ctx } = await open();
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-transparency", value: "reduce" }] });
+    await drag(page, "#maya", "#dakshin", "#tab-restaurant");
+    const style = await page.locator(".rg").evaluate((el) => { const c = getComputedStyle(el); return { blur: c.backdropFilter, bg: c.backgroundColor, img: c.backgroundImage }; });
+    expect(style.blur).toBe("none"); expect(style.img).toBe("none"); expect(style.bg).toBe("rgb(244, 241, 234)");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click(); expect((await st(page)).phase).toBe("choosing");
     await ctx.close();
   });
 });

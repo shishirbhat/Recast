@@ -72,6 +72,8 @@ chrome.runtime.onMessage.addListener((msg: ToBackground, sender, reply) => {
     void apply((s) => ({ state: { ...s, destinations: [...s.destinations.filter((d) => !d.id.startsWith(`${tabId}:`)), ...mine] } })).then(reply); return true;
   }
   // Only the extension's own popup may invoke for a tab; a page script cannot ask Recast into another tab.
+  // A content script can only run the command for its own tab (sender.tab), never name another one.
+  if (msg.type === "command" && tabId !== undefined) { void invoke(tabId).then(() => reply({ ok: true })); return true; }
   if (msg.type === "invoke" && fromExtensionPage(sender)) { void invoke(msg.tabId).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) })); return true; }
   if (msg.type === "activate" && fromExtensionPage(sender)) { void activate(msg.tabId).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) })); return true; }
   return false;

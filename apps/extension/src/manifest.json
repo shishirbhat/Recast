@@ -24,7 +24,7 @@
       "suggested_key": {
         "default": "Alt+Shift+R"
       },
-      "description": "Turn Recast on in this tab, reopen your composition, or turn it off"
+      "description": "Bring Recast into this tab (then press Control twice to turn it on or off)"
     }
   }
 }

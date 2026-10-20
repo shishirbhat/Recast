@@ -121,7 +121,7 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Change if:** a native shell exists (state moves to it, and the extension becomes one of its surfaces), or objects need to outlive the browser session (then persistence with the person's consent, and an erase path).
 
 ### D23. Recast is off until invoked; one module, drawn from the state, opens when a merge settles
-- **Decision:** capture mode (`armed`) is part of the clump state, so the machine itself refuses to pick anything up while Recast is off. One command (Alt+Shift+R, or a button) turns it on, reopens the composition, or turns it off; what it does is a pure function of the state (`commandEvents`). The action module is not a second state machine: it renders `moduleModel(state, REGISTRY)` and turns clicks and keys into the machine's own events. Its selector lists only the bridge registry, and an entry is available only when the composition fits the contract and a destination for it is connected.
+- **Decision:** capture mode (`armed`) is part of the clump state, so the machine itself refuses to pick anything up while Recast is off. One command (Control pressed twice, or a button; see D25) turns it on, reopens the composition, or turns it off; what it does is a pure function of the state (`commandEvents`). The action module is not a second state machine: it renders `moduleModel(state, REGISTRY)` and turns clicks and keys into the machine's own events. Its selector lists only the bridge registry, and an entry is available only when the composition fits the contract and a destination for it is connected.
 - **Alternatives:** an always-on overlay (gets in the way of ordinary browsing and selection); a UI-only toggle (the extension's tabs could disagree, and a content script could still capture); a hard-coded destination list (it would offer what Recast cannot do); a full-screen review sheet (it took over the page).
 - **Why:** the person decides when Recast acts, every tab agrees on it, and the module can only offer what a bridge really performs.
 - **Change if:** a native shell exists (the same model is drawn in a desktop window and the command becomes global), or a destination needs settings before it can be offered (then the registry entry carries a "set up" step instead of "not connected").
@@ -136,3 +136,12 @@ Consequential architecture and product decisions, so that separate workstreams d
   - Does "None" also cover actions that reach other people or cannot be undone (sending an email, inviting attendees), or do those keep one confirmation?
   - What happens when something required is missing, such as a time or a recipient? Recast cannot place without it, so it must still ask for that.
 - **Status:** not implemented. Today every placement asks (confirm, or hold for high risk).
+
+### D25. The trigger is Control pressed twice (founder's call, 2026-10-20)
+- **Decision:** one gesture everywhere: Control twice (Ctrl on Windows and Linux, Control, not ⌘, on a Mac). Detected by a pure function (`createDoubleTap`) that accepts only two quick, clean taps. Chords, Ctrl+click, holds and auto-repeat never count.
+- **Alternatives:** a three-key chord (Alt+Shift+R; precise but "technical", and on a Mac it types "‰"); Fn twice (Wispr Flow's choice, but browsers cannot see Fn); ⌘ twice (collides with app shortcuts more often).
+- **Consequences:**
+  - In the browser extension, Control twice works only in tabs Recast is already in. Getting into a new tab needs the toolbar or the extension command, because listening on every site would need access to every site.
+  - A native shell would make it global with a key hook: Windows low-level keyboard hook; macOS event tap with Input Monitoring permission (task #23).
+  - The macOS Dictation option "Press Control key twice" conflicts for people who chose it.
+- **Change if:** people trip it by accident in usability tests (#24). Then tighten the timing or make it configurable.
