@@ -162,6 +162,8 @@ test("decisions: owners make them authoritative; a task gets current decisions a
 test("an agent receives the task's accepted decisions and current contracts as reference data in its prompt (simulated agent)", async () => {
   const out = join(mkdtempSync(join(tmpdir(), "relay-prompt-")), "prompt.txt");
   process.env.RELAY_SIM_PROMPT_OUT = out;
+  const envOut = `${out}.env.json`;
+  process.env.RELAY_SIM_ENV_OUT = envOut;
   process.env.RELAY_SIM_EDITS = JSON.stringify({});
   const { server, repo } = await testServer(FILES, { claudeBin: resolve(import.meta.dirname, "fixtures/simulated-agent") });
   try {
@@ -182,8 +184,13 @@ test("an agent receives the task's accepted decisions and current contracts as r
     assert.match(prompt, /Contract user-api v1: getUser\(id\) -> \{ id, name \}/);
     assert.ok(prompt.includes(d.id), "the decision about code the task imports is included");
     assert.ok(!prompt.includes(other.id), "unrelated decisions are not");
+    // Found in a real run: the agent's shell inherited NODE_TEST_CONTEXT, so its own `node --test` silently skipped.
+    assert.ok(process.env.NODE_TEST_CONTEXT, "precondition: this test runs under node --test");
+    await until(() => (() => { try { return readFileSync(envOut, "utf8").length > 0; } catch { return false; } })(), 5000, "env written");
+    assert.ok(!(JSON.parse(readFileSync(envOut, "utf8")) as string[]).some((k) => k.startsWith("NODE_TEST_")), "agents don't inherit test-runner context");
   } finally {
     delete process.env.RELAY_SIM_PROMPT_OUT;
+    delete process.env.RELAY_SIM_ENV_OUT;
     await server.close();
   }
 });

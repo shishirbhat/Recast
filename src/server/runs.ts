@@ -5,12 +5,14 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { verificationEnv } from "../core/engine.ts";
 import type { Relay } from "../core/engine.ts";
 import { inScope } from "../core/conflicts.ts";
 import { RelayError } from "../core/types.ts";
 import type { Integration } from "../core/types.ts";
 import { changedFiles } from "../git.ts";
-import { HOOK_MATCHER } from "../hooks/claude-code.ts";
+import { claudeCode } from "../providers/claude-code.ts";
+import type { ProviderAdapter } from "../providers/types.ts";
 import type { Member } from "./auth.ts";
 import { actorFor } from "./auth.ts";
 import type { DocStore } from "./docs.ts";
@@ -33,7 +35,7 @@ export interface AgentRun {
   id: string;
   taskId: string;
   group: string;
-  provider: "claude-code";
+  provider: string;
   startedBy: string;
   snapshot: string;
   worktree: string;
@@ -79,7 +81,7 @@ export class AgentRuns {
   private relay: Relay;
   private root: string;
   private dbPath: string;
-  private claudeBin: string;
+  private adapter: ProviderAdapter;
   private docs: DocStore | null = null;
   private runs = new Map<string, AgentRun>();
   private procs = new Map<string, ChildProcess>();
@@ -88,11 +90,11 @@ export class AgentRuns {
   /** Set on shutdown: output and exits that arrive afterwards must not touch the (closed) database. */
   private closed = false;
 
-  constructor(relay: Relay, root: string, dbPath: string, claudeBin: string) {
+  constructor(relay: Relay, root: string, dbPath: string, adapter: ProviderAdapter | string) {
     this.relay = relay;
     this.root = root;
     this.dbPath = dbPath;
-    this.claudeBin = claudeBin;
+    this.adapter = typeof adapter === "string" ? claudeCode(adapter) : adapter;
     ensureLocalExclude(root);
   }
 
@@ -131,12 +133,12 @@ export class AgentRuns {
       const worktree = join(this.root, ".relay", "worktrees", `${id}-${runId}`);
       git(this.root, ["worktree", "add", "--detach", worktree, snapshot]);
       const run: AgentRun = {
-        id: runId, taskId: id, group, provider: "claude-code", startedBy: by.id, snapshot, worktree, status: "starting",
+        id: runId, taskId: id, group, provider: this.adapter.id, startedBy: by.id, snapshot, worktree, status: "starting",
         startedAt: new Date().toISOString(), endedAt: null, exitCode: null, costUsd: null, changedFiles: [], staleInputs: [], activity: [],
       };
       this.runs.set(runId, run);
       this.relay.record("agent.run_started", actorFor(by), { runId, group, provider: run.provider, snapshot }, id);
-      this.spawnClaude(run);
+      this.spawnAgent(run);
       started.push(run);
     }
     return started;
@@ -147,16 +149,15 @@ export class AgentRuns {
     this.context = fn;
   }
 
-  private spawnClaude(run: AgentRun): void {
+  /** The provider this runner uses, with its declared capabilities. */
+  get provider(): Pick<ProviderAdapter, "id" | "displayName" | "capabilities" | "available"> {
+    return this.adapter;
+  }
+
+  private spawnAgent(run: AgentRun): void {
     const task = this.relay.requireTask(run.taskId);
-    const cfgDir = join(this.root, ".relay", "agents", run.id);
-    mkdirSync(cfgDir, { recursive: true });
-    const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
-    const failClosed = `printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Relay hook failed to start; failing closed."}}'`;
-    writeFileSync(join(cfgDir, "settings.json"), JSON.stringify({
-      hooks: { PreToolUse: [{ matcher: HOOK_MATCHER, hooks: [{ type: "command", command: `${q(RELAY_BIN)} --db ${q(this.dbPath)} hook claude-code --task ${q(run.taskId)} --root ${q(run.worktree)} || ${failClosed}`, timeout: 10 }] }] },
-    }));
-    writeFileSync(join(cfgDir, "mcp.json"), JSON.stringify({ mcpServers: { relay: { command: RELAY_BIN, args: ["--db", this.dbPath, "mcp", "--task", run.taskId, "--root", run.worktree, "--agent", "claude-code"] } } }));
+    const configDir = join(this.root, ".relay", "agents", run.id);
+    mkdirSync(configDir, { recursive: true });
     const prompt = [
       `You are working on Relay task ${task.id}: ${task.objective}`,
       `Files in scope: ${task.scope.join(", ")}.`,
@@ -169,10 +170,8 @@ export class AgentRuns {
     } catch {
       reference = "";
     }
-    const fullPrompt = reference ? `${prompt}\n\n${reference}` : prompt;
-    const child = spawn(this.claudeBin, ["-p", fullPrompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
-      "--settings", join(cfgDir, "settings.json"), "--mcp-config", join(cfgDir, "mcp.json"), "--strict-mcp-config",
-      "--allowedTools", "Read,Edit,Write,Bash,Glob,Grep,mcp__relay"], { cwd: run.worktree, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const spec = this.adapter.launch({ runId: run.id, taskId: run.taskId, worktree: run.worktree, configDir, prompt: reference ? `${prompt}\n\n${reference}` : prompt, relayBin: RELAY_BIN, dbPath: this.dbPath });
+    const child = spawn(spec.command, spec.args, { cwd: run.worktree, stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...verificationEnv(), ...spec.env } });
     this.procs.set(run.id, child);
     run.status = "running";
     let buf = "";
@@ -187,7 +186,7 @@ export class AgentRuns {
     });
     let stderr = "";
     child.stderr!.on("data", (c: Buffer) => (stderr = (stderr + c.toString()).slice(-4000)));
-    child.on("error", (err) => !this.closed && this.push(run, { kind: "error", detail: `Could not start ${this.claudeBin}: ${err.message}` }));
+    child.on("error", (err) => !this.closed && this.push(run, { kind: "error", detail: `Could not start ${this.adapter.displayName}: ${err.message}` }));
     child.on("close", (code) => {
       this.procs.delete(run.id);
       if (this.closed) return;
@@ -200,34 +199,12 @@ export class AgentRuns {
     });
   }
 
-  /** Claude Code's stream-json output is structured; we record tool calls, not prose. */
   private onStreamLine(run: AgentRun, line: string): void {
-    let ev: Record<string, unknown>;
-    try {
-      ev = JSON.parse(line);
-    } catch {
-      return;
-    }
-    if (ev.type === "assistant") {
-      const content = ((ev.message as { content?: unknown[] })?.content ?? []) as Record<string, unknown>[];
-      for (const c of content) {
-        if (c.type === "tool_use") {
-          const input = (c.input ?? {}) as Record<string, unknown>;
-          const target = String(input.file_path ?? input.notebook_path ?? input.command ?? input.pattern ?? "").replace(run.worktree + "/", "").slice(0, 200);
-          this.push(run, { kind: "tool", tool: String(c.name), target });
-        } else if (c.type === "text" && typeof c.text === "string" && c.text.trim()) {
-          this.push(run, { kind: "text", detail: c.text.trim().slice(0, 300) });
-        }
-      }
-    } else if (ev.type === "user") {
-      const content = ((ev.message as { content?: unknown[] })?.content ?? []) as Record<string, unknown>[];
-      for (const c of content) {
-        const text = typeof c.content === "string" ? c.content : JSON.stringify(c.content ?? "");
-        if (c.type === "tool_result" && c.is_error && /Relay blocked/.test(text)) this.push(run, { kind: "denied", detail: text.slice(0, 300) });
-      }
-    } else if (ev.type === "result") {
-      run.costUsd = typeof ev.total_cost_usd === "number" ? ev.total_cost_usd : null;
-      this.push(run, { kind: "result", detail: String(ev.result ?? "").slice(0, 600) });
+    for (const a of this.adapter.parse(line, run.worktree)) {
+      if (a.kind === "result") {
+        run.costUsd = a.costUsd;
+        this.push(run, { kind: "result", detail: a.detail });
+      } else this.push(run, a);
     }
   }
 
@@ -235,7 +212,7 @@ export class AgentRuns {
     const item = { at: new Date().toISOString(), ...a };
     run.activity.push(item);
     if (run.activity.length > ACTIVITY_LIMIT) run.activity.shift();
-    if (a.kind !== "text") this.relay.record(`agent.${a.kind}`, `agent:claude-code`, { runId: run.id, ...a }, run.taskId);
+    if (a.kind !== "text") this.relay.record(`agent.${a.kind}`, `agent:${this.adapter.id}`, { runId: run.id, ...a }, run.taskId);
   }
 
   /** Relay's own checks on what the agent produced, in its worktree. Never the agent's word. */
@@ -344,21 +321,29 @@ export class AgentRuns {
    */
   checkTogether(taskIds: string[], verify: string[]): Integration {
     const runs = taskIds.map((id) => this.latest(id));
-    const snaps = new Set(runs.map((r) => r.snapshot));
-    if (snaps.size !== 1) throw new RelayError("invalid", "These tasks were started from different snapshots; start them together to integrate them");
-    const snapshot = runs[0]!.snapshot;
+    // Runs started together share a snapshot. After one task is rerun (e.g. to fix a mismatch the gate found), its
+    // partners' work is rebased 3-way onto the newest snapshot instead of being thrown away; a real conflict refuses.
+    const snapshot = [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]!.snapshot;
+    const rebased = runs.some((r) => r.snapshot !== snapshot);
     const dir = join(this.root, ".relay", "worktrees", `integration-${randomUUID().slice(0, 8)}`);
     git(this.root, ["worktree", "add", "--detach", dir, snapshot]);
     for (const r of runs) {
-      const patch = git(r.worktree, ["diff", "--binary", snapshot]);
+      const patch = git(r.worktree, ["diff", "--binary", r.snapshot]);
       const untracked = git(r.worktree, ["ls-files", "--others", "--exclude-standard"]).split("\n").filter(Boolean);
-      if (patch.trim()) execFileSync("git", ["apply", "--3way", "--whitespace=nowarn"], { cwd: dir, input: patch });
+      if (patch.trim()) {
+        try {
+          execFileSync("git", ["apply", "--3way", "--whitespace=nowarn"], { cwd: dir, input: patch, stdio: ["pipe", "pipe", "pipe"] });
+        } catch (e) {
+          git(this.root, ["worktree", "remove", "--force", dir]);
+          throw new RelayError("conflict", `${r.taskId}'s changes don't apply cleanly on the newer shared state (${String((e as { stderr?: Buffer }).stderr ?? "").trim().split("\n").at(-1)}); rerun ${taskIds.join(", ")} together`);
+        }
+      }
       for (const u of untracked) {
         mkdirSync(dirname(join(dir, u)), { recursive: true });
         writeFileSync(join(dir, u), readFileSync(join(r.worktree, u)));
       }
     }
-    const integ = this.relay.checkIntegration(taskIds, dir, verify);
+    const integ = this.relay.checkIntegration(taskIds, dir, verify, undefined, rebased ? { rebasedOnto: snapshot } : {});
     this.combined.set(integ.id, dir);
     return integ;
   }

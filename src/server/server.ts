@@ -261,7 +261,8 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     }
     if (method === "GET" && parts[0] === "capabilities") {
       const m = requireMember(req, "read");
-      return json(res, 200, { terminal: await terminals.availability(m), extensions: { available: false, reason: "Relay has no extension host yet. Language support is built in." } });
+      const p = runs.provider;
+      return json(res, 200, { terminal: await terminals.availability(m), agent: { provider: p.id, displayName: p.displayName, capabilities: p.capabilities, ...(await p.available()) }, extensions: { available: false, reason: "Relay has no extension host yet. Language support is built in." } });
     }
     if (parts[0] === "terminals") {
       const m = requireMember(req, "read");

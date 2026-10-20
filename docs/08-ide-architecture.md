@@ -79,3 +79,47 @@ Consequences:
 4. While it runs, any human edit to a file in the task's scope emits `task.input_changed` and shows on the task as **stale input**.
 5. When the agent submits, Relay runs its diff check and verification in the worktree. The IDE shows the changeset.
 6. On approval (task or integration gate), each changed file is applied to the shared Y.Doc with a 3-way merge (base = snapshot, ours = current shared text, theirs = agent result, using `git merge-file`). A clean merge is applied as a minimal diff; a conflicted merge is not applied and is shown for manual resolution.
+
+## API and event contract (v0, 2026-10-20)
+
+**Versioning.** The IDE, the CLI and this HTTP API all go through the same `Relay` engine and the same role checks. The API is **v0**: unversioned and same-origin, used by the bundled IDE. Breaking changes are allowed until a versioned `/api/v1` is cut for third-party clients. Event types below are append-only: new fields may be added, and existing fields keep their meaning.
+
+**Requests.**
+- All state-changing requests need the `relay_session` cookie and the `x-relay: 1` header, and are origin-checked.
+- Roles: **read** = any member; **edit** = owner or editor; **approve/admin** = owner.
+
+| Endpoint | Role | Purpose |
+|---|---|---|
+| `GET /api/state` | read | project, members, presence, tasks with agent runs, contracts, doc conflicts |
+| `GET /api/files`, `/search?q=`, `/git`, `/scripts`, `/output` | read | files (secrets excluded), search, git status, scripts, Relay-run evidence |
+| `GET /api/capabilities` | read | terminal policy, agent provider and its declared capabilities, extension host status |
+| `POST /api/tasks` · `/tasks/:id/transition` · `/check` · `/run` · `/cancel-run` · `/apply` | edit (consequential transitions and apply: approve) | task lifecycle through the engine's state machine and gates |
+| `GET /api/tasks/:id` · `/why` · `/change` | read | task, evidence, events; completion gaps; the change record (six stages) |
+| `POST /api/agent` | edit | agent composer: a prompt becomes a scoped task (owners run it, editors propose) |
+| `POST /api/runs` | edit | start agents on several tasks from one snapshot |
+| `POST /api/contracts` · `/contracts/:id/:v/accept\|reject` | edit / approve | contracts |
+| `POST /api/integrations/check` · `/integrations/:id/approve` | edit (extra commands: approve) / approve | the cross-task gate |
+| `GET /api/impact?base=\|task=` | read | dependency map: interface changes, consumers, tests, tasks, stale evidence |
+| `GET /api/context?task=` | read | accepted decisions, current contracts, warnings and obsolete records for a task |
+| `GET/POST /api/investigations` · `/:id` · `/:id/entries` · `/:id/run` | read / edit / approve (run) | shared investigations |
+| `GET/POST /api/decisions` · `/:id/accept\|reject\|invalidate` | read / edit / approve | decision records |
+| `GET /api/github` · `POST /github/ship\|merge\|refresh` | read / approve | GitHub delivery (token stays server-side) |
+| `POST /api/members` | admin | one-time invite links |
+| WS `/collab/file:<path>` | read (viewers read-only) | Yjs sync and awareness |
+| WS `/events` | read | `{ type: "events", events: RelayEvent[] }`, pushed when this server records events and polled every 200 ms for events from hooks, MCP servers and the CLI |
+| WS `/terminal` | owner, loopback unless `--allow-terminal` | PTY sessions |
+
+**Events (`RelayEvent`: `seq`, `id`, `taskId`, `type`, `actor`, `at`, `fromState`, `toState`, `data`).** By family:
+
+| Family | Event types |
+|---|---|
+| Tasks | `task.created`, `task.transition`, `task.base_changed`, `task.contract_stale`, `task.contract_acknowledged` |
+| Contracts | `contract.proposed`, `contract.accepted`, `contract.rejected` |
+| Intents | `intent.declared`, `intent.approved` |
+| Enforcement and evidence | `enforcement.decision`, `enforcement.diff_check`, `evidence.recorded` |
+| Integration | `integration.checked` (with `rebasedOnto` and `originalBases` when the runner rebased runs), `integration.approved` |
+| Agent runs | `agent.run_started`, `agent.tool`, `agent.denied`, `agent.result`, `agent.error`, `agent.run_ended`, `agent.run_cancelled`, `agent.changes_applied` |
+| Investigations | `investigation.created`, `investigation.entry`, `investigation.command`, `investigation.updated` |
+| Decisions | `decision.proposed`, `decision.accepted`, `decision.rejected`, `decision.invalidated` |
+| GitHub | `github.shipped`, `github.merged` |
+| Other | `member.joined`, `file.created`, `server.error` |

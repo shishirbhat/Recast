@@ -179,3 +179,47 @@ test("agent composer: a prompt becomes a scoped task; owners run it, editors onl
     await server.close();
   }
 });
+
+test("recovery: after the combined gate blocks, rerunning only the broken task integrates with its partner's existing work", async () => {
+  const { server, repo, owner } = await setup({
+    "T-api": { "src/server.js": [["name: 'Ada'", "fullName: 'Ada'"]] },
+    "T-ui": { "src/ui.js": [["export const footer = 'bye';", "export const footer = 'see you';"]] }, // misses the rename
+  });
+  try {
+    const r = server.relay;
+    r.proposeContract("user-api", "{ id, fullName }", HUMAN);
+    r.acceptContract("user-api", 1, HUMAN);
+    r.createTask({ id: "T-api", objective: "server", scope: ["src/server.js"], contracts: { "user-api": 1 } }, HUMAN);
+    r.createTask({ id: "T-ui", objective: "ui", scope: ["src/ui.js"], contracts: { "user-api": 1 } }, HUMAN);
+    r.transition("T-api", "queued", HUMAN);
+    r.transition("T-ui", "queued", HUMAN);
+    await server.runs.start(["T-api", "T-ui"], owner);
+    await finished(server, "T-api");
+    await finished(server, "T-ui");
+    const blocked = server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
+    assert.equal(blocked.status, "blocked");
+
+    // Only T-ui reruns, from a newer snapshot; T-api's finished work is kept and rebased onto it.
+    process.env.RELAY_SIM_EDITS = JSON.stringify({ "T-ui": { "src/ui.js": [["getUser(id).name", "getUser(id).fullName"]] } });
+    r.transition("T-ui", "failed", HUMAN, { reason: "missed the rename" });
+    r.transition("T-ui", "queued", HUMAN);
+    await server.runs.start("T-ui", owner);
+    await until(() => server.runs.forTask("T-ui").length === 2 && server.runs.forTask("T-ui").at(-1)!.status === "finished", 15000, "rerun");
+    assert.notEqual(server.runs.forTask("T-ui").at(-1)!.snapshot, server.runs.forTask("T-api").at(-1)!.snapshot);
+    const passed = server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
+    assert.equal(passed.status, "passed", passed.gaps.join("\n"));
+    assert.ok(r.events().some((e) => e.type === "integration.checked" && (e.data as { rebasedOnto?: string }).rebasedOnto), "the rebase is recorded");
+
+    // The change record judges T-ui by the combined check, not by its worktree alone (where the test can't pass).
+    const { changeRecord } = await import("../src/analysis/change.ts");
+    const rec = changeRecord(r, repo, ":memory:", "T-ui", { runs: server.runs.forTask("T-ui") });
+    assert.equal(rec.stages.find((s) => s.id === "contracts")!.state, "done");
+    assert.equal(rec.safeToIntegrate, true, rec.blockers.join("\n"));
+
+    const done = server.runs.approveTogether(passed.id, owner);
+    assert.deepEqual(done.applied.sort(), ["src/server.js", "src/ui.js"]);
+    await until(() => readFileSync(join(repo, "src/ui.js"), "utf8").includes("fullName"), 3000, "applied");
+  } finally {
+    await server.close();
+  }
+});

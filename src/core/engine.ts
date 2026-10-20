@@ -482,7 +482,7 @@ export class Relay {
    * Checks a set of tasks as one integrated change in one workspace and records the result.
    * Relay runs every task's verification plus the integration commands itself, on this exact tree.
    */
-  checkIntegration(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000): Integration {
+  checkIntegration(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: { rebasedOnto?: string } = {}): Integration {
     if (!taskIds.length) throw new RelayError("invalid", "An integration needs at least one task");
     const tasks = [...new Set(taskIds)].map((id) => this.requireTask(id));
     const gaps: string[] = [];
@@ -502,9 +502,11 @@ export class Relay {
       }
     }
 
+    // `rebasedOnto`: the agent runner rebuilt every task's changes on one newer snapshot (3-way), so that is the base the
+    // combined tree must be judged against. The original bases are kept in the integration event.
     const bases = [...new Set(tasks.map((t) => t.baseCommit))];
-    if (bases.length !== 1 || !bases[0]) gaps.push(`tasks do not share one base commit (${bases.join(", ")})`);
-    const base = bases.length === 1 ? bases[0]! : null;
+    if (!opts.rebasedOnto && (bases.length !== 1 || !bases[0])) gaps.push(`tasks do not share one base commit (${bases.join(", ")})`);
+    const base = opts.rebasedOnto ?? (bases.length === 1 ? bases[0]! : null);
 
     const own = this.ownFiles(cwd);
     if (base) {
@@ -545,7 +547,7 @@ export class Relay {
     this.db
       .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), integration.createdAt);
-    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree } });
+    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree, ...(opts.rebasedOnto ? { rebasedOnto: opts.rebasedOnto, originalBases: Object.fromEntries(tasks.map((t) => [t.id, t.baseCommit])) } : {}) } });
     return integration;
   }
 

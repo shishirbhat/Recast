@@ -23,6 +23,8 @@ const root = arg("--root");
 const out = (o: unknown) => process.stdout.write(JSON.stringify(o) + "\n");
 // RELAY_SIM_PROMPT_OUT: record the prompt the runner gave us, so tests can check what context an agent receives.
 if (process.env.RELAY_SIM_PROMPT_OUT) writeFileSync(process.env.RELAY_SIM_PROMPT_OUT, args[args.indexOf("-p") + 1] ?? "");
+// RELAY_SIM_ENV_OUT: record the environment keys the runner gave us (to check runner context doesn't leak into agents).
+if (process.env.RELAY_SIM_ENV_OUT) writeFileSync(process.env.RELAY_SIM_ENV_OUT, JSON.stringify(Object.keys(process.env)));
 
 if (process.env.RELAY_SIM_MODE === "sleep") {
   out({ type: "assistant", message: { content: [{ type: "text", text: "thinking for a long time" }] } });

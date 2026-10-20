@@ -56,11 +56,24 @@ export function changeRecord(relay: Relay, root: string, dbPath: string, taskId:
     .map((p) => ({ path: p, inScope: inScope(task.scope, p) }));
 
   const sys = evidence.filter((e) => e.source === "system");
+  const partners = relay.listTasks().filter((t) => t.id !== task.id && Object.keys(t.contracts).some((c) => c in task.contracts) && !["cancelled"].includes(t.state));
+  const integrations = (relay.db.prepare("SELECT id, tasks, status, tree, gaps, results, created_at, approved_by, approved_at FROM integrations ORDER BY created_at DESC").all() as { id: string; tasks: string; status: string; tree: string; gaps: string; results: string; created_at: string; approved_by: string | null; approved_at: string | null }[])
+    .map((i) => ({ ...i, tasks: JSON.parse(i.tasks) as string[], gaps: JSON.parse(i.gaps) as string[], results: JSON.parse(i.results) as { command: string; exitCode: number | null }[] }))
+    .filter((i) => i.tasks.includes(task.id));
+  const lastInteg = integrations[0];
+  // Which workspace the evidence must match: agent work lives in its worktree until applied; with contract partners
+  // the only meaningful test is the combined one, so a combined check made after the latest runs is what counts.
+  const pending = lastRun && lastRun.status !== "applied" ? lastRun : null;
+  const latestRunStart = runs.at(-1)?.startedAt ?? "";
+  const integFresh = !!lastInteg && (pending ? lastInteg.created_at >= latestRunStart : lastInteg.tree === tree || !!lastInteg.approved_at);
+  const evidenceTree = pending ? workspaceFingerprint(pending.worktree, []) : tree;
   const latest = new Map<string, Evidence>();
   for (const e of sys) if (e.kind === "command") latest.set(e.command ?? "", e);
   const tests = task.verify.map((cmd) => {
+    const combined = pending && partners.length && lastInteg && integFresh ? lastInteg.results.find((r) => r.command === cmd) : undefined;
+    if (combined) return { command: cmd, exitCode: combined.exitCode, fresh: true, at: lastInteg!.created_at, evidenceId: lastInteg!.id };
     const e = latest.get(cmd);
-    return e ? { command: cmd, exitCode: e.exitCode, fresh: e.environment.tree === tree, at: e.createdAt, evidenceId: e.id } : { command: cmd, exitCode: null, fresh: false, at: "", evidenceId: "" };
+    return e ? { command: cmd, exitCode: e.exitCode, fresh: e.environment.tree === evidenceTree, at: e.createdAt, evidenceId: e.id } : { command: cmd, exitCode: null, fresh: false, at: "", evidenceId: "" };
   });
 
   const stages: Stage[] = [];
@@ -96,16 +109,11 @@ export function changeRecord(relay: Relay, root: string, dbPath: string, taskId:
     const cur = relay.currentContract(cid);
     if (cur && cur.version !== v) contractIssues.push(`planned on ${cid} v${v}, accepted is v${cur.version}`);
   }
-  const partners = relay.listTasks().filter((t) => t.id !== task.id && Object.keys(t.contracts).some((c) => c in task.contracts) && !["cancelled"].includes(t.state));
-  const integrations = (relay.db.prepare("SELECT id, tasks, status, tree, gaps, approved_by, approved_at FROM integrations ORDER BY created_at DESC").all() as { id: string; tasks: string; status: string; tree: string; gaps: string; approved_by: string | null; approved_at: string | null }[])
-    .map((i) => ({ ...i, tasks: JSON.parse(i.tasks) as string[], gaps: JSON.parse(i.gaps) as string[] }))
-    .filter((i) => i.tasks.includes(task.id));
-  const lastInteg = integrations[0];
   const partnersChecked = !partners.length || (lastInteg && partners.every((p) => lastInteg.tasks.includes(p.id)) && lastInteg.status !== "blocked");
   stages.push({
     id: "contracts",
     label: "Contracts verified",
-    state: !Object.keys(task.contracts).length ? "n/a" : contractIssues.length ? "failed" : !partnersChecked ? (lastInteg?.status === "blocked" ? "failed" : "missing") : lastInteg && lastInteg.tree !== tree && !lastInteg.approved_at ? "stale" : "done",
+    state: !Object.keys(task.contracts).length ? "n/a" : contractIssues.length ? "failed" : !partnersChecked ? (lastInteg?.status === "blocked" ? "failed" : "missing") : lastInteg && !integFresh ? "stale" : "done",
     detail: !Object.keys(task.contracts).length
       ? "the task depends on no contracts"
       : contractIssues.length
@@ -151,7 +159,7 @@ export function changeRecord(relay: Relay, root: string, dbPath: string, taskId:
     if (!partners.length) blockers.push(...relay.completionGaps(task, root));
     else if (!lastInteg) blockers.push(`check together with ${partners.map((p) => p.id).join(", ")} (relay integrate check)`);
     else if (lastInteg.status !== "passed") blockers.push(...lastInteg.gaps);
-    else if (lastInteg.tree !== tree) blockers.push(`the workspace changed since integration ${lastInteg.id.slice(0, 8)} passed; check again`);
+    else if (!integFresh) blockers.push(`the changes moved on since integration ${lastInteg.id.slice(0, 8)} passed; check again`);
   }
   for (const f of files) if (!f.inScope) blockers.push(`${f.path} is outside the task's scope`);
   for (const c of opts.impact?.consumers ?? []) for (const b of c.breaks) if (inScope(task.scope, c.file)) blockers.push(`${c.file}:${b.line} ${b.reason}`);

@@ -46,12 +46,12 @@ Root and web type-checks are clean and `next build` succeeds. No linter is confi
 | 4.2 | Single change record (owner, revision, files, tests, contracts, freshness, blockers, rollback) | **Now:** `src/analysis/change.ts`, `GET /api/tasks/:id/change`, `relay change`, IDE task detail | `test/change.test.ts` | **Implemented** | Assemble one record per task, including what makes verification stale (depends on 3) |
 | 5 | Shared investigations | Was: event log only. **Now:** `src/knowledge/records.ts`, `/api/investigations`, IDE Records tab, CLI | `records.test.ts`, `records.e2e.test.ts` | **Implemented** | Investigation records: revision, repro, failing output (sanitized), hypotheses, findings vs. assumptions, attempts, owner, next steps; multi-client |
 | 6 | Traceable project knowledge | Contract history + **new** decision records (`records.ts`), task context (`/api/context`, `relay context`, agent prompts) | `records.test.ts` | **Implemented** | Decision records with sources, supersede/invalidate, retrieval scoped to a task |
-| 7.1 | Cross-repository coordination | Single-repo model | — | **Missing** | Deferred; see below |
-| 7.2 | Provider adapter boundary | Claude Code hook + MCP; Codex not built | Real Claude tests | **Partial** | Codex needs an OpenAI key; the adapter contract isn't documented |
-| 8 | IDE and CLI share one engine | Both call `Relay` in `engine.ts`; the server adds auth | "IDE API cannot bypass the integration gate" test | **Complete** | Document API/event contracts (`docs/08` covers part) |
+| 7.1 | Cross-repository coordination | Single-repo model | — | **Deferred** (reasons in the log) | — |
+| 7.2 | Provider adapter boundary | **Now:** `src/providers/types.ts` contract, `claude-code.ts` adapter; runner is provider-neutral | agents tests (simulated), **real run through the runner** | **Implemented** for Claude Code; Codex blocked on an OpenAI key | Codex adapter |
+| 8 | IDE and CLI share one engine | Both call `Relay` in `engine.ts`; the server adds auth. New capabilities (impact, change, context, decisions, investigations) have both an API and a CLI command | gate-bypass test, `change.test.ts` | **Complete** | API/event contract now documented in `docs/08` (v0) |
 | 9.1 | Auth, authorization, path safety, CSRF, rate limits | `server.ts`, `files.ts` | Security tests | **Complete** | — |
 | 9.2 | Measured performance | `bench/latency.ts`; raw results in `docs/evidence/latency-2026-10-20.json` | measured (see log) | **Measured**; one bottleneck found and fixed | WAN and multi-machine runs |
-| 10 | Differentiation demo vs. baseline | — | — | **Missing** | A comparable baseline needs repeated real-provider runs (cost, time). The demo can be built; the baseline is noted as a limit |
+| 10 | Differentiation demo vs. baseline | **Now:** `bench/demo.ts`, `docs/evidence/demo-2026-10-20.md` (simulated agents) | demo run | **Demo implemented; baseline comparison not done** | A comparable baseline needs repeated real-provider runs (cost, time). The demo can be built; the baseline is noted as a limit |
 
 ## Prioritised plan
 
@@ -219,3 +219,124 @@ Server RSS with 10 clients connected was 213 MB. That includes the benchmark's o
 **How to read these:**
 - Keystroke-to-paint is measured from the `keydown` timestamp to the first animation frame after CodeMirror's DOM changes. That's a close proxy for, but not the same as, compositor presentation.
 - Edit-to-disk tracks the deliberate 300 ms flush. Durability before that comes from the SQLite update log, written on every update.
+
+### Phase 7: provider adapters (implemented for Claude Code) and cross-repository work (deferred)
+**Adapter contract** (`src/providers/types.ts`). An adapter declares:
+- its **capabilities**: pre-edit enforcement (`pre-tool-hook` or `none`), coordination (`mcp` or `none`), cost reporting, allowed tools;
+- `available()`: whether the binary or credentials are present, with a reason;
+- `launch(ctx)`: writes its config and returns the command;
+- `parse(line)`: turns output into tool calls, denials, results and errors. Never prose.
+
+The runner (`src/server/runs.ts`) is now provider-neutral: snapshot and worktree, process group and cancellation, Relay's own diff check and verification after the run, combined check and 3-way apply. `GET /api/capabilities` reports the provider and its declared capabilities, so a client never implies enforcement the provider lacks.
+
+Claude Code is the only adapter. **Codex is not implemented**: it needs an OpenAI key, which isn't available, and nothing pretends otherwise. Missing credentials block nothing else: real-provider tests are gated by `RELAY_REAL_PROVIDER=1`, and the rest of the suite uses the simulated agent.
+
+**Real provider through the runner (first time; the IDE's Agent panel uses this path).** `test/real/runner.real.test.ts`, raw evidence in `docs/evidence/claude-code-runner-2026-10-20/run.json`. Claude Code 2.1.304:
+1. claimed the task through MCP, read it, and declared an intent;
+2. edited `src/greeting.js` in its worktree;
+3. reported evidence and submitted for review.
+
+Then Relay's own diff check and test passed in the worktree, and the shared file was untouched until the owner applied it. About 31 s, $0.12. One run, not a statistic.
+
+**Defect found by that real run (Broken → repaired).** The agent's own shell inherited `NODE_TEST_CONTEXT` from the process that started Relay, so its first `node --test` silently ran nothing. The agent noticed and worked around it with `env -u`; a less careful agent would have reported a pass. Agents now get the same sanitized environment as verification commands. Regression check: `records.test.ts`, which records the environment the agent receives.
+
+**Cross-repository coordination: deferred, deliberately.**
+- **No validated demand yet.** Single-repository coordination (contracts, gates, dependency map) hasn't been validated with users. Multi-repo adds a trust surface (credentials per repository), a revision model (pinning N heads), and failure modes (partial pushes) that would dilute that validation.
+- **The groundwork carries over.** Contracts already carry the interface between producers and consumers, and the dependency map's file-level model and the integration gate's "check together on one tree" are what a multi-repo version would extend.
+- **What it would take:**
+  - a repository registry with a pinned revision per repo;
+  - contracts tagged with producer and consumer repositories;
+  - a combined check that materializes each repo at its candidate revision in sibling worktrees and runs cross-repo verification;
+  - approval that records every repository's tree hash.
+
+  That would be a separate milestone, with a two-repository fixture as its acceptance test.
+
+### Phase 2 addition: recovery after a blocked combined check (Partial → repaired)
+Found while building the demo. After the combined gate blocked T-api + T-web, rerunning **only** T-web made the pair impossible to integrate: the runner required runs from one snapshot. The only option was to throw away T-api's correct work and rerun both.
+
+The combined check now rebases runs from older snapshots onto the newest one with a 3-way apply. A real conflict refuses and asks for a joint rerun. The engine judges the combined tree against that snapshot (`rebasedOnto`, recorded with each task's original base in `integration.checked`). Each task's own base is still frozen once work starts. Regression test: `agents.test.ts`, "recovery: …".
+
+The change record also judges agent tasks with partners by the **combined** check, not by the task's isolated worktree, where a consumer's test correctly fails without its partner.
+
+### Phase 10: differentiation demo (implemented; baseline comparison not done)
+`node bench/demo.ts --out docs/evidence/demo-2026-10-20.md` runs all 11 steps of the brief against the real server, real Yjs clients, real worktrees and the real gates. **The two coding agents are the simulated agent**, scripted to make a realistic mistake: the frontend agent updates the greeting but misses the profile card.
+
+Results of the recorded run:
+
+| Step | Result |
+|---|---|
+| 1. People edit together | 20 concurrent README lines from two people converged |
+| 2. Coordinated plan | contract, two tasks and a decision record; T-web's context includes the decision through its import of `api/users.js` |
+| 3–4. Agents in isolation | both ran in worktrees while Bo kept editing; shared files untouched |
+| 5. Dependency found | 3 consumers and 2 breaking lines (`web/greeting.js:5`, `web/profile.js:4`), with the affected tests' import chains |
+| 6. Unsafe integration blocked | combined check **blocked** on `web/web.test.js`; editor approve 403, owner approve 409; shared files unchanged; Bo records a sourced finding |
+| 7. Update and recheck | only T-web reruns; the combined check rebases T-api and **passes**, with both tests run by Relay |
+| 8. Inspect | change record: claimed, executed, tested (combined), contracts done; approval missing |
+| 9. Approve and integrate | owner approves; 3 files applied; the shared project's tests all pass |
+| 10. Edits | 25/25 typed lines present (0 lost) |
+| 11. Another collaborator | a viewer reads the resolved investigation and T-web's 34-event history, and is refused any action (403) |
+
+**The demo found three things:**
+- the recovery gap above;
+- the change-record freshness rule above;
+- a false "FAILING" from the demo's own post-check: an empty-but-set `NODE_TEST_CONTEXT` still makes node skip. That was the same trap a third time, and it's fixed in the demo.
+
+**Not done: a baseline comparison.** A fair comparison (same repository, task, revision and time limit; Relay vs. two agents in separate branches merged by hand) needs repeated **real-provider** runs to say anything about completion, rework or time. With the simulated agent the outcome is fixed by the script, so any "advantage" would be fabricated. The protocol is ready to run: `bench/demo.ts` for the Relay arm; the baseline arm is the same two task prompts in two plain worktrees, merged with `git merge`, then the same tests. It needs a model budget for, say, 5 runs per arm.
+
+## Final report (2026-10-20)
+
+**Already complete, reused unchanged:**
+- Yjs collaboration, presence, auth and roles;
+- offline merge, restart persistence, external-change merge and conflict keeping;
+- the engine (state machine, contracts, intents, completion gate, contract-partner rule, integration gate);
+- the Claude Code hook and MCP server;
+- worktree isolation and 3-way apply;
+- the terminal and the workbench.
+
+**Partial, improved:**
+- explicit acceptance criteria (still executable `verify` commands only);
+- the change record (now six separate stages, freshness, blockers from the applicable gate, rollback);
+- project knowledge (decision records with sources);
+- the provider boundary (an adapter contract);
+- the API and event documentation.
+
+**Missing, newly implemented:**
+- the live dependency map (`relay impact`, Impact tab);
+- shared investigations;
+- decision records and task context (including the agent prompt);
+- the latency benchmark;
+- the differentiation demo.
+
+**Broken or unverified, repaired:**
+
+| # | Defect | Effect | Status |
+|---|---|---|---|
+| 1 | Verification inherited `NODE_TEST_CONTEXT` | false passes recorded as evidence | fixed |
+| 2 | Agents inherited `NODE_TEST_CONTEXT` | found in a real run | fixed |
+| 3 | Remote carets didn't reappear after reconnect | up to 15 s gap | fixed |
+| 4 | Agent runner wrote to the database after shutdown | uncaught exception | fixed |
+| 5 | Every event waited for the 200 ms poll | slow event feed | fixed: p50 176 → 1.6 ms |
+| 6 | No recovery after a blocked combined check, short of rerunning everything | lost good work | fixed |
+
+Each has a regression test.
+
+**Tests at the end:**
+- `npm test` **66/66**;
+- `RELAY_E2E=1` **10/10**;
+- real-provider runner test **1/1** (real Claude Code);
+- root and web type-checks clean; `next build` succeeds.
+
+**Real vs. simulated:**
+- **real:** server, clients, browser, git, worktrees, verification, and Claude Code in `test/real/` and `bench`'s runner evidence;
+- **simulated:** the agent in `agents.test.ts`, `records.test.ts` and `bench/demo.ts` (labelled in each);
+- **mock:** the GitHub API.
+
+**Limits and blockers:**
+- no Codex (no OpenAI key);
+- no baseline comparison (needs a real-provider budget);
+- the dependency map is JS/TS only, with local data-flow;
+- latency was measured on loopback only;
+- cross-repository work is deferred;
+- the GitHub flow hasn't been run against api.github.com.
+
+**Next highest-value task:** run the baseline comparison with the real provider: 5 runs per arm on the demo repository with a fixed time limit, measuring completion, integration failures, rework and time to verified integration. Every mechanism is now in place and measured; whether it beats the plain workflow is the open question.

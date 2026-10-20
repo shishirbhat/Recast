@@ -95,7 +95,9 @@ Underneath it:
 - Agent runs happen in isolated worktrees and are applied with a 3-way merge only after Relay's checks and a person's approval.
 
 Tests:
-- `npm test`: 52 tests, including real y-websocket clients, real PTYs, simulated-agent orchestration, and GitHub ship/merge (mock API, real git remote).
+- `npm test`: 66 tests, including real y-websocket clients, real PTYs, simulated-agent orchestration, the dependency map, records, change records, and GitHub ship/merge (mock API, real git remote).
+- `RELAY_REAL_PROVIDER=1 node --test test/real/*.test.ts`: real Claude Code (costs model usage).
+- `node bench/latency.ts`, `node bench/demo.ts`: measured latency and the 11-step differentiation demo (simulated agents). See `docs/14-differentiation-audit.md`.
 - `RELAY_E2E=1 node --test test/e2e/*.e2e.test.ts`: two-person live editing, plus workbench structure (panes, narrow windows, activities, palette, menus, terminal, save), plus one-click ship from the browser.
 
 Screenshots are in `docs/screenshots/` (`v2-*` show the current visual identity).
