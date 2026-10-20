@@ -283,6 +283,8 @@ describe("the glass module and the destination selector", () => {
     // The selector: scrolling moves the choice and writes nothing.
     await page.getByRole("button", { name: /Choose where it goes/ }).click();
     expect((await st(page)).phase).toBe("choosing"); expect(await page.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-calendar");
+    // The module reveals its new outline over 200 ms (a clip); pointer events land only once it is in place, as for a person.
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
     const d = await centre(page, ".rg-drum"); await page.mouse.move(d.x, d.y);
     await page.mouse.wheel(0, 100); await expect.poll(async () => (await st(page)).choice).toBe("mail");
     expect(await page.locator(".rg-reason").innerText()).toBe("Gmail takes messages; this is an event");
