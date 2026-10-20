@@ -1,0 +1,25 @@
+{
+  "name": "@recast/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": { "recast-mcp": "src/stdio.ts" },
+  "scripts": {
+    "start": "tsx src/stdio.ts",
+    "start:http": "tsx src/http-main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "@recast/resolve": "workspace:*",
+    "tsx": "^4.19.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@recast/api-core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "vitest": "^3.2.0"
+  }
+}

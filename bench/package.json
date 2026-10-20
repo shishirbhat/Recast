@@ -1,0 +1,14 @@
+{
+  "name": "@recast/bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "bench": "tsx run.ts" },
+  "dependencies": {
+    "@recast/agent-runtime": "workspace:*",
+    "@recast/api-core": "workspace:*",
+    "@recast/resolve": "workspace:*",
+    "@recast/store": "workspace:*",
+    "@electric-sql/pglite": "^0.3.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+ "objects": [
+  {
+   "type": "Product",
+   "properties": {
+    "name": "Cloud Paint"
+   }
+  }
+ ]
+}

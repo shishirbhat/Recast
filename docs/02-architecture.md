@@ -57,6 +57,8 @@ recast/
 ## Core API surface
 The core is **pure**: no network, disk, clock or randomness of its own. Shells inject those. That keeps it testable and portable.
 
+> **As implemented in Layer 0** (differs from the sketch below): `resolve(candidate)` takes no context yet (bridge-assisted resolution such as contact matching is deferred); `plan(proposal, {now})` and `commit/undo(..., {bridge, log, now})` take injected dependencies; `propose` takes a destination contract that is validated against the grammar on every call; `inspect` is split into `inspectObject` and `inspectOperation`; `perceive` handles JSON-LD and `citation_*` meta only (DOM, accessibility and PDF adapters arrive in Layer 1 and 2). Also exported: `serialize`/`deserialize` (canonical JSON with id-integrity check), `rankProposals`, `assessRisk`, `checkContract`.
+
 ```ts
 perceive(input: PerceptionInput): Candidate[]                 // structure first, vision last
 resolve(c: Candidate, ctx: ResolveContext): SemanticObject

@@ -1,0 +1,30 @@
+{
+  "name": "@recast/api-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "contract:snapshot": "tsx scripts/contract-snapshot.ts"
+  },
+  "dependencies": {
+    "@recast/core": "workspace:*",
+    "@recast/resolve": "workspace:*",
+    "@recast/bridges": "workspace:*",
+    "@recast/release": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0",
+    "@types/node": "^22.0.0",
+    "@recast/store": "workspace:*",
+    "@electric-sql/pglite": "^0.3.0",
+    "ajv": "^8.17.1"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./admin": "./src/admin.ts",
+    "./contract": "./src/contract.ts"
+  }
+}

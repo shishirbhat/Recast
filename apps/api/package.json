@@ -1,0 +1,35 @@
+{
+  "name": "@recast/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --webpack -p 3100",
+    "build": "next build --webpack",
+    "start": "next start",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "pnpm build && vitest run",
+    "keys": "tsx scripts/recast-keys.ts"
+  },
+  "dependencies": {
+    "@recast/api-core": "workspace:*",
+    "@recast/resolve": "workspace:*",
+    "@recast/release": "workspace:*",
+    "next": "^16.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "vitest": "^3.2.0",
+    "@recast/sdk": "workspace:*",
+    "@types/pg": "^8.11.0",
+    "@electric-sql/pglite": "^0.3.0",
+    "@electric-sql/pglite-socket": "^0.0.20",
+    "@recast/store": "workspace:*",
+    "tsx": "^4.19.0"
+  }
+}

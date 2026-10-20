@@ -1,0 +1,19 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Training language models to follow instructions with human feedback",
+    "authorsFirst": [
+     "Long Ouyang",
+     "Jeff Wu",
+     "Xu Jiang",
+     "Diogo Almeida",
+     "Carroll L. Wainwright"
+    ],
+    "year": 2022
+   }
+  }
+ ],
+ "split": "heldout"
+}

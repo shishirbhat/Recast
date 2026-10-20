@@ -1,0 +1,41 @@
+{
+  "calendar": {
+    "destination": "google-calendar.event-editor", "app": "Google Calendar", "targetKind": "Event", "reliability": "official-api",
+    "accepts": [
+      { "relationId": "person-event-attendee", "effect": "Add attendee", "effectFlags": ["notifies-third-party"], "dataMoved": ["Person.name", "Person.email"] },
+      { "relationId": "location-event-location", "effect": "Set location", "dataMoved": ["Location.name", "Location.address"] }
+    ]
+  },
+  "mail-send": {
+    "destination": "mail.send-now", "app": "Mail", "targetKind": "Message", "reliability": "structured-interface",
+    "accepts": [{ "relationId": "person-message-recipient", "effect": "Send to person", "effectFlags": ["send"], "dataMoved": ["Person.email"] }]
+  },
+  "tasks-reference": {
+    "destination": "tasks.task", "app": "Tasks", "targetKind": "Task", "reliability": "deep-link",
+    "accepts": [{ "relationId": "document-task-reference", "effect": "Attach reference", "dataMoved": ["Document.title", "Document.url"] }]
+  },
+  "tasks-reference-ui": {
+    "destination": "legacy.task", "app": "Legacy Tasks", "targetKind": "Task", "reliability": "ui-automation",
+    "accepts": [{ "relationId": "document-task-reference", "effect": "Attach reference", "dataMoved": ["Document.title", "Document.url"] }]
+  },
+  "tasks-from-message": {
+    "destination": "tasks.task-from-message", "app": "Tasks", "targetKind": "Task", "reliability": "official-api",
+    "accepts": [{ "relationId": "message-task-source", "effect": "Link source message", "dataMoved": ["Message.subject", "Message.url"] }]
+  },
+  "research-compare": {
+    "destination": "research.workspace-paper", "app": "Research Workspace", "targetKind": "ResearchPaper", "reliability": "native",
+    "accepts": [{ "relationId": "paper-paper-compare", "effect": "Start comparison", "dataMoved": ["ResearchPaper.title", "ResearchPaper.authors"] }]
+  },
+  "claim-editor": {
+    "destination": "notes.claim", "app": "Notes", "targetKind": "Claim", "reliability": "structured-interface",
+    "accepts": [{ "relationId": "paper-claim-evidence", "effect": "Cite as evidence", "dataMoved": ["ResearchPaper.title", "ResearchPaper.doi", "ResearchPaper.url"] }]
+  },
+  "product-compare": {
+    "destination": "shop.compare", "app": "Shop", "targetKind": "Product", "reliability": "deep-link",
+    "accepts": [{ "relationId": "product-product-compare", "effect": "Add to comparison", "dataMoved": ["Product.name", "Product.price"] }]
+  },
+  "project-assets": {
+    "destination": "projects.assets", "app": "Projects", "targetKind": "Project", "reliability": "official-api",
+    "accepts": [{ "relationId": "image-project-asset", "effect": "Add asset", "dataMoved": ["Image.url", "Image.alt"] }]
+  }
+}

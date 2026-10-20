@@ -1,0 +1,11 @@
+{
+ "objects": [
+  {
+   "type": "Location",
+   "properties": {
+    "name": "Restaurant Daniel",
+    "address": "60 East 65th Street, New York, NY 10065"
+   }
+  }
+ ]
+}

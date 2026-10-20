@@ -1,0 +1,71 @@
+pages 136 (scored 135); objects: truth 105, found 72 (68.6%), spurious 2, related-not-scored 122, excluded snapshots 1
+
+field                       truth  recall   precision  loose-recall 
+Event.end                   3      66.7%    100.0%     66.7%        
+Event.location              21     95.2%    100.0%     95.2%        
+Event.start                 17     94.1%    100.0%     94.1%        
+Event.title                 25     96.0%    100.0%     96.0%        
+Location.address            4      0.0%     0.0%       25.0%        
+Location.name               19     0.0%     n/a        0.0%         
+Person.name                 17     11.8%    100.0%     11.8%        
+Product.name                9      88.9%    100.0%     88.9%        
+Product.price               5      80.0%    100.0%     80.0%        
+ResearchPaper.authors       23     91.3%    91.3%      100.0%       
+ResearchPaper.authorsFirst  9      100.0%   100.0%     100.0%       
+ResearchPaper.doi           2      100.0%   100.0%     100.0%       
+ResearchPaper.title         35     100.0%   100.0%     100.0%       
+ResearchPaper.year          32     100.0%   100.0%     100.0%       
+
+by category: event 24/25 found, 1 spurious; negative 0/0 found, 0 spurious; paper 35/35 found, 0 spurious; person 2/17 found, 1 spurious; place 3/19 found, 0 spurious; product 8/9 found, 0 spurious
+evidence: 793 properties; any pointer resolves 100.0%; primary pointer resolves 99.5%; also visible on page 72.8%
+latency (extractor only, in Chromium): cold p50 12.8ms p95 32.2ms max 53.0ms | warm p50 2.0ms p95 17.0ms max 28.4ms
+
+misses:
+event-76d39902 SPURIOUS Person {"name":"Georgi K","email":["georgi@galileosparadox.com"]}
+event-76d39902 Event.title: NOT EXTRACTED (object missed) want "PyCon US 2025"
+event-76d39902 Event.start: NOT EXTRACTED (object missed) want "2025-05-14"
+event-76d39902 Event.end: NOT EXTRACTED (object missed) want "2025-05-22"
+event-76d39902 Event.location: NOT EXTRACTED (object missed) want "David L. Lawrence Convention Center"
+paper-72524e82 ResearchPaper.authors: got ["Jeffrey Pennington","Richard Socher","Christopher D. Manning"] want ["Jeffrey Pennington","Richard Socher","Christopher Manning"] (loose ok)
+paper-a8e39199 ResearchPaper.authors: got ["Ashish Vaswani","Noam Shazeer","Niki Parmar","Jakob Uszkoreit","Llion Jones","Aidan N. Gomez","Łukasz Kaiser","Illia Polosukhin"] want ["Ashish Vaswani","Noam Shazeer","Niki Parmar","Jakob Uszkoreit","Llion Jones","Aidan N Gomez","Łukasz Kaiser","Illia Polosukhin"] (loose ok)
+person-042af149 Person.name: NOT EXTRACTED (object missed) want "Andrej Karpathy"
+person-0d2946e9 Person.name: NOT EXTRACTED (object missed) want "A. P. J. Abdul Kalam"
+person-185b9f8a Person.name: NOT EXTRACTED (object missed) want "Geoffrey E. Hinton"
+person-2572a1a1 Person.name: NOT EXTRACTED (object missed) want "Jennifer A. Doudna"
+person-26f23928 Person.name: NOT EXTRACTED (object missed) want "Ruslan Salakhutdinov"
+person-61755e52 Person.name: NOT EXTRACTED (object missed) want "Ada Lovelace"
+person-65469480 SPURIOUS ResearchPaper {"title":"About This Website","authors":["Gwern"],"year":2010,"url":"https://gwern.net/about"}
+person-6c9fb584 Person.name: NOT EXTRACTED (object missed) want "Brendan Gregg"
+person-9177e811 Person.name: NOT EXTRACTED (object missed) want "Giorgio Parisi"
+person-abafe45b Person.name: NOT EXTRACTED (object missed) want "Alan Turing"
+person-b0fd2d83 Person.name: NOT EXTRACTED (object missed) want "Sir Ken Robinson"
+person-cada1871 Person.name: NOT EXTRACTED (object missed) want "Brené Brown"
+person-d52074fd Person.name: NOT EXTRACTED (object missed) want "Sundar Pichai"
+person-e7b6403a Person.name: NOT EXTRACTED (object missed) want "Simon Sinek"
+person-e8c3e40f Person.name: NOT EXTRACTED (object missed) want "Paul Graham"
+person-edada147 Person.name: NOT EXTRACTED (object missed) want "Fei-Fei Li"
+place-0cd8ccf9 Location.name: NOT EXTRACTED (object missed) want "Yosemite National Park"
+place-11e74139 Location.name: NOT EXTRACTED (object missed) want "Katz's Delicatessen"
+place-281f4116 Location.name: NOT EXTRACTED (object missed) want "Tartine"
+place-3ce8b0d5 Location.name: NOT EXTRACTED (object missed) want "Claridge's"
+place-44c3a0e9 Location.name: NOT EXTRACTED (object missed) want "Restaurant Daniel"
+place-44c3a0e9 Location.address: NOT EXTRACTED (object missed) want "60 East 65th Street, New York, NY 10065"
+place-55fc6b14 Location.name: NOT EXTRACTED (object missed) want "Le Bernardin"
+place-597d7ee6 Location.name: NOT EXTRACTED (object missed) want "The Fat Duck"
+place-597d7ee6 Location.address: NOT EXTRACTED (object missed) want "High Street, Bray, Berkshire, SL6 2AQ"
+place-5ee8b120 Location.name: NOT EXTRACTED (object missed) want "Taj Mahal"
+place-76443f27 Location.name: NOT EXTRACTED (object missed) want "Cubbon Park"
+place-a4218c3b Location.name: NOT EXTRACTED (object missed) want "Lalbagh"
+place-b2e9eb27 Location.name: NOT EXTRACTED (object missed) want "Sagrada Família"
+place-b447159e Location.name: NOT EXTRACTED (object missed) want "Gramercy Tavern"
+place-bbc3dc56 Location.name: NOT EXTRACTED want "National Gallery"
+place-bbc3dc56 Location.address: got "Trafalgar Square London WC2N 5DN" want "Trafalgar Square, London WC2N 5DN" (loose ok)
+place-bdca65a2 Location.name: NOT EXTRACTED (object missed) want "Musée du Louvre"
+place-c8b31573 Location.name: NOT EXTRACTED (object missed) want "Natural History Museum"
+place-cde45891 Location.name: NOT EXTRACTED (object missed) want "Rijksmuseum"
+place-dd990d3d Location.name: NOT EXTRACTED (object missed) want "noma"
+place-e752de3a Location.name: NOT EXTRACTED want "Tate Modern"
+place-e752de3a Location.address: got "Tate Modern Bankside London SE1 9TG" want "Bankside, London SE1 9TG"
+place-f1d284a3 Location.name: NOT EXTRACTED want "Grand Canyon National Park"
+product-8496bf8d Product.name: NOT EXTRACTED (object missed) want "A Light in the Attic"
+product-8496bf8d Product.price: NOT EXTRACTED (object missed) want {"amount":51.77,"currency":"GBP"}

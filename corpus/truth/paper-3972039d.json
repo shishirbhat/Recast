@@ -1,0 +1,18 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "LLaMA: Open and Efficient Foundation Language Models",
+    "authorsFirst": [
+     "Hugo Touvron",
+     "Thibaut Lavril",
+     "Gautier Izacard",
+     "Xavier Martinet",
+     "Marie-Anne Lachaux"
+    ],
+    "year": 2023
+   }
+  }
+ ]
+}

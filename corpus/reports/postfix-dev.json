@@ -1,0 +1,2411 @@
+{
+ "split": "dev",
+ "text": "pages 85 (scored 84); objects: truth 67, found 45 (67.2%), spurious 1, related-not-scored 64, excluded snapshots 1\n\nfield                       truth  recall   precision  loose-recall \nEvent.end                   2      50.0%    100.0%     50.0%        \nEvent.location              14     92.9%    100.0%     92.9%        \nEvent.start                 10     90.0%    100.0%     90.0%        \nEvent.title                 16     93.8%    100.0%     93.8%        \nLocation.address            3      0.0%     0.0%       33.3%        \nLocation.name               10     0.0%     n/a        0.0%         \nPerson.name                 12     8.3%     100.0%     8.3%         \nProduct.name                6      83.3%    100.0%     83.3%        \nProduct.price               5      80.0%    100.0%     80.0%        \nResearchPaper.authors       16     87.5%    87.5%      100.0%       \nResearchPaper.authorsFirst  6      100.0%   100.0%     100.0%       \nResearchPaper.doi           2      100.0%   100.0%     100.0%       \nResearchPaper.title         23     100.0%   100.0%     100.0%       \nResearchPaper.year          23     100.0%   100.0%     100.0%       \n\nby category: event 15/16 found, 1 spurious; negative 0/0 found, 0 spurious; paper 23/23 found, 0 spurious; person 1/12 found, 0 spurious; place 1/10 found, 0 spurious; product 5/6 found, 0 spurious\nevidence: 439 properties; any pointer resolves 100.0%; primary pointer resolves 99.3%; also visible on page 75.4%\nlatency (extractor only, in Chromium): cold p50 12.4ms p95 26.4ms max 50.3ms | warm p50 1.8ms p95 11.6ms max 26.7ms\n\nmisses:\nevent-76d39902 SPURIOUS Person {\"name\":\"Georgi K\",\"email\":[\"georgi@galileosparadox.com\"]}\nevent-76d39902 Event.title: NOT EXTRACTED (object missed) want \"PyCon US 2025\"\nevent-76d39902 Event.start: NOT EXTRACTED (object missed) want \"2025-05-14\"\nevent-76d39902 Event.end: NOT EXTRACTED (object missed) want \"2025-05-22\"\nevent-76d39902 Event.location: NOT EXTRACTED (object missed) want \"David L. Lawrence Convention Center\"\npaper-72524e82 ResearchPaper.authors: got [\"Jeffrey Pennington\",\"Richard Socher\",\"Christopher D. Manning\"] want [\"Jeffrey Pennington\",\"Richard Socher\",\"Christopher Manning\"] (loose ok)\npaper-a8e39199 ResearchPaper.authors: got [\"Ashish Vaswani\",\"Noam Shazeer\",\"Niki Parmar\",\"Jakob Uszkoreit\",\"Llion Jones\",\"Aidan N. Gomez\",\"Łukasz Kaiser\",\"Illia Polosukhin\"] want [\"Ashish Vaswani\",\"Noam Shazeer\",\"Niki Parmar\",\"Jakob Uszkoreit\",\"Llion Jones\",\"Aidan N Gomez\",\"Łukasz Kaiser\",\"Illia Polosukhin\"] (loose ok)\nperson-042af149 Person.name: NOT EXTRACTED (object missed) want \"Andrej Karpathy\"\nperson-0d2946e9 Person.name: NOT EXTRACTED (object missed) want \"A. P. J. Abdul Kalam\"\nperson-185b9f8a Person.name: NOT EXTRACTED (object missed) want \"Geoffrey E. Hinton\"\nperson-2572a1a1 Person.name: NOT EXTRACTED (object missed) want \"Jennifer A. Doudna\"\nperson-26f23928 Person.name: NOT EXTRACTED (object missed) want \"Ruslan Salakhutdinov\"\nperson-61755e52 Person.name: NOT EXTRACTED (object missed) want \"Ada Lovelace\"\nperson-6c9fb584 Person.name: NOT EXTRACTED (object missed) want \"Brendan Gregg\"\nperson-cada1871 Person.name: NOT EXTRACTED (object missed) want \"Brené Brown\"\nperson-d52074fd Person.name: NOT EXTRACTED (object missed) want \"Sundar Pichai\"\nperson-e8c3e40f Person.name: NOT EXTRACTED (object missed) want \"Paul Graham\"\nperson-edada147 Person.name: NOT EXTRACTED (object missed) want \"Fei-Fei Li\"\nplace-0cd8ccf9 Location.name: NOT EXTRACTED (object missed) want \"Yosemite National Park\"\nplace-11e74139 Location.name: NOT EXTRACTED (object missed) want \"Katz's Delicatessen\"\nplace-44c3a0e9 Location.name: NOT EXTRACTED (object missed) want \"Restaurant Daniel\"\nplace-44c3a0e9 Location.address: NOT EXTRACTED (object missed) want \"60 East 65th Street, New York, NY 10065\"\nplace-597d7ee6 Location.name: NOT EXTRACTED (object missed) want \"The Fat Duck\"\nplace-597d7ee6 Location.address: NOT EXTRACTED (object missed) want \"High Street, Bray, Berkshire, SL6 2AQ\"\nplace-5ee8b120 Location.name: NOT EXTRACTED (object missed) want \"Taj Mahal\"\nplace-76443f27 Location.name: NOT EXTRACTED (object missed) want \"Cubbon Park\"\nplace-a4218c3b Location.name: NOT EXTRACTED (object missed) want \"Lalbagh\"\nplace-b2e9eb27 Location.name: NOT EXTRACTED (object missed) want \"Sagrada Família\"\nplace-bbc3dc56 Location.name: NOT EXTRACTED want \"National Gallery\"\nplace-bbc3dc56 Location.address: got \"Trafalgar Square London WC2N 5DN\" want \"Trafalgar Square, London WC2N 5DN\" (loose ok)\nplace-bdca65a2 Location.name: NOT EXTRACTED (object missed) want \"Musée du Louvre\"\nproduct-8496bf8d Product.name: NOT EXTRACTED (object missed) want \"A Light in the Attic\"\nproduct-8496bf8d Product.price: NOT EXTRACTED (object missed) want {\"amount\":51.77,\"currency\":\"GBP\"}",
+ "misses": [
+  "event-76d39902 SPURIOUS Person {\"name\":\"Georgi K\",\"email\":[\"georgi@galileosparadox.com\"]}",
+  "event-76d39902 Event.title: NOT EXTRACTED (object missed) want \"PyCon US 2025\"",
+  "event-76d39902 Event.start: NOT EXTRACTED (object missed) want \"2025-05-14\"",
+  "event-76d39902 Event.end: NOT EXTRACTED (object missed) want \"2025-05-22\"",
+  "event-76d39902 Event.location: NOT EXTRACTED (object missed) want \"David L. Lawrence Convention Center\"",
+  "paper-72524e82 ResearchPaper.authors: got [\"Jeffrey Pennington\",\"Richard Socher\",\"Christopher D. Manning\"] want [\"Jeffrey Pennington\",\"Richard Socher\",\"Christopher Manning\"] (loose ok)",
+  "paper-a8e39199 ResearchPaper.authors: got [\"Ashish Vaswani\",\"Noam Shazeer\",\"Niki Parmar\",\"Jakob Uszkoreit\",\"Llion Jones\",\"Aidan N. Gomez\",\"Łukasz Kaiser\",\"Illia Polosukhin\"] want [\"Ashish Vaswani\",\"Noam Shazeer\",\"Niki Parmar\",\"Jakob Uszkoreit\",\"Llion Jones\",\"Aidan N Gomez\",\"Łukasz Kaiser\",\"Illia Polosukhin\"] (loose ok)",
+  "person-042af149 Person.name: NOT EXTRACTED (object missed) want \"Andrej Karpathy\"",
+  "person-0d2946e9 Person.name: NOT EXTRACTED (object missed) want \"A. P. J. Abdul Kalam\"",
+  "person-185b9f8a Person.name: NOT EXTRACTED (object missed) want \"Geoffrey E. Hinton\"",
+  "person-2572a1a1 Person.name: NOT EXTRACTED (object missed) want \"Jennifer A. Doudna\"",
+  "person-26f23928 Person.name: NOT EXTRACTED (object missed) want \"Ruslan Salakhutdinov\"",
+  "person-61755e52 Person.name: NOT EXTRACTED (object missed) want \"Ada Lovelace\"",
+  "person-6c9fb584 Person.name: NOT EXTRACTED (object missed) want \"Brendan Gregg\"",
+  "person-cada1871 Person.name: NOT EXTRACTED (object missed) want \"Brené Brown\"",
+  "person-d52074fd Person.name: NOT EXTRACTED (object missed) want \"Sundar Pichai\"",
+  "person-e8c3e40f Person.name: NOT EXTRACTED (object missed) want \"Paul Graham\"",
+  "person-edada147 Person.name: NOT EXTRACTED (object missed) want \"Fei-Fei Li\"",
+  "place-0cd8ccf9 Location.name: NOT EXTRACTED (object missed) want \"Yosemite National Park\"",
+  "place-11e74139 Location.name: NOT EXTRACTED (object missed) want \"Katz's Delicatessen\"",
+  "place-44c3a0e9 Location.name: NOT EXTRACTED (object missed) want \"Restaurant Daniel\"",
+  "place-44c3a0e9 Location.address: NOT EXTRACTED (object missed) want \"60 East 65th Street, New York, NY 10065\"",
+  "place-597d7ee6 Location.name: NOT EXTRACTED (object missed) want \"The Fat Duck\"",
+  "place-597d7ee6 Location.address: NOT EXTRACTED (object missed) want \"High Street, Bray, Berkshire, SL6 2AQ\"",
+  "place-5ee8b120 Location.name: NOT EXTRACTED (object missed) want \"Taj Mahal\"",
+  "place-76443f27 Location.name: NOT EXTRACTED (object missed) want \"Cubbon Park\"",
+  "place-a4218c3b Location.name: NOT EXTRACTED (object missed) want \"Lalbagh\"",
+  "place-b2e9eb27 Location.name: NOT EXTRACTED (object missed) want \"Sagrada Família\"",
+  "place-bbc3dc56 Location.name: NOT EXTRACTED want \"National Gallery\"",
+  "place-bbc3dc56 Location.address: got \"Trafalgar Square London WC2N 5DN\" want \"Trafalgar Square, London WC2N 5DN\" (loose ok)",
+  "place-bdca65a2 Location.name: NOT EXTRACTED (object missed) want \"Musée du Louvre\"",
+  "product-8496bf8d Product.name: NOT EXTRACTED (object missed) want \"A Light in the Attic\"",
+  "product-8496bf8d Product.price: NOT EXTRACTED (object missed) want {\"amount\":51.77,\"currency\":\"GBP\"}"
+ ],
+ "fields": {
+  "Event.title": {
+   "truth": 16,
+   "extracted": 15,
+   "exact": 15,
+   "loose": 15
+  },
+  "Event.location": {
+   "truth": 14,
+   "extracted": 13,
+   "exact": 13,
+   "loose": 13
+  },
+  "Event.start": {
+   "truth": 10,
+   "extracted": 9,
+   "exact": 9,
+   "loose": 9
+  },
+  "Event.end": {
+   "truth": 2,
+   "extracted": 1,
+   "exact": 1,
+   "loose": 1
+  },
+  "ResearchPaper.title": {
+   "truth": 23,
+   "extracted": 23,
+   "exact": 23,
+   "loose": 23
+  },
+  "ResearchPaper.authors": {
+   "truth": 16,
+   "extracted": 16,
+   "exact": 14,
+   "loose": 16
+  },
+  "ResearchPaper.year": {
+   "truth": 23,
+   "extracted": 23,
+   "exact": 23,
+   "loose": 23
+  },
+  "ResearchPaper.authorsFirst": {
+   "truth": 6,
+   "extracted": 6,
+   "exact": 6,
+   "loose": 6
+  },
+  "ResearchPaper.doi": {
+   "truth": 2,
+   "extracted": 2,
+   "exact": 2,
+   "loose": 2
+  },
+  "Person.name": {
+   "truth": 12,
+   "extracted": 1,
+   "exact": 1,
+   "loose": 1
+  },
+  "Location.name": {
+   "truth": 10,
+   "extracted": 0,
+   "exact": 0,
+   "loose": 0
+  },
+  "Location.address": {
+   "truth": 3,
+   "extracted": 1,
+   "exact": 0,
+   "loose": 1
+  },
+  "Product.name": {
+   "truth": 6,
+   "extracted": 5,
+   "exact": 5,
+   "loose": 5
+  },
+  "Product.price": {
+   "truth": 5,
+   "extracted": 4,
+   "exact": 4,
+   "loose": 4
+  }
+ },
+ "obj": {
+  "truth": 67,
+  "found": 45,
+  "spurious": 1,
+  "pagesScored": 84,
+  "byType": {
+   "Event": {
+    "truth": 16,
+    "found": 15
+   },
+   "ResearchPaper": {
+    "truth": 23,
+    "found": 23
+   },
+   "Person": {
+    "truth": 12,
+    "found": 1
+   },
+   "Location": {
+    "truth": 10,
+    "found": 1
+   },
+   "Product": {
+    "truth": 6,
+    "found": 5
+   }
+  },
+  "related": 64,
+  "excluded": 1
+ },
+ "ev": {
+  "props": 439,
+  "anyOk": 439,
+  "primaryOk": 436,
+  "corroborated": 331
+ },
+ "latency": {
+  "cold": {
+   "p50": 12.399999999906868,
+   "p95": 26.4000000001397,
+   "max": 50.300000000046566
+  },
+  "warm": {
+   "p50": 1.8000000000465661,
+   "p95": 11.599999999860302,
+   "max": 26.699999999953434
+  }
+ },
+ "stratum": {
+  "event": {
+   "pages": 18,
+   "truth": 16,
+   "found": 15,
+   "spurious": 1
+  },
+  "negative": {
+   "pages": 6,
+   "truth": 0,
+   "found": 0,
+   "spurious": 0
+  },
+  "paper": {
+   "pages": 23,
+   "truth": 23,
+   "found": 23,
+   "spurious": 0
+  },
+  "person": {
+   "pages": 12,
+   "truth": 12,
+   "found": 1,
+   "spurious": 0
+  },
+  "place": {
+   "pages": 14,
+   "truth": 10,
+   "found": 1,
+   "spurious": 0
+  },
+  "product": {
+   "pages": 11,
+   "truth": 6,
+   "found": 5,
+   "spurious": 0
+  }
+ },
+ "pages": [
+  {
+   "id": "event-0485c024",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/mindfulness-through-art-watercolour-workshops-tickets-2001620526878",
+   "types": [
+    "Event"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.6999999999534339
+   },
+   "coldMs": 12.099999999860302,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-118b9efa",
+   "category": "event",
+   "url": "https://www.eventbrite.com/d/united-states--new-york/music/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 20,
+    "microdataItems": 0,
+    "ms": 3
+   },
+   "coldMs": 9,
+   "warmMs": 3.300000000046566,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-16fd6e5f",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/historic-london-pub-tour-tickets-1976719102046",
+   "types": [
+    "Event"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 15.100000000093132,
+   "warmMs": 1.6000000000931323,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-364b9c4e",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/hidden-spaces-tours-of-st-alfege-church-galleries-crypt-tickets-1996989804262",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.9000000001396984
+   },
+   "coldMs": 14.199999999953434,
+   "warmMs": 1.9000000001396984,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-4f9ee763",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/lgbtq-beginner-and-intermediate-ballet-class-tickets-2002555381052",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 13,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-5767ad6e",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/postgraduate-welcome-party-london-2026-tickets-1998331355879",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 13.899999999906868,
+   "warmMs": 1.9000000001396984,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-6df7d3eb",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/aurela-gace-london-tickets-1992410367042",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 4,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2.6000000000931323
+   },
+   "coldMs": 19.5,
+   "warmMs": 2.6000000000931323,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-715d9c07",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/matchstick-ldn-tickets-2000584340617",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2
+   },
+   "coldMs": 13.600000000093132,
+   "warmMs": 2,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-72644c71",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/london-stem-women-graduate-careers-event-tickets-1981565788616",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 4,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2.199999999953434
+   },
+   "coldMs": 14.900000000139698,
+   "warmMs": 2,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-76d39902",
+   "category": "event",
+   "url": "https://us.pycon.org/2025/",
+   "types": [
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 14,
+    "microdataItems": 0,
+    "ms": 1.1000000000931323
+   },
+   "coldMs": 11.300000000046566,
+   "warmMs": 1.1000000000931323,
+   "evidence": {
+    "props": 2,
+    "anyOk": 2,
+    "primaryOk": 2,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-8ed40bf3",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/arbd-in-the-community-recognition-response-and-pathways-forward-tickets-1987995657527",
+   "types": [
+    "Event"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 41,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 12.5,
+   "warmMs": 1.8999999999068677,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-9aefd0cb",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/preloved-designer-bags-clothing-sale-tickets-1998880659862",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.8999999999068677
+   },
+   "coldMs": 14.400000000139698,
+   "warmMs": 1.8999999999068677,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-a768de38",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/health-and-climate-change-conference-2026-tickets-2001065630167",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.8000000000465661
+   },
+   "coldMs": 14,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-a7f7dcd2",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/nightmare-in-brixton-londons-biggest-halloween-party-1000-ravers-tickets-1998670425044",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2.199999999953434
+   },
+   "coldMs": 14.100000000093132,
+   "warmMs": 2.199999999953434,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-bc19e5b1",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/mozart-and-moonlight-sonata-by-candlelight-tickets-1994305559614",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.7000000001862645
+   },
+   "coldMs": 13.300000000046566,
+   "warmMs": 1.7000000001862645,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-cb6c2a72",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/black-culture-market-black-history-month-october-tickets-1998641191606",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 4,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.8999999999068677
+   },
+   "coldMs": 14.399999999906868,
+   "warmMs": 1.8999999999068677,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-cc0ae2e9",
+   "category": "event",
+   "url": "https://www.songkick.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 16,
+    "microdataItems": 0,
+    "ms": 0.6999999999534339
+   },
+   "coldMs": 4.599999999860302,
+   "warmMs": 0.8000000000465661,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-ee9e737a",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/gcg-navratri-2026-tickets-2000154198049",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 13,
+   "warmMs": 1.6000000000931323,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "negative-0d0aba78",
+   "category": "negative",
+   "url": "https://www.paulgraham.com/greatwork.html",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 1.6999999999534339
+   },
+   "coldMs": 6.800000000046566,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "negative-435b109b",
+   "category": "negative",
+   "url": "https://en.wikipedia.org/wiki/Special:Random",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 9,
+    "microdataItems": 0,
+    "ms": 1.1000000000931323
+   },
+   "coldMs": 7.800000000046566,
+   "warmMs": 1.1999999999534339,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "negative-49282db9",
+   "category": "negative",
+   "url": "https://www.w3.org/TR/html5/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 3,
+    "microdataItems": 0,
+    "ms": 8.900000000139698
+   },
+   "coldMs": 11.100000000093132,
+   "warmMs": 5.899999999906868,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "negative-58684401",
+   "category": "negative",
+   "url": "https://motherfuckingwebsite.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 0.30000000004656613
+   },
+   "coldMs": 3.300000000046566,
+   "warmMs": 0.30000000004656613,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "negative-d5bacbb6",
+   "category": "negative",
+   "url": "https://news.ycombinator.com/item?id=8863",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 2,
+    "microdataItems": 0,
+    "ms": 2.5999999998603016
+   },
+   "coldMs": 7.199999999953434,
+   "warmMs": 2.5999999998603016,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "negative-ee73bc2e",
+   "category": "negative",
+   "url": "https://www.gutenberg.org/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 11,
+    "microdataItems": 0,
+    "ms": 0.6999999999534339
+   },
+   "coldMs": 5.099999999860302,
+   "warmMs": 0.8999999999068677,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-047809fe",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1406.2661",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 34,
+    "microdataItems": 0,
+    "ms": 1.8000000000465661
+   },
+   "coldMs": 11.899999999906868,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-0df4be45",
+   "category": "paper",
+   "url": "https://www.nature.com/articles/nature16961",
+   "types": [
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "Person",
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 191,
+    "microdataItems": 5,
+    "ms": 7
+   },
+   "coldMs": 31.699999999953434,
+   "warmMs": 6.7999999998137355,
+   "evidence": {
+    "props": 17,
+    "anyOk": 17,
+    "primaryOk": 16,
+    "corroborated": 15,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-0ed20484",
+   "category": "paper",
+   "url": "https://proceedings.mlr.press/v37/ioffe15.html",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 29,
+    "microdataItems": 0,
+    "ms": 1
+   },
+   "coldMs": 14.100000000093132,
+   "warmMs": 1.1999999999534339,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-1bb5dbf4",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1409.1556",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 28,
+    "microdataItems": 0,
+    "ms": 1.5999999998603016
+   },
+   "coldMs": 12.099999999860302,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-268dde88",
+   "category": "paper",
+   "url": "https://aclanthology.org/P02-1040/",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 20,
+    "microdataItems": 0,
+    "ms": 1.1999999999534339
+   },
+   "coldMs": 10.699999999953434,
+   "warmMs": 1.2999999998137355,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 5,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-26af8d76",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1207.0580",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 31,
+    "microdataItems": 0,
+    "ms": 1.6999999999534339
+   },
+   "coldMs": 12.399999999906868,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-2cab3ea1",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/2005.14165",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 57,
+    "microdataItems": 0,
+    "ms": 2.6000000000931323
+   },
+   "coldMs": 15.5,
+   "warmMs": 2.0999999998603016,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-3972039d",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/2302.13971",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 40,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 13.800000000046566,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-3e6ab909",
+   "category": "paper",
+   "url": "https://www.nature.com/articles/s41586-020-2649-2",
+   "types": [
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "Person",
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 217,
+    "microdataItems": 5,
+    "ms": 7.199999999953434
+   },
+   "coldMs": 29.899999999906868,
+   "warmMs": 7.400000000139698,
+   "evidence": {
+    "props": 17,
+    "anyOk": 17,
+    "primaryOk": 16,
+    "corroborated": 15,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-4aba4475",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/2010.11929",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 38,
+    "microdataItems": 0,
+    "ms": 1.3999999999068677
+   },
+   "coldMs": 13.5,
+   "warmMs": 2.1000000000931323,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-570701e0",
+   "category": "paper",
+   "url": "https://www.nature.com/articles/nature21056",
+   "types": [
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "Person",
+    "Person",
+    "Person",
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 122,
+    "microdataItems": 5,
+    "ms": 7.699999999953434
+   },
+   "coldMs": 26.4000000001397,
+   "warmMs": 8.399999999906868,
+   "evidence": {
+    "props": 21,
+    "anyOk": 21,
+    "primaryOk": 20,
+    "corroborated": 19,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-6bbf35ce",
+   "category": "paper",
+   "url": "https://aclanthology.org/N19-1423/",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 20,
+    "microdataItems": 0,
+    "ms": 2.7000000001862645
+   },
+   "coldMs": 19,
+   "warmMs": 2.7000000001862645,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 5,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-72524e82",
+   "category": "paper",
+   "url": "https://aclanthology.org/D14-1162/",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 19,
+    "microdataItems": 0,
+    "ms": 1.3999999999068677
+   },
+   "coldMs": 12.100000000093132,
+   "warmMs": 1.3999999999068677,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 5,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-a45e74f7",
+   "category": "paper",
+   "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0163094",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 95,
+    "microdataItems": 1,
+    "ms": 4.600000000093132
+   },
+   "coldMs": 19,
+   "warmMs": 4.899999999906868,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-a8e39199",
+   "category": "paper",
+   "url": "https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 14,
+    "microdataItems": 0,
+    "ms": 0.5
+   },
+   "coldMs": 10.099999999860302,
+   "warmMs": 0.8000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-a9720eb4",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1301.3781",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 30,
+    "microdataItems": 0,
+    "ms": 1.3000000000465661
+   },
+   "coldMs": 12.099999999860302,
+   "warmMs": 1.5,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-b349ce06",
+   "category": "paper",
+   "url": "https://proceedings.mlr.press/v70/finn17a.html",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 29,
+    "microdataItems": 0,
+    "ms": 0.6999999999534339
+   },
+   "coldMs": 10.800000000046566,
+   "warmMs": 1.1000000000931323,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-c23bf2a3",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1409.0473",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 29,
+    "microdataItems": 0,
+    "ms": 1.3999999999068677
+   },
+   "coldMs": 12.799999999813735,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-c7e0bc3f",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1312.6114",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 28,
+    "microdataItems": 0,
+    "ms": 2.0999999998603016
+   },
+   "coldMs": 16.699999999953434,
+   "warmMs": 2.5,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-cae140a2",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/2106.09685",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 34,
+    "microdataItems": 0,
+    "ms": 1.3000000000465661
+   },
+   "coldMs": 13.200000000186265,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-df9c222d",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1502.03167",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 28,
+    "microdataItems": 0,
+    "ms": 1.3000000000465661
+   },
+   "coldMs": 11.699999999953434,
+   "warmMs": 1.7999999998137355,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-e41b8a2c",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1412.6980",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 28,
+    "microdataItems": 0,
+    "ms": 1.3000000000465661
+   },
+   "coldMs": 12.5,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-ed11752a",
+   "category": "paper",
+   "url": "https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 11,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 9.699999999953434,
+   "warmMs": 0.8000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-fcf4ca3d",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1505.04597",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 29,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 13.5,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-042af149",
+   "category": "person",
+   "url": "https://karpathy.ai/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 0.8999999999068677
+   },
+   "coldMs": 4.300000000046566,
+   "warmMs": 1,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-0d2946e9",
+   "category": "person",
+   "url": "https://en.wikipedia.org/wiki/A._P._J._Abdul_Kalam",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 15.699999999953434
+   },
+   "coldMs": 24.800000000046566,
+   "warmMs": 15.699999999953434,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-185b9f8a",
+   "category": "person",
+   "url": "https://www.cs.toronto.edu/~hinton/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 0.5
+   },
+   "coldMs": 4.300000000046566,
+   "warmMs": 0.6000000000931323,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-2572a1a1",
+   "category": "person",
+   "url": "https://www.nobelprize.org/prizes/chemistry/2020/doudna/facts/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 15,
+    "microdataItems": 10,
+    "ms": 0.8000000000465661
+   },
+   "coldMs": 6.400000000139698,
+   "warmMs": 0.9000000001396984,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-26f23928",
+   "category": "person",
+   "url": "https://www.cs.cmu.edu/~rsalakhu/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 0,
+    "microdataItems": 0,
+    "ms": 0.5
+   },
+   "coldMs": 3.800000000046566,
+   "warmMs": 0.5,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-61755e52",
+   "category": "person",
+   "url": "https://en.wikipedia.org/wiki/Ada_Lovelace",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 10.399999999906868
+   },
+   "coldMs": 20.5,
+   "warmMs": 11.599999999860302,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-6c9fb584",
+   "category": "person",
+   "url": "https://www.brendangregg.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 6,
+    "microdataItems": 0,
+    "ms": 4
+   },
+   "coldMs": 9.5,
+   "warmMs": 4,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-93976018",
+   "category": "person",
+   "url": "https://www.goodreads.com/author/show/1221698.Michelle_Obama",
+   "types": [
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 22,
+    "microdataItems": 17,
+    "ms": 8.199999999953434
+   },
+   "coldMs": 21.699999999953434,
+   "warmMs": 8.300000000046566,
+   "evidence": {
+    "props": 2,
+    "anyOk": 2,
+    "primaryOk": 2,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-cada1871",
+   "category": "person",
+   "url": "https://www.ted.com/speakers/brene_brown",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 33,
+    "microdataItems": 0,
+    "ms": 0.8000000000465661
+   },
+   "coldMs": 4.5,
+   "warmMs": 0.8999999999068677,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-d52074fd",
+   "category": "person",
+   "url": "https://en.wikipedia.org/wiki/Sundar_Pichai",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 9.099999999860302
+   },
+   "coldMs": 16.4000000001397,
+   "warmMs": 9.400000000139698,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-e8c3e40f",
+   "category": "person",
+   "url": "https://www.paulgraham.com/bio.html",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 0,
+    "microdataItems": 0,
+    "ms": 0.19999999995343387
+   },
+   "coldMs": 2.9000000001396984,
+   "warmMs": 0.10000000009313226,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-edada147",
+   "category": "person",
+   "url": "https://profiles.stanford.edu/fei-fei-li",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 2,
+    "microdataItems": 0,
+    "ms": 18.800000000046566
+   },
+   "coldMs": 27.799999999813735,
+   "warmMs": 19,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-0cd8ccf9",
+   "category": "place",
+   "url": "https://www.nps.gov/yose/index.htm",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 10,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 6.199999999953434,
+   "warmMs": 1.7999999998137355,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-11e74139",
+   "category": "place",
+   "url": "https://www.katzsdelicatessen.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 8,
+    "microdataItems": 0,
+    "ms": 3.1000000000931323
+   },
+   "coldMs": 7.5,
+   "warmMs": 2.800000000046566,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-21c8e99e",
+   "category": "place",
+   "url": "https://www.lalbaghgarden.in/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 2,
+    "microdataItems": 0,
+    "ms": 0.19999999995343387
+   },
+   "coldMs": 3,
+   "warmMs": 0.19999999995343387,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-44c3a0e9",
+   "category": "place",
+   "url": "https://www.danielnyc.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 16,
+    "microdataItems": 0,
+    "ms": 0.39999999990686774
+   },
+   "coldMs": 3.6000000000931323,
+   "warmMs": 0.30000000004656613,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-58b115d3",
+   "category": "place",
+   "url": "https://www.smithsonianmag.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 15,
+    "microdataItems": 0,
+    "ms": 1.8999999999068677
+   },
+   "coldMs": 7.5,
+   "warmMs": 2.300000000046566,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-597d7ee6",
+   "category": "place",
+   "url": "https://www.thefatduck.co.uk/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 4,
+    "microdataItems": 0,
+    "ms": 0.7000000001862645
+   },
+   "coldMs": 5.300000000046566,
+   "warmMs": 1,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-5ee8b120",
+   "category": "place",
+   "url": "https://en.wikipedia.org/wiki/Taj_Mahal",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 13.699999999953434
+   },
+   "coldMs": 20.5,
+   "warmMs": 13.699999999953434,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-76443f27",
+   "category": "place",
+   "url": "https://en.wikipedia.org/wiki/Cubbon_Park",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 4.399999999906868
+   },
+   "coldMs": 15.899999999906868,
+   "warmMs": 7,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-a4218c3b",
+   "category": "place",
+   "url": "https://en.wikipedia.org/wiki/Lalbagh",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 9,
+    "microdataItems": 0,
+    "ms": 1
+   },
+   "coldMs": 8.200000000186265,
+   "warmMs": 1,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-b2e9eb27",
+   "category": "place",
+   "url": "https://www.sagradafamilia.org/en/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 4,
+    "microdataItems": 0,
+    "ms": 3.6000000000931323
+   },
+   "coldMs": 8.800000000046566,
+   "warmMs": 3.7000000001862645,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-b3ac81d0",
+   "category": "place",
+   "url": "https://www.thelalit.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 22,
+    "microdataItems": 0,
+    "ms": 4.900000000139698
+   },
+   "coldMs": 9.199999999953434,
+   "warmMs": 3.5,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-bbc3dc56",
+   "category": "place",
+   "url": "https://www.nationalgallery.org.uk/visiting",
+   "types": [
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 5,
+    "microdataItems": 0,
+    "ms": 2.5999999998603016
+   },
+   "coldMs": 13,
+   "warmMs": 2.6000000000931323,
+   "evidence": {
+    "props": 1,
+    "anyOk": 1,
+    "primaryOk": 1,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-bdca65a2",
+   "category": "place",
+   "url": "https://www.louvre.fr/en",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 8,
+    "microdataItems": 0,
+    "ms": 1.1000000000931323
+   },
+   "coldMs": 5,
+   "warmMs": 1.3000000000465661,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-febc135d",
+   "category": "place",
+   "url": "https://www.vatican.va/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 6,
+    "microdataItems": 0,
+    "ms": 0.10000000009313226
+   },
+   "coldMs": 3,
+   "warmMs": 0.10000000009313226,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-2aac955d",
+   "category": "product",
+   "url": "https://www.allbirds.com/products/womens-tree-runners",
+   "types": [
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 0,
+    "ms": 8
+   },
+   "coldMs": 24.5,
+   "warmMs": 8,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-341ec9f2",
+   "category": "product",
+   "url": "https://www.allbirds.com/products/mens-wool-runners",
+   "types": [
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 0,
+    "ms": 7.399999999906868
+   },
+   "coldMs": 23.5,
+   "warmMs": 7.399999999906868,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-4a13d856",
+   "category": "product",
+   "url": "https://store.google.com/product/pixel_9",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 16,
+    "microdataItems": 0,
+    "ms": 5.800000000046566
+   },
+   "coldMs": 14.199999999953434,
+   "warmMs": 6.199999999953434,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-8496bf8d",
+   "category": "product",
+   "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 4,
+    "microdataItems": 0,
+    "ms": 0.10000000009313226
+   },
+   "coldMs": 3.2999999998137355,
+   "warmMs": 0.30000000004656613,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-985450eb",
+   "category": "product",
+   "url": "https://www.allbirds.com/products/mens-tree-runners",
+   "types": [
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 0,
+    "ms": 8.100000000093132
+   },
+   "coldMs": 26.0999999998603,
+   "warmMs": 8.100000000093132,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-9ea5f83c",
+   "category": "product",
+   "url": "https://www.flipkart.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 10,
+    "microdataItems": 0,
+    "ms": 4.199999999953434
+   },
+   "coldMs": 12.200000000186265,
+   "warmMs": 5.199999999953434,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-a9244fb6",
+   "category": "product",
+   "url": "https://www.decathlon.in/p/8562404/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 21,
+    "microdataItems": 0,
+    "ms": 0.30000000004656613
+   },
+   "coldMs": 6.2000000001862645,
+   "warmMs": 0.6000000000931323,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-ae463193",
+   "category": "product",
+   "url": "https://www.apple.com/in/shop/buy-iphone/iphone-16",
+   "types": [
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 21,
+    "microdataItems": 0,
+    "ms": 5.900000000139698
+   },
+   "coldMs": 20.9000000001397,
+   "warmMs": 6.399999999906868,
+   "evidence": {
+    "props": 4,
+    "anyOk": 4,
+    "primaryOk": 4,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-de6a6679",
+   "category": "product",
+   "url": "https://www.nike.com/in/t/air-force-1-07-shoes-WrLlWX",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 34,
+    "microdataItems": 0,
+    "ms": 5.899999999906868
+   },
+   "coldMs": 10.800000000046566,
+   "warmMs": 4.800000000046566,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-f37c3947",
+   "category": "product",
+   "url": "https://www.glossier.com/products/cloud-paint",
+   "types": [
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 37,
+    "microdataItems": 35,
+    "ms": 24.300000000046566
+   },
+   "coldMs": 50.300000000046566,
+   "warmMs": 26.699999999953434,
+   "evidence": {
+    "props": 145,
+    "anyOk": 145,
+    "primaryOk": 145,
+    "corroborated": 142,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-fdc97dbc",
+   "category": "product",
+   "url": "https://www.mvmtwatches.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 20,
+    "microdataItems": 0,
+    "ms": 2.9000000001396984
+   },
+   "coldMs": 8.800000000046566,
+   "warmMs": 2.9000000001396984,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  }
+ ]
+}

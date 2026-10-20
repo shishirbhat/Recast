@@ -1,0 +1,21 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension",
+    "authors": [
+     "Mike Lewis",
+     "Yinhan Liu",
+     "Naman Goyal",
+     "Marjan Ghazvininejad",
+     "Abdelrahman Mohamed",
+     "Omer Levy",
+     "Veselin Stoyanov",
+     "Luke Zettlemoyer"
+    ]
+   }
+  }
+ ],
+ "split": "heldout"
+}

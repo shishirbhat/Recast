@@ -1,0 +1,12 @@
+{
+ "objects": [
+  {
+   "type": "Event",
+   "properties": {
+    "title": "Postgraduate Welcome Party / London / 2026",
+    "start": "2026-10-01",
+    "location": "Sway Bar & Club"
+   }
+  }
+ ]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/objects/document.schema.json",
+  "title": "DocumentProperties",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 }, "url": { "type": "string" },
+    "fileName": { "type": "string" }, "mimeType": { "type": "string" },
+    "pages": { "type": "integer", "minimum": 1 }, "author": { "type": "string" },
+    "modified": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})?)?$" }
+  }
+}

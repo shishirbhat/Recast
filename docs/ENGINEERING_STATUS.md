@@ -1,0 +1,106 @@
+# Engineering status
+
+The single authoritative status. Update it whenever a capability changes level. **Claims here are only what the repository proves.**
+
+## Baseline
+| Item | Value |
+|---|---|
+| Branch | `claude/clever-heisenberg-s3taqj` (local equals `origin`, clean tree) |
+| Baseline commit | `97419eb` |
+| CI on baseline | GitHub Actions run 25: **success** (install, Chromium, `pnpm gen` with no diff, overlay build, typecheck, full tests) |
+| Local, 2026-10-19 | `pnpm install --frozen-lockfile`; `pnpm gen` leaves no diff; `pnpm -r typecheck` passes |
+| Local full test | first run: **1 failure**. `packages/conformance` browser test hit its 10 s hook timeout during Chromium's cold start under the parallel run (the same test passes alone in 9.6 s, then 1.8 s). Fixed by explicit test and hook timeouts in every test package. Second run: **18 packages, 550 tests, 0 failures** |
+| Commands | `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`; per package: `pnpm --filter <name> test` |
+
+Per-package counts on the baseline:
+
+| Package | Tests | Package | Tests |
+|---|---|---|---|
+| core | 74 | api-core | 66 |
+| interaction | 32 | store | 49 |
+| extract-web | 69 | agent-runtime | 72 |
+| bridges | 21 | agent-server | 10 |
+| conformance | 6 | sdk | 24 |
+| overlay | 4 | mcp | 9 |
+| resolve | 32 | api | 12 |
+| runtime-client | 7 | web | 29 |
+| extension | 15 | harness | 19 |
+
+The previously reported harness failures (two capitalisation assertions in Layer 2a) were fixed at the time and have passed in every run since. In the 2026-10-19 run, harness passed 19 of 19.
+
+## Evidence levels (never merged)
+| Level | Meaning |
+|---|---|
+| **U** | unit-tested |
+| **H** | local harness: Chromium on local pages, or local HTTP and Postgres-wire integration |
+| **F** | against a reference or fake provider (a stand-in Google, Supabase Auth or MCP server) |
+| **R** | against a real external provider |
+| **P** | with real people |
+
+**No capability is at R or P.** Nothing has run against real Google, Notion, Supabase or Vercel, on Windows, or with real users.
+
+---
+
+## 1. Verified complete (implemented, tests pass, behaviour demonstrated at the stated level)
+| Requirement | Implementation | Evidence | Level | Remaining limitation |
+|---|---|---|---|---|
+| Typed objects with per-field confidence and evidence; content ids; source never mutated | `schema/`, `packages/core/src/{resolve,canonical}.ts` | core tests, conformance in Node and Chromium under a strict CSP | U, H | — |
+| Effect-based trust model; consent release / confirm / hold ≥600 ms | `packages/core/src/{trust,operate}.ts` | core tests; harness: 300 ms hold places nothing, 800 ms places | U, H | — |
+| Single-object grab → approach → preview → place → undo; keyboard path; Esc everywhere | `packages/interaction`, `packages/overlay`, `apps/harness` | interaction 32; harness 19 (pointer, keyboard, reduced motion, axe light and dark) | U, H | **in-page stand-in destinations only**; one object per carry |
+| Element classifier (point at a name, place or address) | `packages/extract-web/src/element.ts` | `corpus/element-eval.mjs`. Dev: Person 92% (11/12), Location 100% (10/10). Held-out (**after** dev fixes, not clean): Person 5/5, Location 8/9. Ordinary text offered at ≥0.5 confidence: 1% | H | small samples; the held-out run is not clean; Location.name page extraction 0/9 on held-out |
+| Page extraction | `packages/extract-web` | `docs/07`: held-out frozen, 26/38 page objects (68%), 1 spurious; events 9/9, papers 11/12, people 1/5, places 2/9 | H | people and places weak |
+| Resolve engine, rules stage | `packages/resolve` | 42 hand-labelled **dev** strings: 42 right, 0 false positives (regression guard, not a benchmark). Rules p50 0.06 ms | U | no held-out set; embedding and LLM stages tested only with scripted stand-ins |
+| API: auth (hashed keys), limits, quota, idempotency, versioning, corrections opt-in | `packages/api-core`, `apps/api` | api-core 66; built server on Postgres wire (12) | U, H | not deployed |
+| Shared limits and idempotency across instances | `api_shared_state.sql`, `SqlRateLimiter`, `SqlIdempotencyStore` | two API instances on one database; concurrency tests | H | one or two DB round trips per request (measured: not yet) |
+| SDK | `packages/sdk` | 24 tests against the real API core over HTTP | H | not published; no independent developer has used it |
+| MCP server: Recast as agent tools | `packages/mcp` | official MCP client in memory, over HTTP and over stdio (child process) | H | — |
+| Agent gateway: identity, token, proof, scopes, default-deny policy, approvals bound to request, signed audit before forwarding, credential never forwarded | `packages/agent-runtime` | 72 tests incl. official MCP client to a real local MCP server | U, H, F | not externally reviewed; policy is not OPA/Cedar |
+| Deployable runtime server on Postgres | `apps/agent-server` | 10 tests over Postgres wire with the official MCP client | H | Dockerfile never built; not deployed |
+| Tenant isolation, append-only audit, erasure via receipt | `supabase/migrations/*`, `packages/store/test/*` | store 49 (RLS, triggers, erasure across 14 tables) on PGlite | U, H | PGlite, not a real Supabase project |
+| Control center: sections, privacy export/delete, approvals | `apps/web` | 29 tests incl. axe on every section | H | demo data unless `DATABASE_URL` |
+| Composition: time + place (+ title) into an Event with per-field origin, missing fields, conflicts and visible assumptions; capsule gesture with completion; pointer and keyboard | `packages/core/src/compose.ts`, `packages/interaction` (capsule), `packages/extract-web` `classifyPiece`, `apps/harness/src/compose.html`; `docs/15-composition.md` | core 17, engine 12, extract-web 4, Chromium 7 (journey, missing title, conflict, Esc, keyboard, axe light and dark) | U, H | in-page calendar only; no real calendar; no Windows |
+| Action lifecycle shared by placements; declared bridge capabilities; unknown outcomes recorded, never retried, reconciled once | `packages/core/src/lifecycle.ts`, `packages/bridges/src/{http,specs}.ts`, `packages/api-core/src/api.ts`, `supabase/migrations/20260108000000_action_lifecycle.sql` | core 4, bridges 11, api-core 20 placement tests incl. Postgres, SDK 25 | U, H, F | Google is a stand-in; the harness's in-page destinations do not use the lifecycle yet |
+| Calendar event creation: stable id, duplicate detection, restore after delete, reconciliation; composed objects placed through the API | `googleCalendarEvent`, `/v1/place` with `object` | see `docs/12-api.md` | U, F | **R** needs Google OAuth (#22) |
+| Release states: registry, tenant cohorts, server-side gates on every API endpoint, per-deployment overrides that refuse typos, `/v1/capabilities` | `packages/release`, `packages/api-core/src/api.ts`, `supabase/migrations/20260109000000_release_cohorts.sql`; `docs/RELEASE_STATES.md` | release 4, api-core 8 (memory and Postgres) | U, H | enforced in the API and the agent gateway; control center not yet gated |
+| Spaces: bounded agent configuration (tool list with constraints, call and money budgets, ≤30-day expiry, permanent stop, approval bound to parameters and Space); atomic reservation; control-center Stop | `packages/agent-runtime/src/space.ts`, gateway, `SqlSpaceStore`, `supabase/migrations/20260110000000_agent_spaces.sql`, `apps/agent-server` admin, `apps/web` Agents; `docs/16-spaces.md` | agent-runtime 15, agent-server 3 (official MCP client, Postgres wire), web 1 (Chromium) | U, H | spend is as declared by the call; no real provider; off by default (`SPACES_MODE`) |
+| Bounded agent pilot: `agent-auth init` (local key, register public half), `agent-auth connect` stdio bridge (fresh proof per request), approvals via `_meta`, two local tools, activity, revoke; BYOK and gateway-bypass limits written down | `packages/agent-runtime/src/{bridge,cli}.ts`; `docs/17-agent-pilot.md` | official MCP client over stdio through the deployable server (proofs and Spaces required, Postgres wire): 6; bridge unit 5 | U, H | not run inside a real desktop agent product; no packaged CLI |
+| API contract (OpenAPI 3.1) served per account; every response in the API, placement, release and SDK tests and on the built server checked against it; breaking-change gate against a committed v1 baseline; SDK safe on unknown statuses | `packages/api-core/src/{openapi,contract,compat}.ts`, `contract/v1.json`; `docs/18-api-compatibility.md` | api-core contract 5 plus every guarded test, SDK compat 3, built server 1 (12 requests) | U, H | no published SDK; request bodies validated by the server code, not by the schema |
+| Performance and reliability budget: local latencies for resolve, placement and gateway overhead (memory and Postgres); limits; failure behaviour; gateway upstream timeout added | `bench/run.ts`, `docs/PERFORMANCE.md`, `agent-runtime/src/gateway.ts` | bench (manual), gateway timeout test | H | not hosted; no load test; not enforced in CI |
+| Credential and permission boundary review (internal): every credential and boundary listed with its enforcement and test; 5 findings fixed (anonymous and non-member access to the runtime link, no upstream timeout, malformed Space input, string constraints); dependency audit | `docs/14-security-review.md`, `apps/web/lib/runtime.ts` | web 3 (built server, Postgres wire, Chromium), agent-runtime | U, H | **not external**; open risks listed (global operator token, no key rotation, env-held secrets, dev-tool advisories) |
+| Recipes and policy packs: declarative Space templates; packs deny or ask only, scoped to their Space; applying never grants scopes; only reviewed content (hash) runs; narrowing only; catalog of 3 | `packages/agent-runtime/src/{recipe,recipes-cli}.ts`, `recipes/`, `supabase/migrations/20260111000000_space_rules.sql`, agent-server `/admin/recipes`; `docs/19-recipes.md` | agent-runtime 9, agent-server 4 (official MCP client, Postgres wire) | U, H | reviews are internal and unsigned; no UI; sharing between accounts disabled |
+| Control center on Postgres with sign-in (local accounts, Supabase sessions) | `apps/web/{proxy.ts,lib/*}`, `packages/store/src/scoped.ts` | 8 browser tests over Postgres wire; 8 unit; isolation between two people | H, F | Supabase is a stand-in; JWKS (asymmetric) tokens unsupported |
+
+## 2. Implemented but not fully verified
+| Requirement | Implementation | What exists | Missing to verify |
+|---|---|---|---|
+| Destination bridges: Calendar attendee/location, Gmail draft, Sheets row, Tasks task, Notion page | `packages/bridges/src/specs.ts` | request builders, undo tokens, injection guards; F via a fake Google over HTTP (Gmail draft, Calendar attendee) | **R**: needs OAuth apps (task #22). No bridge creates a calendar *event* yet |
+| `POST /v1/place` and undo | `packages/api-core/src/{api,place}.ts` | re-resolve, object-id check, consent, sealed credentials, host allowlist, atomic undo claim; release state `internal` | R; no OAuth flow (tokens stored as given, no refresh) |
+| Browser extension | `apps/extension` | extracts the page and lists objects in a popup (15 tests) | **does not include the overlay or placement**; never loaded in a real browser profile by a person |
+| Windows interaction | `apps/spike-win` | probes for a global hook and UI Automation, not run | everything: needs a Windows machine (task #23) |
+| Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
+| Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
+
+## 3. In progress
+| Requirement | Where | State |
+|---|---|---|
+| System map, decision log | `docs/SYSTEM_MAP.md`, `docs/DECISIONS.md` | written; kept current |
+
+## 4. Not started, or blocked outside the repository
+| Item | Blocked on |
+|---|---|
+| Release gates in the control center | people's accounts have no cohort yet |
+| Hosted performance (cold starts, network database, providers), load and soak tests | a deployment (#21); local budget and measurements in `docs/PERFORMANCE.md` |
+| Deployments (Supabase, Vercel, runtime host) | the founders' accounts (#21) |
+| Real OAuth bridges | the founders' Google/Notion apps (#22) |
+| Native Windows shell | a Windows machine (#23) |
+| User testing | people (#24) |
+| Model-provider stages | a key (#25) |
+| Billing | an account (#26) |
+
+## Distinctions to keep
+- Browser simulation (harness) is not native Windows behaviour.
+- A migration tested on PGlite is not a deployed database.
+- An API route that runs locally is not a hosted API.
+- A bridge tested against a fake Google is not a connected integration.
+- A locally tested policy engine is not a reviewed security boundary.
+- SDK tests by the founding team are not developer adoption.

@@ -1,0 +1,11 @@
+{
+ "objects": [
+  {
+   "type": "Location",
+   "properties": {
+    "name": "The Fat Duck",
+    "address": "High Street, Bray, Berkshire, SL6 2AQ"
+   }
+  }
+ ]
+}

@@ -1,0 +1,18 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Bleu: a Method for Automatic Evaluation of Machine Translation",
+    "authors": [
+     "Kishore Papineni",
+     "Salim Roukos",
+     "Todd Ward",
+     "Wei-Jing Zhu"
+    ],
+    "year": 2002,
+    "doi": "10.3115/1073083.1073135"
+   }
+  }
+ ]
+}

@@ -1,0 +1,13 @@
+{
+ "objects": [
+  {
+   "type": "Event",
+   "properties": {
+    "title": "London Job Show | Westfield London | Careers Fair",
+    "start": "2026-10-16",
+    "end": "2026-10-17",
+    "location": "Westfield London"
+   }
+  }
+ ]
+}

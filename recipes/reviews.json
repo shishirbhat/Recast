@@ -1,0 +1,26 @@
+[
+  {
+    "recipeId": "draft-replies",
+    "version": 1,
+    "hash": "62cbca64e241794fcab32ca49aeea2c41a17b3733d8903ff09b600c8da878cf8",
+    "reviewedBy": "Recast engineering (internal review, 2026-10-19)",
+    "reviewedAt": "2026-10-19T19:47:17.070Z",
+    "notes": "Checked: only narrows; pack denies or asks; no wildcards; budgets bounded"
+  },
+  {
+    "recipeId": "grocery-runner",
+    "version": 1,
+    "hash": "93e181a190b76ccba2a43c93ca941c87e764ef134325bacfec6ad3751bb825f0",
+    "reviewedBy": "Recast engineering (internal review, 2026-10-19)",
+    "reviewedAt": "2026-10-19T19:47:18.497Z",
+    "notes": "Checked: only narrows; pack denies or asks; no wildcards; budgets bounded"
+  },
+  {
+    "recipeId": "meeting-scheduler",
+    "version": 1,
+    "hash": "4d11d1f8b4d2ca05e6aa5a16f9a3abde57aee4be76b9a2e4f54d6678cfdb4b3a",
+    "reviewedBy": "Recast engineering (internal review, 2026-10-19)",
+    "reviewedAt": "2026-10-19T19:47:17.843Z",
+    "notes": "Checked: only narrows; pack denies or asks; no wildcards; budgets bounded"
+  }
+]

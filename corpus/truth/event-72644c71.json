@@ -1,0 +1,12 @@
+{
+ "objects": [
+  {
+   "type": "Event",
+   "properties": {
+    "title": "London STEM Women Graduate Careers Event",
+    "start": "2026-10-09",
+    "location": "Queen Elizabeth II Centre"
+   }
+  }
+ ]
+}

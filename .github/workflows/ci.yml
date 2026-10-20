@@ -1,0 +1,23 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+        env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" }
+      - name: install the browser matching the locked playwright-core (not whatever is latest)
+        run: pnpm --filter @recast/conformance exec playwright-core install --with-deps chromium
+      - run: pnpm gen
+      - name: generated files are committed and current
+        run: git diff --exit-code -- packages/core/src/generated
+      - name: build generated overlay CSS (gitignored, needed by typecheck)
+        run: pnpm --filter @recast/overlay build
+      - run: pnpm typecheck
+      - run: pnpm test

@@ -1,0 +1,1515 @@
+{
+ "split": "heldout",
+ "text": "pages 51 (scored 51); objects: truth 38, found 27 (71.1%), spurious 1, related-not-scored 58, excluded snapshots 0\n\nfield                       truth  recall   precision  loose-recall \nEvent.end                   1      100.0%   100.0%     100.0%       \nEvent.location              7      100.0%   100.0%     100.0%       \nEvent.start                 7      100.0%   100.0%     100.0%       \nEvent.title                 9      100.0%   100.0%     100.0%       \nLocation.address            1      0.0%     0.0%       0.0%         \nLocation.name               9      0.0%     n/a        0.0%         \nPerson.name                 5      20.0%    100.0%     20.0%        \nProduct.name                3      100.0%   100.0%     100.0%       \nResearchPaper.authors       7      100.0%   100.0%     100.0%       \nResearchPaper.authorsFirst  3      100.0%   100.0%     100.0%       \nResearchPaper.title         12     100.0%   100.0%     100.0%       \nResearchPaper.year          9      100.0%   100.0%     100.0%       \n\nby category: event 9/9 found, 0 spurious; paper 12/12 found, 0 spurious; person 1/5 found, 1 spurious; place 2/9 found, 0 spurious; product 3/3 found, 0 spurious\nevidence: 354 properties; any pointer resolves 100.0%; primary pointer resolves 99.7%; also visible on page 69.5%\nlatency (extractor only, in Chromium): cold p50 13.1ms p95 41.3ms max 50.4ms | warm p50 1.9ms p95 18.7ms max 24.7ms\n\nmisses:\nperson-65469480 SPURIOUS ResearchPaper {\"title\":\"About This Website\",\"authors\":[\"Gwern\"],\"year\":2010,\"url\":\"https://gwern.net/about\"}\nperson-9177e811 Person.name: NOT EXTRACTED (object missed) want \"Giorgio Parisi\"\nperson-abafe45b Person.name: NOT EXTRACTED (object missed) want \"Alan Turing\"\nperson-b0fd2d83 Person.name: NOT EXTRACTED (object missed) want \"Sir Ken Robinson\"\nperson-e7b6403a Person.name: NOT EXTRACTED (object missed) want \"Simon Sinek\"\nplace-281f4116 Location.name: NOT EXTRACTED (object missed) want \"Tartine\"\nplace-3ce8b0d5 Location.name: NOT EXTRACTED (object missed) want \"Claridge's\"\nplace-55fc6b14 Location.name: NOT EXTRACTED (object missed) want \"Le Bernardin\"\nplace-b447159e Location.name: NOT EXTRACTED (object missed) want \"Gramercy Tavern\"\nplace-c8b31573 Location.name: NOT EXTRACTED (object missed) want \"Natural History Museum\"\nplace-cde45891 Location.name: NOT EXTRACTED (object missed) want \"Rijksmuseum\"\nplace-dd990d3d Location.name: NOT EXTRACTED (object missed) want \"noma\"\nplace-e752de3a Location.name: NOT EXTRACTED want \"Tate Modern\"\nplace-e752de3a Location.address: got \"Tate Modern Bankside London SE1 9TG\" want \"Bankside, London SE1 9TG\"\nplace-f1d284a3 Location.name: NOT EXTRACTED want \"Grand Canyon National Park\"",
+ "misses": [
+  "person-65469480 SPURIOUS ResearchPaper {\"title\":\"About This Website\",\"authors\":[\"Gwern\"],\"year\":2010,\"url\":\"https://gwern.net/about\"}",
+  "person-9177e811 Person.name: NOT EXTRACTED (object missed) want \"Giorgio Parisi\"",
+  "person-abafe45b Person.name: NOT EXTRACTED (object missed) want \"Alan Turing\"",
+  "person-b0fd2d83 Person.name: NOT EXTRACTED (object missed) want \"Sir Ken Robinson\"",
+  "person-e7b6403a Person.name: NOT EXTRACTED (object missed) want \"Simon Sinek\"",
+  "place-281f4116 Location.name: NOT EXTRACTED (object missed) want \"Tartine\"",
+  "place-3ce8b0d5 Location.name: NOT EXTRACTED (object missed) want \"Claridge's\"",
+  "place-55fc6b14 Location.name: NOT EXTRACTED (object missed) want \"Le Bernardin\"",
+  "place-b447159e Location.name: NOT EXTRACTED (object missed) want \"Gramercy Tavern\"",
+  "place-c8b31573 Location.name: NOT EXTRACTED (object missed) want \"Natural History Museum\"",
+  "place-cde45891 Location.name: NOT EXTRACTED (object missed) want \"Rijksmuseum\"",
+  "place-dd990d3d Location.name: NOT EXTRACTED (object missed) want \"noma\"",
+  "place-e752de3a Location.name: NOT EXTRACTED want \"Tate Modern\"",
+  "place-e752de3a Location.address: got \"Tate Modern Bankside London SE1 9TG\" want \"Bankside, London SE1 9TG\"",
+  "place-f1d284a3 Location.name: NOT EXTRACTED want \"Grand Canyon National Park\""
+ ],
+ "fields": {
+  "Event.title": {
+   "truth": 9,
+   "extracted": 9,
+   "exact": 9,
+   "loose": 9
+  },
+  "Event.location": {
+   "truth": 7,
+   "extracted": 7,
+   "exact": 7,
+   "loose": 7
+  },
+  "Event.start": {
+   "truth": 7,
+   "extracted": 7,
+   "exact": 7,
+   "loose": 7
+  },
+  "Event.end": {
+   "truth": 1,
+   "extracted": 1,
+   "exact": 1,
+   "loose": 1
+  },
+  "ResearchPaper.title": {
+   "truth": 12,
+   "extracted": 12,
+   "exact": 12,
+   "loose": 12
+  },
+  "ResearchPaper.authors": {
+   "truth": 7,
+   "extracted": 7,
+   "exact": 7,
+   "loose": 7
+  },
+  "ResearchPaper.year": {
+   "truth": 9,
+   "extracted": 9,
+   "exact": 9,
+   "loose": 9
+  },
+  "ResearchPaper.authorsFirst": {
+   "truth": 3,
+   "extracted": 3,
+   "exact": 3,
+   "loose": 3
+  },
+  "Person.name": {
+   "truth": 5,
+   "extracted": 1,
+   "exact": 1,
+   "loose": 1
+  },
+  "Location.name": {
+   "truth": 9,
+   "extracted": 0,
+   "exact": 0,
+   "loose": 0
+  },
+  "Location.address": {
+   "truth": 1,
+   "extracted": 1,
+   "exact": 0,
+   "loose": 0
+  },
+  "Product.name": {
+   "truth": 3,
+   "extracted": 3,
+   "exact": 3,
+   "loose": 3
+  }
+ },
+ "obj": {
+  "truth": 38,
+  "found": 27,
+  "spurious": 1,
+  "pagesScored": 51,
+  "byType": {
+   "Event": {
+    "truth": 9,
+    "found": 9
+   },
+   "ResearchPaper": {
+    "truth": 12,
+    "found": 12
+   },
+   "Person": {
+    "truth": 5,
+    "found": 1
+   },
+   "Location": {
+    "truth": 9,
+    "found": 2
+   },
+   "Product": {
+    "truth": 3,
+    "found": 3
+   }
+  },
+  "related": 58
+ },
+ "ev": {
+  "props": 354,
+  "anyOk": 354,
+  "primaryOk": 353,
+  "corroborated": 246
+ },
+ "latency": {
+  "cold": {
+   "p50": 13.100000000093132,
+   "p95": 41.300000000046566,
+   "max": 50.39999999990687
+  },
+  "warm": {
+   "p50": 1.8999999999068677,
+   "p95": 18.699999999953434,
+   "max": 24.699999999953434
+  }
+ },
+ "stratum": {
+  "event": {
+   "pages": 15,
+   "truth": 9,
+   "found": 9,
+   "spurious": 0
+  },
+  "paper": {
+   "pages": 14,
+   "truth": 12,
+   "found": 12,
+   "spurious": 0
+  },
+  "person": {
+   "pages": 7,
+   "truth": 5,
+   "found": 1,
+   "spurious": 1
+  },
+  "place": {
+   "pages": 9,
+   "truth": 9,
+   "found": 2,
+   "spurious": 0
+  },
+  "product": {
+   "pages": 6,
+   "truth": 3,
+   "found": 3,
+   "spurious": 0
+  }
+ },
+ "pages": [
+  {
+   "id": "event-0a22acd7",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/creative-upcycling-workshop-tickets-1104418327949",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 15.100000000093132,
+   "warmMs": 1.6000000000931323,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-1424bdd8",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/ladbroke-grove-party-night-saturdays-portobello-shack-notting-hill-tickets-863768152797",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.8999999999068677
+   },
+   "coldMs": 13.800000000046566,
+   "warmMs": 1.8999999999068677,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-1593e992",
+   "category": "event",
+   "url": "https://lu.ma/discover",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 19,
+    "microdataItems": 0,
+    "ms": 2
+   },
+   "coldMs": 5.800000000046566,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-199eb0d1",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/d/united-kingdom--london/events/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 1,
+    "ms": 2.800000000046566
+   },
+   "coldMs": 11.300000000046566,
+   "warmMs": 3.5,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-1adacefc",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/frenzy-tickets-1999899647682",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 4,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.3999999999068677
+   },
+   "coldMs": 14.700000000186265,
+   "warmMs": 1.8999999999068677,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-33a308d3",
+   "category": "event",
+   "url": "https://pycon.org/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 2,
+    "microdataItems": 0,
+    "ms": 2.6000000000931323
+   },
+   "coldMs": 6.100000000093132,
+   "warmMs": 2.2000000001862645,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-421c1ec2",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/part-time-party-peoples-choice-halloween-special-tickets-2000484299391",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2.199999999953434
+   },
+   "coldMs": 18.699999999953434,
+   "warmMs": 2,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-46a3de09",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/sapphic-salsa-and-sombremesa-tickets-1999667651776",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2
+   },
+   "coldMs": 14.199999999953434,
+   "warmMs": 2,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-96066e7a",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/making-your-mark-creativity-impact-and-social-responsibility-tickets-1994939800646",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 4,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 2
+   },
+   "coldMs": 14.399999999906868,
+   "warmMs": 2.2000000001862645,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-b0f1abd0",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/london-job-show-westfield-london-careers-fair-tickets-1989981221402",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 14.100000000093132,
+   "warmMs": 1.7999999998137355,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-b42f9c8e",
+   "category": "event",
+   "url": "https://www.ted.com/talks",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 34,
+    "microdataItems": 0,
+    "ms": 0.5
+   },
+   "coldMs": 4,
+   "warmMs": 0.6999999999534339,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-bf1a0ee9",
+   "category": "event",
+   "url": "https://www.meetup.com/find/?location=in--bengaluru",
+   "types": [
+    "Event",
+    "Event",
+    "Event",
+    "Event",
+    "Event",
+    "Event",
+    "Event",
+    "Event",
+    "Event",
+    "Event"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 34,
+    "microdataItems": 0,
+    "ms": 2.800000000046566
+   },
+   "coldMs": 17.199999999953434,
+   "warmMs": 3.1000000000931323,
+   "evidence": {
+    "props": 50,
+    "anyOk": 50,
+    "primaryOk": 50,
+    "corroborated": 8,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-cdf85f79",
+   "category": "event",
+   "url": "https://www.eventbrite.com/d/india--bengaluru/events/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 1,
+    "ms": 2.9000000001396984
+   },
+   "coldMs": 9.600000000093132,
+   "warmMs": 3.7999999998137355,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-cef3cef4",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/big-finish-day-tickets-1988169832489",
+   "types": [
+    "Event",
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 4,
+    "jsonLdParseFailures": 0,
+    "metaTags": 45,
+    "microdataItems": 0,
+    "ms": 1.7999999998137355
+   },
+   "coldMs": 14.800000000046566,
+   "warmMs": 1.9000000001396984,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "event-f0a7251c",
+   "category": "event",
+   "url": "https://www.eventbrite.co.uk/e/no-title-no-permission-no-problem-harnessing-the-power-of-influence-tickets-1993676700680",
+   "types": [
+    "Event"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 41,
+    "microdataItems": 0,
+    "ms": 1.6999999999534339
+   },
+   "coldMs": 13.400000000139698,
+   "warmMs": 1.6999999999534339,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-00a73261",
+   "category": "paper",
+   "url": "https://aclanthology.org/W04-1013/",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 16,
+    "microdataItems": 0,
+    "ms": 0.8999999999068677
+   },
+   "coldMs": 10.699999999953434,
+   "warmMs": 1.3000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-0fac9e80",
+   "category": "paper",
+   "url": "https://openreview.net/forum?id=rJXMpikCZ",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 0.10000000009313226
+   },
+   "coldMs": 2.8999999999068677,
+   "warmMs": 0.10000000009313226,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-1098fc60",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/2203.02155",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 46,
+    "microdataItems": 0,
+    "ms": 2.0999999998603016
+   },
+   "coldMs": 13.100000000093132,
+   "warmMs": 2,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-329ef351",
+   "category": "paper",
+   "url": "https://distill.pub/2017/momentum/",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 50,
+    "microdataItems": 0,
+    "ms": 23.799999999813735
+   },
+   "coldMs": 41.300000000046566,
+   "warmMs": 24.600000000093132,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 5,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-32f3c7d1",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1810.04805",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 30,
+    "microdataItems": 0,
+    "ms": 1.4000000001396984
+   },
+   "coldMs": 12.800000000046566,
+   "warmMs": 1.5999999998603016,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-3c73f923",
+   "category": "paper",
+   "url": "https://aclanthology.org/2020.acl-main.703/",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 24,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 12.199999999953434,
+   "warmMs": 1.6000000000931323,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 5,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-3d7d444b",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/2103.00020",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 38,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 16.899999999906868,
+   "warmMs": 2.5,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-91c952d8",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1706.03762v7",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 34,
+    "microdataItems": 0,
+    "ms": 1.6000000000931323
+   },
+   "coldMs": 13.100000000093132,
+   "warmMs": 1.8999999999068677,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-a0cc612d",
+   "category": "paper",
+   "url": "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.0020124",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 22,
+    "microdataItems": 1,
+    "ms": 1.5999999998603016
+   },
+   "coldMs": 13.100000000093132,
+   "warmMs": 1.9000000001396984,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-b5ccbba9",
+   "category": "paper",
+   "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0000308",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 69,
+    "microdataItems": 1,
+    "ms": 3.1000000000931323
+   },
+   "coldMs": 16.199999999953434,
+   "warmMs": 3.4000000001396984,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 5,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-c38a8009",
+   "category": "paper",
+   "url": "https://www.nature.com/articles/s41586-021-03819-2",
+   "types": [
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "ResearchPaper",
+    "Person",
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 258,
+    "microdataItems": 5,
+    "ms": 14.199999999953434
+   },
+   "coldMs": 29.899999999906868,
+   "warmMs": 14.199999999953434,
+   "evidence": {
+    "props": 17,
+    "anyOk": 17,
+    "primaryOk": 16,
+    "corroborated": 15,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-c9ff5f60",
+   "category": "paper",
+   "url": "https://www.jmlr.org/papers/v15/srivastava14a.html",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 16,
+    "microdataItems": 0,
+    "ms": 2.1000000000931323
+   },
+   "coldMs": 12.5,
+   "warmMs": 1.1000000000931323,
+   "evidence": {
+    "props": 6,
+    "anyOk": 6,
+    "primaryOk": 6,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-e778b230",
+   "category": "paper",
+   "url": "https://arxiv.org/abs/1512.03385",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 30,
+    "microdataItems": 0,
+    "ms": 1.5
+   },
+   "coldMs": 13.400000000139698,
+   "warmMs": 1.8000000000465661,
+   "evidence": {
+    "props": 5,
+    "anyOk": 5,
+    "primaryOk": 5,
+    "corroborated": 4,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "paper-f14676d5",
+   "category": "paper",
+   "url": "https://link.springer.com/article/10.1007/s11263-015-0816-y",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 0
+   },
+   "coldMs": 2.800000000046566,
+   "warmMs": 0.10000000009313226,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-65469480",
+   "category": "person",
+   "url": "https://gwern.net/about",
+   "types": [
+    "ResearchPaper"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 32,
+    "microdataItems": 0,
+    "ms": 5.400000000139698
+   },
+   "coldMs": 18.399999999906868,
+   "warmMs": 5.599999999860302,
+   "evidence": {
+    "props": 4,
+    "anyOk": 4,
+    "primaryOk": 4,
+    "corroborated": 3,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-9177e811",
+   "category": "person",
+   "url": "https://www.nobelprize.org/prizes/physics/2021/parisi/facts/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 15,
+    "microdataItems": 10,
+    "ms": 0.8000000000465661
+   },
+   "coldMs": 7,
+   "warmMs": 1,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-96833e4b",
+   "category": "person",
+   "url": "https://www.linkedin.com/in/satyanadella/",
+   "types": [
+    "Person"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 29,
+    "microdataItems": 0,
+    "ms": 11.399999999906868
+   },
+   "coldMs": 29.399999999906868,
+   "warmMs": 9.699999999953434,
+   "evidence": {
+    "props": 3,
+    "anyOk": 3,
+    "primaryOk": 3,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-abafe45b",
+   "category": "person",
+   "url": "https://en.wikipedia.org/wiki/Alan_Turing",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 17.600000000093132
+   },
+   "coldMs": 28.699999999953434,
+   "warmMs": 18,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-b0fd2d83",
+   "category": "person",
+   "url": "https://www.ted.com/speakers/sir_ken_robinson",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 33,
+    "microdataItems": 0,
+    "ms": 0.8000000000465661
+   },
+   "coldMs": 4.399999999906868,
+   "warmMs": 0.9000000001396984,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-e7b6403a",
+   "category": "person",
+   "url": "https://www.ted.com/speakers/simon_sinek",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 33,
+    "microdataItems": 0,
+    "ms": 1.1999999999534339
+   },
+   "coldMs": 4.399999999906868,
+   "warmMs": 1.1999999999534339,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "person-fa6761a8",
+   "category": "person",
+   "url": "https://about.me/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 27,
+    "microdataItems": 0,
+    "ms": 1.3000000000465661
+   },
+   "coldMs": 5,
+   "warmMs": 1.1999999999534339,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-281f4116",
+   "category": "place",
+   "url": "https://www.tartinebakery.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 13,
+    "microdataItems": 0,
+    "ms": 0.10000000009313226
+   },
+   "coldMs": 2.9000000001396984,
+   "warmMs": 0.10000000009313226,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-3ce8b0d5",
+   "category": "place",
+   "url": "https://www.claridges.co.uk/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 15,
+    "microdataItems": 0,
+    "ms": 0.8000000000465661
+   },
+   "coldMs": 4.7000000001862645,
+   "warmMs": 1.3000000000465661,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-55fc6b14",
+   "category": "place",
+   "url": "https://en.wikipedia.org/wiki/Le_Bernardin",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 0,
+    "ms": 6
+   },
+   "coldMs": 19.9000000001397,
+   "warmMs": 6.600000000093132,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-b447159e",
+   "category": "place",
+   "url": "https://www.gramercytavern.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 3,
+    "jsonLdParseFailures": 0,
+    "metaTags": 18,
+    "microdataItems": 0,
+    "ms": 0.6999999999534339
+   },
+   "coldMs": 5.600000000093132,
+   "warmMs": 0.8000000000465661,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-c8b31573",
+   "category": "place",
+   "url": "https://www.nhm.ac.uk/visit.html",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 9,
+    "microdataItems": 0,
+    "ms": 1.1000000000931323
+   },
+   "coldMs": 4.5,
+   "warmMs": 1.1000000000931323,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-cde45891",
+   "category": "place",
+   "url": "https://www.rijksmuseum.nl/en/visit",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 20,
+    "microdataItems": 0,
+    "ms": 1.3999999999068677
+   },
+   "coldMs": 5.7999999998137355,
+   "warmMs": 1.7000000001862645,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-dd990d3d",
+   "category": "place",
+   "url": "https://www.noma.dk/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 24,
+    "microdataItems": 0,
+    "ms": 1.1999999999534339
+   },
+   "coldMs": 5.5,
+   "warmMs": 1.1000000000931323,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-e752de3a",
+   "category": "place",
+   "url": "https://www.tate.org.uk/visit/tate-modern",
+   "types": [
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 19,
+    "microdataItems": 4,
+    "ms": 5.899999999906868
+   },
+   "coldMs": 17.4000000001397,
+   "warmMs": 5.699999999953434,
+   "evidence": {
+    "props": 1,
+    "anyOk": 1,
+    "primaryOk": 1,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "place-f1d284a3",
+   "category": "place",
+   "url": "https://www.nps.gov/grca/index.htm",
+   "types": [
+    "Location"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 12,
+    "microdataItems": 1,
+    "ms": 2.6000000000931323
+   },
+   "coldMs": 19.399999999906868,
+   "warmMs": 3.0999999998603016,
+   "evidence": {
+    "props": 1,
+    "anyOk": 1,
+    "primaryOk": 1,
+    "corroborated": 1,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-067c3396",
+   "category": "product",
+   "url": "https://www.patagonia.com/product/mens-better-sweater-fleece-jacket/25528.html",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 1,
+    "microdataItems": 0,
+    "ms": 0.5
+   },
+   "coldMs": 4.399999999906868,
+   "warmMs": 0.6000000000931323,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-0feb69db",
+   "category": "product",
+   "url": "https://www.ikea.com/in/en/p/billy-bookcase-white-00263850/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 0,
+    "jsonLdParseFailures": 0,
+    "metaTags": 11,
+    "microdataItems": 0,
+    "ms": 4.800000000046566
+   },
+   "coldMs": 11.399999999906868,
+   "warmMs": 5.199999999953434,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-3c3a3feb",
+   "category": "product",
+   "url": "https://fellowproducts.com/products/ode-brew-grinder-gen-2",
+   "types": [
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 5,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 0,
+    "ms": 14.800000000046566
+   },
+   "coldMs": 33.60000000009313,
+   "warmMs": 16.5,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-465a1240",
+   "category": "product",
+   "url": "https://fellowproducts.com/products/stagg-ekg-electric-pour-over-kettle",
+   "types": [
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 5,
+    "jsonLdParseFailures": 0,
+    "metaTags": 23,
+    "microdataItems": 0,
+    "ms": 16
+   },
+   "coldMs": 45.10000000009313,
+   "warmMs": 18.699999999953434,
+   "evidence": {
+    "props": 7,
+    "anyOk": 7,
+    "primaryOk": 7,
+    "corroborated": 2,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-788d9e80",
+   "category": "product",
+   "url": "https://www.glossier.com/products/boy-brow",
+   "types": [
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product",
+    "Product"
+   ],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 1,
+    "jsonLdParseFailures": 0,
+    "metaTags": 37,
+    "microdataItems": 35,
+    "ms": 20.5999999998603
+   },
+   "coldMs": 50.39999999990687,
+   "warmMs": 24.699999999953434,
+   "evidence": {
+    "props": 145,
+    "anyOk": 145,
+    "primaryOk": 145,
+    "corroborated": 142,
+    "badEvidence": []
+   }
+  },
+  {
+   "id": "product-f1cee2e3",
+   "category": "product",
+   "url": "https://www.walmart.com/",
+   "types": [],
+   "rejected": [],
+   "dropped": [],
+   "diagnostics": {
+    "jsonLdScripts": 2,
+    "jsonLdParseFailures": 0,
+    "metaTags": 13,
+    "microdataItems": 0,
+    "ms": 1.3999999999068677
+   },
+   "coldMs": 5.699999999953434,
+   "warmMs": 2.1000000000931323,
+   "evidence": {
+    "props": 0,
+    "anyOk": 0,
+    "primaryOk": 0,
+    "corroborated": 0,
+    "badEvidence": []
+   }
+  }
+ ]
+}

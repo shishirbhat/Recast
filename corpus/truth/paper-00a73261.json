@@ -1,0 +1,15 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "ROUGE: A Package for Automatic Evaluation of Summaries",
+    "authors": [
+     "Chin-Yew Lin"
+    ],
+    "year": 2004
+   }
+  }
+ ],
+ "split": "heldout"
+}

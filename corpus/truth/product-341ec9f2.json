@@ -1,0 +1,14 @@
+{
+ "objects": [
+  {
+   "type": "Product",
+   "properties": {
+    "name": "Men's Wool Runner",
+    "price": {
+     "amount": 110,
+     "currency": "USD"
+    }
+   }
+  }
+ ]
+}

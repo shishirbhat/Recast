@@ -1,0 +1,6 @@
+{
+  "name": "@recast/extension", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": { "build": "node scripts/build.mjs", "typecheck": "tsc -p tsconfig.json", "test": "node scripts/build.mjs && vitest run" },
+  "dependencies": { "@recast/extract-web": "workspace:*", "@recast/core": "workspace:*" },
+  "devDependencies": { "esbuild": "^0.25.0", "vitest": "^3.2.0", "playwright-core": "^1.56.1", "@types/chrome": "^0.0.326" }
+}

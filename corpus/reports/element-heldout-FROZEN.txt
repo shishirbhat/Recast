@@ -1,0 +1,74 @@
+split heldout: 14 pages with targets, 15 targets, 1891 random elements
+
+RECALL (pointing at a labelled thing)
+  Person.name        target element found 100% (5/5); right offer 100% (5/5) of found (100% (5/5) of all)
+  Location.name      target element found 89% (8/9); right offer 88% (7/8) of found (78% (7/9) of all)
+  Location.address   target element found 100% (1/1); right offer 100% (1/1) of found (100% (1/1) of all)
+
+FALSE POSITIVES (pointing at ordinary text)
+  offers anything: 63% (1184/1891); offers something at confidence >= 0.5: 1% (16/1891)
+  by type: {"Location":1138,"Person":240,"Event":24,"Product":25}
+
+MISSES
+  place-281f4116 Location.name TARGET NOT FOUND: Tartine
+  place-dd990d3d Location.name offered []: noma
+
+CONFIDENT (>= 0.5) FALSE POSITIVES
+  person-abafe45b ["Location"] 0.5 "Mahon-Military-Press, A. P. (2009). Naval Enigma: The Histor"
+  person-abafe45b ["Location"] 0.5 "The control revolution: technological and economic origins o"
+  person-abafe45b ["Location"] 0.5 "Hodges, Andrew (2012). Alan Turing: The Enigma . Vintage. IS"
+  person-fa6761a8 ["Product"] 0.6 "or $60/yr"
+  person-fa6761a8 ["Product"] 0.6 "/yr"
+  place-3ce8b0d5 ["Location"] 0.5 "info@claridges.co.uk"
+  product-788d9e80 ["Product"] 0.6 "$22"
+  product-788d9e80 ["Product"] 0.6 "$22"
+  product-788d9e80 ["Product"] 0.6 "$22"
+  product-788d9e80 ["Product"] 0.6 "$18"
+  product-788d9e80 ["Product"] 0.6 "Sale price $38"
+  product-788d9e80 ["Product"] 0.6 "$26"
+  product-788d9e80 ["Product"] 0.6 "$22"
+  product-788d9e80 ["Product"] 0.6 "Sale price $32"
+  product-788d9e80 ["Product"] 0.6 "$26"
+  product-788d9e80 ["Product"] 0.6 "$22"
+
+FALSE POSITIVE EXAMPLES (any confidence, first 40)
+  event-0a22acd7 ["Location"] 0.4 "Blog"
+  event-0a22acd7 ["Location"] 0.4 "Redlees Studios Isleworth, England"
+  event-0a22acd7 ["Person","Location"] 0.4 "Event Ticketing"
+  event-0a22acd7 ["Location"] 0.4 "Privacy"
+  event-0a22acd7 ["Location"] 0.4 "Find Events"
+  event-0a22acd7 ["Person","Location"] 0.4 "Performing Arts"
+  event-0a22acd7 ["Person","Location"] 0.4 "Community Guidelines"
+  event-0a22acd7 ["Location"] 0.4 "Refund Policy"
+  event-0a22acd7 ["Location"] 0.4 "Community"
+  event-0a22acd7 ["Location"] 0.4 "Blog"
+  event-0a22acd7 ["Location"] 0.4 "Find Events"
+  event-0a22acd7 ["Location"] 0.4 "Accessibility"
+  event-0a22acd7 ["Location"] 0.4 "Get Started"
+  event-0a22acd7 ["Location"] 0.4 "Driving"
+  event-0a22acd7 ["Location"] 0.4 "Location"
+  event-0a22acd7 ["Location"] 0.4 "Create Events"
+  event-0a22acd7 ["Location"] 0.4 "Tools & Features"
+  event-0a22acd7 ["Location"] 0.4 "Highlights"
+  event-0a22acd7 ["Location"] 0.4 "Tips & Guides"
+  event-0a22acd7 ["Location"] 0.4 "Help Centre"
+  event-0a22acd7 ["Location"] 0.4 "Retail"
+  event-0a22acd7 ["Location"] 0.4 "Industry"
+  event-0a22acd7 ["Location"] 0.4 "Blog"
+  event-0a22acd7 ["Location"] 0.4 "Follow"
+  event-0a22acd7 ["Location"] 0.4 "Festivals & Fairs"
+  event-0a22acd7 ["Location"] 0.4 "More events from Tina Aileen"
+  event-0a22acd7 ["Location"] 0.4 "Online Events"
+  event-0a22acd7 ["Location"] 0.4 "Payments"
+  event-0a22acd7 ["Location"] 0.4 "Find Events"
+  event-0a22acd7 ["Location"] 0.4 "Blog"
+  event-0a22acd7 ["Location"] 0.4 "Concerts"
+  event-0a22acd7 ["Location"] 0.4 "Greater London Events"
+  event-1424bdd8 ["Location"] 0.4 "Festivals & Fairs"
+  event-1424bdd8 ["Person","Location"] 0.4 "Portobello Shack"
+  event-1424bdd8 ["Person","Location"] 0.4 "Portobello Shack"
+  event-1424bdd8 ["Location"] 0.4 "Industry"
+  event-1424bdd8 ["Location"] 0.4 "Payments"
+  event-1424bdd8 ["Location"] 0.4 "Overview"
+  event-1424bdd8 ["Location"] 0.4 "Find Events"
+  event-1424bdd8 ["Location"] 0.4 "Festivals & Fairs"

@@ -1,0 +1,11 @@
+split dev: 22 pages with targets, 25 targets, 3181 random elements
+
+RECALL (pointing at a labelled thing)
+  Person.name        target element found 92% (11/12); right offer 91% (10/11) of found (83% (10/12) of all)
+  Location.name      target element found 100% (10/10); right offer 60% (6/10) of found (60% (6/10) of all)
+  Location.address   target element found 100% (3/3); right offer 100% (3/3) of found (100% (3/3) of all)
+
+FALSE POSITIVES (pointing at ordinary text)
+  offers anything: 61% (1939/3181); offers something at confidence >= 0.5: 1% (16/3181)
+  by type: {"Location":1861,"Person":461,"Event":56,"Product":32}
+

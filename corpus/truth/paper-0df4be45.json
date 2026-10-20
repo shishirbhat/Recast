@@ -1,0 +1,18 @@
+{
+ "objects": [
+  {
+   "type": "ResearchPaper",
+   "properties": {
+    "title": "Mastering the game of Go with deep neural networks and tree search",
+    "authorsFirst": [
+     "David Silver",
+     "Aja Huang",
+     "Chris J. Maddison",
+     "Arthur Guez",
+     "Laurent Sifre"
+    ],
+    "year": 2016
+   }
+  }
+ ]
+}

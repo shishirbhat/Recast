@@ -1,0 +1,41 @@
+{
+  "name": "@recast/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "pnpm build && vitest run",
+    "hash-password": "tsx scripts/hash-password.ts"
+  },
+  "dependencies": {
+    "@fontsource/eb-garamond": "^5.3.0",
+    "@fontsource/figtree": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@recast/runtime-client": "workspace:*",
+    "@recast/store": "workspace:*",
+    "motion": "^12.0.0",
+    "next": "^16.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "pg": "^8.13.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "playwright-core": "^1.56.1",
+    "tailwindcss": "^4.1.0",
+    "vitest": "^3.2.0",
+    "@types/pg": "^8.11.0",
+    "@electric-sql/pglite": "^0.3.0",
+    "@electric-sql/pglite-socket": "^0.0.20",
+    "tsx": "^4.19.0"
+  }
+}

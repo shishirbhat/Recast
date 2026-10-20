@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/objects/product.schema.json",
+  "title": "ProductProperties",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 }, "brand": { "type": "string" }, "sku": { "type": "string" },
+    "url": { "type": "string" }, "image": { "type": "string" },
+    "price": { "type": "object", "required": ["amount", "currency"], "additionalProperties": false,
+      "properties": { "amount": { "type": "number", "minimum": 0 }, "currency": { "type": "string", "pattern": "^[A-Z]{3}$" } } },
+    "rating": { "type": "number", "minimum": 0, "maximum": 5 }
+  }
+}

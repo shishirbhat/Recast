@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/common/envelope.schema.json",
+  "title": "SemanticObject",
+  "description": "A resolved semantic object. Never plain text: typed properties, per-property confidence and evidence, provenance.",
+  "type": "object",
+  "required": ["id", "type", "schemaVersion", "properties", "fields", "provenance"],
+  "unevaluatedProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^rc_[0-9a-f]{32}$" },
+    "type": { "enum": ["Person", "Document", "Event", "Location", "Image", "Message", "Task", "Product", "ResearchPaper"] },
+    "schemaVersion": { "const": "1.0.0" },
+    "properties": { "type": "object" },
+    "fields": {
+      "type": "object",
+      "description": "Per-property metadata, keyed by property name.",
+      "additionalProperties": {
+        "type": "object", "required": ["confidence", "evidence"], "additionalProperties": false,
+        "properties": {
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "evidence.schema.json" } }
+        }
+      }
+    },
+    "provenance": { "$ref": "provenance.schema.json" },
+    "extensions": { "type": "object", "description": "App-specific data, namespaced by app id." }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "Person" } } },        "then": { "properties": { "properties": { "$ref": "../objects/person.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Document" } } },      "then": { "properties": { "properties": { "$ref": "../objects/document.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Event" } } },         "then": { "properties": { "properties": { "$ref": "../objects/event.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Location" } } },      "then": { "properties": { "properties": { "$ref": "../objects/location.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Image" } } },         "then": { "properties": { "properties": { "$ref": "../objects/image.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Message" } } },       "then": { "properties": { "properties": { "$ref": "../objects/message.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Task" } } },          "then": { "properties": { "properties": { "$ref": "../objects/task.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Product" } } },       "then": { "properties": { "properties": { "$ref": "../objects/product.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "ResearchPaper" } } }, "then": { "properties": { "properties": { "$ref": "../objects/research-paper.schema.json" } } } }
+  ]
+}

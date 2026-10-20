@@ -1,0 +1,159 @@
+import { chromium, type Browser, type Page } from "playwright-core";
+import AxeBuilder from "@axe-core/playwright";
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
+import { createServer as netServer } from "node:net";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+let browser: Browser;
+const servers: ChildProcess[] = [];
+/** A port the OS says is free right now, instead of a random guess that can collide with another suite's server. */
+const freePort = () => new Promise<number>((ok, fail) => { const s = netServer(); s.once("error", fail); s.listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }); });
+/** npx starts next-server as a child; killing the whole process group stops both, so no server outlives its test. */
+const stop = (p: ChildProcess) => { try { if (p.pid) process.kill(-p.pid, "SIGTERM"); } catch { /* already gone */ } };
+
+function chromiumPath() {
+  if (process.env.RECAST_CHROMIUM) return process.env.RECAST_CHROMIUM;
+  return existsSync("/opt/pw-browsers/chromium") && !existsSync("/opt/pw-browsers/chromium/chrome") ? "/opt/pw-browsers/chromium" : undefined;
+}
+/** A fresh production server per test, so demo data starts identical every time. */
+async function server() {
+  servers.splice(0).forEach(stop);   // one server at a time: the previous test's is done
+  const port = await freePort();
+  const p = spawn("npx", ["next", "start", "-p", String(port)], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" }, stdio: "ignore", detached: true });
+  servers.push(p);
+  const base = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 450; i++) { try { if ((await fetch(base)).ok) return base; } catch { /* not up yet */ } await new Promise((r) => setTimeout(r, 200)); }
+  throw new Error("server did not start");
+}
+beforeAll(async () => { const executablePath = chromiumPath(); browser = await chromium.launch(executablePath ? { executablePath } : {}); });
+afterAll(async () => { await browser?.close(); servers.forEach(stop); });
+
+async function open(opts: { theme?: "light" | "dark" } = {}): Promise<{ page: Page; base: string; errors: string[] }> {
+  const base = await server();
+  const ctx = await browser.newContext({ colorScheme: opts.theme ?? "light", viewport: { width: 1100, height: 800 }, acceptDownloads: true });
+  const page = await ctx.newPage(); const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message)); page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.goto(base); return { page, base, errors };
+}
+const SECTIONS = [["Objects", "/", "Meera Iyer"], ["Relationships", "/relationships", "attendee"], ["Integrations", "/integrations", "Google Calendar"], ["Permissions", "/permissions", "Create and edit events"], ["Agents", "/agents", "calendar-bot"], ["Approvals", "/approvals", "wants to run"], ["Audit chain", "/audit", "Verified"], ["History", "/history", "Learned"], ["Privacy", "/privacy", "Export everything"]] as const;
+
+describe("control center (production build, demo data)", () => {
+  it("every section renders its content and the nav marks the current page", async () => {
+    const { page, errors } = await open();
+    for (const [label, href, text] of SECTIONS) {
+      if (href !== "/") await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: label }).click();   // already on Objects at start
+      await page.waitForURL((u) => u.pathname === href);
+      await page.getByText(text).first().waitFor();
+      expect(await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: label }).getAttribute("aria-current")).toBe("page");
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("relationships read as sentences", async () => {
+    const { page } = await open(); await page.goto(new URL("/relationships", page.url()).href);
+    expect(await page.getByRole("listitem").filter({ hasText: "Meera Iyer" }).innerText()).toMatch(/Meera Iyer is an attendee of Launch dinner/);
+  });
+
+  it("integrations show a plain reliability label and can be switched off and on", async () => {
+    const { page } = await open(); await page.goto(new URL("/integrations", page.url()).href);
+    const cal = page.getByRole("listitem").filter({ hasText: "Google Calendar" });
+    expect(await cal.innerText()).toMatch(/Reliable/);
+    expect(await page.getByRole("listitem").filter({ hasText: "Legacy CRM" }).innerText()).toMatch(/Best effort[\s\S]*Off/);
+    await page.getByRole("button", { name: "Turn off Google Calendar" }).click();
+    await page.getByRole("button", { name: "Turn on Google Calendar" }).waitFor();
+    await page.goto(new URL("/history", page.url()).href);
+    expect(await page.getByRole("listitem").first().innerText()).toMatch(/Turned off\s+google-calendar/);
+  });
+
+  it("revoking a permission shows Revoked, removes the button, and is logged", async () => {
+    const { page } = await open(); await page.goto(new URL("/permissions", page.url()).href);
+    await page.getByRole("button", { name: /Revoke Google Calendar/ }).click();
+    await page.getByText("Revoked").waitFor();
+    expect(await page.getByRole("button", { name: /Revoke Google Calendar/ }).count()).toBe(0);
+    await page.goto(new URL("/history", page.url()).href);
+    expect(await page.getByRole("listitem").first().innerText()).toMatch(/Revoked\s+grant-gcal/);
+  });
+
+  it("forgetting an object also removes its relationships", async () => {
+    const { page } = await open();
+    await page.getByRole("button", { name: "Forget Meera Iyer" }).click();
+    await page.waitForFunction(() => !document.body.innerText.includes("Meera Iyer"));
+    await page.goto(new URL("/relationships", page.url()).href);
+    expect(await page.getByRole("listitem").count()).toBe(1);
+    expect(await page.getByRole("listitem").first().innerText()).toMatch(/Toit is a location of Launch dinner/);
+  });
+
+  it("export downloads valid JSON containing the data and the audit log", async () => {
+    const { page } = await open(); await page.goto(new URL("/privacy", page.url()).href);
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download JSON" }).click()]);
+    expect(dl.suggestedFilename()).toBe("recast-export.json");
+    const { readFileSync } = await import("node:fs");
+    const json = JSON.parse(readFileSync((await dl.path())!, "utf8"));
+    expect(json.version).toBe(1); expect(json.objects.map((o: { title: string }) => o.title)).toContain("Meera Iyer");
+    expect(json.audit.length).toBeGreaterThan(0);
+  });
+
+  it("delete everything needs the word DELETE; a wrong word deletes nothing, the right one deletes all and logs it", async () => {
+    const { page } = await open(); await page.goto(new URL("/privacy", page.url()).href);
+    await page.getByLabel("Type DELETE to confirm").fill("delete please");
+    await page.getByRole("button", { name: "Delete everything" }).click();
+    await page.locator("#err").waitFor();
+    expect(await page.locator("#err").innerText()).toMatch(/Nothing was deleted/);
+    await page.goto(new URL("/", page.url()).href); await page.getByText("Meera Iyer").waitFor();
+    await page.goto(new URL("/privacy", page.url()).href);
+    await page.getByLabel("Type DELETE to confirm").fill("DELETE");
+    await page.getByRole("button", { name: "Delete everything" }).click();
+    await page.getByRole("status").waitFor();
+    await page.goto(new URL("/", page.url()).href);
+    await page.getByText("Nothing here yet").waitFor();
+    await page.goto(new URL("/history", page.url()).href);
+    expect(await page.getByRole("listitem").first().innerText()).toMatch(/Deleted all data/);
+  });
+
+  it("keyboard only: Tab reaches the skip link first, then every nav link in order", async () => {
+    const { page } = await open();
+    await page.keyboard.press("Tab"); expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Skip to content");
+    for (const [label] of SECTIONS) { await page.keyboard.press("Tab"); expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe(label); }
+  });
+
+  for (const theme of ["light", "dark"] as const) it(`axe: no serious or critical issues on any section (${theme})`, async () => {
+    const { page, base } = await open({ theme });
+    for (const [, href] of SECTIONS) {
+      await page.goto(base + href);
+      const bad = (await new AxeBuilder({ page }).analyze()).violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+      expect(bad.map((v) => `${href}: ${v.id} ${v.nodes[0]?.html}`)).toEqual([]);
+    }
+  });
+
+  it("an agent's request waits for a person: approve moves it out of the queue and into the audit chain, once", async () => {
+    const { page, base } = await open(); await page.goto(base + "/approvals");
+    expect(await page.getByRole("main").innerText()).toMatch(/agt_9f3a2b000001 wants to run gmail\.send_email/);
+    await page.getByRole("button", { name: /Approve gmail\.send_email/ }).click();
+    await page.getByRole("status").filter({ hasText: "Approved" }).waitFor(); await page.getByText("Nothing is waiting for you").waitFor();
+    await page.goto(base + "/audit"); expect(await page.getByRole("main").innerText()).toMatch(/person approved/); expect(await page.getByRole("status").innerText()).toMatch(/Verified: 5 entries/);
+  });
+
+  it("rejecting records a refusal; the agents page shows scopes left and a revoked agent", async () => {
+    const { page, base } = await open(); await page.goto(base + "/approvals"); await page.getByRole("button", { name: /Reject gmail\.send_email/ }).click();
+    await page.getByRole("status").filter({ hasText: "Rejected" }).waitFor(); await page.goto(base + "/audit");
+    expect(await page.getByRole("listitem").first().innerText()).toMatch(/denied[\s\S]*rejected by demo-user/);
+    await page.goto(base + "/agents"); const main = await page.getByRole("main").innerText();
+    expect(main).toMatch(/49 of 50 calls left/); expect(main).toMatch(/research-agent[\s\S]*Revoked/);
+  });
+
+  it("a Space shows what an agent may do and spend, and Stop ends it for good", async () => {
+    const { page, base } = await open(); await page.goto(base + "/agents");
+    const main = await page.getByRole("main").innerText();
+    expect(main).toMatch(/Weekly team sync[\s\S]*Active/); expect(main).toMatch(/gmail\.send_email \(asks you first\)/); expect(main).toMatch(/19 of 20 calls left, ₹500\.00 of ₹500\.00 to spend/);
+    await page.getByRole("button", { name: "Stop Weekly team sync" }).click();
+    await page.getByRole("status").filter({ hasText: "Stopped" }).waitFor();
+    expect(await page.getByRole("main").innerText()).toMatch(/Stopped by demo-user/);
+    expect(await page.getByRole("button", { name: "Stop Weekly team sync" }).count()).toBe(0);
+  });
+
+  it("is usable on a phone-width screen with no sideways scroll", async () => {
+    const { page, base } = await open(); await page.setViewportSize({ width: 375, height: 700 });
+    for (const [, href] of SECTIONS) { await page.goto(base + href); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); }
+  });
+});
