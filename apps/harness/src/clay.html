@@ -1,0 +1,68 @@
+<title>Recast Clay Desk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--@FONTS-->
+<style>/*@CSS*/</style>
+<div class="app">
+  <header class="chrome">
+    <div class="tabs" role="tablist" aria-label="Browser tabs">
+      <button type="button" role="tab" id="tab-profile" data-for="profile" aria-controls="page-profile"><span class="fav" aria-hidden="true">M</span><span class="tname">Maya Rao</span></button>
+      <button type="button" role="tab" id="tab-restaurant" data-for="restaurant" aria-controls="page-restaurant"><span class="fav" aria-hidden="true">D</span><span class="tname">Dakshin</span></button>
+      <button type="button" role="tab" id="tab-calendar" data-for="calendar" aria-controls="page-calendar"><span class="fav" aria-hidden="true">31</span><span class="tname">Calendar</span></button>
+      <button type="button" role="tab" id="tab-mail" data-for="mail" aria-controls="page-mail"><span class="fav" aria-hidden="true">@</span><span class="tname">Mail</span></button>
+    </div>
+    <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span></div>
+  </header>
+
+  <main class="viewport">
+    <article id="page-profile" data-tab="profile" role="tabpanel" aria-labelledby="tab-profile" data-url="people.example/maya-rao" data-title="Maya Rao · Profile">
+      <p class="eyebrow">Profile</p>
+      <h1><span class="grab" id="maya" data-kind="person" data-name="Maya Rao" data-email="maya.rao@example.com">Maya Rao</span></h1>
+      <p class="sub">Product designer, Bengaluru · <span class="mono">maya.rao@example.com</span></p>
+      <p>Maya leads design for a small team building tools for clinics. She is in town all week and likes South Indian food.</p>
+      <blockquote><span class="grab" id="maya-line" data-kind="text">Free for dinner this week?</span></blockquote>
+      <p class="muted">Works with <span class="grab" id="arjun" data-kind="person" data-name="Arjun Mehta">Arjun Mehta</span>.</p>
+    </article>
+
+    <article id="page-restaurant" data-tab="restaurant" role="tabpanel" aria-labelledby="tab-restaurant" data-url="dakshin.example" data-title="Dakshin · Restaurant" hidden>
+      <p class="eyebrow">Restaurant</p>
+      <h1><span class="grab" id="dakshin" data-kind="place" data-name="Dakshin" data-address="12 MG Road, Bengaluru">Dakshin</span></h1>
+      <p class="sub">South Indian · 12 MG Road, Bengaluru · ₹₹</p>
+      <div class="avail"><p class="label">Next free table</p><p class="big"><span class="grab" id="dakshin-time" data-kind="time">Friday, 7:30 PM</span></p></div>
+      <p>Dosa, appam and a long filter-coffee list. Tables for four or fewer.</p>
+      <p class="muted">Gift a meal: <span class="grab" id="giftcard" data-kind="thing">Gift card · ₹2,000</span></p>
+    </article>
+
+    <article id="page-calendar" data-tab="calendar" role="tabpanel" aria-labelledby="tab-calendar" data-url="calendar.example/week" data-title="Calendar" hidden>
+      <p class="eyebrow">This weekend</p>
+      <h1 class="plain">Calendar</h1>
+      <p class="note">This calendar is a stand-in inside this page. Nothing reaches Google Calendar.</p>
+      <div id="cal-grid" class="cal-grid"></div>
+      <div class="drop any" data-dest="cal" tabindex="0" role="button" aria-label="Calendar, choose the time yourself"><span class="drop-label">Drop here to choose the time yourself</span></div>
+      <div id="cal-other-wrap" hidden><h2>Also on your calendar</h2><ul id="cal-other" class="plain-list"></ul></div>
+      <label class="control"><input type="checkbox" id="silent"> Make this stand-in calendar not answer, to see what Recast does when a calendar times out</label>
+    </article>
+
+    <article id="page-mail" data-tab="mail" role="tabpanel" aria-labelledby="tab-mail" data-url="mail.example/drafts" data-title="Mail" hidden>
+      <p class="eyebrow">Mail</p>
+      <h1 class="plain">Drafts</h1>
+      <p class="note">A stand-in mailbox inside this page. Saving a draft sends nothing.</p>
+      <div class="drop" data-dest="mail" tabindex="0" role="button" aria-label="Mail drafts"><span class="drop-label">Drop a message here to save it as a draft</span></div>
+      <ul id="drafts-list" class="drafts"></ul>
+    </article>
+  </main>
+
+  <aside id="desk" class="desk" aria-label="Your objects">
+    <div class="desk-head"><h2>Your objects</h2><p id="hint" class="hint" role="status" aria-live="polite" hidden></p></div>
+    <div id="desk-objects" class="desk-objects"></div>
+    <p id="desk-empty" class="desk-empty">Drag a highlighted name, place or time, and drop it on another one to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up.</p>
+  </aside>
+
+  <section id="sheet" class="sheet" role="dialog" aria-modal="false" aria-labelledby="sheet-title" hidden>
+    <h2 id="sheet-title" tabindex="-1"></h2>
+    <div id="sheet-body" class="sheet-body"></div>
+    <div id="sheet-actions" class="sheet-actions"></div>
+  </section>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</div>
+<div id="clay"></div>
+<script>/*@JS*/</script>

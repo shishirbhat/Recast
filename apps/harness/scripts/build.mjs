@@ -13,3 +13,4 @@ await build({ entryPoints: [path.join(root, "../../design/fonts.css")], bundle: 
 cpSync(path.join(root, "src/index.html"), path.join(out, "index.html")); cpSync(path.join(root, "src/compose.html"), path.join(out, "compose.html")); cpSync(path.join(root, "src/harness.css"), path.join(out, "harness.css"));
 cpSync(path.join(root, "../../design/tokens.css"), path.join(out, "tokens.css"));
 console.log("harness built");
+await import("./build-clay.mjs");
