@@ -43,7 +43,7 @@ Root and web type-checks are clean and `next build` succeeds. No linter is confi
 | 2.6 | Cancel / retry / recovery | Cancel kills the process group; `failed → queued` is human-only | Agents test, state-machine table | **Complete** | — |
 | 3 | Live dependency map (consumers, tests, tasks, stale verification) | Was: none. **Now:** `src/analysis/depgraph.ts`, `impact.ts`, `GET /api/impact`, `relay impact`, IDE Impact tab | `test/depgraph.test.ts` (5) | **Implemented (JS/TS)** | Build: incremental import/export graph from the TypeScript compiler's parser; changed-interface detection; consumers, tests, tasks; stale evidence |
 | 4.1 | Evidence ladder (claimed / verified / approved) | `why()` ladder, evidence table, completion gate | Engine and API tests | **Complete** | — |
-| 4.2 | Single change record (owner, revision, files, tests, contracts, freshness, blockers, rollback) | Spread across task, evidence, runs and integrations | — | **Partial** | Assemble one record per task, including what makes verification stale (depends on 3) |
+| 4.2 | Single change record (owner, revision, files, tests, contracts, freshness, blockers, rollback) | **Now:** `src/analysis/change.ts`, `GET /api/tasks/:id/change`, `relay change`, IDE task detail | `test/change.test.ts` | **Implemented** | Assemble one record per task, including what makes verification stale (depends on 3) |
 | 5 | Shared investigations | Was: event log only. **Now:** `src/knowledge/records.ts`, `/api/investigations`, IDE Records tab, CLI | `records.test.ts`, `records.e2e.test.ts` | **Implemented** | Investigation records: revision, repro, failing output (sanitized), hypotheses, findings vs. assumptions, attempts, owner, next steps; multi-client |
 | 6 | Traceable project knowledge | Contract history + **new** decision records (`records.ts`), task context (`/api/context`, `relay context`, agent prompts) | `records.test.ts` | **Implemented** | Decision records with sources, supersede/invalidate, retrieval scoped to a task |
 | 7.1 | Cross-repository coordination | Single-repo model | — | **Missing** | Deferred; see below |
@@ -162,3 +162,34 @@ The same context goes to agents as a short block, "Project reference (accepted b
 
 ### Defect found and fixed: agent runner after shutdown (Broken → repaired)
 Closing the server while an agent run was still printing let the runner write events to the closed database, raising an uncaught exception. A real server would have crashed during shutdown. The runner now ignores output and exits after `close()`. Found by the records test's "asynchronous activity after the test ended" check; that test is the regression test.
+
+### Phase 4: the change record (Partial → implemented)
+**Before.** The engine already enforced everything that matters: tree-bound evidence, the completion gate, the contract-partner rule, the integration gate, human-only approval. The IDE showed a 3-step ladder (claimed / Relay verified / approved).
+
+**Now.** `changeRecord()` derives one record per task from what the engine stores. There's no new state, so the record can't drift from the gates. It keeps **six** stages apart:
+
+| Stage | Means | Never inferred from |
+|---|---|---|
+| claimed | an agent or person moved it to review, or an agent reported something | — |
+| executed | Relay itself ran commands for the task | a claim |
+| tested | every verification command passed **on this exact workspace**; otherwise *failed*, *stale* or *not run* | execution alone |
+| contracts | planned versions are still accepted, and contract partners were checked together (or *failed* or *stale*) | tests alone |
+| approved | a person with authority completed it (directly or through the integration gate) | any client state |
+| integrated | agent work applied with the 3-way merge, or a person's approved edits | approval of a different tree |
+
+The record also carries:
+- changed files (only this task's, not a partner's in the shared workspace);
+- tests with exit codes and freshness;
+- security-relevant activity: denied edits, out-of-scope intents, commands Relay runs on the machine;
+- required approvals and who gave them;
+- blockers from **the gate that actually applies** (per-task for a lone task, the combined integration gate for contract partners) plus breaking consumers from the dependency map;
+- rollback information: the base revision with the exact `git diff` / `git checkout` commands, and the agent snapshot commits.
+
+**Acceptance (`test/change.test.ts`, backend and frontend sharing a contract, every step through the HTTP API):**
+1. The claim shows as claimed but not executed.
+2. Relay's verification fails, so the record shows *failed*.
+3. The combined gate **blocks**. Editor approval → 403. Owner approval of the blocked integration → 409. Editor completion → 403. Owner completion → 409 (completion gate). An editor adding machine commands to an integration check → 403.
+4. The fix is made, verification reruns and passes on a fresh tree, the combined gate passes, and the record says *safe to integrate*. An agent can't approve.
+5. The owner approves: approved and integrated are done, both tasks completed, rollback and security activity listed.
+
+**Found while building it:** the first version listed the partner's file as "outside scope" and showed per-task diff-check gaps that the integration gate deliberately supersedes. The record now follows the gate that applies. The engine itself was already correct.

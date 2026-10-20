@@ -242,30 +242,64 @@ function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone
   );
 }
 
-function Ladder({ why }: { why: Why | null }) {
-  const steps = [
-    { label: "Agent or person says done", ok: why?.ladder.agentClaimed, note: "a claim, not proof" },
-    { label: "Relay verified", ok: why?.ladder.relayVerified, note: "diff check + tests, run by Relay" },
-    { label: "Approved by a person", ok: why?.ladder.humanApproved, note: "owner sign-off" },
-  ];
+interface ChangeStage {
+  id: string;
+  label: string;
+  state: "done" | "missing" | "failed" | "stale" | "n/a";
+  detail: string;
+}
+interface ChangeRec {
+  stages: ChangeStage[];
+  blockers: string[];
+  security: { detail: string }[];
+  rollback: string[];
+  safeToIntegrate: boolean;
+}
+
+/** Six separate stages from the server's change record: a claim is never shown as proof, a run never as a pass. */
+function Ladder({ change }: { change: ChangeRec | null }) {
+  if (!change) return <div className="h-40 animate-pulse rounded-sm bg-sunken/40" />;
+  const tone = { done: "bg-ok text-panel", failed: "bg-danger text-panel", stale: "bg-warn text-panel", missing: "bg-sunken text-faint", "n/a": "bg-sunken text-faint" } as const;
   return (
-    <ol className="relative space-y-3 pl-6">
-      <span className="absolute bottom-2 left-[9px] top-2 w-px bg-rule" />
-      {steps.map((s) => (
-        <li key={s.label} className="relative">
-          <span className={`absolute -left-6 top-0.5 grid size-[18px] place-items-center rounded-full ring-4 ring-panel ${s.ok ? "bg-ok text-panel" : "bg-sunken text-faint"}`}>
-            {s.ok ? <Check size={11} strokeWidth={3} /> : <span className="size-1.5 rounded-full bg-faint" />}
-          </span>
-          <p className={`text-[13px] font-medium ${s.ok ? "text-ink" : "text-muted"}`}>{s.label}</p>
-          <p className="text-[11.5px] text-faint">{s.note}</p>
-        </li>
-      ))}
-    </ol>
+    <div data-testid="change-record">
+      <ol className="relative space-y-2.5 pl-8">
+        <span className="absolute bottom-2 left-[9px] top-2 w-px bg-rule" />
+        {change.stages.map((s) => (
+          <li key={s.id} className="relative" data-stage={s.id} data-state={s.state}>
+            <span className={`absolute -left-8 top-0.5 grid size-[18px] place-items-center rounded-full ring-4 ring-panel ${tone[s.state]}`}>
+              {s.state === "done" ? <Check size={11} strokeWidth={3} /> : s.state === "failed" ? <span className="text-[10px] font-bold">!</span> : s.state === "stale" ? <span className="text-[10px] font-bold">~</span> : <span className="size-1.5 rounded-full bg-faint" />}
+            </span>
+            <p className={`text-[13px] font-medium ${s.state === "done" ? "text-ink" : s.state === "failed" ? "text-danger" : "text-muted"}`}>
+              {s.label} {s.state !== "done" && <span className="micro ml-1 text-faint">{s.state}</span>}
+            </p>
+            <p className="text-[11.5px] leading-snug text-faint">{s.detail}</p>
+          </li>
+        ))}
+      </ol>
+      <p className={`micro mt-3 ${change.safeToIntegrate ? "text-ok" : "text-faint"}`}>{change.safeToIntegrate ? "Safe to integrate · needs a person's approval" : "Not safe to integrate yet"}</p>
+      {change.security.length > 0 && (
+        <details className="mt-2 text-[11.5px] text-muted">
+          <summary className="cursor-pointer text-faint">Security-relevant activity ({change.security.length})</summary>
+          {change.security.map((x, i) => (
+            <p key={i} className="font-mono text-[11px]">{x.detail}</p>
+          ))}
+        </details>
+      )}
+      {change.rollback.length > 0 && (
+        <details className="mt-1 text-[11.5px] text-muted">
+          <summary className="cursor-pointer text-faint">Rollback</summary>
+          {change.rollback.map((x, i) => (
+            <p key={i} className="font-mono text-[11px]">{x}</p>
+          ))}
+        </details>
+      )}
+    </div>
   );
 }
 
 function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; state: ProjectState; onBack: () => void; onOpenFile: (p: string) => void; act: Act }) {
   const [why, setWhy] = useState<Why | null>(null);
+  const [change, setChange] = useState<ChangeRec | null>(null);
   const [integration, setIntegration] = useState<Integration | null>(null);
   const me = state.me;
   const isOwner = me.role === "owner";
@@ -276,10 +310,11 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
   useEffect(() => {
     let live = true;
     api<Why>("GET", `/tasks/${encodeURIComponent(task.id)}/why`).then((w) => live && setWhy(w), () => live && setWhy(null));
+    api<ChangeRec>("GET", `/tasks/${encodeURIComponent(task.id)}/change`).then((c) => live && setChange(c), () => live && setChange(null));
     return () => {
       live = false;
     };
-  }, [task.id, task.state, task.updatedAt, run?.status]);
+  }, [task.id, task.state, task.updatedAt, run?.status, integration?.id, integration?.status]);
 
   const partners = useMemo(() => {
     const ids = new Set<string>();
@@ -311,7 +346,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
 
       <div className="border-y border-rule py-3">
         <SectionLabel>How far it got</SectionLabel>
-        <Ladder why={why} />
+        <Ladder change={change} />
       </div>
 
       {why && visibleGaps(task, why).length > 0 && (

@@ -12,6 +12,7 @@ import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts"
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
+import { changeRecord } from "../analysis/change.ts";
 import { ImpactService } from "../analysis/impact.ts";
 import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
 import type { EntryKind, Source } from "../knowledge/records.ts";
@@ -436,6 +437,11 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       }
       const id = parts[1] ?? "";
       if (method === "GET" && parts[2] === "why") return json(res, 200, why((requireMember(req, "read"), id)));
+      if (method === "GET" && parts[2] === "change") {
+        requireMember(req, "read");
+        docs.flushAll();
+        return json(res, 200, changeRecord(relay, root, resolve(opts.dbPath), id, { runs: runs.forTask(id), impact: impact.compute({ taskId: relay.requireTask(id).baseCommit ? id : undefined }) }));
+      }
       if (method === "GET" && parts.length === 2) {
         requireMember(req, "read");
         return json(res, 200, { task: relay.requireTask(id), evidence: relay.evidence(id), events: relay.events(id), runs: runs.forTask(id) });

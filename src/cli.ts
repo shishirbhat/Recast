@@ -6,6 +6,7 @@ import { Relay } from "./core/engine.ts";
 import { RelayError, TASK_STATES } from "./core/types.ts";
 import type { Actor, TaskState } from "./core/types.ts";
 import { resolveCommit } from "./git.ts";
+import { changeRecord } from "./analysis/change.ts";
 import { ImpactService } from "./analysis/impact.ts";
 import { Records } from "./knowledge/records.ts";
 import { listProjectFiles } from "./server/files.ts";
@@ -34,6 +35,7 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
   relay impact [--base REF | --task ID] --cwd DIR   what a change affects: interfaces, consumers, tests, tasks, stale evidence
+  relay change <task> --cwd DIR              one record: stages (claimed..integrated), tests and freshness, blockers, approvals, rollback
   relay context <task> --cwd DIR             accepted decisions, current contracts, conflicts and obsolete records for a task
   relay decision list | accept|reject <id> | invalidate <id> --reason TEXT --cwd DIR
   relay investigation list | show <id> --cwd DIR
@@ -255,6 +257,21 @@ async function main(): Promise<void> {
           ...r.gaps.map((g) => `UNSEEN   ${g}`),
         ];
         return print(r, lines.join("\n"));
+      }
+      case "change": {
+        const root = resolve(o.cwd ?? process.cwd());
+        const r = changeRecord(relay, root, dbPath, need(sub, "task id"), { impact: new ImpactService(relay, root, dbPath).compute({}) });
+        const mark = { done: "[x]", missing: "[ ]", failed: "[!]", stale: "[~]", "n/a": "[-]" } as const;
+        print(r, [
+          `${r.task.id} (${r.task.state}): ${r.task.objective}`,
+          ...r.stages.map((s) => `${mark[s.state]} ${s.label.padEnd(38)} ${s.detail}`),
+          ...r.blockers.map((b) => `BLOCKER  ${b}`),
+          ...r.security.map((x) => `SECURITY ${x.detail}`),
+          ...r.rollback.map((x) => `ROLLBACK ${x}`),
+          r.safeToIntegrate ? "Safe to integrate: yes (still needs a person's approval)" : "Safe to integrate: no",
+        ].join("\n"));
+        if (!r.safeToIntegrate) process.exitCode = 1;
+        return;
       }
       case "context": {
         const root = resolve(o.cwd ?? process.cwd());
