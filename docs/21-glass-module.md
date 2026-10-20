@@ -160,7 +160,7 @@ The worker's only tab or window change is `tabs.update({active: true})` and `win
 | Unsupported composition | entry unavailable with its reason; the pick is refused | machine, clay page |
 | Destination missing or disconnected | "… is not connected here"; a closed tab cancels its open review | machine, extension |
 | Failed or unknown outcome | unchanged lifecycle (reconcile, never resend) in the module | clay page "calendar does not answer" |
-| Worker restart | state reloads from `storage.session` (a restart is not forced in the test) | extension |
+| Worker restart | a fresh worker reloads from `storage.session`; the restart is forced in a test (`docs/22-reliability.md`) | extension |
 | Extension reload | `storage.session` is cleared: objects are lost, as before. Not upgraded to persistent storage. | — |
 
 ## Platform limits, and the smallest next step
@@ -173,6 +173,9 @@ The worker's only tab or window change is `tabs.update({active: true})` and `win
 - **Stand-ins only.**
   - Next step: OAuth apps (#22), then a real `HttpBridge` destination in the extension's worker, which needs host permissions for the Google APIs and its own review.
 - **Selector keys in the extension** work once focus is in the module. The command focuses it (via a `focus` message). The full page-level keyboard path (Tab between pieces) remains a clay-page feature.
+
+## Reliability
+The trigger's timing rules, the full transition table, the lifecycle invariants and the recovery behaviour (a lost answer, a failed undo, a closed tab, a worker restart) are in `docs/22-reliability.md`.
 
 ## Photographs
 No reference photos are in the repository; there are only screenshots. The restaurant page therefore has a **photo slot** (`[data-photo-slot]`).

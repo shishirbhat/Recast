@@ -7,7 +7,7 @@
 import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
-import { commandEvents, createControlTrigger, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { commandEvents, createControlTrigger, doubtNote, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents, type GlassIntent } from "@recast/overlay/src/glass";
 
@@ -38,19 +38,33 @@ const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: cale
 
 class StandIn implements Bridge {
   readonly entries = new Map<string, Record<string, string>>();
-  /** Test control: the destination writes, then does not answer. Recast must then reconcile, not retry. */
+  // Test controls, one per way a real destination misbehaves (all off by default):
+  /** It writes, then the answer is lost. Recast must then reconcile, not retry. */
   silent = false;
+  /** It refuses before writing anything. */
+  refuse = false;
+  /** Undo is refused: the entry stays. */
+  undoFails = false;
+  /** Hold every answer until released, to act while a write or undo is in flight. */
+  gate: Promise<void> | null = null;
   constructor(private contract: CapabilityContract, private onChange: () => void) {}
   describe() { return this.contract; }
   async execute(op: Operation) {
-    await sleep(reducedMotion() ? 50 : 420);
+    await sleep(reducedMotion() ? 50 : 420); if (this.gate) await this.gate;
+    if (this.refuse) throw new Error(`${this.contract.app} refused it; nothing was added`);
+    // Keyed by the operation id (derived from the content), so the same operation written twice is one entry: the
+    // stand-in is idempotent the way a provider with a client-chosen id is.
     const ref = `${this.contract.targetKind.toLowerCase()}-${op.opId}`;
     this.entries.set(ref, Object.fromEntries(op.dataMoved.map((d) => [d.path.split(".")[1]!, d.value])));
     this.onChange();
     if (this.silent) throw new OutcomeUnknownError(`${this.contract.app} did not answer in time`, ref);
     return { ref };
   }
-  async undo(r: Receipt) { this.entries.delete(r.bridgeRef ?? ""); this.onChange(); }
+  async undo(r: Receipt) {
+    await sleep(reducedMotion() ? 20 : 200); if (this.gate) await this.gate;
+    if (this.undoFails) throw new Error(`${this.contract.app} refused the delete`);
+    this.entries.delete(r.bridgeRef ?? ""); this.onChange();
+  }
 }
 const bridges: Record<string, StandIn> = { cal: new StandIn(calendarContract, () => renderDestinations()), mail: new StandIn(draftsContract, () => renderDestinations()) };
 const log = new InMemoryEventLog();
@@ -77,7 +91,7 @@ const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout:
 
 function dispatch(e: ClumpInput) {
   const r = reduceClump(state, { ...e, now: NOW() } as ClumpEvent);
-  lastError = r.error ?? "";
+  if (!r.stale) lastError = r.error ?? "";   // a late answer for an earlier action is ignored, not shown
   const before = state; state = r.state;
   if (state.phase === "merging" && before.phase !== "merging") {
     const m = state.merging!;
@@ -106,10 +120,11 @@ function onIntent(i: GlassIntent) {
 async function perform(eff: ClumpEffect) {
   const bridge = bridges[eff.destinationId]!; const now = () => new Date(NOW()).toISOString();
   if (eff.type === "commit") {
+    const opId = eff.op.opId;
     try { const receipt = await commit(eff.op, eff.consent, { bridge, log, now }); dispatch({ type: "committed", receipt, undoable: receipt.reversible }); }
     catch (e) {
-      if (e instanceof OutcomeUnknownError) dispatch({ type: "outcomeUnknown", message: e.message });
-      else dispatch({ type: "commitFailed", message: e instanceof Error ? e.message : String(e) });
+      if (e instanceof OutcomeUnknownError) dispatch({ type: "outcomeUnknown", opId, message: e.message });
+      else dispatch({ type: "commitFailed", opId, message: e instanceof Error ? e.message : String(e) });
     }
   } else if (eff.type === "reconcile") {
     // Ask the destination; never send the write again.
@@ -118,10 +133,12 @@ async function perform(eff: ClumpEffect) {
     if (bridge.entries.has(ref)) {
       const receipt: Receipt = { receiptId: `rc-${eff.op.opId}`, opId: eff.op.opId, at: now(), status: "done", objectId: eff.op.proposal.object.id, destination: eff.op.proposal.destination.destination, relationId: eff.op.proposal.relationId, effect: eff.op.proposal.effect, reversible: eff.op.proposal.reversible, bridgeRef: ref };
       await log.append({ kind: "commit", at: receipt.at, receipt });
-      dispatch({ type: "reconciled", found: true, receipt });
-    } else dispatch({ type: "reconciled", found: false });
+      dispatch({ type: "reconciled", opId: eff.op.opId, found: true, receipt });
+    } else dispatch({ type: "reconciled", opId: eff.op.opId, found: false });
   } else if (eff.type === "undo") {
-    await coreUndo(eff.receipt, { bridge, log, now }); dispatch({ type: "undone" });
+    // Only a confirmed reversal is "undone"; anything else is reported as a failed undo, and the placement stands.
+    try { await coreUndo(eff.receipt, { bridge, log, now }); dispatch({ type: "undone", opId: eff.receipt.opId }); }
+    catch (e) { dispatch({ type: "undoFailed", opId: eff.receipt.opId, message: e instanceof Error ? e.message : String(e) }); }
   }
 }
 
@@ -205,7 +222,7 @@ function renderPass() {
     if (a && a.until <= t) anchors.delete(id);
     const targetMode = state.target?.kind === "object" && state.target.id === id ? (state.verdict?.ok ? "accepts" : "refuses") : null;
     // In the module's well the facts are shown under it, so the object carries only its name.
-    items.push({ id, x: spot.x, y: spot.y, label: v.label, ...(id === inWell && glass.el.dataset["mode"] === "choosing" && innerWidth > 520 ? { compact: true } : {}), ...(id === inWell ? {} : v.type !== "Fragment" ? { detail: v.summary.join(" · ") } : { detail: v.summary[0]! }), count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode: carried ? "carried" : targetMode ?? "rest", proposed: v.proposed, focused: false });
+    items.push({ id, x: spot.x, y: spot.y, label: v.label, ...(id === inWell && glass.el.dataset["mode"] === "choosing" && innerWidth > 520 ? { compact: true } : {}), ...(id === inWell ? {} : doubtNote(state, id) ? { detail: doubtNote(state, id)! } : v.type !== "Fragment" ? { detail: v.summary.join(" · ") } : { detail: v.summary[0]! }), count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode: carried ? "carried" : targetMode ?? "rest", proposed: v.proposed, focused: false });
   }
   clay.update(items);
   for (const it of items) { const el = clay.label(it.id)!; el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-description", it.mode === "carried" ? "in hand. Tab to a target, Enter to drop, Escape to put back" : "Enter to open, Space to pick up"); }
@@ -389,6 +406,7 @@ addEventListener("keydown", (e) => onTrigger(trigger({ type: "keydown", key: e.k
 addEventListener("keyup", (e) => onTrigger(trigger({ type: "keyup", key: e.key, at: e.timeStamp }, state.armed)), true);
 addEventListener("pointerdown", (e) => { trigger({ type: "pointerdown", at: e.timeStamp }, state.armed); }, true);
 addEventListener("blur", (e) => { trigger({ type: "blur", at: e.timeStamp }, state.armed); });
+document.addEventListener("visibilitychange", (e) => { trigger({ type: "blur", at: e.timeStamp }, state.armed); });   // switching tabs forgets a half-press
 addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
   if (e.key === "Escape") {

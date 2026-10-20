@@ -296,13 +296,15 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         const go = op ? (op.risk.consent === "hold" ? `<button type="button" class="rg-btn primary hold" data-act="hold">Hold to confirm: ${esc(op.proposal.effect.toLowerCase())}</button>` : `<button type="button" class="rg-btn primary" data-act="place">Confirm: ${esc(op.proposal.effect)}</button>`) : `<button type="button" class="rg-btn primary" disabled>Answer what is still needed</button>`;
         return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${standIn}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
       }
-      case "executing": return { title: `${dIcon}Adding to ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>`, actions: "" };
+      case "executing": return { title: `${dIcon}Adding to ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
+      case "undoing": return { title: `${dIcon}Undoing in ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm it is removed.</p>${err}`, actions: "" };
       case "succeeded": return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
-        body: `<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>`,
+        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>`,
         actions: `${m.placement?.undoable ? `<button type="button" class="rg-btn ghost" data-act="undo">Undo</button>` : ""}<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
       case "unknown": return { title: `${dIcon}No answer from ${esc(where)}`, head: "", facts: "",
-        body: `<p>${esc(m.placement?.message ?? "")}. It may or may not have been added. Recast does not send it again; it asks ${esc(where)} instead.</p>`,
-        actions: `<button type="button" class="rg-btn" data-act="reconcile">Check ${esc(where)}</button>` };
+        body: `${err}<p>${esc(m.placement?.message ?? "")}. It may or may not have been added. Recast does not send it again; it asks ${esc(where)} instead.</p>`,
+        // Closing does not decide anything: the doubt is remembered, and placing it there again goes to this check.
+        actions: `<button type="button" class="rg-btn" data-act="reconcile">Check ${esc(where)}</button><button type="button" class="rg-btn ghost" data-act="dismiss">Check later</button>` };
       case "failed": return { title: "Not added", head: close, facts: "", body: `<p>${esc(m.placement?.message ?? m.text ?? "")}</p>`, actions: `<button type="button" class="rg-btn" data-act="dismiss">Close</button>` };
     }
   }
@@ -426,7 +428,7 @@ export const GLASS_CSS = `
 .rg[data-mode="composed"] { --rg-w: 360px; }
 .rg[data-mode="choosing"] { --rg-w: 470px; }
 .rg[data-mode="preview"], .rg[data-mode="inspecting"] { --rg-w: 390px; }
-.rg[data-mode="executing"], .rg[data-mode="succeeded"], .rg[data-mode="unknown"], .rg[data-mode="failed"] { --rg-w: 340px; }
+.rg[data-mode="executing"], .rg[data-mode="undoing"], .rg[data-mode="succeeded"], .rg[data-mode="unknown"], .rg[data-mode="failed"] { --rg-w: 340px; }
 
 .rg-head { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 8px 0 16px; }
 .rg[data-mode="pill"] .rg-head { min-height: 40px; padding: 4px 6px 4px 14px; }
@@ -449,8 +451,8 @@ export const GLASS_CSS = `
 .rg-facts span + span::before { content: "·"; margin: 0 6px; }
 .rg-side { flex: none; }
 .rg-side:empty { display: none; }
-.rg:is([data-mode="composed"], [data-mode="choosing"], [data-mode="preview"], [data-mode="executing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"], [data-mode="inspecting"]) .rg-stage { display: flex; }
-.rg:is([data-mode="preview"], [data-mode="inspecting"], [data-mode="executing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"]) .rg-well { height: 60px; }
+.rg:is([data-mode="composed"], [data-mode="choosing"], [data-mode="preview"], [data-mode="executing"], [data-mode="undoing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"], [data-mode="inspecting"]) .rg-stage { display: flex; }
+.rg:is([data-mode="preview"], [data-mode="inspecting"], [data-mode="executing"], [data-mode="undoing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"]) .rg-well { height: 60px; }
 .rg[data-mode="choosing"] .rg-facts { display: flex; }
 .rg[data-mode="choosing"] .rg-left { align-self: center; }
 .rg[data-mode="choosing"] .rg-well { height: 96px; border-radius: 28px; }

@@ -160,4 +160,82 @@ describe("cross-tab carry in the browser extension", () => {
     await until(async () => { const x = await stored(); return x.phase === "idle" && !x.destinations.length; });
     expect((await stored()).desk).toEqual([id]);
   }, 60_000);
+
+  it("survives a real worker stop, a destination tab closing mid-write (unknown, never resent), and a tab reload; a retired object stays retired", async () => {
+    // 1. A real worker restart. Chromium stops the extension's worker (DevTools Target.closeTarget); the next message wakes
+    //    a fresh one, which knows only what is in storage.session.
+    const restaurant = await openTab("restaurant.html");
+    const id = (await stored()).focus as string; expect(id).toBeTruthy();
+    const restaurantTab = await tabIdOf(restaurant.url());
+    const before = await stored();
+    await sw.evaluate(() => { (globalThis as any).__alive = "before-restart"; });
+    const cdp = await ctx.newCDPSession(restaurant);
+    const { targetInfos } = await cdp.send("Target.getTargets");
+    await cdp.send("Target.closeTarget", { targetId: targetInfos.find((t: any) => t.type === "service_worker")!.targetId });
+    const extId = new URL(sw.url()).host;
+    const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${extId}/popup.html?tabId=${restaurantTab}`);
+    await popup.getByRole("button", { name: /Clump things on this page/ }).click();      // wakes the worker
+    await until(async () => { for (const w of ctx.serviceWorkers()) { try { if ((await w.evaluate(() => (globalThis as any).__alive ?? "fresh")) === "fresh") { sw = w; return true; } } catch { /* the stopped one */ } } return false; });
+    expect((await stored()).desk).toEqual(before.desk);                                   // nothing lost
+    await until(async () => (await stored()).phase === "composed");                        // the command still works
+    await popup.close();
+
+    // 2. The calendar tab closes while its write is in flight: Recast cannot know whether it landed. Unknown, not failed,
+    //    not succeeded; the check is refused while the calendar is not open; "Check later" remembers the doubt.
+    const cal = await openTab("calendar.html");
+    await cal.evaluate(() => { document.querySelector<HTMLElement>("#cal")!.dataset["recastDelay"] = "4000"; });
+    await restaurant.bringToFront();
+    await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await stored()).phase === "choosing");
+    await until(async () => (await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")) === "false");
+    await restaurant.locator("recast-clay >> button", { hasText: "Open" }).click();
+    await until(async () => (await stored()).phase === "previewing");
+    await cal.locator("recast-clay >> button", { hasText: "Add to calendar" }).click();
+    await until(async () => (await stored()).phase === "executing");
+    await cal.close();
+    await until(async () => (await stored()).phase === "unknown");
+    expect((await stored()).placement.message).toBe("Calendar closed before it answered");
+    await restaurant.bringToFront();
+    await restaurant.locator("recast-clay >> button[data-act=reconcile]").click();
+    await until(async () => /is not open here/.test(await restaurant.locator("recast-clay >> .rg-error").innerText().catch(() => "")));
+    expect((await stored()).phase).toBe("unknown");
+    await restaurant.locator("recast-clay >> button", { hasText: "Check later" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(Object.keys((await stored()).uncertain)).toEqual([id]);
+
+    // 3. A new calendar tab. Choosing Calendar again goes to the check, not to a second write; the closed tab's write
+    //    never happened, so the check says so and only then may it be placed again.
+    const cal2 = await openTab("calendar.html"); await restaurant.bringToFront();
+    await command(restaurant); await until(async () => (await stored()).phase === "composed");
+    await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")) === "false");
+    await restaurant.locator("recast-clay >> button", { hasText: "Open" }).click();
+    await until(async () => (await stored()).phase === "unknown");
+    expect(await cal2.locator("#events li").count()).toBe(0);
+    await restaurant.locator("recast-clay >> button[data-act=reconcile]").click();
+    await until(async () => (await stored()).phase === "failed");
+    expect((await stored()).last.text).toMatch(/was not added to Calendar\. It is safe to place again/);
+    await restaurant.locator("recast-clay >> button", { hasText: "Close" }).click();
+    await until(async () => { const x = await stored(); return x.phase === "idle" && Object.keys(x.uncertain).length === 0; });
+
+    // 4. Now placed for real, and the receipt closed: the object retires. Reloading the tab and bringing Recast back does
+    //    not resurrect it.
+    await command(restaurant); await until(async () => (await stored()).phase === "composed");
+    await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")) === "false");
+    await restaurant.locator("recast-clay >> button", { hasText: "Open" }).click();
+    await until(async () => (await stored()).phase === "previewing");
+    await cal2.locator("recast-clay >> button", { hasText: "Add to calendar" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(await cal2.locator("#events li").count()).toBe(1);
+    await cal2.locator("recast-clay >> button", { hasText: "Done" }).click();
+    await until(async () => { const x = await stored(); return x.phase === "idle" && !x.objects[id]; });
+    await restaurant.reload();
+    expect(await restaurant.locator("recast-clay").count()).toBe(0);                     // a reload removes the layer (activeTab)
+    await command(restaurant); await restaurant.locator("recast-clay").waitFor({ state: "attached" });
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await stored()).objects[id]).toBeUndefined(); expect(await restaurant.locator("recast-clay >> .clay-item").count()).toBe(0);
+    await restaurant.close(); await cal2.close();
+  }, 120_000);
 });
+

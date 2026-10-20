@@ -20,6 +20,7 @@ pnpm install && pnpm gen && pnpm typecheck && pnpm test
 - `docs/08-layer2-interaction.md` Layer 2a results, `docs/09-windows-spike-kit.md` Windows feasibility kit
 - `docs/10-layer4-control-center.md` Layer 4 results (`apps/web`, `packages/store`, `supabase/migrations`)
 - `docs/11-bridges.md` Calendar, Gmail draft, Sheets, Tasks and Notion bridges as data (`packages/bridges`), not run against live services
+- `docs/22-reliability.md` **reliability**: trigger timing rules, the object lifecycle's transitions and invariants, recovery from lost answers, failed undos, closed tabs and worker restarts, with evidence levels
 - `docs/21-glass-module.md` **the Recast trigger and the glass instrument**: press Control twice; a merge opens a small glass capsule; a drum wheel of real destinations from the bridge registry
 - `docs/20-clay.md` **clay**: press pieces from different tabs into one object, watch them fuse, carry it to a calendar and place it (harness page, real cross-tab carry in the extension)
 - `docs/15-composition.md` combining pieces (a time, a place, a title) into one event: model, gesture, evidence

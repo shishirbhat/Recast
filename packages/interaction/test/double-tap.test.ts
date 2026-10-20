@@ -56,3 +56,25 @@ describe("on with Control twice, off with Control once", () => {
     expect(r).toEqual({ said: ["on"], armed: true });
   });
 });
+
+describe("timing boundaries and broken sequences (deterministic)", () => {
+  it("a press of exactly 300 ms counts, 301 ms does not; a gap of exactly 400 ms counts, 401 ms does not", () => {
+    expect(play([...tap(0, 300), ...tap(400, 300)]).filter(Boolean)).toHaveLength(1);      // up at 300 and 700: 400 ms apart
+    expect(play([...tap(0, 301), ...tap(500)]).some(Boolean)).toBe(false);
+    expect(play([...tap(0), ...tap(80 + 400 - 80, 80)]).some(Boolean)).toBe(true);    // second tap ends 400 ms after the first ended
+    expect(play([...tap(0), ...tap(80 + 401 - 80, 80)]).some(Boolean)).toBe(false);
+  });
+  it("AltGr (sent by Windows as Control, then Alt) and Ctrl+V are chords, not taps", () => {
+    expect(play([["keydown", "Control", 0], ["keydown", "AltGraph", 2], ["keyup", "AltGraph", 60], ["keyup", "Control", 62], ...tap(150)]).some(Boolean)).toBe(false);
+    expect(play([["keydown", "Control", 0], ["keydown", "v", 30], ["keyup", "v", 60], ["keyup", "Control", 80], ...tap(150)]).some(Boolean)).toBe(false);
+  });
+  it("a keyup that never arrived (focus moved mid-press) cannot leave it stuck: the next real taps work", () => {
+    // keydown, no keyup (the release happened in another window), then later two clean taps.
+    expect(play([["keydown", "Control", 0], ...tap(5000), ...tap(5200)]).filter(Boolean)).toHaveLength(1);
+    // With a blur in between, the half-press is forgotten at once.
+    expect(play([["keydown", "Control", 0], ["blur", undefined, 10], ...tap(100), ...tap(300)]).filter(Boolean)).toHaveLength(1);
+  });
+  it("a keyup with no keydown (the press started in another window) is not a tap", () => {
+    expect(play([["keyup", "Control", 0], ...tap(100)]).some(Boolean)).toBe(false);
+  });
+});

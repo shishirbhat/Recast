@@ -150,3 +150,17 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Decision:** after a confirmed placement, the object stays while the receipt shows, because Undo needs it. When the receipt is left by any route other than Undo (Done, Escape, turning off, picking up something new), the object is removed from the desk and from the session's objects. An undone placement keeps its object, so it can go somewhere else.
 - **Why:** the desk holds what still needs a place (founder's call). The record of what was done is the destination itself plus the action log's receipt, not a lingering object.
 - **Change if:** people want to place the same composition in two destinations. Then offer "Keep it" on the receipt rather than keeping everything by default.
+
+### D27. Every outcome names its operation; Undo is a guarded step; an unknown outcome is remembered per destination
+- **Decision:**
+  - Results of effects carry the operation id. The machine ignores answers for any other operation.
+  - Undo moves to an `undoing` phase that only its own answer can leave, and `undoFailed` keeps the placement and says so.
+  - Closing a "no answer" card records the doubt against the object and the destination's contract. Choosing that destination again goes to the check with the original operation, never to a fresh write.
+  - A host that loses its destination mid-flight reports "unknown" (or, for an undo, "not confirmed") instead of leaving the state waiting.
+  - A Control press during any of these is discarded, with the reason shown.
+- **Alternatives:**
+  - Booleans per host (they drifted: neither host caught a failed undo).
+  - Retrying a lost write (duplicates where the provider has no idempotency key, like Gmail drafts).
+  - Deferring Control until safe (a delayed "off" is more surprising than an immediate, explained refusal).
+- **Why:** the brief's invariants ("a failed undo is never reported as done", "unknown is neither", "no duplicate on retry") hold only if they live in the one reducer both hosts share.
+- **Change if:** a destination offers a reliable status lookup by client id for every write. Then a lost answer could be resolved automatically, instead of the person pressing Check.

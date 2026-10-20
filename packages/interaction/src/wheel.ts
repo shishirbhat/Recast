@@ -46,7 +46,7 @@ export type ModuleModel =
   | { mode: "off" }
   /** Recast is on and nothing needs choosing: a small pill. `reopen` names a composition the command would bring back. */
   | { mode: "pill"; text: string; reopen?: string; carrying?: string }
-  | { mode: "composed" | "choosing" | "inspecting" | "confirm" | "preview" | "executing" | "succeeded" | "failed" | "unknown";
+  | { mode: "composed" | "choosing" | "inspecting" | "confirm" | "preview" | "executing" | "undoing" | "succeeded" | "failed" | "unknown";
       object: ModuleObject; entries: WheelEntry[]; choice: WheelKey;
       placement?: Placement; destination?: { key: WheelKey; label: string; app: string; effect: string; standIn: boolean };
       confirm?: string; text?: string };
@@ -67,6 +67,7 @@ export function moduleModel(s: ClumpState, registry: readonly CapabilityContract
     case "confirmingMerge": return { mode: "confirm", ...around(s.pendingMerge!.targetId), confirm: `Pressing these together ${s.pendingMerge!.reason}.` };
     case "previewing": return { mode: "preview", ...place() };
     case "executing": return { mode: "executing", ...place() };
+    case "undoing": return { mode: "undoing", ...place() };
     case "succeeded": return { mode: "succeeded", ...place() };
     case "failed": return { mode: "failed", ...place() };
     case "unknown": return { mode: "unknown", ...place() };
@@ -82,3 +83,11 @@ export function moduleModel(s: ClumpState, registry: readonly CapabilityContract
     }
   }
 }
+
+/** One line for an object whose last placement has an unknown outcome, so it never looks like an untouched object. */
+export function doubtNote(s: ClumpState, id: string): string | undefined {
+  const u = (s.uncertain ?? {})[id]; if (!u) return undefined;
+  const where = s.destinations.find((d) => d.contract.destination === u.destination)?.label ?? u.op.proposal.destination.app;
+  return `Not sure it reached ${where}: check before placing again`;
+}
+

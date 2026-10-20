@@ -411,3 +411,88 @@ describe("the glass module and the destination selector", () => {
     await ctx.close();
   });
 });
+
+describe("recovery: the calendar misbehaves (in-page stand-in, real Chromium)", () => {
+  /** Maya + Dakshin + time, chosen for the calendar from the module, with its title answered: one click from placing. */
+  async function readyToPlace(page: Page) {
+    const id = await makeDinner(page);
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.getByRole("button", { name: "Open" }).click();
+    await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
+    return id;
+  }
+  const phase = (p: Page) => p.evaluate(() => (globalThis as any).recast.state.phase);
+  const entries = (p: Page) => p.evaluate(() => (globalThis as any).recast.bridges.cal.entries.size);
+  const hold = (p: Page) => p.evaluate(() => { const b = (globalThis as any).recast.bridges.cal; b.gate = new Promise<void>((r) => { (globalThis as any).release = () => { b.gate = null; r(); }; }); });
+  const release = (p: Page) => p.evaluate(() => (globalThis as any).release());
+
+  it("while a write is in flight, Escape, Control and a new pick-up change nothing, and Recast says why; then the answer lands", async () => {
+    const { page, ctx, errors } = await open();
+    await readyToPlace(page); await hold(page);
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    expect(await phase(page)).toBe("executing");
+    await page.keyboard.press("Escape"); await page.keyboard.press("Control");
+    expect(await phase(page)).toBe("executing"); expect((await st(page)).armed).toBe(true);
+    expect(await page.locator("#hint").innerText()).toBe("Waiting for Calendar to answer. Recast stays on until it does");
+    await release(page); await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    expect(await entries(page)).toBe(1);
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("Undo is one step: while it is in flight nothing else happens; a refused undo says so, keeps the event and the object, and can be tried again", async () => {
+    const { page, ctx } = await open();
+    const id = await readyToPlace(page);
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    await page.evaluate(() => { (globalThis as any).recast.bridges.cal.undoFails = true; });
+    await hold(page);
+    await page.getByRole("button", { name: "Undo" }).click();
+    expect(await phase(page)).toBe("undoing");
+    expect(await page.locator(".rg-title").innerText()).toBe("Undoing in Calendar…");
+    expect(await page.locator(".rg-actions button").count()).toBe(0);              // no second Undo, no Done
+    await page.keyboard.press("Escape"); await page.keyboard.press("Control"); expect(await phase(page)).toBe("undoing");
+    await release(page); await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/^Could not undo: Google Calendar refused the delete\. It is still in Calendar\./);
+    expect(await entries(page)).toBe(1); expect((await st(page)).desk).toEqual([id]);
+    await page.evaluate(() => { (globalThis as any).recast.bridges.cal.undoFails = false; });
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
+    expect(await entries(page)).toBe(0); expect((await st(page)).desk).toEqual([id]);  // undone: the object stays, ready again
+    await ctx.close();
+  });
+  it("a refusal before anything is created: Not added, with the reason; nothing written; the object stays and can be placed again", async () => {
+    const { page, ctx } = await open();
+    const id = await readyToPlace(page);
+    await page.evaluate(() => { (globalThis as any).recast.bridges.cal.refuse = true; });
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "failed");
+    expect(await page.locator(".rg-title").innerText()).toBe("Not added");
+    expect(await page.locator(".rg-body").innerText()).toBe("Google Calendar refused it; nothing was added");
+    expect(await entries(page)).toBe(0);
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    expect((await st(page)).desk).toEqual([id]);
+    await ctx.close();
+  });
+  it("the answer is lost: unknown; Check later remembers it; choosing Calendar again goes to the check, never a second write", async () => {
+    const { page, ctx } = await open();
+    const id = await readyToPlace(page);
+    await page.evaluate(() => { (globalThis as any).recast.bridges.cal.silent = true; });
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "unknown");
+    expect(await entries(page)).toBe(1);                                          // it did land; Recast does not know yet
+    await page.getByRole("button", { name: "Check later" }).click();
+    expect(await phase(page)).toBe("idle"); expect(Object.keys((await st(page)).uncertain)).toEqual([id]);
+    // On the desk it says so, rather than looking like an untouched object.
+    await expect.poll(() => page.locator(objectSel(id)).getAttribute("aria-label")).toBe("Meet Maya at Dakshin, Not sure it reached Calendar: check before placing again, made of 3 pieces");
+    await page.evaluate(() => { (globalThis as any).recast.bridges.cal.silent = false; });
+    await page.locator("#recast-trigger").click();                                // reopen the composition
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.getByRole("button", { name: "Open" }).click();
+    expect(await phase(page)).toBe("unknown"); expect(await entries(page)).toBe(1);   // the check, not a second write
+    await page.getByRole("button", { name: "Check Calendar" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    expect(await entries(page)).toBe(1);
+    expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
+    await ctx.close();
+  });
+});
+

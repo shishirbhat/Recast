@@ -7,7 +7,7 @@
 // object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
 import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
-import { createControlTrigger, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { createControlTrigger, doubtNote, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents } from "@recast/overlay/src/glass";
@@ -15,7 +15,7 @@ import type { EventInput, ToBackground, ToTab } from "./clay-messages.js";
 
 declare global { interface Window { __recastClay?: boolean } }
 
-const send = <T = { state: ClumpState; error?: string }>(m: ToBackground) => chrome.runtime.sendMessage(m) as Promise<T>;
+const send = <T = { state: ClumpState; error?: string; stale?: true }>(m: ToBackground) => chrome.runtime.sendMessage(m) as Promise<T>;
 
 /** A page declares a destination with data-recast-kind; it performs the registry's contract for that kind, as a stand-in. */
 const KINDS: Record<string, CapabilityContract> = { calendar: CONTRACTS.googleCalendarEvent, drafts: CONTRACTS.gmailMessageDraft };
@@ -65,8 +65,7 @@ async function main() {
 
   async function dispatch(event: EventInput) {
     const r = await send({ type: "dispatch", event });
-    error = r.error ?? "";
-    if (r.error) hint(r.error.charAt(0).toUpperCase() + r.error.slice(1));
+    if (!r.stale) { error = r.error ?? ""; if (r.error) hint(r.error.charAt(0).toUpperCase() + r.error.slice(1)); }
     return r;
   }
   function hint(t: string) { $(".hint").textContent = t; }
@@ -124,7 +123,7 @@ async function main() {
   function item(id: string, x: number, y: number, mode: ClayItem["mode"], inWell = false): ClayItem {
     const v = viewOf(state, id); const f = state.objects[id]!.ingredients[0]!;
     const kind: ClayItem["kind"] = v.type === "Event" ? "event" : v.type === "Message" ? "message" : v.type === "People" ? "people" : f.kind;
-    return { id, x, y, label: v.label, ...(inWell && glass.el.dataset["mode"] === "choosing" && innerWidth > 520 ? { compact: true } : {}), ...(inWell ? {} : { detail: v.type === "Fragment" ? v.summary[0]! : v.summary.join(" · ") }), count: state.objects[id]!.ingredients.length, kind, mode, proposed: v.proposed };
+    return { id, x, y, label: v.label, ...(inWell && glass.el.dataset["mode"] === "choosing" && innerWidth > 520 ? { compact: true } : {}), ...(inWell ? {} : { detail: doubtNote(state, id) ?? (v.type === "Fragment" ? v.summary[0]! : v.summary.join(" · ")) }), count: state.objects[id]!.ingredients.length, kind, mode, proposed: v.proposed };
   }
 
   // ---- pointer ---------------------------------------------------------------------------------------------------------
@@ -176,6 +175,7 @@ async function main() {
   addEventListener("keyup", (e) => onTrigger(trigger({ type: "keyup", key: e.key, at: e.timeStamp }, !!state?.armed)), true);
   addEventListener("pointerdown", (e) => { trigger({ type: "pointerdown", at: e.timeStamp }, !!state?.armed); }, true);
   addEventListener("blur", (e) => { trigger({ type: "blur", at: e.timeStamp }, !!state?.armed); });
+  document.addEventListener("visibilitychange", (e) => { trigger({ type: "blur", at: e.timeStamp }, !!state?.armed); });
   addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !state) return;
     const ev = escapeEvent(state); if (!ev) return;
@@ -204,6 +204,8 @@ async function main() {
     return {
       describe: () => KINDS[el.dataset["recastKind"]!]!,
       async execute(op: Operation) {
+        // Test control on the page (like data-recast-silent): answer only after a delay, so a write can be in flight.
+        const delay = Number(el.dataset["recastDelay"] ?? 0); if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         const li = document.createElement("li"); li.dataset["placed"] = op.proposal.relationId; li.id = `recast-${op.opId}`;
         li.textContent = op.dataMoved.filter((d) => ["Event.title", "Event.start", "Event.location", "Message.to", "Message.snippet"].includes(d.path)).map((d) => d.value).join(" · ");
         list().appendChild(li);
@@ -216,15 +218,20 @@ async function main() {
   async function perform(eff: ClumpEffect) {
     const destId = eff.destinationId.split(":").slice(1).join(":"); const bridge = bridgeFor(destId); const now = () => new Date().toISOString();
     if (eff.type === "commit") {
+      const opId = eff.op.opId;
       try { const receipt = await commit(eff.op, eff.consent, { bridge, log, now }); await dispatch({ type: "committed", receipt, undoable: receipt.reversible }); }
-      catch (e) { await dispatch(e instanceof OutcomeUnknownError ? { type: "outcomeUnknown", message: e.message } : { type: "commitFailed", message: e instanceof Error ? e.message : String(e) }); }
+      catch (e) { await dispatch(e instanceof OutcomeUnknownError ? { type: "outcomeUnknown", opId, message: e.message } : { type: "commitFailed", opId, message: e instanceof Error ? e.message : String(e) }); }
     } else if (eff.type === "reconcile") {
       const ref = `recast-${eff.op.opId}`;
       if (document.getElementById(ref)) {
         const receipt: Receipt = { receiptId: `rc-${eff.op.opId}`, opId: eff.op.opId, at: now(), status: "done", objectId: eff.op.proposal.object.id, destination: eff.op.proposal.destination.destination, relationId: eff.op.proposal.relationId, effect: eff.op.proposal.effect, reversible: eff.op.proposal.reversible, bridgeRef: ref };
-        await log.append({ kind: "commit", at: receipt.at, receipt }); await dispatch({ type: "reconciled", found: true, receipt });
-      } else await dispatch({ type: "reconciled", found: false });
-    } else if (eff.type === "undo") { await coreUndo(eff.receipt, { bridge, log, now }); await dispatch({ type: "undone" }); }
+        await log.append({ kind: "commit", at: receipt.at, receipt }); await dispatch({ type: "reconciled", opId: eff.op.opId, found: true, receipt });
+      } else await dispatch({ type: "reconciled", opId: eff.op.opId, found: false });
+    } else if (eff.type === "undo") {
+      // Only a confirmed reversal is "undone"; anything else is a failed undo, and the placement stands.
+      try { await coreUndo(eff.receipt, { bridge, log, now }); await dispatch({ type: "undone", opId: eff.receipt.opId }); }
+      catch (e) { await dispatch({ type: "undoFailed", opId: eff.receipt.opId, message: e instanceof Error ? e.message : String(e) }); }
+    }
   }
 
   // ---- wiring ------------------------------------------------------------------------------------------------------------

@@ -20,7 +20,7 @@ async function broadcast(s: ClumpState) { for (const t of await tabs()) await te
 
 /** Events are applied one at a time, in order, even when several tabs send at once. */
 let queue: Promise<unknown> = Promise.resolve();
-function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEffect[]; error?: string }): Promise<{ state: ClumpState; error?: string }> {
+function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEffect[]; error?: string; stale?: true }): Promise<{ state: ClumpState; error?: string; stale?: true }> {
   const run = queue.then(async () => {
     const before = await load(); const r = mutate(before);
     await save(r.state); await broadcast(r.state);
@@ -32,7 +32,7 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
       const tabId = Number(r.state.placement.destinationId.split(":")[0]);
       try { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); } catch { /* the tab is gone; the review still shows */ }
     }
-    return { state: r.state, ...(r.error ? { error: r.error } : {}) };
+    return { state: r.state, ...(r.error ? { error: r.error } : {}), ...(r.stale ? { stale: true as const } : {}) };
   });
   queue = run.catch(() => undefined);
   return run;
@@ -86,9 +86,18 @@ async function forget(tabId: number) {
   await setTabs((await tabs()).filter((t) => t !== tabId));
   await apply((s) => {
     const destinations = s.destinations.filter((d) => !d.id.startsWith(`${tabId}:`));
-    const reviewingThere = s.phase === "previewing" && s.placement?.destinationId.startsWith(`${tabId}:`);
+    const there = !!s.placement?.destinationId.startsWith(`${tabId}:`);
     const next = { ...s, destinations };
-    return reviewingThere ? reduceClump(next, { type: "cancel", now: Date.now() }) : { state: next };
+    if (!there) return { state: next };
+    const label = s.destinations.find((d) => d.id === s.placement!.destinationId)?.label ?? "The destination";
+    const opId = s.placement!.op?.opId ?? "";
+    // A review there closes unwritten. A write or an undo in flight there can no longer answer: it is not assumed to
+    // have worked or failed. A write becomes "unknown" (checked later, never resent); an undo is reported as not
+    // confirmed, so the placement stands and says so.
+    if (s.phase === "previewing") return reduceClump(next, { type: "cancel", now: Date.now() });
+    if (s.phase === "executing") return reduceClump(next, { type: "outcomeUnknown", opId, message: `${label} closed before it answered`, now: Date.now() });
+    if (s.phase === "undoing") return reduceClump(next, { type: "undoFailed", opId, message: `${label} closed before it confirmed; it may still be there`, now: Date.now() });
+    return { state: next };
   });
 }
 chrome.tabs.onRemoved.addListener((tabId) => { void forget(tabId); });

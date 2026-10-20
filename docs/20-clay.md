@@ -81,7 +81,7 @@ Permissions: `activeTab`, `scripting`, `storage` (used for session storage only)
 |---|---|
 | The clump model, the rules and the state machine (pure, tested) | The calendar and the mail drafts are in-page stand-ins. No Google Calendar, Gmail or any provider is called |
 | Real tabs, a real MV3 service worker, `storage.session`, `activeTab` injection (extension tests) | The harness simulates tabs inside one page; spring-loaded tab switching exists only there |
-| The trust path: proposal, consent, receipt, unknown outcome, reconcile, undo | The extension test's "restarted worker" checks that the state reloads from storage; it does not force Chrome to kill the worker |
+| The trust path: proposal, consent, receipt, unknown outcome, reconcile, undo | Since `docs/22-reliability.md`, an extension test stops the worker for real (DevTools `Target.closeTarget`) and checks that a fresh worker carries on from `storage.session` |
 | Pointer, keyboard and touch input in the harness, tested in Chromium (touch via CDP) | No person has tried it (**P** not reached); on a phone it is the harness page, not an extension |
 | The goo-filter fusion and the reduced-motion path | "Clay-like" is a filter and springs, not a physical simulation |
 

@@ -21,7 +21,9 @@ export function createTaps(o: { key?: string; maxPressMs?: number; maxGapMs?: nu
     if (e.key !== key) { if (e.type === "keydown") { if (downAt !== null) chord = true; lastTap = null; } return null; }
     if (e.type === "keydown") {
       if (e.repeat) { chord = true; return null; }            // held down: not a tap
-      if (downAt === null) { downAt = e.at; chord = false; }
+      // A fresh (non-repeat) keydown is a new press, even if the last release was never seen (it happened in another
+      // window): start timing from here, so a lost keyup can never leave the trigger stuck.
+      downAt = e.at; chord = false;
       return null;
     }
     // keyup of the key

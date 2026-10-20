@@ -18,6 +18,7 @@ export type ClumpPhase =
   | "inspecting"       // one object opened: its ingredients, sources, assumptions; edit, remove, answer
   | "previewing"       // dropped on a destination: what placing would do, what is still missing; nothing written yet
   | "executing"        // the destination is being written to; cannot be cancelled
+  | "undoing"          // the destination is reversing a placement; cannot be cancelled or interrupted
   | "succeeded" | "failed" | "unknown";   // after executing; `unknown` is reconciled, never retried blindly
 
 export interface DestinationSpec {
@@ -44,6 +45,11 @@ export interface ClumpState {
   focus: string | null;
   /** The destination highlighted in the selector (a wheel key). Highlighting never writes. */
   choice: string | null;
+  /**
+   * Placements whose outcome is still unknown because the person closed the "no answer" card, by object. Placing that
+   * object on the same destination again goes to the check first, never to a second blind write.
+   */
+  uncertain: Record<string, { destinationId: string; destination: string; op: Operation; message?: string }>;
   objects: Record<string, Clump>;
   /** Objects on the desk, in stacking order (last is on top). The carried object is not in here. */
   desk: string[];
@@ -79,13 +85,15 @@ export type ClumpEvent =
   | { type: "answer"; objectId: string; field: AnswerField; value: string | boolean; now: number }
   | { type: "choose"; objectId: string; field: EventField; ingredientId: string; now: number }
   | { type: "place"; consent: Consent; now: number }
+  // Results of effects. Each names the operation it answers (opId), so a late answer for an earlier operation is ignored.
   | { type: "committed"; receipt: Receipt; undoable: boolean; now: number }
-  | { type: "commitFailed"; message: string; now: number }
-  | { type: "outcomeUnknown"; message: string; now: number }
+  | { type: "commitFailed"; opId: string; message: string; now: number }
+  | { type: "outcomeUnknown"; opId: string; message: string; now: number }
   | { type: "reconcile"; now: number }
-  | { type: "reconciled"; found: boolean; receipt?: Receipt; now: number }
+  | { type: "reconciled"; opId: string; found: boolean; receipt?: Receipt; now: number }
   | { type: "undo"; now: number }
-  | { type: "undone"; now: number }
+  | { type: "undone"; opId: string; now: number }
+  | { type: "undoFailed"; opId: string; message: string; now: number }
   | { type: "cancel"; now: number }
   | { type: "dismiss"; now: number }
   | { type: "discard"; id: string; now: number };
@@ -98,10 +106,10 @@ export type ClumpEffect =
   | { type: "reconcile"; op: Operation; destinationId: string }
   | { type: "undo"; receipt: Receipt; destinationId: string };
 
-export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string }
+export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true }
 
 export function initialClumpState(o: { now: number; timezone: string; destinations?: DestinationSpec[]; armed?: boolean }): ClumpState {
-  return { phase: "idle", armed: o.armed ?? false, focus: null, choice: null, objects: {}, desk: [], carried: null, target: null, verdict: null, pendingMerge: null, merging: null, inspecting: null, placement: null, destinations: o.destinations ?? [], last: null, now: o.now, timezone: o.timezone, seq: 0 };
+  return { phase: "idle", armed: o.armed ?? false, focus: null, choice: null, uncertain: {}, objects: {}, desk: [], carried: null, target: null, verdict: null, pendingMerge: null, merging: null, inspecting: null, placement: null, destinations: o.destinations ?? [], last: null, now: o.now, timezone: o.timezone, seq: 0 };
 }
 
 /** Which events each phase accepts. Anything else is refused with a reason and changes nothing. */
@@ -116,7 +124,8 @@ const LEGAL: Record<ClumpPhase, ClumpEvent["type"][]> = {
   inspecting: ["inspect", "remove", "answer", "choose", "pickUp", "cancel", "discard", "arm", "disarm"],
   previewing: ["answer", "choose", "remove", "place", "cancel", "arm", "disarm"],
   executing: ["committed", "commitFailed", "outcomeUnknown"],
-  succeeded: ["undo", "undone", "dismiss", "capture", "pickUp", "cancel", "openModule", "arm", "disarm"],
+  undoing: ["undone", "undoFailed"],
+  succeeded: ["undo", "dismiss", "capture", "pickUp", "cancel", "openModule", "arm", "disarm"],
   failed: ["dismiss", "cancel", "capture", "pickUp", "openModule", "arm", "disarm"],
   // An unknown outcome is checked before anything else: Recast cannot be turned off over it.
   unknown: ["reconcile", "reconciled", "dismiss"],
@@ -162,17 +171,36 @@ export function reduceClump(state: ClumpState, ev: ClumpEvent): ClumpResult {
   const r = step(state, ev);
   // A placed object is done: once the receipt is left (Done, or anything else that moves on) it leaves the desk, so the
   // desk only holds what still needs a place. Undo is the exception: an undone placement keeps its object.
-  if (state.phase === "succeeded" && r.state.phase !== "succeeded" && ev.type !== "undone" && state.placement) return { ...r, state: retire(r.state, state.placement.objectId) };
+  if (state.phase === "succeeded" && r.state.phase !== "succeeded" && r.state.phase !== "undoing" && state.placement) return { ...r, state: retire(r.state, state.placement.objectId) };
   return r;
+}
+
+/** Results of effects: which operation each one answers. */
+const RESULT_OF: Partial<Record<ClumpEvent["type"], (e: ClumpEvent) => string | undefined>> = {
+  committed: (e) => (e as Extract<ClumpEvent, { type: "committed" }>).receipt.opId,
+  commitFailed: (e) => (e as { opId: string }).opId, outcomeUnknown: (e) => (e as { opId: string }).opId,
+  reconciled: (e) => (e as { opId: string }).opId, undone: (e) => (e as { opId: string }).opId, undoFailed: (e) => (e as { opId: string }).opId,
+};
+/** Phases where something is in flight: only its answer (or a check) may change them. */
+const BUSY: ClumpPhase[] = ["merging", "executing", "undoing", "unknown"];
+function busyReason(s: ClumpState): string {
+  const where = destLabel(s);
+  if (s.phase === "merging") return "One moment: still pressing them together";
+  if (s.phase === "executing") return `Waiting for ${where} to answer. Recast stays on until it does`;
+  if (s.phase === "undoing") return `Waiting for ${where} to confirm the undo. Recast stays on until it does`;
+  return `Recast doesn't know yet whether ${where} has it. Check ${where} first`;
 }
 function retire(s: ClumpState, id: string): ClumpState {
   if (!s.objects[id] || s.carried === id) return s;
-  return { ...s, desk: without(s.desk, id), objects: omit(s.objects, id), ...(s.focus === id ? { focus: null } : {}), ...(s.inspecting === id ? { inspecting: null, phase: s.phase === "inspecting" ? "idle" as const : s.phase } : {}) };
+  return { ...s, desk: without(s.desk, id), objects: omit(s.objects, id), uncertain: omit(s.uncertain ?? {}, id), ...(s.focus === id ? { focus: null } : {}), ...(s.inspecting === id ? { inspecting: null, phase: s.phase === "inspecting" ? "idle" as const : s.phase } : {}) };
 }
 
 function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
   const s0: ClumpState = { ...state, now: ev.now };
-  if (!LEGAL[s0.phase].includes(ev.type)) return { state, effects: [], error: `cannot ${ev.type} while ${s0.phase}` };
+  // A late or duplicate answer for an operation that is not the current one changes nothing.
+  const answers = RESULT_OF[ev.type];
+  if (answers && answers(ev) !== state.placement?.op?.opId) return { state, effects: [], error: "ignored: an answer for an earlier action", stale: true };
+  if (!LEGAL[s0.phase].includes(ev.type)) return { state, effects: [], error: BUSY.includes(s0.phase) ? busyReason(s0) : `cannot ${ev.type} while ${s0.phase}` };
   const ok = (state: ClumpState, effects: ClumpEffect[] = []): ClumpResult => ({ state, effects });
   const refuse = (error: string): ClumpResult => ({ state, effects: [], error });
   const s = s0;
@@ -201,6 +229,7 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
     case "pickDestination": {
       const id = s.focus!; const d = s.destinations.find((x) => x.id === ev.destinationId);
       if (!d) return refuse("that destination is not connected");
+      if (doubtFor(s, id, d)) return ok(recheck(s, id, d.id));
       const r = route(s, id, d.id, s.now);
       // Choosing is never execution, and an unfit choice changes nothing: the selector stays open with the reason.
       if (!r.op && r.reason) return refuse(r.reason);
@@ -240,6 +269,8 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
         // Refused: nothing merges, and the carried object goes back on the desk, whole.
         return ok(say({ ...rest(putDown(s, carried)), phase: "idle" }, "refused", `Kept apart: ${r.reason}`));
       }
+      const td = s.destinations.find((x) => x.id === t.id);
+      if (td && doubtFor(s, carried, td)) return ok(recheck(rest(putDown(s, carried)), carried, td.id));
       const withSlot = applySlot(s, carried, t.id, t.slot);
       const r = route(withSlot, carried, t.id, s.now);
       if (!r.op && r.reason) return ok(say({ ...rest(putDown(s, carried)), phase: "idle" }, "refused", `Not placed: ${r.reason}`));
@@ -287,15 +318,24 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
     case "committed": return ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, receipt: ev.receipt, undoable: ev.undoable } }, "placed", `Placed in ${destLabel(s)}`));
     case "commitFailed": return ok(say({ ...s, phase: "failed", placement: { ...s.placement!, message: ev.message } }, "failed", `Not placed: ${ev.message}`));
     case "outcomeUnknown": return ok(say({ ...s, phase: "unknown", placement: { ...s.placement!, message: ev.message } }, "unknown", `${destLabel(s)} did not answer. It may or may not have been added; check before trying again.`));
-    case "reconcile": return ok(s, [{ type: "reconcile", op: s.placement!.op!, destinationId: s.placement!.destinationId }]);
+    case "reconcile": {
+      // Only the destination can say; if it is not open here, asking would go nowhere.
+      if (!s.destinations.some((d) => d.id === s.placement!.destinationId)) return refuse(`${destLabel(s)} is not open here. Open it, then check`);
+      return ok(s, [{ type: "reconcile", op: s.placement!.op!, destinationId: s.placement!.destinationId }]);
+    }
     case "reconciled": return ev.found
       ? ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, ...(ev.receipt ? { receipt: ev.receipt } : {}), undoable: !!ev.receipt } }, "placed", `Checked: it is in ${destLabel(s)}`))
       : ok(say({ ...s, phase: "failed", placement: { ...s.placement!, message: "not found at the destination" } }, "failed", `Checked: it was not added to ${destLabel(s)}. It is safe to place again.`));
     case "undo": {
       const p = s.placement!; if (!p.receipt || !p.undoable) return refuse("this placement cannot be undone");
-      return ok(s, [{ type: "undo", receipt: p.receipt, destinationId: p.destinationId }]);
+      if (!s.destinations.some((d) => d.id === p.destinationId)) return refuse(`${destLabel(s)} is not open here. Open it to undo`);
+      // One undo at a time, and nothing interrupts it: the receipt waits for the destination's answer.
+      const { message: _m, ...clean } = p;
+      return ok({ ...s, phase: "undoing", placement: clean }, [{ type: "undo", receipt: p.receipt, destinationId: p.destinationId }]);
     }
     case "undone": return ok(say({ ...s, phase: "idle", placement: null }, "undone", `Removed from ${destLabel(s)}`));
+    // The undo did not happen (or cannot be confirmed): the placement stands, the receipt stays, and it says so.
+    case "undoFailed": return ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, message: `Could not undo: ${ev.message}` } }, "failed", `Could not undo: ${ev.message}. It is still in ${destLabel(s)}`));
     case "cancel": {
       if (s.phase === "carrying" || s.phase === "approaching") return ok(say({ ...rest(putDown(s, s.carried!)), phase: "idle" }, "cancelled", "Put back; nothing changed"));
       if (s.phase === "confirmingMerge") return ok(say({ ...rest(putDown(s, s.pendingMerge!.incomingId)), phase: "idle", pendingMerge: null }, "cancelled", "Kept apart"));
@@ -305,10 +345,18 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       if (s.phase === "inspecting") return ok({ ...s, phase: backTo(s, s.inspecting), inspecting: null });
       return ok({ ...s, phase: "idle", inspecting: null, placement: s.phase === "succeeded" ? null : s.placement });
     }
-    case "dismiss": return ok(s.phase === "composed" ? say({ ...s, phase: "idle" }, "closed", "Closed. Your composition is kept: press Recast to reopen it") : { ...s, phase: "idle", placement: null });
+    case "dismiss": {
+      if (s.phase === "composed") return ok(say({ ...s, phase: "idle" }, "closed", "Closed. Your composition is kept: press Recast to reopen it"));
+      // Closing a "no answer" card does not make the outcome known: remember it, so the next try goes to the check.
+      if (s.phase === "unknown" && s.placement?.op) {
+        const p = s.placement;
+        return ok(say({ ...s, phase: "idle", placement: null, uncertain: { ...(s.uncertain ?? {}), [p.objectId]: { destinationId: p.destinationId, destination: p.op!.proposal.destination.destination, op: p.op!, ...(p.message ? { message: p.message } : {}) } } }, "unknown", `Still unknown whether ${destLabel(s)} has it. Placing it there again will check first`));
+      }
+      return ok({ ...s, phase: "idle", placement: null });
+    }
     case "discard": {
       if (!s.desk.includes(ev.id)) return refuse("no such object on the desk");
-      return ok({ ...s, phase: "idle", inspecting: null, desk: without(s.desk, ev.id), objects: omit(s.objects, ev.id), ...(s.focus === ev.id ? { focus: null } : {}) });
+      return ok({ ...s, phase: "idle", inspecting: null, desk: without(s.desk, ev.id), objects: omit(s.objects, ev.id), uncertain: omit(s.uncertain ?? {}, ev.id), ...(s.focus === ev.id ? { focus: null } : {}) });
     }
   }
 }
@@ -332,9 +380,21 @@ export function escapeEvent(s: ClumpState): { type: "cancel" } | { type: "disarm
     case "confirmingMerge": return { type: "confirmMerge", yes: false };
     case "inspecting": return { type: "inspect", id: null };
     case "succeeded": case "failed": return { type: "dismiss" };
-    case "merging": case "executing": case "unknown": return null;
+    case "merging": case "executing": case "undoing": case "unknown": return null;
     default: return { type: "cancel" };
   }
+}
+
+/**
+ * The doubt is about the destination itself (its contract, e.g. google-calendar.calendar), not about the tab or page that
+ * happened to serve it: a calendar opened again in a new tab is the same calendar.
+ */
+const doubtFor = (s: ClumpState, objectId: string, d: DestinationSpec) => { const u = (s.uncertain ?? {})[objectId]; return !!u && (u.destinationId === d.id || u.destination === d.contract.destination); };
+/** Back to the check for an earlier try whose outcome is unknown: the same operation, asked of the destination open now. */
+function recheck(s: ClumpState, objectId: string, destinationId: string): ClumpState {
+  const u = s.uncertain[objectId]!;
+  return say({ ...s, phase: "unknown", uncertain: omit(s.uncertain, objectId), placement: { objectId, destinationId, op: u.op, via: "module",
+    message: `Recast still doesn't know whether the last try reached ${s.destinations.find((d) => d.id === destinationId)?.label ?? "the destination"}` } }, "unknown", "Checking before trying again");
 }
 
 function repreview(s: ClumpState): ClumpState {
@@ -343,5 +403,5 @@ function repreview(s: ClumpState): ClumpState {
   const { op: _old, ...rest } = p;
   return { ...s, placement: { ...rest, ...(r.op ? { op: r.op } : {}) } };
 }
-const destLabel = (s: ClumpState) => s.destinations.find((d) => d.id === s.placement?.destinationId)?.label ?? "the destination";
+const destLabel = (s: ClumpState) => s.destinations.find((d) => d.id === s.placement?.destinationId)?.label ?? s.placement?.op?.proposal.destination.app ?? "the destination";
 const omit = <T>(o: Record<string, T>, k: string) => { const { [k]: _gone, ...r } = o; return r; };

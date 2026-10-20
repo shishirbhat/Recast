@@ -155,11 +155,12 @@ describe("Escape, one step at a time", () => {
     expect(escapeEvent(s)).toBeNull();
     expect(s.focus).toBe("obj-1"); expect(s.objects["obj-1"]!.ingredients).toHaveLength(2);
   });
-  it("Escape does nothing while writing or while an outcome is unknown, and Recast cannot be turned off then", () => {
-    for (const phase of ["executing", "unknown", "merging"] as const) {
+  it("Escape does nothing while writing, undoing or while an outcome is unknown, and Recast cannot be turned off then (it says why)", () => {
+    const why = { executing: /^Waiting for .* to answer\. Recast stays on until it does$/, undoing: /^Waiting for .* to confirm the undo\. Recast stays on until it does$/, unknown: /^Recast doesn't know yet whether .* has it\. Check .* first$/, merging: /^One moment: still pressing them together$/ };
+    for (const phase of ["executing", "undoing", "unknown", "merging"] as const) {
       const s = { ...dinner().s, phase } as ClumpState;
       expect(escapeEvent(s)).toBeNull(); expect(commandEvents(s)).toEqual([]);
-      expect(reduceClump(s, { type: "disarm", now: NOW }).error).toBe(`cannot disarm while ${phase}`);
+      const r = reduceClump(s, { type: "disarm", now: NOW }); expect(r.error).toMatch(why[phase]); expect(r.state).toBe(s);
     }
   });
 });
@@ -167,13 +168,15 @@ describe("Escape, one step at a time", () => {
 describe("a placed object leaves the desk", () => {
   const receipt = { receiptId: "r1", opId: "op1", at: "2026-10-19T09:00:01Z", status: "done" as const, objectId: "x", destination: "google-calendar.calendar", relationId: "event-calendar-entry", effect: "Add to calendar", reversible: true, bridgeRef: "ev-1" };
   function placed() {
-    return run([
+    const r = run([
       { type: "openWheel" }, { type: "pickDestination", destinationId: "cal" },
       { type: "answer", objectId: "obj-1", field: "start", value: "2026-10-23T19:30" },
       { type: "answer", objectId: "obj-1", field: "title", value: "Meet Maya at Dakshin" },
-      { type: "place", consent: { kind: "confirm" } }, { type: "committed", receipt, undoable: true },
+      { type: "place", consent: { kind: "confirm" } },
     ], dinner().s).s;
+    return run([{ type: "committed", receipt: { ...receipt, opId: r.placement!.op!.opId }, undoable: true }], r).s;
   }
+  const opOf = (s: ClumpState) => s.placement!.op!.opId;
   it("it stays while the receipt shows (Undo needs it), and is gone once the receipt is closed", () => {
     const s = placed(); expect(s.phase).toBe("succeeded"); expect(s.desk).toEqual(["obj-1"]);
     const done = run([{ type: "dismiss" }], s).s;
@@ -186,12 +189,13 @@ describe("a placed object leaves the desk", () => {
     }
   });
   it("undone, it stays: the person can place it somewhere else", () => {
-    const s = run([{ type: "undo" }, { type: "undone" }], placed()).s;
+    const p = placed(); const s = run([{ type: "undo" }, { type: "undone", opId: opOf(p) }], p).s;
     expect(s.phase).toBe("idle"); expect(s.desk).toEqual(["obj-1"]); expect(s.objects["obj-1"]!.ingredients).toHaveLength(2);
   });
   it("found by reconciliation after an unknown outcome, then closed: gone as well", () => {
-    const s = run([{ type: "outcomeUnknown", message: "Calendar did not answer" }], { ...placed(), phase: "executing" } as ClumpState).s;
-    const r = run([{ type: "reconcile" }, { type: "reconciled", found: true, receipt }, { type: "dismiss" }], s).s;
+    const p = placed(); const opId = opOf(p);
+    const s = run([{ type: "outcomeUnknown", opId, message: "Calendar did not answer" }], { ...p, phase: "executing" } as ClumpState).s;
+    const r = run([{ type: "reconcile" }, { type: "reconciled", opId, found: true, receipt: { ...receipt, opId } }, { type: "dismiss" }], s).s;
     expect(r.desk).toEqual([]);
   });
 });

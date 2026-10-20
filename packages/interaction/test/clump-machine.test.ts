@@ -17,7 +17,7 @@ function run(events: Input[], start: ClumpState = initialClumpState({ now: NOW, 
   for (const e of events) { const r = reduceClump(s, { ...e, now: NOW } as ClumpEvent); s = r.state; effects.push(...r.effects); if (r.error) errors.push(r.error); }
   return { s, effects, errors };
 }
-const receipt = (): Receipt => ({ receiptId: "r1", opId: "op1", at: "2026-10-19T09:00:01Z", status: "done", objectId: "x", destination: "calendar.agenda", relationId: "event-calendar-entry", effect: "Add to calendar", reversible: true, bridgeRef: "ev-1" });
+const receipt = (opId = "op1"): Receipt => ({ receiptId: "r1", opId, at: "2026-10-19T09:00:01Z", status: "done", objectId: "x", destination: "calendar.agenda", relationId: "event-calendar-entry", effect: "Add to calendar", reversible: true, bridgeRef: "ev-1" });
 
 /** Maya (carried) pressed into the restaurant, then the time pressed into that object. */
 function mayaDinner() {
@@ -70,19 +70,22 @@ describe("placing it", () => {
     const commit = r.effects[0] as { type: string; op: { dataMoved: { path: string; value: string }[] } };
     expect(commit.type).toBe("commit");
     expect(Object.fromEntries(commit.op.dataMoved.map((d) => [d.path, d.value]))).toMatchObject({ "Event.title": "Meet Maya at Dakshin", "Event.start": "2026-10-23T19:30", "Event.location": "Dakshin", "Event.description": "With Maya Rao" });
-    expect(run([{ type: "cancel" }], r.s).errors).toEqual(["cannot cancel while executing"]);   // it is already on its way
-    const done = run([{ type: "committed", receipt: receipt(), undoable: true }], r.s);
+    expect(run([{ type: "cancel" }], r.s).errors).toEqual(["Waiting for Calendar to answer. Recast stays on until it does"]);   // it is already on its way
+    const opId = r.s.placement!.op!.opId;
+    const done = run([{ type: "committed", receipt: receipt(opId), undoable: true }], r.s);
     expect(done.s).toMatchObject({ phase: "succeeded", last: { kind: "placed", text: "Placed in Calendar" } });
-    const undo = run([{ type: "undo" }], done.s); expect(undo.effects).toEqual([{ type: "undo", receipt: receipt(), destinationId: "cal" }]);
-    expect(run([{ type: "undone" }], undo.s).s.phase).toBe("idle");
+    const undo = run([{ type: "undo" }], done.s); expect(undo.effects).toEqual([{ type: "undo", receipt: receipt(opId), destinationId: "cal" }]);
+    expect(undo.s.phase).toBe("undoing");
+    expect(run([{ type: "undone", opId }], undo.s).s.phase).toBe("idle");
   });
   it("an unknown outcome is reconciled, never retried; not found means failed and safe to place again", () => {
     const m = mayaDinner();
-    const r = run([{ type: "pickUp", id: "obj-1" }, { type: "approach", target: { kind: "destination", id: "cal", slot: "fri-1930" } }, { type: "drop" }, { type: "answer", objectId: "obj-1", field: "title", value: "Dinner" }, { type: "place", consent: { kind: "release" } }, { type: "outcomeUnknown", message: "timed out" }], m.s);
-    expect(r.s.phase).toBe("unknown"); expect(run([{ type: "place", consent: { kind: "release" } }], r.s).errors).toEqual(["cannot place while unknown"]);
+    const r = run([{ type: "pickUp", id: "obj-1" }, { type: "approach", target: { kind: "destination", id: "cal", slot: "fri-1930" } }, { type: "drop" }, { type: "answer", objectId: "obj-1", field: "title", value: "Dinner" }, { type: "place", consent: { kind: "release" } }], m.s);
+    const opId = r.s.placement!.op!.opId; Object.assign(r, run([{ type: "outcomeUnknown", opId, message: "timed out" }], r.s));
+    expect(r.s.phase).toBe("unknown"); expect(run([{ type: "place", consent: { kind: "release" } }], r.s).errors).toEqual(["Recast doesn't know yet whether Calendar has it. Check Calendar first"]);
     const rec = run([{ type: "reconcile" }], r.s); expect((rec.effects[0] as { type: string }).type).toBe("reconcile");
-    expect(run([{ type: "reconciled", found: false }], rec.s).s).toMatchObject({ phase: "failed", last: { text: expect.stringMatching(/safe to place again/) } });
-    expect(run([{ type: "reconciled", found: true, receipt: receipt() }], rec.s).s.phase).toBe("succeeded");
+    expect(run([{ type: "reconciled", opId, found: false }], rec.s).s).toMatchObject({ phase: "failed", last: { text: expect.stringMatching(/safe to place again/) } });
+    expect(run([{ type: "reconciled", opId, found: true, receipt: receipt(opId) }], rec.s).s.phase).toBe("succeeded");
   });
   it("a message cannot go into a calendar; the object goes back on the desk whole", () => {
     const r = run([{ type: "capture", fragment: frag("text", "Running late!") }, { type: "capture", fragment: frag("person", "Maya Rao", { value: { name: "Maya Rao", email: "maya@x.com" } }), carry: true }, { type: "approach", target: { kind: "object", id: "obj-1" } }, { type: "drop" }, { type: "settled" },
