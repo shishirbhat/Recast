@@ -33,7 +33,7 @@ Requires Node ≥ 22.18 (types are stripped natively; there is no build step) an
 
 ```sh
 npm install
-npm run typecheck && npm test        # 41 tests, no model calls
+npm run typecheck && npm test        # 45 tests, no model calls
 RELAY_REAL_PROVIDER=1 npm run test:real   # runs real `claude -p`; costs model usage
 ```
 
@@ -56,18 +56,28 @@ relay integrate approve <integration-id> --cwd .
 
 ```sh
 npm install && (cd ide/web && npm install && npm run build)
-./bin/relay ide --cwd /path/to/your/repo        # prints a one-time owner sign-in link
+./bin/relay ide --cwd /path/to/your/repo        # prints a one-time owner sign-in link (add --allow-terminal only behind TLS on a network address)
 ./bin/relay ide invite "Kai Chen" --role editor  # one-time link for a collaborator
 ```
 
-A standard IDE layout: command centre and palette (Ctrl/⌘+P, Ctrl/⌘+Shift+P), Explorer / Search / Source Control, tabs, a Problems / Agents / Activity panel, a Relay side bar, and a status bar. Underneath it:
+A standard IDE workbench (VS Code / Cursor / Antigravity structure):
+- **Menu bar** (File, Edit, Selection, View, Go, Run, Terminal, Help) driven by one command registry.
+- **Command centre and palette** (Ctrl/⌘+P, Ctrl/⌘+Shift+P).
+- **Activity bar**: Explorer, Search, Source Control, Run, Extensions, Community, Relay, Accounts, Manage.
+- **Resizable side bars and panel** that collapse sensibly in narrow windows.
+- **Integrated terminal** (real PTY; owners only; Ctrl+`).
+- **Panel tabs**: Problems, Output, Agents, Activity.
+- **Agent panel**: requests become scoped tasks.
+- **Status bar.**
+
+Underneath it:
 - Live multi-person editing (Yjs CRDT) with named cursors and selections.
 - Tasks, contracts and integration review go through the same engine as the CLI.
 - Agent runs happen in isolated worktrees and are applied with a 3-way merge only after Relay's checks and a person's approval.
 
 Tests:
-- `npm test`: 41 tests, including real y-websocket clients and simulated-agent orchestration.
-- `RELAY_E2E=1 node --test test/e2e/ide.e2e.test.ts`: two real Chromium sessions.
+- `npm test`: 45 tests, including real y-websocket clients, real PTYs and simulated-agent orchestration.
+- `RELAY_E2E=1 node --test test/e2e/*.e2e.test.ts`: two-person live editing, plus workbench structure (panes, narrow windows, activities, palette, menus, terminal, save).
 
 Screenshots are in `docs/screenshots/`.
 
@@ -78,3 +88,4 @@ Screenshots are in `docs/screenshots/`.
 - [docs/03-findings.md](docs/03-findings.md): real-provider results, capability matrix, known limitations, next steps
 - `docs/evidence/`: raw JSON from real-provider runs
 - [docs/07-ide-architecture-audit.md](docs/07-ide-architecture-audit.md), [docs/08-ide-architecture.md](docs/08-ide-architecture.md): IDE audit and architecture decisions
+- [docs/13-ide-structure-audit.md](docs/13-ide-structure-audit.md): workbench structure audit and Phase 1 implementation report

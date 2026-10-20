@@ -18,7 +18,7 @@ import { python } from "@codemirror/lang-python";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import type { DocSession } from "@/lib/collab";
 
-/** Restrained syntax colours from the theme tokens. Comments are set in italic serif: Relay's quiet signature. */
+/** Restrained syntax colours from the theme tokens. */
 const relayHighlight = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword, t.definitionKeyword], color: "var(--syn-keyword)", fontWeight: "500" },
   { tag: [t.string, t.special(t.string), t.regexp], color: "var(--syn-string)" },
@@ -26,7 +26,7 @@ const relayHighlight = HighlightStyle.define([
   { tag: [t.typeName, t.className, t.namespace], color: "var(--syn-type)" },
   { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syn-fn)", fontWeight: "550" },
   { tag: [t.propertyName, t.attributeName], color: "var(--syn-prop)" },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syn-comment)", fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "1.12em" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syn-comment)", fontStyle: "italic" },
   { tag: [t.punctuation, t.bracket, t.separator], color: "var(--syn-punct)" },
   { tag: t.heading, color: "var(--ink)", fontWeight: "700" },
   { tag: t.emphasis, fontStyle: "italic" },
@@ -37,16 +37,16 @@ const relayHighlight = HighlightStyle.define([
 
 /** The editor surface, from the same tokens as the rest of the IDE. Defined as a theme so it outranks CodeMirror's defaults. */
 const relayTheme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "transparent", color: "var(--ink)", fontSize: "13.5px" },
+  "&": { height: "100%", backgroundColor: "transparent", color: "var(--ink)", fontSize: "13px" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.7", fontVariantLigatures: "contextual" },
-  ".cm-content": { padding: "18px 0 40vh", caretColor: "var(--accent)" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.6", fontVariantLigatures: "none" },
+  ".cm-content": { padding: "4px 0 40vh", caretColor: "var(--ink)" },
   ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--faint)", paddingLeft: "10px" },
   ".cm-lineNumbers .cm-gutterElement": { padding: "0 14px 0 6px", fontSize: "12px" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--ink-2)" },
-  ".cm-activeLine": { backgroundColor: "color-mix(in oklab, var(--accent-soft) 45%, transparent)" },
+  ".cm-activeLine": { backgroundColor: "color-mix(in oklab, var(--hover) 60%, transparent)" },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "var(--selection) !important" },
-  ".cm-cursor, .cm-dropCursor": { borderLeft: "2px solid var(--accent)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeft: "2px solid var(--ink)" },
   ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": { backgroundColor: "var(--accent-soft)", outline: "1px solid var(--accent-line)", borderRadius: "3px" },
   ".cm-foldPlaceholder": { backgroundColor: "var(--sunken)", border: "1px solid var(--rule)", color: "var(--muted)", borderRadius: "6px", padding: "0 6px" },
   ".cm-tooltip": { backgroundColor: "var(--panel)", border: "1px solid var(--rule)", borderRadius: "10px", boxShadow: "var(--shadow-pop)" },
@@ -77,7 +77,7 @@ export function languageFor(path: string): Extension {
   return [];
 }
 
-export function Editor({ session, readOnly, onCursor, reveal }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null }) {
+export function Editor({ session, readOnly, onCursor, reveal, viewHandle }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null } }) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
@@ -136,11 +136,13 @@ export function Editor({ session, readOnly, onCursor, reveal }: { session: DocSe
       }),
     });
     viewRef.current = view;
+    if (viewHandle) viewHandle.current = view;
     return () => {
       viewRef.current = null;
+      if (viewHandle && viewHandle.current === view) viewHandle.current = null;
       view.destroy();
     };
-  }, [session, readOnly, onCursor]);
+  }, [session, readOnly, onCursor, viewHandle]);
 
   return <div ref={host} className="h-full min-h-0" data-testid="editor" />;
 }

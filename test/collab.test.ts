@@ -202,6 +202,9 @@ test("security: no session, wrong role, forged origin, traversal, secrets, missi
     assert.equal((await api(server, editor.cookie, "POST", "/api/tasks", { id: "T2", objective: "x", scope: ["src/app.js"], verify: ["rm -rf /"] })).status, 403, "editors cannot define commands");
     assert.equal((await api(server, editor.cookie, "POST", "/api/tasks", { id: "T3", objective: "x", scope: [".env"] })).status, 403);
     assert.equal((await api(server, editor.cookie, "POST", "/api/tasks", { id: "T4", objective: "x", scope: ["src/app.js"] }, {})).status, 403, "missing x-relay header");
+    const viewerOut = await api(server, viewer.cookie, "POST", "/api/logout");
+    assert.equal(viewerOut.status, 200);
+    assert.equal((await api(server, viewer.cookie, "GET", "/api/state")).status, 401, "signing out ends the session server-side");
     server.members.revoke(editor.id);
     assert.equal((await api(server, editor.cookie, "GET", "/api/state")).status, 401, "revoked members lose access");
   } finally {

@@ -225,6 +225,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       return json(res, 200, { member }, { "set-cookie": `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 86400}` });
     }
     if (method === "POST" && parts[0] === "logout") {
+      members.endSession(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
       return json(res, 200, {}, { "set-cookie": `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` });
     }
     if (method === "GET" && parts[0] === "state") return json(res, 200, snapshot(requireMember(req, "read")));
@@ -249,6 +250,13 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       if (!entry) throw new HttpError(404, "not_found", `${path} is not open`);
       docs.flush(entry);
       return json(res, 200, { path, savedAt: new Date().toISOString() });
+    }
+    if (method === "GET" && parts[0] === "output") {
+      // What Relay itself ran (diff checks, verification, integration checks), newest first.
+      requireMember(req, "read");
+      const evidence = relay.db.prepare("SELECT id, task_id, kind, command, exit_code, output, created_at FROM evidence WHERE source = 'system' ORDER BY created_at DESC LIMIT 40").all();
+      const integrations = relay.db.prepare("SELECT id, tasks, status, results, created_at FROM integrations ORDER BY created_at DESC LIMIT 10").all() as { id: string; tasks: string; status: string; results: string; created_at: string }[];
+      return json(res, 200, { evidence, integrations: integrations.map((i) => ({ ...i, tasks: JSON.parse(i.tasks), results: JSON.parse(i.results) })) });
     }
     if (method === "GET" && parts[0] === "scripts") {
       requireMember(req, "read");
@@ -333,6 +341,29 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         const m = requireMember(req, "approve");
         return json(res, 200, runs.apply(id, m));
       }
+    }
+    if (parts[0] === "agent" && method === "POST") {
+      // The agent composer: every request becomes a scoped Relay task, never an ungoverned chat.
+      const m = requireMember(req, "edit");
+      const b = await readBody(req);
+      const prompt = str(b.prompt, "prompt", 4000).trim();
+      const mode = b.mode === "plan" ? "plan" : "agent";
+      const scope = [...new Set(strList(b.files, "files").map((f) => resolveProjectPath(root, f)))];
+      if (!scope.length) throw new HttpError(400, "invalid", "Mention at least one file with @ so Relay knows what the agent may change.");
+      const contracts: Record<string, number> = {};
+      for (const c of strList(b.contracts, "contracts")) {
+        const cur = relay.currentContract(c);
+        if (!cur) throw new HttpError(400, "invalid", `Contract ${c} has no accepted version`);
+        contracts[c] = cur.version;
+      }
+      let id = "";
+      do id = `A-${Math.random().toString(36).slice(2, 6)}`;
+      while (relay.getTask(id));
+      const task = relay.createTask({ id, objective: prompt, scope, contracts, owner: m.id, baseCommit: resolveCommit(root) }, actorFor(m));
+      if (mode === "plan") return json(res, 201, { task, runs: [], note: "Planned. Nothing runs until it is approved and started." });
+      if (!can(m.role, "approve")) return json(res, 201, { task, runs: [], note: "Created as a proposal. A project owner approves it before an agent can start." });
+      relay.transition(id, "queued", actorFor(m), { reason: "approved from the agent composer" });
+      return json(res, 202, { task: relay.requireTask(id), runs: await runs.start(id, m), note: "Claude Code is working in its own worktree." });
     }
     if (parts[0] === "runs" && method === "POST" && parts.length === 1) {
       const m = requireMember(req, "edit");

@@ -27,6 +27,13 @@ function build(paths: string[]): Node {
 }
 
 const sorted = (n: Node) => [...n.children.values()].sort((a, b) => Number(a.file) - Number(b.file) || a.name.localeCompare(b.name));
+const GIT_LETTER: Record<string, string> = { modified: "M", added: "A", untracked: "U", deleted: "D", renamed: "R" };
+function gitTone(st: string | undefined): string {
+  if (st === "modified") return "text-warn";
+  if (st === "added" || st === "untracked") return "text-ok";
+  if (st === "deleted") return "text-danger line-through";
+  return "";
+}
 const CODE = /\.(m?[jt]sx?|c?js|py|css|html?|json|rs|go|java|rb|sh)$/i;
 
 export function FileTree({
@@ -38,6 +45,8 @@ export function FileTree({
   canEdit,
   onOpen,
   onCreate,
+  gitStatus,
+  title,
 }: {
   files: string[];
   active: string | null;
@@ -47,6 +56,9 @@ export function FileTree({
   canEdit: boolean;
   onOpen: (path: string) => void;
   onCreate: (path: string) => void;
+  /** path -> git status, shown as VS Code-style letters. */
+  gitStatus?: Map<string, string>;
+  title?: string;
 }) {
   const tree = useMemo(() => build(files), [files]);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -90,11 +102,12 @@ export function FileTree({
           style={{ paddingLeft: 22 + depth * 14 }}
         >
           {CODE.test(n.name) ? <FileCode2 size={14} className={isActive ? "text-accent" : "text-faint"} /> : <FileText size={14} className={isActive ? "text-accent" : "text-faint"} />}
-          <span className="truncate">{n.name}</span>
-          <span className="ml-auto flex gap-0.5">
+          <span className={`truncate ${gitTone(gitStatus?.get(n.path))}`}>{n.name}</span>
+          <span className="ml-auto flex items-center gap-0.5">
             {here.slice(0, 3).map((id) => (
               <span key={id} title={`${byId.get(id)?.name ?? id} is here`} className="size-2 rounded-full" style={{ background: byId.get(id)?.color ?? "var(--muted)" }} />
             ))}
+            {gitStatus?.get(n.path) && <span className={`ml-1 w-3 text-center font-mono text-[11px] ${gitTone(gitStatus.get(n.path))}`}>{GIT_LETTER[gitStatus.get(n.path)!]}</span>}
           </span>
         </button>
       );
@@ -104,7 +117,7 @@ export function FileTree({
     <div className="flex h-full flex-col">
       <div className="px-2">
         <div className="flex h-6.5 items-center justify-between pl-2 pr-0.5">
-          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-ink-2">Files</span>
+          <span className="truncate text-[11px] font-bold uppercase tracking-[0.04em] text-ink-2">{title ?? "Files"}</span>
           {canEdit && (
             <IconButton label="New file" onClick={() => setCreating(true)} className="size-5.5 rounded-md">
               <FilePlus2 size={13} />

@@ -19,6 +19,7 @@ export function Coordination({
   selected,
   setSelected,
   newTaskNonce,
+  embedded = false,
 }: {
   state: ProjectState;
   onOpenFile: (p: string) => void;
@@ -29,6 +30,8 @@ export function Coordination({
   selected: string | null;
   setSelected: (id: string | null) => void;
   newTaskNonce: number;
+  /** When the surrounding side bar provides the tabs. */
+  embedded?: boolean;
 }) {
   const task = state.tasks.find((t) => t.id === selected) ?? null;
 
@@ -45,7 +48,7 @@ export function Coordination({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-rule px-3">
+      <div className={`flex h-10 shrink-0 items-center gap-1 border-b border-rule px-3 ${embedded ? "hidden" : ""}`}>
         <span className="mr-auto pl-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Relay</span>
         {(["tasks", "contracts"] as CoordTab[]).map((t) => (
           <button
@@ -85,7 +88,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
       layout
       onClick={onClick}
       data-testid={`task-${task.id}`}
-      className="group w-full rounded-2xl border border-rule bg-panel p-3.5 text-left shadow-panel transition-[border,transform] hover:-translate-y-px hover:border-rule-strong"
+      className="group w-full border-b border-rule px-3 py-2 text-left hover:bg-hover"
     >
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[11.5px] text-muted">{task.id}</span>
@@ -132,9 +135,7 @@ function TaskList({ state, onSelect, act, newTaskNonce }: { state: ProjectState;
   return (
     <div className="space-y-5">
       <div className="flex items-end justify-between px-1 pt-1">
-        <h2 className="text-[26px] leading-none">
-          <span className="serif-em">Work</span> <span className="text-muted serif-em">in motion</span>
-        </h2>
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">Tasks</h2>
         {canEdit && (
           <Button tone="quiet" size="sm" onClick={() => setCreating((v) => !v)}>
             <Plus size={13} /> Task
@@ -143,8 +144,8 @@ function TaskList({ state, onSelect, act, newTaskNonce }: { state: ProjectState;
       </div>
       <AnimatePresence>{creating && <NewTask state={state} act={act} onDone={() => setCreating(false)} />}</AnimatePresence>
       {state.tasks.length === 0 && !creating && (
-        <div className="rounded-2xl border border-dashed border-rule-strong p-6 text-center">
-          <p className="serif-em text-[22px] text-ink-2">Nothing to coordinate yet.</p>
+        <div className="px-1 py-2">
+          <p className="text-[13px] text-ink-2">No tasks yet.</p>
           <p className="mt-1 text-[13px] text-muted">Create a task, give it a scope and a contract, and hand it to a person or an agent.</p>
         </div>
       )}
@@ -158,7 +159,7 @@ function TaskList({ state, onSelect, act, newTaskNonce }: { state: ProjectState;
         list.length ? (
           <section key={label}>
             <SectionLabel right={<span className="text-[11px] text-faint">{list.length}</span>}>{label}</SectionLabel>
-            <div className="space-y-2">
+            <div className="-mx-3 border-t border-rule">
               {list.map((t) => (
                 <TaskCard key={t.id} task={t} onClick={() => onSelect(t.id)} />
               ))}
@@ -178,7 +179,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
-const inputCls = "h-9 w-full rounded-xl border border-rule bg-panel-2 px-3 text-[13px] outline-none transition-colors focus:border-accent-line focus:bg-panel";
+const inputCls = "h-[26px] w-full rounded-sm border border-rule bg-editor px-2 text-[13px] outline-none focus:border-accent";
 
 function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone: () => void }) {
   const accepted = state.contracts.filter((c) => c.history.some((h) => h.status === "accepted"));
@@ -187,7 +188,7 @@ function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
       exit={{ opacity: 0, height: 0 }}
-      className="space-y-3 overflow-hidden rounded-2xl border border-accent-line bg-panel p-4 shadow-panel"
+      className="space-y-3 overflow-hidden border border-rule bg-editor p-3"
       onSubmit={(e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
@@ -301,20 +302,20 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
           <span className="font-mono text-[12px] text-muted">{task.id}</span>
           <StatePill state={task.state} />
         </div>
-        <h2 className="mt-2 text-[24px] leading-[1.15] serif-em text-ink">{task.objective}</h2>
+        <h2 className="mt-1.5 text-[14px] font-medium leading-snug text-ink">{task.objective}</h2>
         <p className="mt-2 flex items-center gap-1.5 text-[12px] text-muted">
           {agentTask ? <Bot size={12} /> : <UserRound size={12} />}
           {agentTask ? "Claude Code" : (task.agent ?? task.owner ?? "unassigned")} · updated {timeAgo(task.updatedAt)}
         </p>
       </div>
 
-      <div className="rounded-2xl border border-rule bg-panel p-4 shadow-panel">
+      <div className="border-y border-rule py-3">
         <SectionLabel>How far it got</SectionLabel>
         <Ladder why={why} />
       </div>
 
       {why && visibleGaps(task, why).length > 0 && (
-        <div className="rounded-2xl bg-danger-soft/60 p-4 ring-1 ring-danger/15">
+        <div className="border-l-2 border-danger bg-danger-soft/50 px-3 py-2">
           <p className="flex items-center gap-1.5 text-[13px] font-semibold text-danger">
             <CircleAlert size={14} /> Why it can&apos;t be approved yet
           </p>
@@ -359,7 +360,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
       )}
 
       {run && (
-        <div className="rounded-2xl border border-rule bg-panel p-4 shadow-panel">
+        <div className="border-y border-rule py-3">
           <SectionLabel right={<Pill tone={run.status === "running" ? "accent" : run.status === "failed" ? "danger" : "neutral"}>{run.status}</Pill>}>Agent run</SectionLabel>
           {run.staleInputs.map((s) => (
             <p key={s.path} className="mb-2 rounded-lg bg-attention-soft px-2.5 py-1.5 text-[12px] text-ink-2">
@@ -380,7 +381,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, act }: { task: Task; stat
       )}
 
       {integration && (
-        <div className={`rounded-2xl p-4 ring-1 ${integration.status === "passed" ? "bg-ok-soft/60 ring-ok/20" : "bg-danger-soft/60 ring-danger/15"}`}>
+        <div className={`border-l-2 px-3 py-2 ${integration.status === "passed" ? "border-ok bg-ok-soft/50" : "border-danger bg-danger-soft/50"}`}>
           <p className="flex items-center gap-1.5 text-[13px] font-semibold">
             <GitMerge size={14} /> {integration.status === "passed" ? "Ready to approve together" : "Not ready to integrate"}
           </p>
@@ -488,9 +489,7 @@ function Contracts({ state, act }: { state: ProjectState; act: Act }) {
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between px-1 pt-1">
-        <h2 className="text-[26px] leading-none">
-          <span className="serif-em">Shared</span> <span className="serif-em text-muted">contracts</span>
-        </h2>
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">Contracts</h2>
         {state.me.role !== "viewer" && (
           <Button tone="quiet" size="sm" onClick={() => setProposing("")}>
             <Plus size={13} /> Contract
@@ -499,7 +498,7 @@ function Contracts({ state, act }: { state: ProjectState; act: Act }) {
       </div>
       {proposing !== null && (
         <form
-          className="space-y-2 rounded-2xl border border-accent-line bg-panel p-4"
+          className="space-y-2 border border-rule bg-editor p-3"
           onSubmit={(e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
@@ -522,7 +521,7 @@ function Contracts({ state, act }: { state: ProjectState; act: Act }) {
       {state.contracts.map((c) => {
         const cur = c.history.filter((h) => h.status === "accepted").at(-1);
         return (
-          <div key={c.id} className="rounded-2xl border border-rule bg-panel p-4 shadow-panel">
+          <div key={c.id} className="border-b border-rule pb-3">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[13px] font-semibold">{c.id}</span>
               {cur && <Pill tone="ok">v{cur.version} accepted</Pill>}

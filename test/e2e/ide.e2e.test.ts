@@ -75,18 +75,19 @@ test("two people edit the same file in the browser and see each other live", { s
     await a.keyboard.press("Control+P");
     await a.getByTestId("palette-input").fill("serv");
     await a.keyboard.press("Enter");
-    await a.locator("[role=tab]", { hasText: "server.js" }).waitFor();
+    await a.getByTestId("tab-src/server.js").waitFor();
     await a.keyboard.press("Control+Shift+F");
     await a.getByTestId("search-input").fill("getUser");
     await a.getByText(/results in 2 files/).waitFor({ timeout: 5000 });
     await a.keyboard.press("Control+Shift+P");
-    await a.getByTestId("palette-input").fill(">show problems");
+    await a.getByTestId("palette-input").fill(">problems");
     await a.keyboard.press("Enter");
     await a.getByText("T-api is built on user-api v1; the accepted contract is v2").waitFor();
 
     if (SHOTS) {
       mkdirSync(SHOTS, { recursive: true });
-      await a.locator("[role=tab]", { hasText: "ui.js" }).locator("button").first().click();
+      await a.getByTestId("tab-src/ui.js").locator("button").first().click();
+      await a.getByTestId("right-tab-tasks").click();
       await a.getByTestId("task-T-ui").click();
       await a.waitForTimeout(600);
       await a.screenshot({ path: join(SHOTS, "ide-light.png") });
@@ -102,7 +103,7 @@ test("two people edit the same file in the browser and see each other live", { s
       await dark.getByTestId("file-src/ui.js").click();
       await dark.locator(".cm-content").waitFor();
       await dark.locator(".cm-ySelectionInfo").first().waitFor({ timeout: 5000 });
-      await dark.getByText("contracts", { exact: true }).click();
+      await dark.getByTestId("right-tab-contracts").click();
       await dark.keyboard.press("Control+Shift+F");
       await dark.getByTestId("search-input").fill("user");
       await dark.getByText(/results in/).waitFor();

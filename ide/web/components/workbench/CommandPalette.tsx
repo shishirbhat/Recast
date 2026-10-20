@@ -1,79 +1,61 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, FileCode2, Search } from "lucide-react";
+import { availability, execute, fuzzy, keyLabel } from "@/lib/commands";
+import type { Command } from "@/lib/commands";
 
-export interface Command {
-  id: string;
-  title: string;
-  category: string;
-  keybinding?: string;
-  run: () => void;
-}
-
-/** Subsequence fuzzy score: higher is better, null if `q` is not a subsequence of `s`. */
-export function fuzzy(q: string, s: string): number | null {
-  if (!q) return 0;
-  const a = q.toLowerCase();
-  const b = s.toLowerCase();
-  let score = 0;
-  let j = 0;
-  let streak = 0;
-  for (let i = 0; i < b.length && j < a.length; i++) {
-    if (b[i] === a[j]) {
-      streak++;
-      score += 1 + streak * 2 + (i === 0 || "/._- ".includes(b[i - 1]!) ? 6 : 0);
-      j++;
-    } else streak = 0;
-  }
-  return j === a.length ? score - b.length * 0.05 : null;
-}
-
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-export const mod = isMac ? "⌘" : "Ctrl+";
-export function keyLabel(k: string): string {
-  return k.replace("Mod+", mod).replace("Shift+", isMac ? "⇧" : "Shift+").replace("Alt+", isMac ? "⌥" : "Alt+");
-}
+type Item = { kind: "file"; key: string; path: string; open: boolean } | { kind: "cmd"; key: string; c: Command; reason: string | null };
 
 /**
- * VS Code-style quick input: files by default, commands after ">".
- * Opening with mode "commands" pre-fills ">".
+ * Quick input in the VS Code mould: file names by default (open editors first), commands after ">".
+ * Restores focus to whatever had it before opening.
  */
-export function CommandPalette({ open, mode, files, commands, recent, onClose, onOpenFile }: { open: boolean; mode: "files" | "commands"; files: string[]; commands: Command[]; recent: string[]; onClose: () => void; onOpenFile: (p: string) => void }) {
+export function CommandPalette({ open, mode, files, openEditors, commands, onClose, onOpenFile }: { open: boolean; mode: "files" | "commands"; files: string[]; openEditors: string[]; commands: Command[]; onClose: () => void; onOpenFile: (p: string) => void }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (open) {
+      returnFocus.current = document.activeElement as HTMLElement | null;
       setQ(mode === "commands" ? ">" : "");
       setSel(0);
-      setTimeout(() => input.current?.focus(), 0);
+      setNotice(null);
+      requestAnimationFrame(() => input.current?.focus());
     }
   }, [open, mode]);
+
+  const close = (restore = true) => {
+    onClose();
+    if (restore) requestAnimationFrame(() => returnFocus.current?.focus?.());
+  };
 
   const isCmd = q.startsWith(">");
   const term = (isCmd ? q.slice(1) : q).trim();
 
-  const items = useMemo(() => {
+  const items: Item[] = useMemo(() => {
     if (isCmd) {
       return commands
-        .map((c) => ({ c, s: fuzzy(term, `${c.category}: ${c.title}`) }))
+        .filter((c) => c.palette !== false)
+        .map((c) => ({ c, s: fuzzy(term, `${c.category}: ${c.title} ${(c.keywords ?? []).join(" ")}`) }))
         .filter((x) => x.s !== null)
         .sort((x, y) => y.s! - x.s!)
-        .slice(0, 60)
-        .map(({ c }) => ({ kind: "cmd" as const, key: c.id, c }));
+        .slice(0, 80)
+        .map(({ c }) => ({ kind: "cmd" as const, key: c.id, c, reason: availability(c) }));
     }
-    const pool = term ? files : [...new Set([...recent, ...files])];
+    const openSet = new Set(openEditors);
+    const pool = [...openEditors, ...files.filter((f) => !openSet.has(f))];
     return pool
       .map((p) => ({ p, s: fuzzy(term, p) }))
       .filter((x) => x.s !== null)
       .sort((x, y) => (term ? y.s! - x.s! : 0))
-      .slice(0, 60)
-      .map(({ p }) => ({ kind: "file" as const, key: p, p }));
-  }, [isCmd, term, commands, files, recent]);
+      .slice(0, 80)
+      .map(({ p }) => ({ kind: "file" as const, key: p, path: p, open: openSet.has(p) }));
+  }, [isCmd, term, commands, files, openEditors]);
 
   useEffect(() => setSel(0), [q]);
   useEffect(() => {
@@ -83,75 +65,89 @@ export function CommandPalette({ open, mode, files, commands, recent, onClose, o
   const choose = (i: number) => {
     const it = items[i];
     if (!it) return;
-    onClose();
-    if (it.kind === "cmd") it.c.run();
-    else onOpenFile(it.p);
+    if (it.kind === "cmd") {
+      if (it.reason) return setNotice(it.reason);
+      // Like VS Code: put focus back where it was, then run the command (which may move it on purpose).
+      onClose();
+      returnFocus.current?.focus?.();
+      execute(it.c);
+    } else {
+      close(false);
+      onOpenFile(it.path);
+    }
   };
 
+  if (!open) return null;
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div className="fixed inset-0 z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.1 }} onMouseDown={onClose}>
-          <motion.div
-            role="dialog"
-            aria-label={isCmd ? "Command palette" : "Go to file"}
-            initial={{ y: -8, opacity: 0, scale: 0.99 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: -6, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 600, damping: 40 }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="absolute left-1/2 top-[52px] w-[min(640px,92vw)] -translate-x-1/2 overflow-hidden rounded-xl border border-rule-strong bg-panel shadow-pop"
-          >
-            <div className="flex items-center gap-2 border-b border-rule px-3">
-              {isCmd ? <ChevronRight size={15} className="text-accent" /> : <Search size={14} className="text-muted" />}
-              <input
-                ref={input}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") onClose();
-                  else if (e.key === "ArrowDown") (e.preventDefault(), setSel((s) => Math.min(items.length - 1, s + 1)));
-                  else if (e.key === "ArrowUp") (e.preventDefault(), setSel((s) => Math.max(0, s - 1)));
-                  else if (e.key === "Enter") (e.preventDefault(), choose(sel));
-                }}
-                placeholder={isCmd ? "Type a command" : "Search files by name (type > for commands)"}
-                className="h-11 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
-                aria-controls="palette-list"
-                data-testid="palette-input"
-              />
+    <div className="fixed inset-0 z-50" onMouseDown={() => close()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={isCmd ? "Command palette" : "Go to file"}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute left-1/2 top-[34px] w-[min(600px,94vw)] -translate-x-1/2 overflow-hidden rounded-md border border-rule-strong bg-panel-2 shadow-pop"
+      >
+        <div className="flex items-center gap-2 border-b border-rule px-2.5">
+          {isCmd ? <ChevronRight size={14} className="text-muted" /> : <Search size={13} className="text-muted" />}
+          <input
+            ref={input}
+            value={q}
+            onChange={(e) => (setQ(e.target.value), setNotice(null))}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") (e.preventDefault(), close());
+              else if (e.key === "ArrowDown") (e.preventDefault(), setSel((s) => Math.min(items.length - 1, s + 1)));
+              else if (e.key === "ArrowUp") (e.preventDefault(), setSel((s) => Math.max(0, s - 1)));
+              else if (e.key === "Enter") (e.preventDefault(), choose(sel));
+              else if (e.key === "Tab") e.preventDefault();
+            }}
+            placeholder={isCmd ? "Type the name of a command to run" : "Search files by name (append > to run commands)"}
+            className="h-8 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-faint focus-visible:outline-none"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-list"
+            aria-activedescendant={items[sel] ? `pal-${sel}` : undefined}
+            data-testid="palette-input"
+          />
+        </div>
+        {notice && (
+          <p role="alert" className="border-b border-rule bg-warn-soft px-3 py-1.5 text-[12px] text-warn">
+            {notice}
+          </p>
+        )}
+        <div ref={list} id="palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto py-1">
+          {items.length === 0 && <p className="px-3 py-2 text-[12.5px] text-muted">{isCmd ? "No matching commands" : "No matching files"}</p>}
+          {items.map((it, i) => (
+            <div
+              key={it.key}
+              id={`pal-${i}`}
+              data-i={i}
+              role="option"
+              aria-selected={i === sel}
+              aria-disabled={it.kind === "cmd" && !!it.reason}
+              onMouseMove={() => setSel(i)}
+              onClick={() => choose(i)}
+              title={it.kind === "cmd" && it.reason ? it.reason : undefined}
+              className={`flex h-[24px] cursor-default items-center gap-2 px-3 text-[13px] ${i === sel ? "bg-accent-soft text-ink" : "text-ink-2"}`}
+            >
+              {it.kind === "file" ? (
+                <>
+                  <FileCode2 size={13} className="shrink-0 text-faint" />
+                  <span>{it.path.split("/").pop()}</span>
+                  <span className="truncate text-[12px] text-faint">{it.path.split("/").slice(0, -1).join("/")}</span>
+                  {it.open && <span className="ml-auto text-[11px] text-faint">open</span>}
+                </>
+              ) : (
+                <>
+                  <span className={it.reason ? "text-faint" : "text-muted"}>{it.c.category}:</span>
+                  <span className={`truncate ${it.reason ? "text-faint" : ""}`}>{it.c.title}</span>
+                  {it.reason && <span className="truncate text-[11.5px] text-faint">— {it.reason}</span>}
+                  {it.c.keybinding && <kbd className="ml-auto shrink-0 rounded-sm border border-rule px-1 font-sans text-[11px] text-muted">{keyLabel(it.c.keybinding)}</kbd>}
+                </>
+              )}
             </div>
-            <div ref={list} id="palette-list" role="listbox" className="max-h-[52vh] overflow-y-auto py-1.5">
-              {items.length === 0 && <p className="px-4 py-3 text-[13px] text-muted">{isCmd ? "No matching commands" : "No matching files"}</p>}
-              {!isCmd && !term && recent.length > 0 && <p className="px-4 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">Recently opened</p>}
-              {items.map((it, i) => (
-                <button
-                  key={it.key}
-                  data-i={i}
-                  role="option"
-                  aria-selected={i === sel}
-                  onMouseMove={() => setSel(i)}
-                  onClick={() => choose(i)}
-                  className={`flex h-8 w-full items-center gap-2.5 px-4 text-left text-[13px] ${i === sel ? "bg-accent-soft text-ink" : "text-ink-2"}`}
-                >
-                  {it.kind === "file" ? (
-                    <>
-                      <FileCode2 size={14} className={i === sel ? "text-accent" : "text-faint"} />
-                      <span className="font-medium">{it.p.split("/").pop()}</span>
-                      <span className="truncate text-[12px] text-faint">{it.p.split("/").slice(0, -1).join("/")}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-muted">{it.c.category}:</span>
-                      <span className="truncate">{it.c.title}</span>
-                      {it.c.keybinding && <kbd className="ml-auto rounded-md border border-rule bg-panel-2 px-1.5 py-px font-sans text-[11px] text-muted">{keyLabel(it.c.keybinding)}</kbd>}
-                    </>
-                  )}
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

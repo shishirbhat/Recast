@@ -94,6 +94,11 @@ export class Members {
     return this.get(row.member_id);
   }
 
+  /** Sign out: the session stops working immediately, not just the cookie. */
+  endSession(session: string | undefined): void {
+    if (session) this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash(session));
+  }
+
   revoke(id: string): void {
     this.db.prepare("UPDATE members SET revoked_at = ? WHERE id = ?").run(now(), id);
     this.db.prepare("DELETE FROM sessions WHERE member_id = ?").run(id);

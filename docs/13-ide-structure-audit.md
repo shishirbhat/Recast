@@ -54,3 +54,74 @@ Cause: sidebar widths are persisted absolute pixels and are never clamped agains
 4. **Terminal.** A real PTY through `node-pty` on an authenticated WebSocket, with an `xterm.js` client. Sessions survive panel toggles and reconnects. **Owners only**, and only when the server is bound to loopback unless started with `--allow-terminal`. Anyone else sees a labelled unavailable state that explains why.
 5. **Editor save semantics.** Ctrl/⌘+S forces a server flush. A tab indicator shows edits not yet confirmed by the server. Closing such a tab, or unloading the page, asks for confirmation.
 6. **Tests.** Browser tests covering pane toggling and resizing, narrow windows, switching activities without losing tabs, palette keyboard navigation and focus restore, the terminal running a real command, and save.
+
+---
+
+## Implementation report (Phase 1)
+
+### Architecture
+- **Shell (`workbench/Workbench.tsx`).** Title bar, activity bar, primary side bar, editor group, bottom panel, secondary side bar and status bar.
+  - Layout preferences (visibility and sizes) persist in `localStorage` (`relay.layout.v2`).
+  - `allocate()` derives the *effective* layout for the current window: the editor keeps ≥ 420 px (≥ 300 below 900 px), panes shrink to their minimums first, then the pane opened least recently auto-hides. Preferences are never overwritten, so panes come back when the window grows.
+  - Sashes resize by pointer or keyboard (arrows, Shift for big steps, Home/End) and carry ARIA values.
+- **Command registry (`lib/commands.ts`).** Every command has an id, title, category, keywords, keybinding, a `when()` that returns null or a reason, and `run`. The menu bar, command palette, title-bar buttons, empty-editor shortcuts, settings shortcut list and keyboard dispatch all read the same registry.
+  - Shortcuts dispatch in the capture phase, so they work from the terminal (VS Code's "skip shell" behaviour). Editing chords stay with the focused editor, field or terminal.
+  - The palette owns the keyboard while open. After it closes, focus returns to where it was before the command runs.
+- **Terminal.**
+  - `src/server/terminal.ts`: node-pty over an authenticated `/terminal` WebSocket. Owners only; off on non-loopback binds unless `--allow-terminal`.
+  - `workbench/Terminal.tsx`: xterm.js. Sessions stay mounted while the panel is closed and reattach with replay after reloads. The terminal takes focus only when nothing else (such as a dialog) has claimed it.
+- **Agent panel (`workbench/AgentPanel.tsx`) and `POST /api/agent`.** A request becomes a scoped task (the @-mentioned files).
+  - Owners: approved and run with Claude Code in a worktree.
+  - Editors: proposed only.
+  - Plan mode: proposed only.
+  - Thread view: the run's real tool activity.
+- **Neutral tokens (`app/globals.css`).** Same token names as before, so the visual-identity pass can swap values without touching components.
+
+### Activity bar destinations
+| Destination | Backed by | State |
+|---|---|---|
+| Explorer | File tree, git-status letters, open editors | Works |
+| Search | `/api/search` (git grep over shared files, secrets filtered) | Works |
+| Source Control | `/api/git` | Works (read-only; commit from the terminal) |
+| Run | `/api/scripts` → runs `npm run …` in the integrated terminal | Works for owners; debugging **unavailable** (no debug adapter), stated in place |
+| Extensions | Built-in language support list | Built-ins real; marketplace and extension host **unavailable**, stated in place |
+| Community | Real members, presence, roles, invites | Works; public community hub **not built**, stated in place |
+| Relay | Task overview and filters; details in the secondary side bar | Works |
+| Accounts / Manage | Identity, role, sign-out (ends the session server-side); theme, terminal status, keyboard shortcuts, layout reset | Works |
+
+### Tests actually run (all passing at the end of this phase)
+- `npx tsc --noEmit` (root) and `cd ide/web && npx tsc --noEmit`: clean.
+- `npm test`: **45/45**, including new `test/terminal.test.ts` (real PTYs: output, reattach replay, role and ownership refusal, network-bind policy), the agent-composer test, and server-side sign-out.
+- `RELAY_E2E=1 node --test test/e2e/workbench.e2e.test.ts`: **7/7** in Chromium, on two consecutive full runs. Covers:
+  - pane toggles and keyboard resize;
+  - windows at 1100/900/700/560 px (editor ≥ 300 px, no horizontal scroll, panes restored);
+  - all eight activities, with tabs preserved;
+  - palette keyboard navigation, disabled commands with reasons, Escape focus restore;
+  - menus running registry commands, with disabled items;
+  - a real terminal command, the session surviving a panel close and reopen, and the viewer's unavailable state;
+  - Ctrl+S save;
+  - no page errors.
+- `RELAY_E2E=1 node --test test/e2e/ide.e2e.test.ts`: 1/1 (two people editing live).
+- `cd ide/web && npx next build`: succeeds.
+- **No linter is configured in this repository,** so none was run.
+
+### Bugs found and fixed during verification
+- Editor width fell to 0 px at 600 px windows (pane widths weren't clamped).
+- A relative `staticDir` served the IDE page for every route.
+- Killed terminal sessions re-armed a 30-minute idle timer.
+- Shortcuts didn't work while the terminal had focus (xterm swallowed them).
+- The terminal stole focus from the command palette when it finished loading.
+- The palette didn't return focus before running a command.
+- Community rows overlapped.
+
+### Known issues and gaps
+- **Save model.** Edits are live: the server persists every edit, flushes to disk within ~300 ms, and Ctrl/⌘+S forces a flush. "Unsaved" therefore means *edits made offline that haven't reached the server*. That's tracked per tab, guarded on close and unload, and reconciled automatically on reconnect.
+- **Not built:** split editors, LSP intelligence, debugging, an extension host or marketplace, a public community hub, Outline and Timeline views.
+- **Untested:** narrow-window layouts below 560 px, Firefox and Safari.
+- **No real Claude Code run from the Agent panel yet.** The composer endpoint is tested with the simulated agent; the provider path is the same `runs.start` that the real-provider tests exercise via the CLI.
+
+### Recommendations for the visual-identity pass
+- Swap token values only (`--chrome`, `--sidebar`, `--editor`, `--accent`, `--remote-bg`, syntax tokens); the structure doesn't depend on them.
+- Typography: reintroduce the display face only in empty states, the join page and the agent welcome, never in panes.
+- Give the status-bar remote block and the agent composer Relay's signature treatment; keep the panes calm.
+- Keep collaborator colours as the only non-semantic hues in the editor.

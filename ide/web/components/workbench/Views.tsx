@@ -10,8 +10,8 @@ import { describe } from "../Coordination";
 
 export function ViewHeader({ title, actions }: { title: string; actions?: React.ReactNode }) {
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between pl-4 pr-2">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">{title}</span>
+    <div className="flex h-[35px] shrink-0 items-center justify-between pl-5 pr-2">
+      <span className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">{title}</span>
       <span className="flex items-center">{actions}</span>
     </div>
   );
@@ -180,31 +180,36 @@ export function problemsOf(state: ProjectState): Problem[] {
   return out;
 }
 
-export type PanelTab = "problems" | "agents" | "activity";
+export type PanelTab = "terminal" | "problems" | "output" | "agents" | "activity";
 
-export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string) => void; onClose: () => void }) {
+export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode }) {
   const problems = problemsOf(state);
   const runs = state.tasks.flatMap((t) => t.runs.map((r) => ({ ...r, taskId: t.id }))).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const tabs: [PanelTab, string, number?][] = [
+    ["terminal", "Terminal"],
     ["problems", "Problems", problems.length],
+    ["output", "Output"],
     ["agents", "Agents", runs.filter((r) => r.status === "running").length],
     ["activity", "Activity"],
   ];
   return (
     <div className="flex h-full flex-col bg-editor">
-      <div className="flex h-8.5 shrink-0 items-center gap-4 border-b border-rule pl-4 pr-2">
+      <div role="tablist" aria-label="Panel" className="flex h-[35px] shrink-0 items-center gap-4 pl-4 pr-2">
         {tabs.map(([id, label, n]) => (
-          <button key={id} onClick={() => setTab(id)} className={`relative flex h-full items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[0.06em] ${tab === id ? "text-ink" : "text-muted hover:text-ink"}`}>
+          <button key={id} role="tab" aria-selected={tab === id} data-testid={`panel-tab-${id}`} onClick={() => setTab(id)} className={`relative flex h-full items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.04em] ${tab === id ? "text-ink" : "text-muted hover:text-ink"}`}>
             {label}
             {!!n && <span className={`rounded-full px-1.5 text-[10.5px] ${id === "problems" ? "bg-danger-soft text-danger" : "bg-accent-soft text-accent-ink"}`}>{n}</span>}
-            {tab === id && <span className="absolute inset-x-0 bottom-0 h-[2px] rounded-full bg-accent" />}
+            {tab === id && <span className="absolute inset-x-0 bottom-1 h-px bg-ink" />}
           </button>
         ))}
         <button aria-label="Close panel" title="Close panel" onClick={onClose} className="ml-auto grid size-6 place-items-center rounded text-muted hover:bg-hover hover:text-ink">
           <X size={14} />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px]">
+      {/* The terminal stays mounted while other tabs are shown, so its sessions keep running. */}
+      <div className={`min-h-0 flex-1 ${tab === "terminal" ? "" : "hidden"}`}>{terminal}</div>
+      {tab === "output" && <div className="min-h-0 flex-1 overflow-y-auto">{output}</div>}
+      <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" ? "hidden" : ""}`}>
         {tab === "problems" &&
           (problems.length === 0 ? (
             <p className="px-4 py-2 font-sans text-[13px] text-muted">No coordination problems. Contracts, tasks and shared files agree.</p>

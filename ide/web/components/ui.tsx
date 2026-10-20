@@ -18,15 +18,15 @@ export function Mark({ size = 22 }: { size?: number }) {
 type ButtonTone = "primary" | "quiet" | "ghost" | "danger";
 export function Button({ tone = "quiet", size = "md", className = "", children, ...rest }: ComponentProps<"button"> & { tone?: ButtonTone; size?: "sm" | "md" }) {
   const tones: Record<ButtonTone, string> = {
-    primary: "bg-ink text-panel hover:bg-ink-2 shadow-[0_1px_0_rgb(255_255_255/.12)_inset]",
-    quiet: "bg-panel text-ink border border-rule hover:border-rule-strong hover:bg-panel-2",
+    primary: "bg-accent text-white hover:brightness-110",
+    quiet: "bg-sunken text-ink border border-rule hover:bg-hover",
     ghost: "text-ink-2 hover:bg-sunken hover:text-ink",
     danger: "bg-danger-soft text-danger hover:brightness-95",
   };
-  const sizes = { sm: "h-7 px-2.5 text-[12.5px] gap-1.5", md: "h-8.5 px-3.5 text-[13px] gap-2" };
+  const sizes = { sm: "h-[24px] px-2 text-[12px] gap-1.5", md: "h-[26px] px-3 text-[13px] gap-1.5" };
   return (
     <button
-      className={`inline-flex items-center justify-center rounded-full font-medium transition-[background,border,color,filter] duration-150 disabled:opacity-45 disabled:pointer-events-none ${tones[tone]} ${sizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-sm font-medium transition-[background,border,color,filter] duration-150 disabled:opacity-45 disabled:pointer-events-none ${tones[tone]} ${sizes[size]} ${className}`}
       {...rest}
     >
       {children}
@@ -56,7 +56,7 @@ const STATE_STYLE: Record<TaskState, { label: string; cls: string; dot: string }
 export function StatePill({ state }: { state: TaskState }) {
   const s = STATE_STYLE[state];
   return (
-    <span className={`inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[11.5px] font-semibold tracking-[0.01em] ${s.cls}`}>
+    <span className={`inline-flex h-[18px] items-center gap-1 rounded-sm px-1.5 text-[11px] font-medium ${s.cls}`}>
       <span className={`size-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>
@@ -72,7 +72,7 @@ export function Pill({ children, tone = "neutral" }: { children: ReactNode; tone
     danger: "bg-danger-soft text-danger",
     attention: "bg-attention-soft text-attention",
   };
-  return <span className={`inline-flex h-5.5 items-center gap-1 rounded-full px-2 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex h-[18px] items-center gap-1 rounded-sm px-1.5 text-[11px] font-medium ${tones[tone]}`}>{children}</span>;
 }
 
 export function initials(name: string): string {
@@ -100,7 +100,7 @@ export function Avatar({ name, color, size = 28, ring = false, title }: { name: 
 export function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-1 pb-2 pt-1">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">{children}</span>
+      <span className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">{children}</span>
       {right}
     </div>
   );

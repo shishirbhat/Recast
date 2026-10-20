@@ -154,3 +154,28 @@ test("cancelling a hung agent kills its process group; the task stays queued bec
     await server.close();
   }
 });
+
+test("agent composer: a prompt becomes a scoped task; owners run it, editors only propose", async () => {
+  const { server } = await setup({});
+  try {
+    const owner = await joinAs(server, "Olu", "owner");
+    const editor = await joinAs(server, "Ed", "editor");
+    const { api } = await import("./collab-helpers.ts");
+    const noScope = await api(server, owner.cookie, "POST", "/api/agent", { prompt: "do something", files: [] });
+    assert.equal(noScope.status, 400);
+    const proposed = await api(server, editor.cookie, "POST", "/api/agent", { prompt: "Tidy the footer", files: ["src/ui.js"] });
+    assert.equal(proposed.status, 201);
+    assert.equal(proposed.body.task.state, "proposed");
+    assert.deepEqual(proposed.body.runs, []);
+    const run = await api(server, owner.cookie, "POST", "/api/agent", { prompt: "Tidy the footer", files: ["src/ui.js"], mode: "agent" });
+    assert.equal(run.status, 202);
+    assert.deepEqual(run.body.task.scope, ["src/ui.js"]);
+    assert.equal(run.body.runs.length, 1);
+    await finished(server, run.body.task.id);
+    assert.equal(server.relay.requireTask(run.body.task.id).state, "review_required");
+    const secret = await api(server, owner.cookie, "POST", "/api/agent", { prompt: "x", files: [".env"] });
+    assert.equal(secret.status, 403);
+  } finally {
+    await server.close();
+  }
+});

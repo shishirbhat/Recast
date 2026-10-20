@@ -12,6 +12,8 @@ export class DocSession {
   readonly provider: WebsocketProvider;
   readonly undoManager: Y.UndoManager;
   status: SyncStatus = "connecting";
+  /** Local edits made while not connected: kept in the CRDT and sent on reconnect, but not yet on the server. */
+  pendingOffline = false;
   private listeners = new Set<() => void>();
 
   constructor(path: string, me: Member) {
@@ -26,7 +28,17 @@ export class DocSession {
     this.provider.on("status", ({ status }: { status: string }) => {
       if (status !== "connected") this.set("offline");
     });
-    this.provider.on("sync", (synced: boolean) => this.set(synced ? "synced" : "connecting"));
+    this.provider.on("sync", (synced: boolean) => {
+      if (synced) this.pendingOffline = false;
+      this.set(synced ? "synced" : "connecting");
+    });
+    this.doc.on("update", (_u: Uint8Array, origin: unknown) => {
+      // Origin is the provider for remote updates; anything else is a local edit.
+      if (origin !== this.provider && this.status !== "synced" && !this.pendingOffline) {
+        this.pendingOffline = true;
+        this.set(this.status);
+      }
+    });
   }
 
   private set(s: SyncStatus): void {
