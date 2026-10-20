@@ -3,5 +3,5 @@
   "main": "src/index.ts",
   "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run", "build": "node scripts/bundle.mjs" },
   "dependencies": { "@recast/core": "workspace:*" },
-  "devDependencies": { "esbuild": "^0.25.0", "vitest": "^3.2.0" }
+  "devDependencies": { "@recast/bridges": "workspace:*", "esbuild": "^0.25.0", "vitest": "^3.2.0" }
 }

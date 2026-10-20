@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryEventLog, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleSheets, googleTasks, gmailDraft, notion, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleSheets, googleTasks, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,7 +26,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, gmailDraft, googleSheets, googleTasks, notion })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, notion })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
 });
@@ -97,6 +97,17 @@ describe("Gmail", () => {
     await r.undo(); expect(s.calls[1]).toMatchObject({ method: "DELETE", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts/d%2F1" });
   });
 
+  it("a composed message is saved as a draft with its recipient and its text, and undo deletes it", async () => {
+    const s = fake((r) => (r.method === "POST" ? ok({ id: "d2" }) : ok()));
+    const msg = obj("Message", { to: ["maya.rao@example.com"], snippet: "Free for dinner this week?" });
+    const r = await place(gmailMessageDraft, {}, s.t, msg, "message-draft-entry");
+    expect(s.calls[0]).toMatchObject({ method: "POST", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts" });
+    const raw = (s.calls[0]!.body as { message: { raw: string } }).message.raw;
+    expect(atob(raw.replace(/-/g, "+").replace(/_/g, "/"))).toBe('To: maya.rao@example.com\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\nFree for dinner this week?');
+    expect(r.receipt).toMatchObject({ relationId: "message-draft-entry", reversible: true });
+    await r.undo(); expect(s.calls[1]).toMatchObject({ method: "DELETE", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts/d2" });
+  });
+
   it("refuses a recipient containing a line break, so a page cannot slip in a Bcc header", () => {
     expect(() => rfc822Draft("a@example.com\r\nBcc: attacker@example.com")).toThrow(DestinationError);
     expect(() => rfc822Draft("a@example.com\nBcc: x")).toThrow(/line break/);
@@ -160,5 +171,13 @@ describe("shared behaviour", () => {
     const { readFileSync, readdirSync } = await import("node:fs");
     const src = readdirSync(new URL("../src/", import.meta.url)).map((f) => readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8")).join("\n");
     expect(src).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|WebSocket/);
+  });
+});
+
+describe("the registry", () => {
+  it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-sheets.range", "google-tasks.list", "notion.database"]);
+    expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
+    expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
   });
 });

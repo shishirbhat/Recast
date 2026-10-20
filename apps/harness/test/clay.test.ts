@@ -1,6 +1,7 @@
-// The clay page in Chromium: carry Maya from one tab to another, press her into the restaurant, press a time in, carry the
-// object to a calendar slot, review, place, undo. Mouse, keyboard only, touch (long press), reduced motion, refusals,
-// taking an ingredient out, and a calendar that does not answer. The calendar is an in-page stand-in.
+// The clay page in Chromium: turn Recast on, carry Maya from one tab to another, press her into the restaurant, choose where
+// the object goes in the glass module (or carry it to a calendar slot), review, place, undo. Mouse, keyboard only, touch
+// (long press), reduced motion, refusals, taking an ingredient out, a calendar that does not answer, and Recast off.
+// The calendar and the drafts are in-page stand-ins for the registry's Google Calendar and Gmail contracts.
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import AxeBuilder from "@axe-core/playwright";
 import { createServer, type Server } from "node:http";
@@ -22,7 +23,7 @@ afterAll(async () => { await browser?.close(); server?.close(); });
 
 // Monday 19 Oct 2026, 09:00 UTC: "Friday" is the 23rd, and so is the calendar's first slot.
 const Q = "now=2026-10-19T09:00:00Z&tz=Asia/Kolkata";
-async function open(o: { theme?: "light" | "dark"; phone?: boolean; motion?: "reduce" } = {}): Promise<{ page: Page; ctx: BrowserContext; errors: string[] }> {
+async function open(o: { theme?: "light" | "dark"; phone?: boolean; motion?: "reduce"; off?: boolean } = {}): Promise<{ page: Page; ctx: BrowserContext; errors: string[] }> {
   const ctx = await browser.newContext({
     ...(o.phone ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 } : { viewport: { width: 1200, height: 800 } }),
     colorScheme: o.theme ?? "light", timezoneId: "Asia/Kolkata", ...(o.motion ? { reducedMotion: o.motion } : {}),
@@ -30,6 +31,7 @@ async function open(o: { theme?: "light" | "dark"; phone?: boolean; motion?: "re
   const page = await ctx.newPage(); const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message)); page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   await page.goto(`${base}/clay.html?${Q}`);
+  if (!o.off) await page.locator("#recast-trigger").click();   // Recast starts off: turn it on, as a person would
   return { page, ctx, errors };
 }
 const st = (p: Page) => p.evaluate(() => (globalThis as any).recast.state);
@@ -69,7 +71,9 @@ describe("pressing pieces into one object (mouse)", () => {
     // One blob on screen, labelled as the composition, showing it is made of three pieces.
     await expect.poll(() => page.locator(".clay-item").count()).toBe(1);
     const label = page.locator(objectSel(id));
-    expect(await label.getAttribute("aria-label")).toBe("Meet Maya at Dakshin, Maya Rao · Dakshin · Fri, 23 Oct, 7:30 PM, made of 3 pieces");
+    // It sits in the module's well; the facts are written under it there.
+    expect(await label.getAttribute("aria-label")).toBe("Meet Maya at Dakshin, made of 3 pieces");
+    expect(await page.locator(".rg-facts").innerText()).toMatch(/^Maya Rao\s+Dakshin\s+Fri, 23 Oct, 7:30 PM$/);   // the dots between them are drawn by CSS
     expect(await label.getAttribute("class")).toContain("composed");
     expect(await page.locator("#hint").innerText()).toBe("Now one object: Meet Maya at Dakshin");
     expect(errors).toEqual([]);
@@ -80,15 +84,15 @@ describe("pressing pieces into one object (mouse)", () => {
     const id = await makeDinner(page);
     await drag(page, objectSel(id), "[data-slot='fri-1930']", "#tab-calendar");
     expect((await st(page)).phase).toBe("previewing");
-    expect(await page.locator("#sheet-title").innerText()).toBe("Add to Calendar?");
+    expect(await page.locator(".rg-title").innerText()).toBe("Calendar: review");
     expect(await page.locator("[data-placed='event']").count()).toBe(0);
-    expect(await page.locator("#sheet-body").innerText()).toMatch(/Title[\s\S]*nothing captured reads as a title/);
+    expect(await page.locator(".rg-body").innerText()).toMatch(/Title[\s\S]*nothing captured reads as a title/);
     await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
-    const body = await page.locator("#sheet-body").innerText();
+    const body = await page.locator(".rg-body").innerText();
     expect(body).toMatch(/Where\s*Dakshin, 12 MG Road, Bengaluru\s*from the page/); expect(body).toMatch(/Notes\s*With Maya Rao\s*from the page/); expect(body).toMatch(/Title\s*Meet Maya at Dakshin\s*you/);
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
-    expect(await page.locator("#sheet-title").innerText()).toBe("Added to Calendar");
+    expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
     expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Maya at Dakshin · Dakshin");
     await page.getByRole("button", { name: "Undo" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
@@ -100,7 +104,7 @@ describe("pressing pieces into one object (mouse)", () => {
     await drag(page, "#maya", "#dakshin", "#tab-restaurant");
     const before = await st(page); const target = before.desk[0];
     const a = await centre(page, "#giftcard"); await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(a.x + 10, a.y + 10, { steps: 3 });
-    const b = await centre(page, objectSel(target)); await page.mouse.move(b.x, b.y, { steps: 6 });
+    await atRest(page, objectSel(target)); const b = await centre(page, objectSel(target)); await page.mouse.move(b.x, b.y, { steps: 6 });
     expect(await page.locator("#hint").innerText()).toMatch(/^Won't combine: Gift card · ₹2,000 can be carried and placed on its own/);
     expect(await page.locator(objectSel(target)).getAttribute("class")).toContain("mode-refuses");
     await page.mouse.up(); await settled(page);
@@ -111,10 +115,11 @@ describe("pressing pieces into one object (mouse)", () => {
     const { page, ctx } = await open();
     const id = await makeDinner(page);
     await page.locator(objectSel(id)).click();
-    expect(await page.locator(".ingredients").innerText()).toMatch(/person\s*Maya Rao\s*from Maya Rao · Profile/i);
+    expect(await page.locator(".rg-title").innerText()).toBe("Inside this object");
+    expect(await page.locator(".rg-ingredients").innerText()).toMatch(/person\s*Maya Rao\s*from Maya Rao · Profile/i);
     await page.getByRole("button", { name: "Take Maya Rao out" }).click();
     const s = await st(page); expect(s.desk).toHaveLength(2); expect(s.objects[id].ingredients.map((f: any) => f.text)).toEqual(["Dakshin", "Friday, 7:30 PM"]);
-    expect(await page.locator("#sheet-title").innerText()).toBe("Meet at Dakshin (proposed)");
+    expect(await page.locator(objectSel(id)).getAttribute("aria-label")).toMatch(/^Meet at Dakshin, /);
     await ctx.close();
   });
   it("when the calendar does not answer, Recast asks it instead of adding twice", async () => {
@@ -125,8 +130,8 @@ describe("pressing pieces into one object (mouse)", () => {
     await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "unknown");
-    expect(await page.locator("#sheet-body").innerText()).toMatch(/did not answer in time\. It may or may not have been added\. Recast does not send it again/);
-    await page.getByRole("button", { name: "Check the calendar" }).click();
+    expect(await page.locator(".rg-body").innerText()).toMatch(/did not answer in time\. It may or may not have been added\. Recast does not send it again/);
+    await page.getByRole("button", { name: "Check Calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
     expect(await page.locator("[data-placed='event']").count()).toBe(1);
     await ctx.close();
@@ -154,6 +159,8 @@ describe("keyboard only", () => {
     expect((await st(page)).phase).toBe("carrying");
     await page.locator("#tab-profile").focus(); await key("ArrowRight");
     expect(await page.locator("#tab-restaurant").getAttribute("aria-selected")).toBe("true");
+    await key("Tab"); expect(await page.evaluate(() => document.activeElement!.id)).toBe("recast-trigger");   // the Recast button sits in the bar
+    await key("Enter"); expect((await st(page)).phase).toBe("carrying");                                       // and leaves a carry alone
     await key("Tab"); expect(await page.evaluate(() => document.activeElement!.id)).toBe("dakshin");
     expect(await page.locator("#hint").innerText()).toMatch(/^Let go to press Maya Rao into Dakshin/);
     await key("Enter"); await settled(page);
@@ -196,6 +203,9 @@ describe("phone (touch)", () => {
     await touchDrag(page, "#maya", "#dakshin", { via: "#tab-restaurant" });
     const s = await st(page); expect(s.desk).toHaveLength(1); expect(s.objects[s.desk[0]].ingredients).toHaveLength(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    // The module opens full width less the gutters, inside the screen.
+    const box = (await page.locator(".rg").boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(15); expect(box.x + box.width).toBeLessThanOrEqual(390 - 15); expect(box.y).toBeGreaterThan(0);
     expect(errors).toEqual([]); await ctx.close();
   });
   it("a quick tap picks a piece onto the desk instead of starting a drag (so pages still scroll)", async () => {
@@ -211,16 +221,128 @@ describe("motion and accessibility", () => {
     const { page, ctx } = await open({ motion: "reduce" });
     const t0 = Date.now(); await drag(page, "#maya", "#dakshin", "#tab-restaurant");
     expect(Date.now() - t0).toBeLessThan(4000);
-    expect((await st(page)).phase).toBe("idle");
+    expect((await st(page)).phase).toBe("composed");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    expect((await st(page)).phase).toBe("choosing");
     await expect.poll(() => page.locator(".clay-item").count()).toBe(1);
     await ctx.close();
   });
-  for (const theme of ["light", "dark"] as const) it(`no serious or critical axe findings with an object and a review open (${theme})`, async () => {
+  for (const theme of ["light", "dark"] as const) it(`no serious or critical axe findings: pill, module, selector, inspection, review (${theme})`, async () => {
     const { page, ctx } = await open({ theme });
+    const axe = async (when: string) => { const r = await new AxeBuilder({ page }).analyze(); expect(r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${when} ${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]); };
+    await axe("pill");
     const id = await makeDinner(page);
-    await page.locator(objectSel(id)).click();
-    const r = await new AxeBuilder({ page }).analyze();
-    expect(r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]);
+    await axe("module");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click(); await axe("selector");
+    await page.getByRole("button", { name: "Open" }).click(); await axe("review");
+    await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
+    await page.locator(objectSel(id)).click(); await axe("inspection");
+    await ctx.close();
+  });
+});
+
+describe("the trigger", () => {
+  it("with Recast off the page is just a page: text selects, nothing is picked up, nothing floats over it", async () => {
+    const { page, ctx, errors } = await open({ off: true });
+    expect(await page.locator("#maya").getAttribute("tabindex")).toBe("-1"); expect(await page.locator("#maya").getAttribute("role")).toBeNull();
+    await page.locator("#maya").click({ clickCount: 3 });
+    expect(await page.evaluate(() => getSelection()!.toString())).toMatch(/Maya/);
+    await drag(page, "#maya", "#maya-line");
+    expect(Object.keys((await st(page)).objects)).toEqual([]); expect(await page.locator(".clay-item").count()).toBe(0);
+    expect(await page.locator(".rg").isHidden()).toBe(true);
+    expect(await page.locator("#recast-trigger").getAttribute("aria-pressed")).toBe("false");
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("the button and Alt+Shift+R turn it on and off; Escape turns it off; there is only ever one module", async () => {
+    const { page, ctx } = await open({ off: true });
+    await page.keyboard.press("Alt+Shift+R");
+    expect((await st(page)).armed).toBe(true); expect(await page.locator(".rg").getAttribute("data-mode")).toBe("pill");
+    expect(await page.locator("#recast-trigger").getAttribute("aria-pressed")).toBe("true");
+    await page.keyboard.press("Alt+Shift+R"); expect((await st(page)).armed).toBe(false); expect(await page.locator(".rg").isHidden()).toBe(true);
+    await page.locator("#recast-trigger").click(); expect((await st(page)).armed).toBe(true);
+    await page.keyboard.press("Escape"); expect((await st(page)).armed).toBe(false);
+    await page.locator("#recast-trigger").click(); await page.locator("#recast-trigger").click(); await page.locator("#recast-trigger").click();
+    expect(await page.locator(".rg").count()).toBe(1);
+    await ctx.close();
+  });
+});
+
+describe("the glass module and the destination selector", () => {
+  it("acceptance: Maya pressed into Dakshin; a compact glass module holds the object; scroll through places; Calendar; review; place; undo", async () => {
+    const { page, ctx, errors } = await open();
+    await drag(page, "#maya", "#dakshin", "#tab-restaurant");
+    const s = await st(page); const id = s.focus;
+    expect(s).toMatchObject({ phase: "composed", armed: true }); expect(s.objects[id].ingredients).toHaveLength(2);
+    // Compact: a fraction of the screen, frosted, and the one object sits in it.
+    const box = (await page.locator(".rg").boundingBox())!;
+    expect(box.width).toBeLessThanOrEqual(360); expect(box.height).toBeLessThanOrEqual(800 * 0.4);
+    expect(await page.locator(".rg").evaluate((el) => getComputedStyle(el).backdropFilter)).toMatch(/blur/);
+    await atRest(page, objectSel(id)); const o = await centre(page, objectSel(id));
+    expect(o.x).toBeGreaterThan(box.x); expect(o.x).toBeLessThan(box.x + box.width); expect(o.y).toBeGreaterThan(box.y); expect(o.y).toBeLessThan(box.y + box.height);
+    expect(await page.locator(".clay-item").count()).toBe(1);
+    // The selector: scrolling moves the choice and writes nothing.
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    expect((await st(page)).phase).toBe("choosing"); expect(await page.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-calendar");
+    const d = await centre(page, ".rg-drum"); await page.mouse.move(d.x, d.y);
+    await page.mouse.wheel(0, 100); await expect.poll(async () => (await st(page)).choice).toBe("mail");
+    expect(await page.locator(".rg-reason").innerText()).toBe("Gmail takes messages; this is an event");
+    await page.waitForTimeout(120); await page.mouse.wheel(0, 100); await expect.poll(async () => (await st(page)).choice).toBe("tasks");
+    expect(await page.locator("#rg-opt-tasks").getAttribute("aria-disabled")).toBe("true");
+    expect(await page.locator(".rg-reason").innerText()).toBe("Google Tasks takes documents (a page or a file); this is an event");
+    expect(await page.locator(".rg-actions [data-act=open]").isDisabled()).toBe(true);
+    await page.waitForTimeout(120); await page.mouse.wheel(0, -100); await page.waitForTimeout(120); await page.mouse.wheel(0, -100);
+    await expect.poll(async () => (await st(page)).choice).toBe("calendar");
+    expect((await st(page)).phase).toBe("choosing"); expect(await page.locator("[data-placed='event']").count()).toBe(0);
+    // Open: the same module becomes the review. Still nothing written.
+    await page.getByRole("button", { name: "Open" }).click();
+    expect((await st(page)).phase).toBe("previewing"); expect(await page.locator(".rg-title").innerText()).toBe("Calendar: review");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/Stand-in: Google Calendar here is a local stand-in/);
+    await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
+    await page.locator("#rg-in-start").fill("2026-10-23T19:30"); await page.locator("#rg-in-start").press("Enter");
+    expect(await page.locator("[data-placed='event']").count()).toBe(0);
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
+    expect(await page.locator(".rg-body").innerText()).toBe("Calendar confirmed it (stand-in).");
+    expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Maya at Dakshin · Dakshin");
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
+    expect(await page.locator("[data-placed='event']").count()).toBe(0);
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("keyboard: arrows choose, Enter on an unavailable place explains and does nothing, Escape steps back, the command reopens", async () => {
+    const { page, ctx, errors } = await open();
+    const key = (k: string) => page.keyboard.press(k);
+    await drag(page, "#maya", "#dakshin", "#tab-restaurant");
+    await page.getByRole("button", { name: /Choose where it goes/ }).focus(); await key("Enter");
+    await expect.poll(() => page.evaluate(() => document.activeElement?.className)).toBe("rg-drum");
+    await key("ArrowDown"); expect((await st(page)).choice).toBe("mail");
+    await key("Enter"); expect((await st(page)).phase).toBe("choosing");
+    await key("ArrowUp"); await key("Enter"); expect((await st(page)).phase).toBe("previewing");
+    const steps: string[] = [];
+    for (let i = 0; i < 3; i++) { await key("Escape"); steps.push((await st(page)).phase); }
+    expect(steps).toEqual(["choosing", "composed", "idle"]);
+    expect(await page.locator(".rg").getAttribute("data-mode")).toBe("pill");
+    expect(await page.locator(".rg-title").innerText()).toBe("Meet Maya at Dakshin is ready");
+    await key("Alt+Shift+R"); expect((await st(page)).phase).toBe("composed");
+    await key("Alt+Shift+R"); expect((await st(page)).phase).toBe("composed");    // invoking again: no second module
+    expect(await page.locator(".rg").count()).toBe(1);
+    await key("Escape"); await key("Escape"); expect((await st(page)).armed).toBe(false);
+    expect((await st(page)).focus).not.toBeNull();                                // off, and the composition is kept
+    await key("Alt+Shift+R"); expect(await st(page)).toMatchObject({ armed: true, phase: "composed" });
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("More lists the rest of the registry, each with its reason; nothing that is not in the registry appears", async () => {
+    const { page, ctx } = await open();
+    await drag(page, "#maya", "#dakshin", "#tab-restaurant");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.locator(".rg-drum").focus(); await page.keyboard.press("End"); expect((await st(page)).choice).toBe("more");
+    expect(await page.locator(".rg-reason").innerText()).toBe("Nothing else Recast connects to takes an event");
+    await page.keyboard.press("Enter");
+    expect(await page.locator(".rg-title").innerText()).toBe("More places");
+    const opts = await page.locator(".rg-opt").evaluateAll((els) => els.map((e) => [e.querySelector(".rg-label")!.textContent, e.getAttribute("aria-disabled")]));
+    expect(opts).toEqual([["Google Calendar", "true"], ["Gmail", "true"], ["Google Sheets", "true"], ["Back", "false"]]);
+    expect(await page.locator(".rg-reason").innerText()).toBe("Google Calendar takes people or places; this is an event");
     await ctx.close();
   });
 });

@@ -1,4 +1,5 @@
 import { hash32, OutcomeUnknownError, type Operation, type OperationCapabilities } from "@recast/core";
+import { CONTRACTS } from "./contracts";
 import { DestinationError, DuplicateError, need, moved, seg, type Send, type Spec } from "./http";
 
 /** A write that cannot be repeated safely and cannot be read back: an unknown outcome stays unknown until the person checks. */
@@ -13,13 +14,7 @@ const GCAL = "https://www.googleapis.com/calendar/v3";
 const eventUrl = (t: CalendarTarget) => `${GCAL}/calendars/${seg(t.calendarId)}/events/${seg(t.eventId)}`;
 
 export const googleCalendar: Spec<CalendarTarget> = {
-  contract: {
-    destination: "google-calendar.event-editor", app: "Google Calendar", targetKind: "Event", reliability: "official-api",
-    accepts: [
-      { relationId: "person-event-attendee", effect: "Add attendee", effectFlags: ["notifies-third-party"], dataMoved: ["Person.name", "Person.email"] },
-      { relationId: "location-event-location", effect: "Set location", dataMoved: ["Location.name", "Location.address"] },
-    ],
-  },
+  contract: CONTRACTS.googleCalendar,
   // PATCH sets a value: repeating the same request gives the same result, and the event can be read back.
   capabilities: {
     "person-event-attendee": { writes: true, idempotency: "not-applicable", verifiable: true, reversal: "restore-previous", onTimeout: "safe-to-retry", permission: "calendar.events" },
@@ -55,16 +50,14 @@ const GMAIL = "https://gmail.googleapis.com/gmail/v1/users";
 export function headerSafe(v: string, what: string): string {
   if (/[\r\n\0]/.test(v)) throw new DestinationError(`${what} contains a line break`); return v;
 }
-export function rfc822Draft(to: string): string {
-  const raw = `To: ${headerSafe(to, "recipient")}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n`;
+export function rfc822Draft(to: string, body = ""): string {
+  // The body follows the blank line, so it cannot add headers; it is sent as written.
+  const raw = `To: ${headerSafe(to, "recipient")}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
   const bin = Array.from(new TextEncoder().encode(raw), (b) => String.fromCharCode(b)).join("");
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 export const gmailDraft: Spec<GmailTarget> = {
-  contract: {
-    destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api",
-    accepts: [{ relationId: "person-message-recipient", effect: "Create a draft to this person", dataMoved: ["Person.email"] }],
-  },
+  contract: CONTRACTS.gmailDraft,
   capabilities: { "person-message-recipient": unkeyedCreate("gmail.compose", "delete-created") },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Person.email")) } } }));
@@ -73,14 +66,22 @@ export const gmailDraft: Spec<GmailTarget> = {
   async undo(token, t, send) { await send({ method: "DELETE", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts/${seg((JSON.parse(token) as { id: string }).id)}` }); },
 };
 
+/** A composed message (a person and what to say) saved as a draft: To and the text. Still a draft, never a send. */
+export const gmailMessageDraft: Spec<GmailTarget> = {
+  contract: CONTRACTS.gmailMessageDraft,
+  capabilities: { "message-draft-entry": unkeyedCreate("gmail.compose", "delete-created") },
+  async execute(op, t, send) {
+    const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Message.to"), need(op, "Message.snippet")) } } }));
+    return JSON.stringify({ id: str(r.id, "draft id") });
+  },
+  undo: (token, t, send) => gmailDraft.undo(token, t, send),
+};
+
 // ---- Google Sheets (Sheets API v4, values.append / values.clear) ---------------------------------
 export interface SheetTarget { spreadsheetId: string; range: string }
 const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 export const googleSheets: Spec<SheetTarget> = {
-  contract: {
-    destination: "google-sheets.range", app: "Google Sheets", targetKind: "Product", reliability: "official-api",
-    accepts: [{ relationId: "product-product-compare", effect: "Add a row", dataMoved: ["Product.name", "Product.url"] }],
-  },
+  contract: CONTRACTS.googleSheets,
   capabilities: { "product-product-compare": unkeyedCreate("spreadsheets", "delete-created") },
   async execute(op, t, send) {
     const row = [need(op, "Product.name"), moved(op, "Product.url") ?? ""];
@@ -97,10 +98,7 @@ export const googleSheets: Spec<SheetTarget> = {
 export interface TasksTarget { taskListId: string }
 const TASKS = "https://tasks.googleapis.com/tasks/v1/lists";
 export const googleTasks: Spec<TasksTarget> = {
-  contract: {
-    destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api",
-    accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
-  },
+  contract: CONTRACTS.googleTasks,
   capabilities: { "document-task-reference": unkeyedCreate("tasks", "delete-created") },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Document.title"), ...(moved(op, "Document.url") ? { notes: moved(op, "Document.url") } : {}) } }));
@@ -114,10 +112,7 @@ export interface NotionTarget { databaseId: string; titleProperty?: string; urlP
 const NOTION = "https://api.notion.com/v1/pages";
 const NOTION_HEADERS = { "Notion-Version": "2022-06-28", "Content-Type": "application/json" };
 export const notion: Spec<NotionTarget> = {
-  contract: {
-    destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api",
-    accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],
-  },
+  contract: CONTRACTS.notion,
   capabilities: { "document-project-source": unkeyedCreate("insert_content", "archive") },
   async execute(op, t, send) {
     const properties: Record<string, unknown> = { [t.titleProperty ?? "Name"]: { title: [{ text: { content: need(op, "Document.title") } }] } };
@@ -155,10 +150,7 @@ function eventBody(op: Operation, id: string) {
 }
 
 export const googleCalendarEvent: Spec<CalendarListTarget> = {
-  contract: {
-    destination: "google-calendar.calendar", app: "Google Calendar", targetKind: "Calendar", reliability: "official-api",
-    accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
-  },
+  contract: CONTRACTS.googleCalendarEvent,
   capabilities: { "event-calendar-entry": { writes: true, idempotency: "provider-key", verifiable: true, reversal: "delete-created", onTimeout: "safe-to-retry", permission: "calendar.events" } },
   // A timed event needs an end; Recast does not invent one here (composition offers a visible default instead).
   check: (op) => { const start = moved(op, "Event.start") ?? ""; const allDay = moved(op, "Event.allDay") === "true" || !start.includes("T"); return !allDay && !moved(op, "Event.end") ? ["Event.end"] : []; },

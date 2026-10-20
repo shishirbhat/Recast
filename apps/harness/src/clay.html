@@ -10,7 +10,8 @@
       <button type="button" role="tab" id="tab-calendar" data-for="calendar" aria-controls="page-calendar"><span class="fav" aria-hidden="true">31</span><span class="tname">Calendar</span></button>
       <button type="button" role="tab" id="tab-mail" data-for="mail" aria-controls="page-mail"><span class="fav" aria-hidden="true">@</span><span class="tname">Mail</span></button>
     </div>
-    <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span></div>
+    <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span>
+      <button type="button" id="recast-trigger" class="trigger" aria-pressed="false" aria-keyshortcuts="Alt+Shift+R"><span class="trigger-dot" aria-hidden="true"></span><span class="trigger-label">Recast</span><kbd>Alt Shift R</kbd></button></div>
   </header>
 
   <main class="viewport">
@@ -54,15 +55,11 @@
   <aside id="desk" class="desk" aria-label="Your objects">
     <div class="desk-head"><h2>Your objects</h2><p id="hint" class="hint" role="status" aria-live="polite" hidden></p></div>
     <div id="desk-objects" class="desk-objects"></div>
-    <p id="desk-empty" class="desk-empty">Drag a highlighted name, place or time, and drop it on another one to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up.</p>
+    <p id="desk-empty" class="desk-empty"></p>
   </aside>
 
-  <section id="sheet" class="sheet" role="dialog" aria-modal="false" aria-labelledby="sheet-title" hidden>
-    <h2 id="sheet-title" tabindex="-1"></h2>
-    <div id="sheet-body" class="sheet-body"></div>
-    <div id="sheet-actions" class="sheet-actions"></div>
-  </section>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
+<div id="glass"></div>
 <div id="clay"></div>
 <script>/*@JS*/</script>

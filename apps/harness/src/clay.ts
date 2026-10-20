@@ -1,11 +1,15 @@
-// The clay page: pick pieces off pages in different tabs, press them together into one object, carry it to a calendar.
-// Runs the real core (clumps, compose, propose, plan, consent, commit, undo), the real state machine and the clay renderer.
+// The clay page: turn Recast on, pick pieces off pages in different tabs, press them together into one object, choose where
+// it goes in the glass module (or carry it to a calendar), review, place.
+// Runs the real core (clumps, compose, propose, plan, consent, commit, undo), the real state machine, the bridge registry's
+// contracts, the clay renderer and the glass module.
 // The "browser" (tabs and pages) and the destinations are stand-ins inside this page; the browser extension does the same
 // across real tabs (apps/extension).
 import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
-import { initialClumpState, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
+import { commandEvents, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
+import { createGlass, GLASS_CSS, type GlassIntent } from "@recast/overlay/src/glass";
 
 const params = new URLSearchParams(location.search);
 const NOW = () => (params.get("now") ? Date.parse(params.get("now")!) : Date.now());
@@ -14,9 +18,11 @@ const reducedMotion = () => params.get("motion") === "reduce" || matchMedia("(pr
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
 const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => [...root.querySelectorAll<T>(sel)];
 
-// ---- destinations: what each one accepts, and an in-page stand-in that really changes what you see ----------------
-const calendarContract: CapabilityContract = { destination: "calendar.week", app: "Calendar", targetKind: "Calendar", reliability: "official-api", accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.location", "Event.timezone", "Event.description"] }] };
-const draftsContract: CapabilityContract = { destination: "mail.drafts", app: "Mail", targetKind: "Drafts", reliability: "official-api", accepts: [{ relationId: "message-draft-entry", effect: "Save as draft", dataMoved: ["Message.to", "Message.snippet"] }] };
+// ---- destinations: the registry's own contracts, performed by in-page stand-ins that really change what you see --------
+// The calendar and the drafts are the Google Calendar and Gmail contracts from the bridge registry; what runs them here is a
+// local stand-in, never Google. Tasks and Documents are in the registry but not connected on this page.
+const calendarContract: CapabilityContract = CONTRACTS.googleCalendarEvent;
+const draftsContract: CapabilityContract = CONTRACTS.gmailMessageDraft;
 
 /** Next Friday and Saturday evenings, in the person's own calendar days. */
 function slots(): NonNullable<DestinationSpec["slots"]> {
@@ -28,7 +34,7 @@ function slots(): NonNullable<DestinationSpec["slots"]> {
   }
   return out;
 }
-const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: calendarContract, slots: slots() }, { id: "mail", label: "Mail drafts", contract: draftsContract }];
+const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: calendarContract, slots: slots(), standIn: true }, { id: "mail", label: "Mail", contract: draftsContract, standIn: true }];
 
 class StandIn implements Bridge {
   readonly entries = new Map<string, Record<string, string>>();
@@ -50,7 +56,7 @@ const bridges: Record<string, StandIn> = { cal: new StandIn(calendarContract, ()
 const log = new InMemoryEventLog();
 
 // ---- state ------------------------------------------------------------------------------------------------------
-let state: ClumpState = initialClumpState({ now: NOW(), timezone: TZ, destinations: DESTS });
+let state: ClumpState = initialClumpState({ now: NOW(), timezone: TZ, destinations: DESTS });   // off until invoked
 let mode: "pointer" | "keyboard" = "pointer";
 let pointer = { x: 0, y: 0, touch: false };
 /** Where an object should be drawn for a moment (where it was lifted from, or where it is being pressed into). */
@@ -62,6 +68,8 @@ const clay = createClay($("#clay"), {
   reducedMotion,
   onPointerDown: (id, e) => startObjectPress(id, e),
 });
+const SHORTCUT = "Alt+Shift+R";
+const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: SHORTCUT, theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
 
 /** The event without its clock reading, for every member of the union (plain Omit would collapse the union). */
 type Input = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
@@ -71,11 +79,45 @@ function dispatch(e: Input) {
   const before = state; state = r.state;
   if (state.phase === "merging" && before.phase !== "merging") {
     const m = state.merging!;
-    void clay.fuse(m.id, m.incomingId).then(() => { dispatch({ type: "settled" }); });
+    void clay.fuse(m.id, m.incomingId).then(() => { dispatch({ type: "settled" }); if (mode === "keyboard" || (document.activeElement as HTMLElement | null)?.classList.contains("clay-item")) glass.focus(); });
   }
   for (const eff of r.effects) void perform(eff);
   render();
   return r;
+}
+
+// ---- the trigger and the module -----------------------------------------------------------------------------------
+/** The one Recast command (the button in the bar, or Alt+Shift+R): on; reopen the composition; off. Never a second module. */
+function invoke(fromKeyboard: boolean) {
+  const evs = commandEvents(state);
+  for (const e of evs) dispatch(e);
+  if (fromKeyboard && glass.well()) glass.focus();
+}
+function objectInModule(): string | null { return state.placement?.objectId ?? state.inspecting ?? state.focus; }
+/** Close the module back to the pill: one step at a time, as Escape would, but never past "on". */
+function closeModule() {
+  for (let i = 0; i < 5; i++) { const e = escapeEvent(state); if (!e || e.type === "disarm") break; dispatch(e); if (state.phase === "idle") break; }
+}
+function onIntent(i: GlassIntent) {
+  const id = objectInModule();
+  switch (i.type) {
+    case "turnOff": dispatch({ type: "disarm" }); break;
+    case "reopen": dispatch({ type: "openModule" }); glass.focus(); break;
+    case "close": closeModule(); break;
+    case "back": { const e = escapeEvent(state); if (e && e.type !== "disarm") dispatch(e); break; }
+    case "openWheel": dispatch({ type: "openWheel" }); setTimeout(() => glass.focus(), 0); break;
+    case "select": dispatch({ type: "select", choice: i.choice }); break;
+    case "pick": dispatch({ type: "pickDestination", destinationId: i.destinationId }); setTimeout(() => glass.focus(), 0); break;
+    case "inspect": if (id) dispatch({ type: "inspect", id }); setTimeout(() => glass.focus(), 0); break;
+    case "remove": if (id) dispatch({ type: "remove", objectId: id, ingredientId: i.ingredientId }); break;
+    case "answer": if (id) dispatch({ type: "answer", objectId: id, field: i.field, value: i.value }); break;
+    case "choose": if (id) dispatch({ type: "choose", objectId: id, field: i.field, ingredientId: i.ingredientId }); break;
+    case "place": dispatch({ type: "place", consent: i.heldMs !== undefined ? { kind: "hold", heldMs: i.heldMs } : { kind: "confirm" } }); break;
+    case "undo": dispatch({ type: "undo" }); break;
+    case "dismiss": dispatch({ type: "dismiss" }); break;
+    case "reconcile": dispatch({ type: "reconcile" }); break;
+    case "confirmMerge": dispatch({ type: "confirmMerge", yes: i.yes }); break;
+  }
 }
 
 async function perform(eff: ClumpEffect) {
@@ -130,7 +172,7 @@ function deskSpots(): Map<string, { x: number; y: number }> {
   // A flow layout by each object's drawn width, so a grown object pushes the others along instead of overlapping them.
   const desk = $("#desk-objects"); const r = desk.getBoundingClientRect(); const out = new Map<string, { x: number; y: number }>();
   let x = r.x, row = 0;
-  for (const id of state.desk) {
+  for (const id of state.desk.filter((d) => d !== inWell)) {
     const w = Math.min(r.width, (clay.label(id)?.offsetWidth ?? 180) * 1.0);
     if (x > r.x && x + w > r.right) { x = r.x; row++; }
     out.set(id, { x: x + w / 2, y: r.y + 30 + row * 64 }); x += w + 14;
@@ -145,14 +187,31 @@ function kindOf(id: string): ClayItem["kind"] {
   return f.kind;
 }
 
-function render() { renderPass(); renderPass(); }   // labels first, then positions by their new widths
+let inWell: string | null = null;
+function render() { renderModule(); renderPass(); renderPass(); }   // the module first (it decides the well), then labels, then positions
+function renderModule() {
+  glass.update(moduleModel(state, REGISTRY), lastError && !state.carried ? { error: lastError } : {});
+  const deskH = $("#desk").offsetHeight;
+  // Float just above the desk when there is room; on a short screen, over it.
+  glass.el.style.setProperty("--rg-bottom", `${innerHeight - deskH > 560 ? deskH + 12 : 12}px`);
+  const w = glass.well(); const id = objectInModule();
+  const shown = state.carried && state.focus !== state.carried ? state.focus : id;
+  inWell = w && shown && state.desk.includes(shown) && state.carried !== shown ? shown : null;
+  document.body.classList.toggle("recast-on", state.armed);
+  const trig = $("#recast-trigger"); trig.setAttribute("aria-pressed", String(state.armed)); trig.querySelector(".trigger-label")!.textContent = state.armed ? "Recast on" : "Recast";
+  for (const el of $$(".grab")) { el.tabIndex = state.armed ? 0 : -1; if (state.armed) el.setAttribute("role", "button"); else el.removeAttribute("role"); }
+  $("#desk-empty").textContent = state.armed
+    ? "Drag a highlighted name, place or time onto another to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up."
+    : `Recast is off, so pages behave normally. Press Recast in the address bar (or ${SHORTCUT}) to start picking things up.`;
+}
 function renderPass() {
   const spots = deskSpots(); const t = performance.now();
+  const well = inWell ? glass.well() : null;
   const items: ClayItem[] = [];
   const carriedPos = carriedPosition();
   for (const id of [...state.desk, ...(state.carried ? [state.carried] : [])]) {
     const v = viewOf(state, id); const carried = id === state.carried;
-    const a = anchors.get(id); let spot = carried ? carriedPos : (a && a.until > t ? a : spots.get(id)!);
+    const a = anchors.get(id); let spot = carried ? carriedPos : id === inWell && well ? well : (a && a.until > t ? a : spots.get(id)!);
     // Attraction: a target that would accept the carried object leans toward it, so the two surfaces start to join.
     if (!carried && state.carried && state.target?.kind === "object" && state.target.id === id && state.verdict?.ok && !reducedMotion()) {
       const dx = carriedPos.x - spot.x, dy = carriedPos.y - spot.y, d = Math.hypot(dx, dy) || 1, pull = Math.min(14, d * 0.25);
@@ -160,7 +219,8 @@ function renderPass() {
     }
     if (a && a.until <= t) anchors.delete(id);
     const targetMode = state.target?.kind === "object" && state.target.id === id ? (state.verdict?.ok ? "accepts" : "refuses") : null;
-    items.push({ id, x: spot.x, y: spot.y, label: v.label, ...(v.type !== "Fragment" ? { detail: v.summary.join(" · ") } : { detail: v.summary[0]! }), count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode: carried ? "carried" : targetMode ?? "rest", proposed: v.proposed, focused: false });
+    // In the module's well the facts are shown under it, so the object carries only its name.
+    items.push({ id, x: spot.x, y: spot.y, label: v.label, ...(id === inWell ? {} : v.type !== "Fragment" ? { detail: v.summary.join(" · ") } : { detail: v.summary[0]! }), count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode: carried ? "carried" : targetMode ?? "rest", proposed: v.proposed, focused: false });
   }
   clay.update(items);
   for (const it of items) { const el = clay.label(it.id)!; el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-description", it.mode === "carried" ? "in hand. Tab to a target, Enter to drop, Escape to put back" : "Enter to open, Space to pick up"); }
@@ -174,7 +234,7 @@ function renderPass() {
   }
   document.body.classList.toggle("carrying", !!state.carried);
   $("#desk-empty").hidden = state.desk.length > 0 || !!state.carried;
-  renderHint(); renderSheet(); renderToast();
+  renderHint(); renderToast();
 }
 
 function carriedPosition() {
@@ -192,7 +252,7 @@ function pageVerdict(el: HTMLElement): { ok: boolean; reason?: string; becomes?:
   return c.ok ? { ok: true, becomes: c.becomes } : { ok: false, reason: c.reason };
 }
 
-// ---- hint, sheets, toast -----------------------------------------------------------------------------------------
+// ---- hint and toast -----------------------------------------------------------------------------------------
 function renderHint() {
   const h = $("#hint"); let text = "";
   if (state.carried) {
@@ -207,68 +267,14 @@ function renderHint() {
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject" };
-const INPUT_HINT: Record<string, string> = { start: "2026-10-23T19:30", end: "2026-10-23T21:00", title: "Dinner with Maya", to: "maya@example.com" };
-const fmt = (field: string, v: unknown) => {
-  if (Array.isArray(v)) return v.join(", ");
-  if ((field === "start" || field === "end") && typeof v === "string") { const d = new Date(v.length === 10 ? `${v}T00:00` : v); return isNaN(+d) ? v : d.toLocaleString("en", { weekday: "short", day: "numeric", month: "short", ...(v.length > 10 ? { hour: "numeric", minute: "2-digit" } : {}) }); }
-  return String(v);
-};
-const ORIGIN: Record<string, string> = { extracted: "from the page", inferred: "Recast's reading", default: "a default", user: "you" };
-
-function objectDetail(id: string): string {
-  const v = viewOf(state, id); const c = state.objects[id]!;
-  const fields = v.event?.fields ?? v.message?.fields ?? {};
-  const rows = Object.entries(fields).map(([k, f]) => `<div class="row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
-  const missing = v.missing.map((m) => {
-    const sug = (m.suggestions ?? []).map((s) => `<button type="button" class="chip-btn" data-answer="${m.field}" data-value="${esc(s)}">Use “${esc(s)}”</button>`).join("");
-    const inputId = `in-${id}-${m.field}`;
-    return `<div class="missing"><label for="${inputId}">${FIELD_LABEL[m.field] ?? m.field}</label><p class="why">${esc(m.reason)}</p>${sug}<div class="answer"><input id="${inputId}" data-field="${m.field}" placeholder="${INPUT_HINT[m.field] ?? ""}" autocomplete="off"><button type="button" class="btn small" data-submit="${m.field}">Set</button></div></div>`;
-  }).join("");
-  const conflicts = v.conflicts.map((cf) => `<div class="missing"><p class="why">${FIELD_LABEL[cf.field] ?? cf.field}: the pieces disagree. Which one is right?</p>${cf.options.map((o) => `<button type="button" class="chip-btn" data-choose="${cf.field}" data-ingredient="${o.fragmentId}">${esc(o.original)}</button>`).join("")}</div>`).join("");
-  const ingredients = c.ingredients.map((f) => `<li><span class="kind">${f.kind}</span><span class="what">${esc(f.text)}</span><span class="src">from ${esc(f.source?.title ?? "")}</span>${c.ingredients.length > 1 ? `<button type="button" class="link" data-remove="${f.id}" aria-label="Take ${esc(f.text)} out">Take out</button>` : ""}</li>`).join("");
-  const assumptions = v.assumptions.length ? `<ul class="assume">${v.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : "";
-  return `${rows ? `<dl class="fields">${rows}</dl>` : ""}${missing || conflicts ? `<div class="needs"><h3>Still needed</h3>${conflicts}${missing}</div>` : ""}${assumptions}<h3>Made from</h3><ul class="ingredients">${ingredients}</ul>`;
-}
-
-function renderSheet() {
-  const sheet = $("#sheet"); const body = $("#sheet-body"); const title = $("#sheet-title"); const actions = $("#sheet-actions");
-  let html = "", heading = "", buttons = "";
-  if (state.phase === "inspecting" && state.inspecting) {
-    const v = viewOf(state, state.inspecting);
-    heading = v.label + (v.proposed ? " (proposed)" : "");
-    html = objectDetail(state.inspecting);
-    buttons = `<button type="button" class="btn" data-act="pickup">Pick up</button><button type="button" class="btn ghost" data-act="close">Done</button>`;
-  } else if (state.phase === "confirmingMerge" && state.pendingMerge) {
-    heading = "Combine them?"; html = `<p>Pressing these together ${esc(state.pendingMerge.reason)}. Placing it will then add an event instead of saving a message.</p>`;
-    buttons = `<button type="button" class="btn" data-act="merge-yes">Combine</button><button type="button" class="btn ghost" data-act="merge-no">Keep apart</button>`;
-  } else if (["previewing", "executing", "succeeded", "failed", "unknown"].includes(state.phase) && state.placement) {
-    const p = state.placement; const d = DESTS.find((x) => x.id === p.destinationId)!; const v = viewOf(state, p.objectId);
-    heading = state.phase === "previewing" ? `Add to ${d.label}?` : state.phase === "executing" ? `Adding to ${d.label}…` : state.phase === "succeeded" ? `Added to ${d.label}` : state.phase === "unknown" ? "No answer from the calendar" : "Not added";
-    html = `<p class="lead">${esc(v.label)}</p>${objectDetail(p.objectId)}`;
-    if (p.op) html += `<p class="risk">${p.op.risk.tier === "low" ? "Low risk: adds an entry only you can see, and it can be undone." : esc(p.op.risk.reasons.join("; "))}</p>`;
-    if (state.phase === "previewing") buttons = p.op ? (p.op.risk.consent === "hold" ? `<button type="button" class="btn hold" data-act="hold">Press and hold to ${d.contract.accepts[0]!.effect.toLowerCase()}</button>` : `<button type="button" class="btn" data-act="place">${esc(d.contract.accepts[0]!.effect)}</button>`) + `<button type="button" class="btn ghost" data-act="cancel">Not now</button>` : `<button type="button" class="btn" disabled>Answer what is still needed</button><button type="button" class="btn ghost" data-act="cancel">Not now</button>`;
-    if (state.phase === "succeeded") buttons = `${p.undoable ? `<button type="button" class="btn ghost" data-act="undo">Undo</button>` : ""}<button type="button" class="btn" data-act="dismiss">Done</button>`;
-    if (state.phase === "unknown") { html = `<p>${esc(p.message ?? "")}. It may or may not have been added. Recast does not send it again; it asks the calendar instead.</p>`; buttons = `<button type="button" class="btn" data-act="reconcile">Check the calendar</button>`; }
-    if (state.phase === "failed") { html = `<p>${esc(p.message ?? "")}</p>`; buttons = `<button type="button" class="btn" data-act="dismiss">Close</button>`; }
-  }
-  const open = !!heading;
-  if (open && (sheet.hidden || title.textContent !== heading || body.dataset["html"] !== html || actions.dataset["html"] !== buttons)) {
-    const focusId = (document.activeElement as HTMLElement | null)?.id;
-    title.textContent = heading; body.innerHTML = html; body.dataset["html"] = html; actions.innerHTML = buttons; actions.dataset["html"] = buttons;
-    const wasHidden = sheet.hidden; sheet.hidden = false;
-    if (focusId && document.getElementById(focusId)) document.getElementById(focusId)!.focus();
-    else if (wasHidden) ($("button:not([disabled])", actions) ?? title).focus();
-  }
-  if (!open && !sheet.hidden) { sheet.hidden = true; }
-}
+const fmt = (v: string) => { const d = new Date(v); return isNaN(+d) ? v : d.toLocaleString("en", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); };
 
 function renderToast() {
   const t = $("#toast");
-  const show = state.last && ["placed", "undone", "refused", "removed"].includes(state.last.kind) && NOW() - state.last.at < 6000 && sheetClosed();
+  const show = state.last && ["placed", "undone", "refused", "removed"].includes(state.last.kind) && NOW() - state.last.at < 6000 && moduleClosed();
   t.hidden = !show; if (show) t.textContent = state.last!.text;
 }
-const sheetClosed = () => $("#sheet").hidden;
+const moduleClosed = () => { const m = glass.el.dataset["mode"]; return m === "off" || m === "pill"; };
 
 function renderDestinations() {
   const cal = bridges["cal"]!;
@@ -278,7 +284,7 @@ function renderDestinations() {
     $(".slot-events", el).innerHTML = here.map((e) => `<span class="placed" data-placed="event">${esc(e["title"] ?? "")}${e["location"] ? ` · ${esc(e["location"].split(",")[0]!)}` : ""}</span>`).join("");
   }
   const other = [...cal.entries.values()].filter((e) => !DESTS[0]!.slots!.some((s) => s.start === e["start"]));
-  $("#cal-other").innerHTML = other.map((e) => `<li data-placed="event">${esc(e["title"] ?? "")} · ${esc(fmt("start", e["start"]))}${e["location"] ? ` · ${esc(e["location"])}` : ""}</li>`).join("");
+  $("#cal-other").innerHTML = other.map((e) => `<li data-placed="event">${esc(e["title"] ?? "")} · ${esc(fmt(e["start"] ?? ""))}${e["location"] ? ` · ${esc(e["location"])}` : ""}</li>`).join("");
   $("#cal-other-wrap").hidden = !other.length;
   $("#drafts-list").innerHTML = [...bridges["mail"]!.entries.values()].map((e) => `<li data-placed="draft"><strong>To ${esc(e["to"] ?? "")}</strong><span>${esc(e["snippet"] ?? "")}</span></li>`).join("") || `<li class="none">No drafts yet</li>`;
 }
@@ -297,21 +303,21 @@ let tabHover: { el: HTMLElement; timer: number } | null = null;
 const DRAG_PX = 6, LONG_PRESS_MS = 320, TAB_HOVER_MS = 450;
 
 function startPiecePress(el: HTMLElement, e: PointerEvent) {
-  if (state.carried) return;
+  if (state.carried || !state.armed) return;   // off: the page is just a page (text selection works as usual)
   mode = "pointer"; pointer = { x: e.clientX, y: e.clientY, touch: e.pointerType !== "mouse" };
   press = { kind: "piece", el, x: e.clientX, y: e.clientY, t: performance.now(), touch: e.pointerType !== "mouse", started: false };
   // On touch, a long press lifts (so the page can still scroll); with a mouse, moving a few pixels does.
   if (press.touch) press.timer = window.setTimeout(() => { if (press && !press.started) begin(); }, LONG_PRESS_MS);
 }
 function startObjectPress(id: string, e: PointerEvent) {
-  if (state.carried || state.phase === "merging" || state.phase === "executing") return;
+  if (state.carried || !state.armed || state.phase === "merging" || state.phase === "executing" || state.phase === "unknown") return;
   e.preventDefault(); mode = "pointer"; pointer = { x: e.clientX, y: e.clientY, touch: e.pointerType !== "mouse" };
   press = { kind: "object", id, x: e.clientX, y: e.clientY, t: performance.now(), touch: e.pointerType !== "mouse", started: false };
 }
 function begin() {
   if (!press) return; press.started = true; navigator.vibrate?.(8);
   if (press.kind === "piece") capture(press.el!, true);
-  else { if (state.phase !== "idle" && state.phase !== "inspecting" && state.phase !== "succeeded" && state.phase !== "failed") dispatch({ type: "cancel" }); dispatch({ type: "pickUp", id: press.id! }); }
+  else { if (!["idle", "inspecting", "succeeded", "failed", "composed", "choosing"].includes(state.phase)) closeModule(); dispatch({ type: "pickUp", id: press.id! }); }
 }
 addEventListener("pointermove", (e) => {
   pointer = { x: e.clientX, y: e.clientY, touch: e.pointerType !== "mouse" };
@@ -392,11 +398,16 @@ addEventListener("focusin", (e) => {
 });
 addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
+  // The Recast command. e.code, not e.key: on a Mac, Option+Shift+R types a character instead of "R".
+  if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === "KeyR") { e.preventDefault(); invoke(true); return; }
   if (e.key === "Escape") {
-    if (state.carried || !sheetClosed()) { e.preventDefault(); pageTarget = null; dispatch({ type: state.phase === "confirmingMerge" ? "confirmMerge" : "cancel", ...(state.phase === "confirmingMerge" ? { yes: false } : {}) } as never); }
+    const ev = escapeEvent(state);
+    if (ev) { e.preventDefault(); pageTarget = null; const wasModule = !moduleClosed(); dispatch(ev); if (wasModule && !moduleClosed()) glass.focus(); }
     return;
   }
-  if (el.matches("input, textarea")) { if (e.key === "Enter" && el.dataset["field"]) { e.preventDefault(); submitAnswer(el.dataset["field"]!); } return; }
+  if (glass.el.contains(el) || el.id === "recast-trigger") return;   // the module and the trigger handle their own keys
+  if (!state.armed) return;            // off: keys belong to the page
+  if (el.matches("input, textarea")) return;
   const enter = e.key === "Enter", space = e.key === " ";
   if (!enter && !space) { if (state.carried && mode === "keyboard" && el.getAttribute("role") === "tab" && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); moveTab(el, e.key === "ArrowRight" ? 1 : -1); } else if (!state.carried && el.getAttribute("role") === "tab" && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); moveTab(el, e.key === "ArrowRight" ? 1 : -1, true); } return; }
   if (state.carried && mode === "keyboard") {
@@ -413,40 +424,11 @@ addEventListener("keydown", (e) => {
     else dispatch({ type: "inspect", id });
   }
 });
-function afterKeyboardDrop() { mode = "pointer"; setTimeout(() => { const first = $("#sheet:not([hidden]) button:not([disabled])"); (first ?? clay.label(state.desk.at(-1) ?? "") ?? document.body).focus?.(); }, 30); }
+function afterKeyboardDrop() { mode = "pointer"; setTimeout(() => { if (!moduleClosed()) glass.focus(); else (clay.label(state.desk.at(-1) ?? "") ?? document.body).focus?.(); }, 30); }
 function moveTab(el: HTMLElement, dir: number, select = false) {
   const tabs = $$("[role=tab]"); const i = (tabs.indexOf(el) + dir + tabs.length) % tabs.length; const next = tabs[i]!;
   if (select || state.carried) showTab(next.dataset["for"]!); next.focus();
 }
-
-// ---- sheet actions ----------------------------------------------------------------------------------------------
-function submitAnswer(field: string) {
-  const id = state.placement?.objectId ?? state.inspecting; if (!id) return;
-  const input = document.getElementById(`in-${id}-${field}`) as HTMLInputElement | null; if (!input?.value.trim()) return;
-  dispatch({ type: "answer", objectId: id, field: field as never, value: input.value.trim() });
-}
-let holdStart = 0;
-$("#sheet").addEventListener("click", (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>("button"); if (!b) return;
-  const id = state.placement?.objectId ?? state.inspecting;
-  if (b.dataset["answer"] && id) dispatch({ type: "answer", objectId: id, field: b.dataset["answer"] as never, value: b.dataset["value"]! });
-  else if (b.dataset["submit"]) submitAnswer(b.dataset["submit"]);
-  else if (b.dataset["choose"] && id) dispatch({ type: "choose", objectId: id, field: b.dataset["choose"] as never, ingredientId: b.dataset["ingredient"]! });
-  else if (b.dataset["remove"] && id) dispatch({ type: "remove", objectId: id, ingredientId: b.dataset["remove"] });
-  else switch (b.dataset["act"]) {
-    case "close": dispatch({ type: "inspect", id: null }); break;
-    case "pickup": { const i = state.inspecting!; dispatch({ type: "pickUp", id: i }); mode = "keyboard"; pointer = { x: innerWidth / 2, y: innerHeight / 2, touch: false }; render(); setTimeout(() => clay.label(i)?.blur(), 0); break; }
-    case "merge-yes": dispatch({ type: "confirmMerge", yes: true }); break;
-    case "merge-no": dispatch({ type: "confirmMerge", yes: false }); break;
-    case "place": dispatch({ type: "place", consent: { kind: "confirm" } }); break;
-    case "cancel": dispatch({ type: "cancel" }); break;
-    case "undo": dispatch({ type: "undo" }); break;
-    case "dismiss": dispatch({ type: "dismiss" }); break;
-    case "reconcile": dispatch({ type: "reconcile" }); break;
-  }
-});
-$("#sheet").addEventListener("pointerdown", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold]")) holdStart = performance.now(); });
-$("#sheet").addEventListener("pointerup", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold]")) dispatch({ type: "place", consent: { kind: "hold", heldMs: performance.now() - holdStart } }); });
 
 // ---- wiring --------------------------------------------------------------------------------------------------------
 for (const el of $$(".grab")) {
@@ -456,9 +438,10 @@ for (const el of $$(".grab")) {
   el.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 for (const b of $$("[role=tab]")) b.addEventListener("click", () => { if (!state.carried) showTab(b.dataset["for"]!); });
+$("#recast-trigger").addEventListener("click", (e) => invoke((e as PointerEvent).detail === 0));
 $<HTMLInputElement>("#silent").addEventListener("change", (e) => { bridges["cal"]!.silent = (e.target as HTMLInputElement).checked; });
 addEventListener("resize", () => render()); addEventListener("scroll", () => render(), { passive: true, capture: true });
-const style = document.createElement("style"); style.textContent = CLAY_CSS; document.head.appendChild(style);
+const style = document.createElement("style"); style.textContent = CLAY_CSS + GLASS_CSS; document.head.appendChild(style);
 function renderCalendarGrid() {
   const byDay = new Map<string, NonNullable<DestinationSpec["slots"]>>();
   for (const sl of DESTS[0]!.slots!) { const day = sl.label.split(",")[0]!; byDay.set(day, [...(byDay.get(day) ?? []), sl]); }

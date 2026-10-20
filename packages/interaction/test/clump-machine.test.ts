@@ -12,7 +12,7 @@ const drafts: CapabilityContract = { destination: "mail.drafts", app: "Mail", ta
 const DESTS = [{ id: "cal", label: "Calendar", contract: calendar, slots: [{ id: "fri-1930", label: "Fri 23 Oct, 7:30 PM", start: "2026-10-23T19:30" }] }, { id: "mail", label: "Mail drafts", contract: drafts }];
 
 type Input = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
-function run(events: Input[], start: ClumpState = initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: DESTS })) {
+function run(events: Input[], start: ClumpState = initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: DESTS, armed: true })) {
   let s = start; const effects: unknown[] = []; const errors: string[] = [];
   for (const e of events) { const r = reduceClump(s, { ...e, now: NOW } as ClumpEvent); s = r.state; effects.push(...r.effects); if (r.error) errors.push(r.error); }
   return { s, effects, errors };
@@ -35,7 +35,7 @@ function mayaDinner() {
 describe("making one object out of three pieces", () => {
   it("each press grows the same object; the carried pieces are gone from the desk, not lost", () => {
     const { s, errors } = mayaDinner();
-    expect(errors).toEqual([]); expect(s.phase).toBe("idle");
+    expect(errors).toEqual([]); expect(s.phase).toBe("composed"); expect(s.focus).toBe("obj-1");
     expect(s.desk).toEqual(["obj-1"]); expect(Object.keys(s.objects)).toEqual(["obj-1"]);
     expect(s.objects["obj-1"]!.ingredients.map((f) => f.text)).toEqual(["Dakshin", "Maya Rao", "7:30 PM"]);
     expect(viewOf(s, "obj-1")).toMatchObject({ type: "Event", label: "Meet Maya at Dakshin", proposed: true });

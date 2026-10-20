@@ -12,6 +12,7 @@
     "@fontsource/eb-garamond": "^5.3.0",
     "@fontsource/figtree": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
+    "@recast/bridges": "workspace:*",
     "@recast/core": "workspace:*",
     "@recast/extract-web": "workspace:*",
     "@recast/interaction": "workspace:*",
