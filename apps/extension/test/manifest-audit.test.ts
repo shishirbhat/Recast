@@ -8,12 +8,16 @@ const read = (f: string) => readFileSync(path.join(root, f), "utf8");
 const manifest = JSON.parse(read("dist/manifest.json"));
 
 describe("production manifest: least privilege", () => {
-  it("asks for exactly activeTab and scripting, and nothing else", () => {
+  it("asks for exactly activeTab, scripting and storage; no host access, no content scripts injected on its own", () => {
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.permissions.sort()).toEqual(["activeTab", "scripting"]);
-    for (const k of ["host_permissions", "optional_permissions", "optional_host_permissions", "content_scripts", "background", "web_accessible_resources", "externally_connectable", "commands", "declarative_net_request", "devtools_page", "omnibox", "side_panel"]) {
+    // storage is for chrome.storage.session only (the objects you carry between tabs; memory, cleared with the browser).
+    expect(manifest.permissions.sort()).toEqual(["activeTab", "scripting", "storage"]);
+    for (const k of ["host_permissions", "optional_permissions", "optional_host_permissions", "content_scripts", "web_accessible_resources", "externally_connectable", "declarative_net_request", "devtools_page", "omnibox", "side_panel"]) {
       expect(manifest[k], k).toBeUndefined();
     }
+    expect(manifest.background).toEqual({ service_worker: "background.js" });
+    // The one command is the shortcut that grants activeTab for the current tab; it reaches no other tab.
+    expect(Object.keys(manifest.commands)).toEqual(["recast-clay"]);
   });
   it("has a strict CSP with no eval and no remote script", () => {
     const csp: string = manifest.content_security_policy.extension_pages;
@@ -31,6 +35,19 @@ describe("production manifest: least privilege", () => {
 });
 
 describe("built code: no dynamic execution, no network, no storage, no unsafe HTML", () => {
+  it("the service worker keeps state only in session storage and talks to no network", () => {
+    const src = read("dist/background.js");
+    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(local|sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.(create|update)/, /chrome\.downloads/]) {
+      expect(src, String(pat)).not.toMatch(pat);
+    }
+    expect(src).toContain("chrome.storage.session");
+  });
+  it("the clay layer in the page has no network and no storage of its own", () => {
+    const src = read("dist/clay-content.js");
+    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /localStorage/, /sessionStorage/, /indexedDB/, /chrome\.storage/, /document\.cookie/]) {
+      expect(src, String(pat)).not.toMatch(pat);
+    }
+  });
   for (const f of ["dist/page.js", "dist/popup.js"]) {
     it(`${f}`, () => {
       const src = read(f);

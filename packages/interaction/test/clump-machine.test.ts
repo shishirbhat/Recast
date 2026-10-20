@@ -11,7 +11,8 @@ const calendar: CapabilityContract = { destination: "calendar.agenda", app: "Cal
 const drafts: CapabilityContract = { destination: "mail.drafts", app: "Mail", targetKind: "Drafts", reliability: "official-api", accepts: [{ relationId: "message-draft-entry", effect: "Save as draft", dataMoved: ["Message.to", "Message.snippet"] }] };
 const DESTS = [{ id: "cal", label: "Calendar", contract: calendar, slots: [{ id: "fri-1930", label: "Fri 23 Oct, 7:30 PM", start: "2026-10-23T19:30" }] }, { id: "mail", label: "Mail drafts", contract: drafts }];
 
-function run(events: Omit<ClumpEvent, "now">[], start: ClumpState = initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: DESTS })) {
+type Input = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
+function run(events: Input[], start: ClumpState = initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: DESTS })) {
   let s = start; const effects: unknown[] = []; const errors: string[] = [];
   for (const e of events) { const r = reduceClump(s, { ...e, now: NOW } as ClumpEvent); s = r.state; effects.push(...r.effects); if (r.error) errors.push(r.error); }
   return { s, effects, errors };

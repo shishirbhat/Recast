@@ -213,7 +213,9 @@ export function classifyPiece(el: Element, opts: PieceOptions): Fragment | null 
     const place = classifyElement(cur, opts).find((c) => c.type === "Location"
       && (typeof c.properties["address"] === "string" || (!isHeading && Math.min(...Object.values(c.fields).map((f) => f.confidence)) >= 0.6)));
     if (place) {
-      const name = typeof place.properties["name"] === "string" ? place.properties["name"] : undefined, address = typeof place.properties["address"] === "string" ? place.properties["address"] : undefined;
+      let name = typeof place.properties["name"] === "string" ? place.properties["name"] : undefined, address = typeof place.properties["address"] === "string" ? place.properties["address"] : undefined;
+      // A heading read together with the address under it ("Dakshin 12 MG Road, …"): the heading is the place's name.
+      if (isHeading && address && address !== t && address.startsWith(`${t} `)) { name ??= t; address = address.slice(t.length).trim(); }
       return { id: cssPath(cur), kind: "place", text: t, value: { ...(name ? { name } : {}), ...(address ? { address } : {}) }, confidence: Math.min(...Object.values(place.fields).map((f) => f.confidence)), evidence, source };
     }
     if (isHeading && t.length <= 80) return { id: cssPath(cur), kind: "title", text: t, confidence: 0.6, evidence, source };

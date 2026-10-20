@@ -124,6 +124,12 @@ importers:
       '@recast/extract-web':
         specifier: workspace:*
         version: link:../../packages/extract-web
+      '@recast/interaction':
+        specifier: workspace:*
+        version: link:../../packages/interaction
+      '@recast/overlay':
+        specifier: workspace:*
+        version: link:../../packages/overlay
     devDependencies:
       '@types/chrome':
         specifier: ^0.0.326
