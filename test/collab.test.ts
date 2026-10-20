@@ -300,3 +300,28 @@ test("remote carets and selections stay on the same text while others insert and
     await server.close();
   }
 });
+
+test("events recorded by the server are pushed to /events subscribers at once, not on the next poll", async () => {
+  const { server } = await testServer();
+  try {
+    const { cookie } = await join(server, "Ev");
+    const ws = new WS(`${server.url.replace("http", "ws")}/events`, { headers: { cookie } });
+    await new Promise((ok) => ws.once("open", ok));
+    const lat: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      const got = new Promise<void>((ok) => {
+        const f = (raw: WS.RawData) => (JSON.parse(String(raw)) as { events: { type: string; data: { i: number } }[] }).events.some((e) => e.type === "test.ping" && e.data.i === i) && (ws.off("message", f), ok());
+        ws.on("message", f);
+      });
+      server.relay.record("test.ping", "system:test", { i });
+      await got;
+      lat.push(performance.now() - t0);
+    }
+    ws.close();
+    lat.sort((a, b) => a - b);
+    assert.ok(lat[3]! < 100, `median ${lat[3]!.toFixed(1)} ms; the poll interval is 200 ms`);
+  } finally {
+    await server.close();
+  }
+});

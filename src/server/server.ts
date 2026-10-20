@@ -581,13 +581,16 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 * 1024 });
   const eventClients = new Set<WebSocket>();
   let lastSeq = relay.events().at(-1)?.seq ?? 0;
-  const feed = setInterval(() => {
+  const pump = () => {
     const fresh = relay.eventsSince(lastSeq);
     if (!fresh.length) return;
     lastSeq = fresh.at(-1)!.seq;
     const msg = JSON.stringify({ type: "events", events: fresh });
     for (const ws of eventClients) if (ws.readyState === ws.OPEN && ws.bufferedAmount < 1 << 20) ws.send(msg);
-  }, 200);
+  };
+  // This process's own events are pushed at once; the poll picks up events from hooks, MCP servers and the CLI.
+  relay.onEvent = pump;
+  const feed = setInterval(pump, 200);
 
   server.on("upgrade", (req, socket, head) => {
     const reject = (code: number, msg: string) => {
@@ -649,6 +652,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     records,
     async close() {
       clearInterval(feed);
+      relay.onEvent = null;
       terminals.close();
       runs.close();
       for (const ws of eventClients) ws.terminate();

@@ -1,0 +1,77 @@
+{
+  "conditions": {
+    "date": "2026-10-20T10:55:59.168Z",
+    "node": "v22.22.0",
+    "cpu": "4 x Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "memoryGb": 17,
+    "transport": "loopback (127.0.0.1), server and clients in one process except the browser",
+    "serverFlushMs": 300
+  },
+  "results": {
+    "propagation_2_clients_ms": {
+      "n": 200,
+      "p50": 1.87,
+      "p95": 2.58,
+      "p99": 4,
+      "max": 4.7,
+      "mean": 1.82
+    },
+    "propagation_5_clients_ms": {
+      "n": 200,
+      "p50": 0.45,
+      "p95": 0.77,
+      "p99": 0.86,
+      "max": 0.98,
+      "mean": 0.48
+    },
+    "propagation_10_clients_ms": {
+      "n": 200,
+      "p50": 0.85,
+      "p95": 1.17,
+      "p99": 2.57,
+      "max": 2.8,
+      "mean": 0.86
+    },
+    "server_rss_mb_with_10_clients": 213,
+    "reconnect_resync_after_50_missed_edits_ms": {
+      "n": 20,
+      "p50": 23.43,
+      "p95": 25,
+      "p99": 25,
+      "max": 25,
+      "mean": 23.07
+    },
+    "edit_to_disk_ms_flush_300": {
+      "n": 20,
+      "p50": 304.6,
+      "p95": 310.09,
+      "p99": 310.09,
+      "max": 310.09,
+      "mean": 297.87
+    },
+    "task_event_propagation_ms": {
+      "n": 50,
+      "p50": 1.62,
+      "p95": 2.95,
+      "p99": 3.35,
+      "max": 3.35,
+      "mean": 1.74
+    },
+    "task_event_propagation_other_process_ms": {
+      "n": 20,
+      "p50": 48,
+      "p95": 180,
+      "p99": 180,
+      "max": 180,
+      "mean": 52.7
+    },
+    "browser_keystroke_to_paint_ms": {
+      "n": 100,
+      "p50": 11.5,
+      "p95": 17.3,
+      "p99": 19.6,
+      "max": 19.6,
+      "mean": 11.86
+    }
+  }
+}

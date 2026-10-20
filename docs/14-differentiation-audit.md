@@ -50,7 +50,7 @@ Root and web type-checks are clean and `next build` succeeds. No linter is confi
 | 7.2 | Provider adapter boundary | Claude Code hook + MCP; Codex not built | Real Claude tests | **Partial** | Codex needs an OpenAI key; the adapter contract isn't documented |
 | 8 | IDE and CLI share one engine | Both call `Relay` in `engine.ts`; the server adds auth | "IDE API cannot bypass the integration gate" test | **Complete** | Document API/event contracts (`docs/08` covers part) |
 | 9.1 | Auth, authorization, path safety, CSRF, rate limits | `server.ts`, `files.ts` | Security tests | **Complete** | — |
-| 9.2 | Measured performance | — | — | **Unverified** | Measure edit propagation, reconnect, task-event latency |
+| 9.2 | Measured performance | `bench/latency.ts`; raw results in `docs/evidence/latency-2026-10-20.json` | measured (see log) | **Measured**; one bottleneck found and fixed | WAN and multi-machine runs |
 | 10 | Differentiation demo vs. baseline | — | — | **Missing** | A comparable baseline needs repeated real-provider runs (cost, time). The demo can be built; the baseline is noted as a limit |
 
 ## Prioritised plan
@@ -193,3 +193,29 @@ The record also carries:
 5. The owner approves: approved and integrated are done, both tasks completed, rollback and security activity listed.
 
 **Found while building it:** the first version listed the partner's file as "outside scope" and showed per-task diff-check gaps that the integration gate deliberately supersedes. The record now follows the gate that applies. The engine itself was already correct.
+
+### Phase 9: measured latency (Unverified → measured; one bottleneck fixed)
+**How it was measured.** `node bench/latency.ts --out <file>`. Real Relay server, real y-websocket clients, real Chromium for typing.
+- **Conditions:** 4 × Intel Xeon 2.8 GHz, 17 GB RAM, Node 22.22, loopback 127.0.0.1, server flush interval 300 ms.
+- This measures Relay's own overhead. There is no network distance and no multi-machine run.
+
+| Measure | Target | p50 | p95 | p99 | n |
+|---|---|---|---|---|---|
+| Remote edit propagation, 2 clients | p95 < 50 ms | 1.87 ms | 2.58 ms | 4.0 ms | 200 |
+| Remote edit propagation, 5 clients | p95 < 50 ms | 0.45 ms | 0.77 ms | 0.86 ms | 200 |
+| Remote edit propagation, 10 clients | p95 < 50 ms | 0.85 ms | 1.17 ms | 2.57 ms | 200 |
+| Reconnect and resync after 50 missed edits | p95 < 500 ms | 23.4 ms | 25.0 ms | 25.0 ms | 20 |
+| Keystroke to paint in the IDE, with a peer in the file | p95 < 50 ms | 11.5 ms | 17.3 ms | 19.6 ms | 100 |
+| Task event to subscriber, same process | p95 < 100 ms | 1.62 ms | 2.95 ms | 3.35 ms | 50 |
+| Task event to subscriber, written by another process (hook/MCP/CLI) | p95 ≤ 250 ms | 48 ms | 180 ms | 180 ms | 20 |
+| Edit to file on disk | ≤ flush + 50 ms | 304.6 ms | 310.1 ms | 310.1 ms | 20 |
+
+Server RSS with 10 clients connected was 213 MB. That includes the benchmark's own clients, which run in the same process.
+
+**Fixed.** The first run measured task-event propagation at p50 176 ms / p95 199 ms. Every event, including the server's own, waited for the 200 ms poll of the event log. The engine now notifies after each synchronous unit of work (`Relay.onEvent`, batched with `setImmediate`, so listeners only see committed rows). The server pushes its own events at once, and the poll remains for events written by other processes.
+- Same process: 176 → 1.6 ms (p50).
+- Regression test: `collab.test.ts`, "events recorded by the server are pushed … at once".
+
+**How to read these:**
+- Keystroke-to-paint is measured from the `keydown` timestamp to the first animation frame after CodeMirror's DOM changes. That's a close proxy for, but not the same as, compositor presentation.
+- Edit-to-disk tracks the deliberate 300 ms flush. Durability before that comes from the SQLite update log, written on every update.

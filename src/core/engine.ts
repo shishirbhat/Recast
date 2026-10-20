@@ -161,7 +161,20 @@ export class Relay {
         JSON.stringify(e.data ?? {}),
         e.idempotencyKey ?? null,
       );
+    // Notify after the current synchronous work (and any transaction around it) has finished, so listeners only ever
+    // read committed rows; a rolled-back event is simply not there when they look.
+    if (this.onEvent && !this.notifyQueued) {
+      this.notifyQueued = true;
+      setImmediate(() => {
+        this.notifyQueued = false;
+        this.onEvent?.();
+      });
+    }
   }
+
+  /** Called (batched) after this process records events. Events written by other processes are found by polling. */
+  onEvent: (() => void) | null = null;
+  private notifyQueued = false;
 
   private seen(idempotencyKey: string | undefined): boolean {
     if (!idempotencyKey) return false;
