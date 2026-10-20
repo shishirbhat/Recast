@@ -113,3 +113,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Alternatives:** packs merged into the tenant policy (a pack could then affect every agent); recipes that also grant scopes (one click to broad authority); reviewing by version number (an edit without a version bump would slip through).
 - **Why:** a template is only safe to reuse if it can never widen authority, and if what runs is exactly what someone looked at.
 - **Change if:** recipes are shared between accounts. Then reviews must be signed by a publisher and verified on apply.
+
+### D22. One clump state, owned by the extension's service worker; pages only perform their own writes
+- **Decision:** composition is a first-class object (a clump) in the core, driven by a pure state machine whose state is plain JSON. In the extension that state lives in `chrome.storage.session`, behind a worker that applies one event at a time and sends the result to every tab where Recast was invoked. Destinations are declared by pages and their ids carry the tab, so a commit, undo or reconcile runs only in the page that owns the destination. Permissions stay `activeTab`, `scripting` and `storage`.
+- **Alternatives:** state in each content script, synchronised by messages (two sources of truth; a closed tab could take the object with it); `storage.local` (survives the browser, so it is written to disk); host permissions with content scripts on every page (broad access the product does not need); a drag that continues across tabs (browsers do not deliver it).
+- **Why:** an object the person made must not belong to the tab it came from, and a write must happen only where the person can see it happen.
+- **Change if:** a native shell exists (state moves to it, and the extension becomes one of its surfaces), or objects need to outlive the browser session (then persistence with the person's consent, and an erase path).
