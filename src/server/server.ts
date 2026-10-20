@@ -14,6 +14,7 @@ import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject } from "./files.ts";
 import { AgentRuns } from "./runs.ts";
+import { TerminalService } from "./terminal.ts";
 
 export interface ServerOptions {
   /** Any path inside the project's git repository. */
@@ -26,6 +27,8 @@ export interface ServerOptions {
   flushMs?: number;
   /** Command used to run Claude Code for agent tasks. */
   claudeBin?: string;
+  /** Allow the integrated terminal even when listening on a non-loopback address. */
+  allowTerminal?: boolean;
 }
 
 export interface RelayServer {
@@ -36,6 +39,7 @@ export interface RelayServer {
   docs: DocStore;
   collab: CollabService;
   runs: AgentRuns;
+  terminals: TerminalService;
   close(): Promise<void>;
 }
 
@@ -148,6 +152,8 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   });
   runs.attachDocs(docs);
   const collab = new CollabService(docs);
+  const host = opts.host ?? "127.0.0.1";
+  const terminals = new TerminalService(root, { loopback: ["127.0.0.1", "::1", "localhost"].includes(host), allowRemote: opts.allowTerminal === true });
   const project = { name: basename(root), root };
   const allow = limiter(40);
 
@@ -225,6 +231,33 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (method === "GET" && parts[0] === "files") {
       requireMember(req, "read");
       return json(res, 200, { files: listProjectFiles(root) });
+    }
+    if (method === "GET" && parts[0] === "capabilities") {
+      const m = requireMember(req, "read");
+      return json(res, 200, { terminal: await terminals.availability(m), extensions: { available: false, reason: "Relay has no extension host yet. Language support is built in." } });
+    }
+    if (parts[0] === "terminals") {
+      const m = requireMember(req, "read");
+      if (method === "GET") return json(res, 200, { sessions: terminals.list(m) });
+      if (method === "POST" && parts[2] === "kill") return json(res, 200, { killed: terminals.kill(parts[1] ?? "", m) });
+    }
+    if (method === "POST" && parts[0] === "save") {
+      requireMember(req, "edit");
+      const b = await readBody(req);
+      const path = resolveProjectPath(root, str(b.path, "path", 512));
+      const entry = docs.get(path);
+      if (!entry) throw new HttpError(404, "not_found", `${path} is not open`);
+      docs.flush(entry);
+      return json(res, 200, { path, savedAt: new Date().toISOString() });
+    }
+    if (method === "GET" && parts[0] === "scripts") {
+      requireMember(req, "read");
+      try {
+        const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { scripts?: Record<string, string> };
+        return json(res, 200, { scripts: Object.entries(pkg.scripts ?? {}).map(([name, command]) => ({ name, command: String(command) })) });
+      } catch {
+        return json(res, 200, { scripts: [] });
+      }
     }
     if (method === "GET" && parts[0] === "search") {
       requireMember(req, "read");
@@ -350,8 +383,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     throw new HttpError(404, "not_found", "No such endpoint");
   }
 
+  const staticRoot = opts.staticDir ? resolve(opts.staticDir) : undefined;
   function serveStatic(res: ServerResponse, pathname: string): void {
-    const dir = opts.staticDir;
+    const dir = staticRoot;
     if (!dir || !existsSync(dir)) {
       res.writeHead(404, { "content-type": "text/plain", ...SECURITY_HEADERS });
       res.end("Relay server is running. The IDE has not been built (cd ide/web && npm run build).");
@@ -359,7 +393,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     }
     const clean = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, "");
     let file = join(dir, clean);
-    if (!file.startsWith(resolve(dir))) file = join(dir, "index.html");
+    if (!file.startsWith(dir)) file = join(dir, "index.html");
     // Next's export has both `join.html` and a `join/` folder of payloads: the page wins.
     if (existsSync(file + ".html") && (!existsSync(file) || statSync(file).isDirectory())) file += ".html";
     else if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
@@ -403,6 +437,17 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       if (origin && new URL(origin).host !== req.headers.host) return reject(403, "Forbidden");
       const member = memberFrom(req);
       if (!member) return reject(401, "Unauthorized");
+      if (url.pathname === "/terminal") {
+        const sessionId = url.searchParams.get("session");
+        const cols = Number(url.searchParams.get("cols") ?? 80);
+        const rows = Number(url.searchParams.get("rows") ?? 24);
+        return wss.handleUpgrade(req, socket, head, (ws) => {
+          terminals.attach(ws, member, sessionId || null, cols, rows).catch((err: Error) => {
+            if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "error", message: err.message }));
+            ws.close(4403, "terminal unavailable");
+          });
+        });
+      }
       if (url.pathname === "/events") {
         return wss.handleUpgrade(req, socket, head, (ws) => {
           eventClients.add(ws);
@@ -424,19 +469,21 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     }
   });
 
-  await new Promise<void>((ok) => server.listen(opts.port ?? 4747, opts.host ?? "127.0.0.1", ok));
+  await new Promise<void>((ok) => server.listen(opts.port ?? 4747, host, ok));
   const port = (server.address() as { port: number }).port;
 
   return {
-    url: `http://${opts.host ?? "127.0.0.1"}:${port}`,
+    url: `http://${host}:${port}`,
     port,
     relay,
     members,
     docs,
     collab,
     runs,
+    terminals,
     async close() {
       clearInterval(feed);
+      terminals.close();
       runs.close();
       for (const ws of eventClients) ws.terminate();
       collab.close();

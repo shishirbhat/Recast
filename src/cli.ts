@@ -31,7 +31,9 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
   relay events [task]
-  relay ide [--port N] [--host ADDR] [--cwd DIR]  start the collaborative IDE server (127.0.0.1:4747 by default)
+  relay ide [--port N] [--host ADDR] [--cwd DIR] [--allow-terminal]
+                                                start the collaborative IDE server (127.0.0.1:4747 by default);
+                                                the terminal is owner-only and off on non-loopback hosts unless --allow-terminal
   relay ide invite <name> [--role owner|editor|viewer] [--port N]   one-time join link for a collaborator
   relay agent-config claude-code --task ID --root DIR --out DIR
   relay hook claude-code --task ID --root DIR   (invoked by Claude Code)
@@ -63,6 +65,7 @@ const { values: o, positionals: args } = parseArgs({
     port: { type: "string" },
     host: { type: "string" },
     role: { type: "string" },
+    "allow-terminal": { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
 });
@@ -119,7 +122,7 @@ async function main(): Promise<void> {
       }
     }
     const root = resolve(o.cwd ?? process.cwd());
-    const server = await startServer({ root, dbPath, port, host, staticDir: resolve(dirname(RELAY_BIN), "../ide/web/out") });
+    const server = await startServer({ root, dbPath, port, host, staticDir: resolve(dirname(RELAY_BIN), "../ide/web/out"), allowTerminal: o["allow-terminal"] === true });
     if (host !== "127.0.0.1" && host !== "localhost") console.error("relay: warning: serving on a network interface without TLS. Put it behind an HTTPS reverse proxy or tunnel.");
     if (server.members.list().length === 0) {
       const { member, token } = server.members.invite(process.env.USER || "owner", "owner");
