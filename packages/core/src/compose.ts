@@ -4,20 +4,21 @@
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
 export type Origin = "extracted" | "inferred" | "default" | "user";
-export type FragmentKind = "time" | "place" | "title" | "text";
+/** `thing`: something recognised but not composable (a product, a paper): it can be carried, never merged. */
+export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing";
 
 /** One piece the person captured. `text` is exactly what was on screen; `value` is optional structure from extraction. */
 export interface Fragment {
   id: string;
   kind: FragmentKind;
   text: string;
-  value?: { name?: string; address?: string };
+  value?: { name?: string; address?: string; email?: string };
   confidence: number;
   evidence: Evidence[];
   source?: { app: string; url?: string; title?: string };
 }
 
-export type EventField = "title" | "start" | "end" | "allDay" | "timezone" | "location";
+export type EventField = "title" | "start" | "end" | "allDay" | "timezone" | "location" | "description";
 
 export interface ComposeContext {
   /** ISO instant used to read relative dates ("Friday", "tomorrow"). */
@@ -155,6 +156,8 @@ const REQUIRED: EventField[] = ["title", "start"];
  * is read with high confidence. An inference ("Friday" → a date) stays below the trust model's 0.75, so placing it asks for
  * a confirmation. A default is policy, shown in the preview and the assumptions.
  */
+const personName = (f?: Fragment) => (f ? (f.value?.name ?? f.text).replace(/\s+/g, " ").trim() : undefined);
+
 export const COMPOSED_CONFIDENCE = { extracted: 0.9, inferred: 0.6, default: 0.9, user: 1 } as const;
 
 /** Combine fragments into an Event candidate. Deterministic for the same inputs and context. */
@@ -164,8 +167,10 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
   const answers = ctx.answers ?? {}; const choose = ctx.choose ?? {};
 
   // Sort fragments into what they can say.
-  const times: { f: Fragment; r: TimeReading }[] = []; const places: Fragment[] = []; const titles: Fragment[] = [];
+  const times: { f: Fragment; r: TimeReading }[] = []; const places: Fragment[] = []; const titles: Fragment[] = []; const people: Fragment[] = [];
   for (const f of fragments) {
+    if (f.kind === "person") { people.push(f); continue; }
+    if (f.kind === "thing") continue;
     if (f.kind === "place") { places.push(f); continue; }
     if (f.kind === "title") { titles.push(f); continue; }
     const r = readTime(f.text, ctx);
@@ -195,9 +200,18 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
     const t = pick("title", titles.map((f) => ({ value: f.text.replace(/\s+/g, " ").trim(), f, original: f.text })).filter((o) => o.value));
     if (t) set("title", { value: t.value, origin: "extracted", fragments: t.ids, original: t.original, confidence: t.conf });
     else if (!conflicts.some((c) => c.field === "title")) {
-      const place = places[0]?.value?.name ?? places[0]?.text;
-      missing.push({ field: "title", reason: "nothing captured reads as a title", ...(place ? { suggestions: [`Meet at ${place}`] } : {}) });
+      const place = (places[0]?.value?.name ?? places[0]?.text)?.replace(/\s+/g, " ").trim();
+      const first = personName(people[0])?.split(" ")[0];
+      const suggestion = first && place ? `Meet ${first} at ${place}` : first ? `Meet ${first}` : place ? `Meet at ${place}` : undefined;
+      missing.push({ field: "title", reason: "nothing captured reads as a title", ...(suggestion ? { suggestions: [suggestion] } : {}) });
     }
+  }
+
+  // People: who the event is with, from what the person picked up. Written into the description, never sent as invitations
+  // (inviting notifies third parties, a different and riskier action).
+  if (!userField("description") && people.length) {
+    const names = [...new Set(people.map((f) => personName(f)!).filter(Boolean))];
+    set("description", { value: `With ${names.join(", ")}`, origin: "extracted", fragments: people.map((f) => f.id), original: people.map((f) => f.text).join(" + "), confidence: COMPOSED_CONFIDENCE.extracted });
   }
 
   // Location

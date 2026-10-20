@@ -9,7 +9,7 @@
   "properties": {
     "destination": { "type": "string", "minLength": 1 },
     "app": { "type": "string", "minLength": 1 },
-    "targetKind": { "enum": ["Event", "Task", "Project", "Message", "Claim", "ResearchPaper", "Product", "Calendar"] },
+    "targetKind": { "enum": ["Event", "Task", "Project", "Message", "Claim", "ResearchPaper", "Product", "Calendar", "Drafts"] },
     "reliability": { "enum": ["native", "official-api", "structured-interface", "deep-link", "ui-automation", "unsupported"] },
     "accepts": {
       "type": "array",

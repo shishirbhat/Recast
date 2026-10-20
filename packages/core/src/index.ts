@@ -10,3 +10,4 @@ export { RecastError } from "./errors.js";
 export type * from "./types.js";
 export { compose, readTime, type Composition, type ComposeContext, type ComposedField, type Conflict, type EventField, type Fragment, type FragmentKind, type Missing, type Origin, type TimeReading } from "./compose.js";
 export { advance, isTerminal, LifecycleError, OutcomeUnknownError, startAction, TRANSITIONS, type ActionRecord, type ActionStatus, type ActionStep, type OperationCapabilities } from "./lifecycle.js";
+export { newClump, typeOf, canMerge, mergeClumps, removeIngredient, answer as answerClump, choose as chooseClump, viewClump, type Clump, type ClumpType, type ClumpView, type MergeCheck, type MergeResult, type MessageView, type AnswerField, type MessageField } from "./clump.js";

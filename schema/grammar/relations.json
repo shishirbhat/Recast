@@ -153,6 +153,22 @@
         ]
       ],
       "reversible": true
+    },
+    {
+      "id": "message-draft-entry",
+      "from": "Message",
+      "to": "Drafts",
+      "relation": "draft",
+      "risk": "low",
+      "requires": [
+        [
+          "to"
+        ],
+        [
+          "snippet"
+        ]
+      ],
+      "reversible": true
     }
   ]
 }
