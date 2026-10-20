@@ -7,6 +7,8 @@ import { RelayError, TASK_STATES } from "./core/types.ts";
 import type { Actor, TaskState } from "./core/types.ts";
 import { resolveCommit } from "./git.ts";
 import { ImpactService } from "./analysis/impact.ts";
+import { Records } from "./knowledge/records.ts";
+import { listProjectFiles } from "./server/files.ts";
 import { HOOK_MATCHER, runHook } from "./hooks/claude-code.ts";
 import { runMcp } from "./mcp/server.ts";
 import { startServer } from "./server/server.ts";
@@ -32,6 +34,9 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
   relay impact [--base REF | --task ID] --cwd DIR   what a change affects: interfaces, consumers, tests, tasks, stale evidence
+  relay context <task> --cwd DIR             accepted decisions, current contracts, conflicts and obsolete records for a task
+  relay decision list | accept|reject <id> | invalidate <id> --reason TEXT --cwd DIR
+  relay investigation list | show <id> --cwd DIR
   relay events [task]
   relay ide [--port N] [--host ADDR] [--cwd DIR] [--allow-terminal]
                                                 start the collaborative IDE server (127.0.0.1:4747 by default);
@@ -250,6 +255,36 @@ async function main(): Promise<void> {
           ...r.gaps.map((g) => `UNSEEN   ${g}`),
         ];
         return print(r, lines.join("\n"));
+      }
+      case "context": {
+        const root = resolve(o.cwd ?? process.cwd());
+        const graph = new ImpactService(relay, root, dbPath).graph;
+        graph.refresh(listProjectFiles(root));
+        const records = new Records(relay, root);
+        const c = records.contextFor(need(sub, "task id"), graph);
+        return print(c, records.contextText(sub!, graph, 20_000) + (c.obsolete.length ? `\nObsolete: ${c.obsolete.map((x) => `${x.id} (${x.status}${x.replacement ? ` -> ${x.replacement}` : ""})`).join(", ")}` : "") || "No decisions or contracts touch this task.");
+      }
+      case "decision": {
+        const records = new Records(relay, resolve(o.cwd ?? process.cwd()));
+        if (sub === "list") {
+          const ds = records.listDecisions();
+          return print(ds, ds.map((d) => `${d.id}  ${d.status.padEnd(11)} ${d.kind.padEnd(10)} ${d.title}${d.sourceStatus.some((x) => x.state === "changed" || x.state === "missing") ? "  (a source changed)" : ""}`).join("\n") || "No decision records.");
+        }
+        const to = ({ accept: "accepted", reject: "rejected", invalidate: "invalidated" } as const)[sub as "accept"];
+        if (to) return print(records.decide(need(a1, "decision id"), to, human.id, o.reason), `${a1} ${to}`);
+        break;
+      }
+      case "investigation": {
+        const records = new Records(relay, resolve(o.cwd ?? process.cwd()));
+        if (sub === "list") {
+          const is = records.listInvestigations();
+          return print(is, is.map((i) => `${i.id}  ${i.status.padEnd(9)} ${i.owner.padEnd(12)} @${i.revision}  ${i.title}`).join("\n") || "No investigations.");
+        }
+        if (sub === "show") {
+          const r = records.getInvestigation(need(a1, "investigation id"));
+          return print(r, [`${r.investigation.title} (${r.investigation.status}, opened @${r.investigation.revision})`, r.investigation.description, ...r.entries.map((e) => `- [${e.kind}${e.status ? `:${e.status}` : ""}${e.verified ? "" : ", unverified"}] ${e.author} @${e.revision}: ${e.body.split("\n")[0]}${e.sources.length ? ` (${e.sources.map((x) => `${x.type}:${x.ref}`).join(", ")})` : ""}`)].join("\n"));
+        }
+        break;
       }
       case "events": {
         const evs = relay.events(sub);

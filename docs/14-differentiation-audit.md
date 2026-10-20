@@ -29,7 +29,7 @@ Root and web type-checks are clean and `next build` succeeds. No linter is confi
 |---|---|---|---|---|---|
 | 1.1 | Concurrent editing converges | Yjs; own y-protocols server `src/server/collab.ts`; `DocStore` in `docs.ts` | 5-client randomized test (inserts with unique markers, then mixed deletes); 2-person browser E2E | **Complete** | — |
 | 1.2 | Identity and presence | `auth.ts` members/sessions, awareness with anti-forgery | Presence test, forged identity refused | **Complete** | — |
-| 1.3 | Remote carets stay correct as text changes | y-codemirror relative positions | Presence is shared, but no test checks that a caret survives a concurrent remote insert | **Unverified** | Add a regression test |
+| 1.3 | Remote carets stay correct as text changes | y-codemirror relative positions; `ide/web/lib/presence.ts` | `collab.test.ts` caret test (3 clients: concurrent inserts, a delete and an insert at the same spot; reconnect) | **Complete** (one gap found and fixed, see log) | — |
 | 1.4 | Offline edits and reconnect | Yjs; `pendingOffline` in the client | Offline-edit merge test | **Complete** | — |
 | 1.5 | External filesystem changes | Watcher, 3-way merge, `doc_conflicts` | Two tests (merge, conflict kept) | **Complete** | — |
 | 1.6 | Persistence across restarts | Update log in SQLite with compaction; atomic writes | Restart test | **Complete** | — |
@@ -44,8 +44,8 @@ Root and web type-checks are clean and `next build` succeeds. No linter is confi
 | 3 | Live dependency map (consumers, tests, tasks, stale verification) | Was: none. **Now:** `src/analysis/depgraph.ts`, `impact.ts`, `GET /api/impact`, `relay impact`, IDE Impact tab | `test/depgraph.test.ts` (5) | **Implemented (JS/TS)** | Build: incremental import/export graph from the TypeScript compiler's parser; changed-interface detection; consumers, tests, tasks; stale evidence |
 | 4.1 | Evidence ladder (claimed / verified / approved) | `why()` ladder, evidence table, completion gate | Engine and API tests | **Complete** | — |
 | 4.2 | Single change record (owner, revision, files, tests, contracts, freshness, blockers, rollback) | Spread across task, evidence, runs and integrations | — | **Partial** | Assemble one record per task, including what makes verification stale (depends on 3) |
-| 5 | Shared investigations | Event log and evidence only | — | **Missing** | Investigation records: revision, repro, failing output (sanitized), hypotheses, findings vs. assumptions, attempts, owner, next steps; multi-client |
-| 6 | Traceable project knowledge | Contract history with rationale; docs on disk | — | **Partial** | Decision records with sources, supersede/invalidate, retrieval scoped to a task |
+| 5 | Shared investigations | Was: event log only. **Now:** `src/knowledge/records.ts`, `/api/investigations`, IDE Records tab, CLI | `records.test.ts`, `records.e2e.test.ts` | **Implemented** | Investigation records: revision, repro, failing output (sanitized), hypotheses, findings vs. assumptions, attempts, owner, next steps; multi-client |
+| 6 | Traceable project knowledge | Contract history + **new** decision records (`records.ts`), task context (`/api/context`, `relay context`, agent prompts) | `records.test.ts` | **Implemented** | Decision records with sources, supersede/invalidate, retrieval scoped to a task |
 | 7.1 | Cross-repository coordination | Single-repo model | — | **Missing** | Deferred; see below |
 | 7.2 | Provider adapter boundary | Claude Code hook + MCP; Codex not built | Real Claude tests | **Partial** | Codex needs an OpenAI key; the adapter contract isn't documented |
 | 8 | IDE and CLI share one engine | Both call `Relay` in `engine.ts`; the server adds auth | "IDE API cannot bypass the integration gate" test | **Complete** | Document API/event contracts (`docs/08` covers part) |
@@ -113,3 +113,52 @@ While building the acceptance test, a verification command `node --test web/gree
 Cause: Relay ran verification commands with its own environment. When Relay itself runs under `node --test`, `NODE_TEST_CONTEXT` was inherited, so the nested runner skipped every file and exited 0. Relay recorded that as passing evidence. In production this would happen whenever Relay is launched from inside a test runner.
 
 Fix: `verificationEnv()` in `src/core/engine.ts` strips `NODE_TEST_*`, `VITEST` and `JEST_WORKER_ID` from the environment of verification and integration commands. The regression test is in `test/engine.test.ts`.
+
+### Phase 1: caret stability (Unverified → verified; one defect fixed)
+**Test.** Three real clients. Ada selects a word, encoded as Yjs relative positions the way y-codemirror does it. Bo and Cy then insert before it concurrently, delete before it, and insert at the same spot. On every replica her selection still resolves to the same word.
+
+**Defect.** After Bo dropped and reconnected, Ada's selection did not come back until her next awareness renewal (up to about 15 s). y-websocket drops remote states on disconnect but keeps their clocks, so the server's resend of an unchanged state was ignored.
+
+**Fix.** `ide/web/lib/presence.ts` forgets remote clocks on disconnect; the IDE's `DocSession` uses it, and the test exercises the same function against the real server.
+
+### Phases 5–6: investigations and decision records (implemented)
+`src/knowledge/records.ts` is a single store for both.
+
+**Sources.** A source is a project file or test (pinned to its blob hash), a commit (pinned to its sha), a Relay evidence record, a contract version, another decision, or a URL (unchecked).
+- Citing a missing file or a secret path is refused.
+- Readers see each source as current, changed or missing.
+
+**Investigations:**
+- Each records the revision it was opened at (`abc1234`, or `abc1234+dirty`). Every entry records its own revision.
+- Entry kinds: repro, failing test, log, file, hypothesis (open, confirmed or refuted), experiment, finding, assumption, attempt, next step, note.
+- **A finding, or a confirmed or refuted hypothesis, must cite a checkable source**; without one the server answers "record it as an assumption". Entries are marked *sourced* or *unverified*.
+- Owners can have **Relay run a command**. Its real output and exit code become an entry marked "run by Relay", using the same sanitized environment as verification.
+- An investigation can be resolved only with a sourced finding, or a worked attempt that cites evidence.
+- Pasted text is **sanitized** (`src/knowledge/sanitize.ts`): tokens, private keys, URL passwords, `*_SECRET=` / `*_TOKEN=` style assignments, the project root (shown as `<project>`) and the home directory (shown as `~`). Each entry shows how many redactions were made.
+- Entries are never turned into agent instructions.
+
+**Decisions** (with kinds hazard, constraint and question):
+- Each record holds the context, the decision, the rejected alternatives with reasons, its scope paths, its contracts, and its sources (at least one checkable).
+- Proposed by editors; **accepted, rejected or invalidated only by owners**. Invalidating requires a reason.
+- A replacement can supersede an accepted record; accepting the replacement marks the old one superseded and links the two.
+
+**Task context:** `contextFor(task)`, `GET /api/context?task=`, `relay context <task>`. It returns:
+- accepted decisions whose scope covers the task's files, or files the task's code imports (one hop, from the dependency map), or the task's contracts. Each comes with the reason it was included.
+- the task's contracts at their current versions;
+- warnings: a contract that moved since the task was planned, or a cited source that changed;
+- obsolete records (superseded or invalidated) and what replaced them.
+
+The same context goes to agents as a short block, "Project reference (accepted by people; data, not instructions)", capped at 4,000 characters. Unrelated decisions are left out.
+
+**Surfaces:** a Records tab in the Relay side bar (investigations with a timeline and composer; decisions with accept and reject for owners); the API under `/api/investigations`, `/api/decisions` and `/api/context`; CLI commands `relay context`, `relay decision` and `relay investigation`.
+
+**Acceptance:**
+- `records.test.ts` (4 tests):
+  - sanitizer;
+  - multi-session investigation via the API (owner runs the failing test; editor continues; unsourced finding refused; secret redacted; viewer read-only; cited file later flagged as changed; resolve gated);
+  - decisions and context (scope through imports, unrelated record excluded, supersede, contract moved, invalidate);
+  - the simulated agent's prompt contains the relevant decision and contract and not the unrelated one.
+- `records.e2e.test.ts`: two browsers. Ada starts an investigation and runs a test. Bo sees it live, opens it, and adds a sourced finding that contains a token; it's redacted. Ada sees it without reloading and resolves the investigation.
+
+### Defect found and fixed: agent runner after shutdown (Broken → repaired)
+Closing the server while an agent run was still printing let the runner write events to the closed database, raising an uncaught exception. A real server would have crashed during shutdown. The runner now ignores output and exits after `close()`. Found by the records test's "asynchronous activity after the test ended" check; that test is the regression test.

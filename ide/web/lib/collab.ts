@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { restorePresenceOnReconnect } from "./presence";
 import type { Member } from "./types";
 
 export type SyncStatus = "connecting" | "synced" | "offline";
@@ -24,6 +25,7 @@ export class DocSession {
     this.undoManager = new Y.UndoManager(this.text);
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     this.provider = new WebsocketProvider(`${proto}//${location.host}/collab`, encodeURIComponent(`file:${path}`), this.doc, { disableBc: true });
+    restorePresenceOnReconnect(this.provider);
     this.provider.awareness.setLocalStateField("user", { id: me.id, name: me.name, color: me.color, colorLight: me.color + "33" });
     this.provider.on("status", ({ status }: { status: string }) => {
       if (status !== "connected") this.set("offline");

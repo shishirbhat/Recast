@@ -20,6 +20,7 @@ import { Editor } from "../Editor";
 import { FileTree } from "../FileTree";
 import { Avatar, Mark, StatePill } from "../ui";
 import { AgentPanel } from "./AgentPanel";
+import { RecordsPanel } from "./Records";
 import { CommandPalette } from "./CommandPalette";
 import { AccountView, CommunityView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
 import { TerminalPanel } from "./Terminal";
@@ -32,7 +33,7 @@ import type { PanelTab } from "./Views";
    =================================================================================================== */
 
 type View = "explorer" | "search" | "scm" | "run" | "extensions" | "community" | "relay" | "account" | "settings";
-type RightTab = "agent" | CoordTab;
+type RightTab = "agent" | CoordTab | "records";
 
 interface Layout {
   view: View;
@@ -517,6 +518,7 @@ export function Workbench() {
       { id: "agent.focus", category: "Relay", title: "Ask the Agent…", keywords: ["chat", "code with agent", "claude"], keybinding: "Mod+I", when: () => viewOnly, run: () => (showRight("agent"), setAgentNonce((n) => n + 1)) },
       { id: "relay.tasks", category: "Relay", title: "Show Tasks", run: () => (showRight("tasks"), setSelectedTask(null)) },
       { id: "relay.contracts", category: "Relay", title: "Show Contracts", run: () => (showRight("contracts"), setSelectedTask(null)) },
+      { id: "relay.records", category: "Relay", title: "Show Investigations and Decisions", keywords: ["bug", "debug", "investigation", "decision", "adr", "knowledge"], run: () => showRight("records") },
       { id: "relay.newTask", category: "Relay", title: "New Task…", when: () => viewOnly, run: () => (showRight("tasks"), setSelectedTask(null), setNewTaskNonce((n) => n + 1)) },
       {
         id: "relay.runActiveTask",
@@ -809,7 +811,7 @@ export function Workbench() {
             <Sash dir="x" label="Secondary side bar width" value={fit.rw} min={SECONDARY.min} max={Math.min(SECONDARY.max, win.w - ACTIVITY_W - 300)} onChange={(v) => set({ secondaryW: v })} />
             <aside aria-label="Secondary side bar" style={{ width: fit.rw }} className="flex shrink-0 flex-col overflow-hidden border-l border-rule bg-sidebar" data-testid="secondary-sidebar">
               <div className="flex h-[35px] shrink-0 items-center gap-4 border-b border-rule px-3" role="tablist" aria-label="Relay">
-                {(["agent", "tasks", "contracts"] as RightTab[]).map((t) => (
+                {(["agent", "tasks", "contracts", "records"] as RightTab[]).map((t) => (
                   <button key={t} role="tab" aria-selected={layout.rightTab === t} data-testid={`right-tab-${t}`} onClick={() => (set({ rightTab: t }), t !== "agent" && setSelectedTask(null))} className={`micro relative h-full transition-colors ${layout.rightTab === t ? "text-ink" : "text-faint hover:text-ink-2"}`}>
                     {t}
                     {t === "tasks" && needsPerson > 0 && <span className="tnum ml-1.5 rounded-sm bg-accent px-1 py-px text-[9.5px] text-accent-fg">{needsPerson}</span>}
@@ -821,10 +823,12 @@ export function Workbench() {
                 </button>
               </div>
               <div className="min-h-0 flex-1">
-                {layout.rightTab === "agent" ? (
+                {layout.rightTab === "records" ? (
+                  <RecordsPanel tick={events.length} role={me!.role} notify={notify} />
+                ) : layout.rightTab === "agent" ? (
                   <AgentPanel state={s} files={files} activeFile={active} onOpenTask={showTask} onOpenFile={open} notify={notify} refresh={refresh} focusNonce={agentNonce} />
                 ) : (
-                  <Coordination embedded state={s} onOpenFile={open} refresh={refresh} notify={notify} tab={layout.rightTab} setTab={(t) => set({ rightTab: t })} selected={selectedTask} setSelected={setSelectedTask} newTaskNonce={newTaskNonce} />
+                  <Coordination embedded state={s} onOpenFile={open} refresh={refresh} notify={notify} tab={layout.rightTab as CoordTab} setTab={(t) => set({ rightTab: t })} selected={selectedTask} setSelected={setSelectedTask} newTaskNonce={newTaskNonce} />
                 )}
               </div>
             </aside>

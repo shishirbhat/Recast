@@ -21,6 +21,8 @@ const db = arg("--db");
 const task = arg("--task");
 const root = arg("--root");
 const out = (o: unknown) => process.stdout.write(JSON.stringify(o) + "\n");
+// RELAY_SIM_PROMPT_OUT: record the prompt the runner gave us, so tests can check what context an agent receives.
+if (process.env.RELAY_SIM_PROMPT_OUT) writeFileSync(process.env.RELAY_SIM_PROMPT_OUT, args[args.indexOf("-p") + 1] ?? "");
 
 if (process.env.RELAY_SIM_MODE === "sleep") {
   out({ type: "assistant", message: { content: [{ type: "text", text: "thinking for a long time" }] } });

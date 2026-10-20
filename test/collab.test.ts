@@ -5,6 +5,8 @@ import { join as pjoin } from "node:path";
 import WS from "ws";
 import { api, client, join, sleep, testServer, until } from "./collab-helpers.ts";
 import type { Client } from "./collab-helpers.ts";
+import * as Y from "yjs";
+import { restorePresenceOnReconnect } from "../ide/web/lib/presence.ts";
 
 test("two real clients edit one file concurrently and converge; disk follows", async () => {
   const { server, repo } = await testServer();
@@ -253,6 +255,47 @@ test("search and source-control endpoints see shared edits and never leak secret
     assert.deepEqual(git.changes, [{ path: "src/app.js", status: "modified" }], ".env is never reported");
     assert.equal(git.branch, "main");
     assert.equal((await api(server, null, "GET", "/api/search?q=x")).status, 401);
+  } finally {
+    await server.close();
+  }
+});
+
+test("remote carets and selections stay on the same text while others insert and delete before them", async () => {
+  const { server } = await testServer({ "src/app.js": "export const greeting = 'hi';\n" });
+  try {
+    const a = await join(server, "Ada");
+    const b = await join(server, "Bo");
+    const c = await join(server, "Cy");
+    const ca = await client(server, a.cookie, "src/app.js");
+    const cb = await client(server, b.cookie, "src/app.js");
+    const cc = await client(server, c.cookie, "src/app.js");
+    // Ada selects the word "greeting", encoded the way y-codemirror does: Yjs relative positions.
+    const start = ca.text.toString().indexOf("greeting");
+    const rel = (i: number) => Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(ca.text, i));
+    ca.provider.awareness.setLocalStateField("user", { id: a.id, name: "Ada", color: "#8b5cf6" });
+    ca.provider.awareness.setLocalStateField("cursor", { anchor: rel(start), head: rel(start + "greeting".length) });
+    // Bo and Cy edit before the selection, concurrently: inserts, a deletion, and an overlapping insert at the same spot.
+    cb.text.insert(0, "// header from Bo\n");
+    cc.text.insert(0, "/* Cy */ ");
+    cc.text.delete(cc.text.toString().indexOf("const"), "const ".length);
+    cc.text.insert(cc.text.toString().indexOf("greeting"), "let ");
+    await until(() => ca.text.toString() === cb.text.toString() && cb.text.toString() === cc.text.toString(), 3000, "convergence");
+    const resolveOn = (cl: Client) => {
+      const s = [...cl.provider.awareness.getStates().values()].find((x) => x.user?.id === a.id)?.cursor;
+      if (!s) return null;
+      const abs = (j: unknown) => Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(j), cl.doc)!.index;
+      return cl.text.toString().slice(abs(s.anchor), abs(s.head));
+    };
+    await until(() => resolveOn(cb) !== null && resolveOn(cc) !== null, 3000, "presence");
+    assert.equal(resolveOn(cb), "greeting");
+    assert.equal(resolveOn(cc), "greeting");
+    // After Bo drops and reconnects, Ada's selection comes back at once (not at the next 15 s renewal) on the same text.
+    restorePresenceOnReconnect(cb.provider); // what the IDE's DocSession does
+    cb.provider.disconnect();
+    cc.text.insert(0, "\n");
+    cb.provider.connect();
+    await until(() => cb.text.toString() === cc.text.toString() && resolveOn(cb) === "greeting", 3000, "reconnect");
+    for (const x of [ca, cb, cc]) x.close();
   } finally {
     await server.close();
   }

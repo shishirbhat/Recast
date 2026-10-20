@@ -84,6 +84,9 @@ export class AgentRuns {
   private runs = new Map<string, AgentRun>();
   private procs = new Map<string, ChildProcess>();
   private combined = new Map<string, string>(); // integration id -> combined worktree
+  private context: ((taskId: string) => string) | null = null;
+  /** Set on shutdown: output and exits that arrive afterwards must not touch the (closed) database. */
+  private closed = false;
 
   constructor(relay: Relay, root: string, dbPath: string, claudeBin: string) {
     this.relay = relay;
@@ -139,6 +142,11 @@ export class AgentRuns {
     return started;
   }
 
+  /** Supplies the task's reference context (accepted decisions, current contracts, warnings) for agent prompts. */
+  attachContext(fn: (taskId: string) => string): void {
+    this.context = fn;
+  }
+
   private spawnClaude(run: AgentRun): void {
     const task = this.relay.requireTask(run.taskId);
     const cfgDir = join(this.root, ".relay", "agents", run.id);
@@ -155,7 +163,14 @@ export class AgentRuns {
       "Coordinate through the relay MCP tools: call claim_task first, read get_task and any contract you depend on, follow Relay's instructions whenever an action is blocked, and finish with submit_for_review and a short summary.",
       "Only change files in your scope. Make file changes with the Edit or Write tools.",
     ].join(" ");
-    const child = spawn(this.claudeBin, ["-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
+    let reference = "";
+    try {
+      reference = this.context?.(run.taskId) ?? "";
+    } catch {
+      reference = "";
+    }
+    const fullPrompt = reference ? `${prompt}\n\n${reference}` : prompt;
+    const child = spawn(this.claudeBin, ["-p", fullPrompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
       "--settings", join(cfgDir, "settings.json"), "--mcp-config", join(cfgDir, "mcp.json"), "--strict-mcp-config",
       "--allowedTools", "Read,Edit,Write,Bash,Glob,Grep,mcp__relay"], { cwd: run.worktree, stdio: ["ignore", "pipe", "pipe"], detached: true });
     this.procs.set(run.id, child);
@@ -167,14 +182,15 @@ export class AgentRuns {
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
-        if (line) this.onStreamLine(run, line);
+        if (line && !this.closed) this.onStreamLine(run, line);
       }
     });
     let stderr = "";
     child.stderr!.on("data", (c: Buffer) => (stderr = (stderr + c.toString()).slice(-4000)));
-    child.on("error", (err) => this.push(run, { kind: "error", detail: `Could not start ${this.claudeBin}: ${err.message}` }));
+    child.on("error", (err) => !this.closed && this.push(run, { kind: "error", detail: `Could not start ${this.claudeBin}: ${err.message}` }));
     child.on("close", (code) => {
       this.procs.delete(run.id);
+      if (this.closed) return;
       run.exitCode = code;
       run.endedAt = new Date().toISOString();
       if (run.status === "cancelled") return;
@@ -372,6 +388,7 @@ export class AgentRuns {
   }
 
   close(): void {
+    this.closed = true;
     for (const [id, p] of this.procs) {
       const run = this.runs.get(id);
       if (run) run.status = "cancelled";

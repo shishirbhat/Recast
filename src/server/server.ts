@@ -13,6 +13,8 @@ import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { ImpactService } from "../analysis/impact.ts";
+import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
+import type { EntryKind, Source } from "../knowledge/records.ts";
 import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
 import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject } from "./files.ts";
@@ -47,6 +49,7 @@ export interface RelayServer {
   terminals: TerminalService;
   github: GitHub;
   impact: ImpactService;
+  records: Records;
   close(): Promise<void>;
 }
 
@@ -163,6 +166,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const terminals = new TerminalService(root, { loopback: ["127.0.0.1", "::1", "localhost"].includes(host), allowRemote: opts.allowTerminal === true });
   const project = { name: basename(root), root };
   const impact = new ImpactService(relay, root, resolve(opts.dbPath));
+  const records = new Records(relay, root);
+  const freshGraph = () => (impact.graph.refresh(listProjectFiles(root)), impact.graph);
+  runs.attachContext((taskId) => records.contextText(taskId, freshGraph()));
   const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
   const preflight = () => {
     const tasks = relay.listTasks();
@@ -295,6 +301,61 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       requireMember(req, "read");
       docs.flushAll();
       return json(res, 200, gitStatus(root));
+    }
+    if (parts[0] === "investigations") {
+      const sources = (v: unknown): Source[] => {
+        if (v === undefined) return [];
+        if (!Array.isArray(v) || v.length > 20) throw new HttpError(400, "invalid", "sources must be a list");
+        return v.map((x) => ({ type: String((x as Source)?.type) as Source["type"], ref: String((x as Source)?.ref ?? "") }));
+      };
+      if (method === "GET" && parts.length === 1) return (requireMember(req, "read"), json(res, 200, { investigations: records.listInvestigations() }));
+      if (method === "POST" && parts.length === 1) {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req);
+        return json(res, 201, records.createInvestigation({ title: str(b.title, "title", 200), description: str(b.description, "description", 20000), taskId: typeof b.taskId === "string" && b.taskId ? b.taskId : undefined }, m.name));
+      }
+      const id = parts[1] ?? "";
+      if (method === "GET" && parts.length === 2) return (requireMember(req, "read"), json(res, 200, records.getInvestigation(id)));
+      if (method === "POST" && parts[2] === "entries") {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req, 512 * 1024);
+        const kind = str(b.kind, "kind", 20) as EntryKind;
+        if (!ENTRY_KINDS.includes(kind)) throw new HttpError(400, "invalid", `kind must be one of ${ENTRY_KINDS.join(", ")}`);
+        return json(res, 201, records.addEntry(id, { kind, body: str(b.body, "body", 100_000), sources: sources(b.sources), status: typeof b.status === "string" ? b.status : undefined }, m.name));
+      }
+      if (method === "POST" && parts[2] === "run") {
+        // Commands run on this machine: owners only, like verification commands.
+        const m = requireMember(req, "approve");
+        const b = await readBody(req);
+        return json(res, 201, records.runCommand(id, str(b.command, "command", 2000), m.name));
+      }
+      if (method === "POST" && parts.length === 2) {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req);
+        return json(res, 200, records.updateInvestigation(id, { status: typeof b.status === "string" ? (b.status as "open") : undefined, owner: typeof b.owner === "string" ? b.owner.slice(0, 80) : undefined }, m.name));
+      }
+    }
+    if (parts[0] === "decisions") {
+      if (method === "GET" && parts.length === 1) return (requireMember(req, "read"), json(res, 200, { decisions: records.listDecisions() }));
+      if (method === "POST" && parts.length === 1) {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req, 512 * 1024);
+        const alts = Array.isArray(b.alternatives) ? (b.alternatives as { option?: unknown; rejectedBecause?: unknown }[]).map((a) => ({ option: String(a?.option ?? ""), rejectedBecause: String(a?.rejectedBecause ?? "") })) : [];
+        const kind = ["decision", "hazard", "constraint", "question"].includes(b.kind as string) ? (b.kind as "decision") : "decision";
+        const srcs = Array.isArray(b.sources) ? (b.sources as Source[]).map((x) => ({ type: String(x?.type) as Source["type"], ref: String(x?.ref ?? "") })) : [];
+        return json(res, 201, records.proposeDecision({ title: str(b.title, "title", 200), context: str(b.context, "context", 20000), decision: str(b.decision, "decision", 20000), alternatives: alts, scope: strList(b.scope, "scope"), contracts: strList(b.contracts, "contracts"), kind, sources: srcs, supersedes: typeof b.supersedes === "string" ? b.supersedes : undefined }, m.name));
+      }
+      const to = ({ accept: "accepted", reject: "rejected", invalidate: "invalidated" } as const)[parts[2] as "accept"];
+      if (method === "POST" && to) {
+        // Only people with approval rights make a record authoritative.
+        const m = requireMember(req, "approve");
+        const b = await readBody(req);
+        return json(res, 200, records.decide(parts[1] ?? "", to, m.name, typeof b.reason === "string" ? b.reason.slice(0, 2000) : undefined));
+      }
+    }
+    if (method === "GET" && parts[0] === "context") {
+      requireMember(req, "read");
+      return json(res, 200, records.contextFor(str(url.searchParams.get("task"), "task", 64), freshGraph()));
     }
     if (method === "GET" && parts[0] === "impact") {
       // The live dependency map: changed interfaces, consumers, tests, affected tasks, stale verification.
@@ -579,6 +640,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     terminals,
     github,
     impact,
+    records,
     async close() {
       clearInterval(feed);
       terminals.close();

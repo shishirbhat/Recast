@@ -11,7 +11,7 @@ import { evaluateEdit, inScope, isProtected, normalizePath } from "./conflicts.t
  * Environment for commands Relay runs as verification. Runner-context variables inherited from whatever started Relay must
  * not leak in: e.g. NODE_TEST_CONTEXT makes a nested `node --test` skip every file and exit 0, which would be a false pass.
  */
-function verificationEnv(): NodeJS.ProcessEnv {
+export function verificationEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (k.startsWith("NODE_TEST_") || k === "VITEST" || k === "JEST_WORKER_ID") delete env[k];
   return env;
