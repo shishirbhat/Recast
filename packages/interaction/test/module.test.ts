@@ -163,3 +163,35 @@ describe("Escape, one step at a time", () => {
     }
   });
 });
+
+describe("a placed object leaves the desk", () => {
+  const receipt = { receiptId: "r1", opId: "op1", at: "2026-10-19T09:00:01Z", status: "done" as const, objectId: "x", destination: "google-calendar.calendar", relationId: "event-calendar-entry", effect: "Add to calendar", reversible: true, bridgeRef: "ev-1" };
+  function placed() {
+    return run([
+      { type: "openWheel" }, { type: "pickDestination", destinationId: "cal" },
+      { type: "answer", objectId: "obj-1", field: "start", value: "2026-10-23T19:30" },
+      { type: "answer", objectId: "obj-1", field: "title", value: "Meet Maya at Dakshin" },
+      { type: "place", consent: { kind: "confirm" } }, { type: "committed", receipt, undoable: true },
+    ], dinner().s).s;
+  }
+  it("it stays while the receipt shows (Undo needs it), and is gone once the receipt is closed", () => {
+    const s = placed(); expect(s.phase).toBe("succeeded"); expect(s.desk).toEqual(["obj-1"]);
+    const done = run([{ type: "dismiss" }], s).s;
+    expect(done).toMatchObject({ phase: "idle", focus: null, desk: [] }); expect(done.objects["obj-1"]).toBeUndefined();
+    expect(moduleModel(done, REGISTRY)).toMatchObject({ mode: "pill", text: "Drag one thing onto another" });
+  });
+  it("moving on from the receipt any other way also retires it: Escape, turning off, picking up something new", () => {
+    for (const e of [{ type: "cancel" }, { type: "disarm" }, { type: "capture", fragment: frag("person", "Arjun Mehta"), carry: true }] as const) {
+      const after = run([e], placed()).s; expect(after.objects["obj-1"]).toBeUndefined(); expect(after.desk).not.toContain("obj-1");
+    }
+  });
+  it("undone, it stays: the person can place it somewhere else", () => {
+    const s = run([{ type: "undo" }, { type: "undone" }], placed()).s;
+    expect(s.phase).toBe("idle"); expect(s.desk).toEqual(["obj-1"]); expect(s.objects["obj-1"]!.ingredients).toHaveLength(2);
+  });
+  it("found by reconciliation after an unknown outcome, then closed: gone as well", () => {
+    const s = run([{ type: "outcomeUnknown", message: "Calendar did not answer" }], { ...placed(), phase: "executing" } as ClumpState).s;
+    const r = run([{ type: "reconcile" }, { type: "reconciled", found: true, receipt }, { type: "dismiss" }], s).s;
+    expect(r.desk).toEqual([]);
+  });
+});

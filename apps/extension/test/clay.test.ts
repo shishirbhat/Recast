@@ -118,8 +118,11 @@ describe("cross-tab carry in the browser extension", () => {
     await cal.locator("recast-clay >> button", { hasText: "Add to calendar" }).click();
     await until(async () => (await stored()).phase === "succeeded");
     expect(await cal.locator("#events li").count()).toBe(1);
-    await cal.locator("recast-clay >> button", { hasText: "Done" }).click();
+    // Undo (not Done): an undone placement keeps its object, which the rest of this test and the next one use. Done would
+    // retire it from the desk (machine and clay-page tests cover that).
+    await cal.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await stored()).phase === "idle");
+    expect(await cal.locator("#events li").count()).toBe(0); expect((await stored()).desk).toContain(id);
     // Escape with nothing open turns Recast off; Alt + press on the page then does nothing.
     await restaurant.bringToFront(); await restaurant.keyboard.press("Escape");
     await until(async () => (await stored()).armed === false);
@@ -133,8 +136,8 @@ describe("cross-tab carry in the browser extension", () => {
     // Control twice, in a tab Recast is in: on again. A Ctrl+C in between does not count.
     await restaurant.keyboard.press("Control+c"); await restaurant.keyboard.press("Control"); await restaurant.keyboard.press("Control");
     await until(async () => { const x = await stored(); return x.armed === true && x.phase === "composed"; });   // on, and the composition reopened
-    await restaurant.keyboard.press("Escape"); await until(async () => (await stored()).phase === "idle");      // one step back: closed
-    await restaurant.keyboard.press("Escape"); await until(async () => (await stored()).armed === false);       // then off
+    await restaurant.keyboard.press("Control"); await until(async () => (await stored()).armed === false);      // once: off
+    expect((await stored()).focus).toBe(id);                                                                  // composition kept
     // The popup's button does what the shortcut does.
     const extId = new URL(sw.url()).host; const tabId = await tabIdOf(restaurant.url());
     const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);

@@ -23,15 +23,16 @@ Proven by `apps/harness/test/clay.test.ts` ("acceptance: …", "the trigger", "k
 - **The extension's cross-tab architecture:** the worker owns the state in `storage.session`, tabs render it, and effects run in the tab that owns the destination.
 - **The bridge registry's contracts.** They now live as plain data in `packages/bridges/src/contracts.ts`, so the extension's page script can read them without any network code.
 
-## Trigger: press Control twice
+## Trigger: Control twice turns it on, Control once turns it off
 | Where | How | What it does |
 |---|---|---|
-| Clay page | **Control twice** (Control on a Mac, Ctrl on Windows and Linux), or the "Recast" button in the simulated browser bar | `commandEvents`: on; reopen the composition; or off |
-| Extension, in a tab Recast is in | **Control twice** | the same |
+| Clay page | **Control twice** (Control on a Mac, Ctrl on Windows and Linux) to turn on; **Control once** to turn off. Or the "Recast" button in the simulated browser bar | on (reopening a kept composition); off. The button follows `commandEvents` (on, reopen, or off) |
+| Extension, in a tab Recast is in | **Control twice** on, **Control once** off | the same |
 | Extension, a tab Recast is not in yet | the toolbar popup's "Clump things on this page", or Alt+Shift+R (the `recast-clay` command) | brings Recast into the tab (activeTab) and turns it on |
 
-- **What counts as "twice"** (`packages/interaction/src/double-tap.ts`, 6 unit tests):
-  - Control pressed and released on its own, each press under 300 ms, the two within 400 ms.
+- **What counts** (`createControlTrigger` in `packages/interaction/src/double-tap.ts`, 10 unit tests):
+  - A tap is Control pressed and released on its own, under 300 ms. "Twice" is two taps within 400 ms.
+  - While Recast is on, one tap turns it off, at once. The detector then starts afresh, so the second press of a habitual double tap does not turn it straight back on.
   - These never count: Control used in a shortcut (Ctrl+C), Ctrl+click, a held Control (auto-repeat or a long press), leaving the window, or Shift, Alt or ⌘ pressed twice.
 - **Why the extension still has a first-time shortcut:** a browser extension cannot listen for keys on a page it was not invited into without access to every site. Recast deliberately doesn't ask for that. Once it is in a tab, Control twice works there.
 - **Known overlaps, stated rather than tested:**
@@ -42,7 +43,7 @@ Proven by `apps/harness/test/clay.test.ts` ("acceptance: …", "the trigger", "k
   - pieces on the page are plain text (no highlight, ordinary selection, not focusable as Recast targets);
   - in the extension, Alt+press is ignored;
   - no module is shown.
-- **Turning off:** Escape when nothing is open, the × on the pill, or Control twice when nothing is made yet. Off puts an object in hand back and closes an unwritten review. The composition is kept for the session.
+- **Turning off:** Control once, Escape when nothing is open, or the × on the pill. Turning off is refused while a write is in progress or its outcome is unknown. Off puts an object in hand back and closes an unwritten review. The composition is kept for the session.
 - **Capture gesture in the extension:** Alt+press (with Recast on). Without Alt, the page keeps its own drag and selection.
 
 ## Module lifecycle
@@ -59,7 +60,7 @@ One module, rendered from one pure model (`moduleModel(state, REGISTRY)` in `pac
 | `choosing` | the capsule opens: the object on the left (drawn compact), facts under it, the **wheel** on the right sharing its centre line |
 | `previewing` | the wheel contracts into the review: the destination's icon, fields with their origin, what is still needed, assumptions, risk, a stand-in note, **Confirm: Add to calendar** and **Cancel** |
 | `executing` | "Adding to Calendar…", no buttons |
-| `succeeded` | the receipt: the destination's icon with an ember check, "Added to Calendar", only after the destination's receipt. Undo only if reversible |
+| `succeeded` | the receipt: the destination's icon with an ember check, "Added to Calendar", only after the destination's receipt. Undo only if reversible. **Once the receipt is closed (Done, Escape, turning off, picking up something new) the placed object leaves "Your objects"**; an undone placement keeps its object |
 | `unknown` | "No answer from Calendar"; **Check Calendar** reconciles, never resends |
 | `failed` | the reason; Close |
 | `inspecting` | the ingredients with their sources and how sure Recast is of each ("sure 90%"); Take out |

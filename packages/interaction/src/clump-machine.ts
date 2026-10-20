@@ -159,6 +159,18 @@ function applySlot(s: ClumpState, objectId: string, destinationId: string, slot?
 }
 
 export function reduceClump(state: ClumpState, ev: ClumpEvent): ClumpResult {
+  const r = step(state, ev);
+  // A placed object is done: once the receipt is left (Done, or anything else that moves on) it leaves the desk, so the
+  // desk only holds what still needs a place. Undo is the exception: an undone placement keeps its object.
+  if (state.phase === "succeeded" && r.state.phase !== "succeeded" && ev.type !== "undone" && state.placement) return { ...r, state: retire(r.state, state.placement.objectId) };
+  return r;
+}
+function retire(s: ClumpState, id: string): ClumpState {
+  if (!s.objects[id] || s.carried === id) return s;
+  return { ...s, desk: without(s.desk, id), objects: omit(s.objects, id), ...(s.focus === id ? { focus: null } : {}), ...(s.inspecting === id ? { inspecting: null, phase: s.phase === "inspecting" ? "idle" as const : s.phase } : {}) };
+}
+
+function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
   const s0: ClumpState = { ...state, now: ev.now };
   if (!LEGAL[s0.phase].includes(ev.type)) return { state, effects: [], error: `cannot ${ev.type} while ${s0.phase}` };
   const ok = (state: ClumpState, effects: ClumpEffect[] = []): ClumpResult => ({ state, effects });

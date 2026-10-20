@@ -1,6 +1,6 @@
 // Press Control twice: exact timings, and everything that must NOT count (chords, holds, slow presses, a click between).
 import { describe, expect, it } from "vitest";
-import { createDoubleTap, type TapInput } from "../src/index.js";
+import { createControlTrigger, createDoubleTap, type TapInput } from "../src/index.js";
 
 const play = (events: [TapInput["type"], string | undefined, number, boolean?][]) => {
   const feed = createDoubleTap(); return events.map(([type, key, at, repeat]) => feed({ type, ...(key ? { key } : {}), at, ...(repeat ? { repeat } : {}) }));
@@ -29,5 +29,30 @@ describe("press Control twice", () => {
   });
   it("other keys are never the trigger (Shift, Alt, Meta pressed twice)", () => {
     for (const k of ["Shift", "Alt", "Meta"]) expect(play([["keydown", k, 0], ["keyup", k, 50], ["keydown", k, 150], ["keyup", k, 200]]).some(Boolean)).toBe(false);
+  });
+});
+
+describe("on with Control twice, off with Control once", () => {
+  /** Plays the events against a host that keeps `armed` as the trigger says, and returns what it said, in order. */
+  function host(events: [TapInput["type"], string | undefined, number][], armed = false) {
+    const trigger = createControlTrigger(); const said: string[] = [];
+    for (const [type, key, at] of events) { const r = trigger({ type, ...(key ? { key } : {}), at }, armed); if (r) { said.push(r); armed = r === "on"; } }
+    return { said, armed };
+  }
+  it("off: one tap does nothing; two turn it on", () => {
+    expect(host([...tap(0)])).toEqual({ said: [], armed: false });
+    expect(host([...tap(0), ...tap(200)])).toEqual({ said: ["on"], armed: true });
+  });
+  it("on: a single tap turns it off, straight away", () => {
+    expect(host([...tap(0), ...tap(200), ...tap(1000)])).toEqual({ said: ["on", "off"], armed: false });
+  });
+  it("a habitual double tap while on turns it off and leaves it off (the second press does not turn it back on)", () => {
+    expect(host([...tap(0), ...tap(200), ...tap(1000), ...tap(1200)])).toEqual({ said: ["on", "off"], armed: false });
+  });
+  it("on: Ctrl+C, Ctrl+click and holding Control never turn it off", () => {
+    const r = host([...tap(0), ...tap(200), ["keydown", "Control", 900], ["keydown", "c", 930], ["keyup", "Control", 980],
+      ["keydown", "Control", 1500], ["pointerdown", undefined, 1520], ["keyup", "Control", 1560],
+      ["keydown", "Control", 2000], ["keyup", "Control", 2600]]);
+    expect(r).toEqual({ said: ["on"], armed: true });
   });
 });

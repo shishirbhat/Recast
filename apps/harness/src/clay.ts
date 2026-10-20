@@ -7,7 +7,7 @@
 import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
-import { commandEvents, createDoubleTap, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { commandEvents, createControlTrigger, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents, type GlassIntent } from "@recast/overlay/src/glass";
 
@@ -70,9 +70,10 @@ const clay = createClay($("#clay"), {
 });
 // The trigger: press Control twice (Control on a Mac, Ctrl on Windows). The button in the bar does the same.
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const SHORTCUT = MAC ? "⌃ ⌃" : "Ctrl Ctrl";
+const SHORTCUT = MAC ? "⌃ ⌃" : "Ctrl Ctrl";            // to turn on
+const OFF_KEY = MAC ? "⌃" : "Ctrl";                     // once, to turn off
 const SHORTCUT_WORDS = MAC ? "press Control twice" : "press Ctrl twice";
-const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: SHORTCUT, theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
+const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: OFF_KEY, theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
 
 function dispatch(e: ClumpInput) {
   const r = reduceClump(state, { ...e, now: NOW() } as ClumpEvent);
@@ -181,9 +182,11 @@ function renderModule() {
   inWell = w && shown && state.desk.includes(shown) && state.carried !== shown ? shown : null;
   document.body.classList.toggle("recast-on", state.armed);
   const trig = $("#recast-trigger"); trig.setAttribute("aria-pressed", String(state.armed)); trig.querySelector(".trigger-label")!.textContent = state.armed ? "Recast on" : "Recast";
+  trig.querySelector(".trigger-kbd")!.textContent = state.armed ? OFF_KEY : SHORTCUT;
+  trig.setAttribute("aria-description", state.armed ? "Or press Control once to turn it off" : "Or press Control twice");
   for (const el of $$(".grab")) { el.tabIndex = state.armed ? 0 : -1; if (state.armed) el.setAttribute("role", "button"); else el.removeAttribute("role"); }
   $("#desk-empty").textContent = state.armed
-    ? "Drag a highlighted name, place or time onto another to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up."
+    ? `Press ${OFF_KEY === "⌃" ? "Control" : "Ctrl"} once to turn Recast off. Drag a highlighted name, place or time onto another to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up.`
     : `Recast is off, so pages behave normally. Press Recast in the address bar, or ${SHORTCUT_WORDS}, to start picking things up.`;
 }
 function renderPass() {
@@ -378,12 +381,14 @@ addEventListener("focusin", (e) => {
   const el = e.target as HTMLElement;
   if (state.carried && mode === "keyboard") { const t = targetOfElement(el); pageTarget = t.piece ?? null; if (JSON.stringify(t.target) !== JSON.stringify(state.target)) dispatch({ type: "approach", target: t.target }); else render(); }
 });
-// Control twice, from anywhere on the page. Control used in a shortcut (Ctrl+C), held, or with a click never counts.
-const doubleTap = createDoubleTap();
-addEventListener("keydown", (e) => { if (doubleTap({ type: "keydown", key: e.key, repeat: e.repeat, at: e.timeStamp })) invoke(true); }, true);
-addEventListener("keyup", (e) => { if (doubleTap({ type: "keyup", key: e.key, at: e.timeStamp })) invoke(true); }, true);
-addEventListener("pointerdown", (e) => { doubleTap({ type: "pointerdown", at: e.timeStamp }); }, true);
-addEventListener("blur", (e) => { doubleTap({ type: "blur", at: e.timeStamp }); });
+// The Control key, from anywhere on the page: twice to turn Recast on, once to turn it off. Control used in a shortcut
+// (Ctrl+C), held, or with a click never counts. Off is refused (and ignored) while a write is in progress.
+const trigger = createControlTrigger();
+const onTrigger = (r: "on" | "off" | null) => { if (r === "on") invoke(true); else if (r === "off") dispatch({ type: "disarm" }); };
+addEventListener("keydown", (e) => onTrigger(trigger({ type: "keydown", key: e.key, repeat: e.repeat, at: e.timeStamp }, state.armed)), true);
+addEventListener("keyup", (e) => onTrigger(trigger({ type: "keyup", key: e.key, at: e.timeStamp }, state.armed)), true);
+addEventListener("pointerdown", (e) => { trigger({ type: "pointerdown", at: e.timeStamp }, state.armed); }, true);
+addEventListener("blur", (e) => { trigger({ type: "blur", at: e.timeStamp }, state.armed); });
 addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
   if (e.key === "Escape") {
@@ -425,7 +430,6 @@ for (const el of $$(".grab")) {
 }
 for (const b of $$("[role=tab]")) b.addEventListener("click", () => { if (!state.carried) showTab(b.dataset["for"]!); });
 $("#recast-trigger").addEventListener("click", (e) => invoke((e as PointerEvent).detail === 0));
-$(".trigger-kbd").textContent = SHORTCUT;
 $<HTMLInputElement>("#silent").addEventListener("change", (e) => { bridges["cal"]!.silent = (e.target as HTMLInputElement).checked; });
 addEventListener("resize", () => render()); addEventListener("scroll", () => render(), { passive: true, capture: true });
 const style = document.createElement("style"); style.textContent = CLAY_CSS + GLASS_CSS; document.head.appendChild(style);

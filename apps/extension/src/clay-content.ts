@@ -7,7 +7,7 @@
 // object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
 import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
-import { createDoubleTap, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { createControlTrigger, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents } from "@recast/overlay/src/glass";
@@ -60,7 +60,7 @@ async function main() {
   const glass = createGlass($(".glass"), {
     onIntent: async (i) => { for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
     onLayout: () => requestAnimationFrame(() => render()),
-    shortcut: /Mac/.test(navigator.platform) ? "⌃ ⌃" : "Ctrl Ctrl",
+    shortcut: /Mac/.test(navigator.platform) ? "⌃" : "Ctrl",   // shown while on: once turns it off
   });
 
   async function dispatch(event: EventInput) {
@@ -167,13 +167,15 @@ async function main() {
     }
     iDropped = true; await dispatch({ type: "drop" });
   }, true);
-  // Control twice: the Recast command, here. (Bringing Recast into a new tab still needs the toolbar or Alt+Shift+R:
-  // an extension cannot listen on pages it was not invited into without access to every site.)
-  const doubleTap = createDoubleTap();
-  addEventListener("keydown", (e) => { if (doubleTap({ type: "keydown", key: e.key, repeat: e.repeat, at: e.timeStamp })) void send({ type: "command" }); }, true);
-  addEventListener("keyup", (e) => { if (doubleTap({ type: "keyup", key: e.key, at: e.timeStamp })) void send({ type: "command" }); }, true);
-  addEventListener("pointerdown", (e) => { doubleTap({ type: "pointerdown", at: e.timeStamp }); }, true);
-  addEventListener("blur", (e) => { doubleTap({ type: "blur", at: e.timeStamp }); });
+  // The Control key, here: twice turns Recast on (the Recast command), once turns it off. (Bringing Recast into a new tab
+  // still needs the toolbar or Alt+Shift+R: an extension cannot listen on pages it was not invited into without access
+  // to every site.)
+  const trigger = createControlTrigger();
+  const onTrigger = (r: "on" | "off" | null) => { if (r === "on") void send({ type: "command" }); else if (r === "off") void dispatch({ type: "disarm" }); };
+  addEventListener("keydown", (e) => onTrigger(trigger({ type: "keydown", key: e.key, repeat: e.repeat, at: e.timeStamp }, !!state?.armed)), true);
+  addEventListener("keyup", (e) => onTrigger(trigger({ type: "keyup", key: e.key, at: e.timeStamp }, !!state?.armed)), true);
+  addEventListener("pointerdown", (e) => { trigger({ type: "pointerdown", at: e.timeStamp }, !!state?.armed); }, true);
+  addEventListener("blur", (e) => { trigger({ type: "blur", at: e.timeStamp }, !!state?.armed); });
   addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !state) return;
     const ev = escapeEvent(state); if (!ev) return;

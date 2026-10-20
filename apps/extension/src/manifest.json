@@ -24,7 +24,7 @@
       "suggested_key": {
         "default": "Alt+Shift+R"
       },
-      "description": "Bring Recast into this tab (then press Control twice to turn it on or off)"
+      "description": "Bring Recast into this tab (then Control twice turns it on, Control once turns it off)"
     }
   }
 }

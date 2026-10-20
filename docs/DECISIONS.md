@@ -137,11 +137,16 @@ Consequential architecture and product decisions, so that separate workstreams d
   - What happens when something required is missing, such as a time or a recipient? Recast cannot place without it, so it must still ask for that.
 - **Status:** not implemented. Today every placement asks (confirm, or hold for high risk).
 
-### D25. The trigger is Control pressed twice (founder's call, 2026-10-20)
-- **Decision:** one gesture everywhere: Control twice (Ctrl on Windows and Linux, Control, not ⌘, on a Mac). Detected by a pure function (`createDoubleTap`) that accepts only two quick, clean taps. Chords, Ctrl+click, holds and auto-repeat never count.
+### D25. The trigger is Control: twice to turn on, once to turn off (founder's call, 2026-10-20)
+- **Decision:** one key everywhere: Control twice turns Recast on, and Control once turns it off again (Ctrl on Windows and Linux, Control, not ⌘, on a Mac). After a tap turns it off, the detector starts afresh, so a habitual double tap while on leaves it off. Detected by a pure function (`createDoubleTap`) that accepts only two quick, clean taps. Chords, Ctrl+click, holds and auto-repeat never count.
 - **Alternatives:** a three-key chord (Alt+Shift+R; precise but "technical", and on a Mac it types "‰"); Fn twice (Wispr Flow's choice, but browsers cannot see Fn); ⌘ twice (collides with app shortcuts more often).
 - **Consequences:**
   - In the browser extension, Control twice works only in tabs Recast is already in. Getting into a new tab needs the toolbar or the extension command, because listening on every site would need access to every site.
   - A native shell would make it global with a key hook: Windows low-level keyboard hook; macOS event tap with Input Monitoring permission (task #23).
   - The macOS Dictation option "Press Control key twice" conflicts for people who chose it.
 - **Change if:** people trip it by accident in usability tests (#24). Then tighten the timing or make it configurable.
+
+### D26. A placed object leaves the desk once its receipt is closed
+- **Decision:** after a confirmed placement, the object stays while the receipt shows, because Undo needs it. When the receipt is left by any route other than Undo (Done, Escape, turning off, picking up something new), the object is removed from the desk and from the session's objects. An undone placement keeps its object, so it can go somewhere else.
+- **Why:** the desk holds what still needs a place (founder's call). The record of what was done is the destination itself plus the action log's receipt, not a lingering object.
+- **Change if:** people want to place the same composition in two destinations. Then offer "Keep it" on the receipt rather than keeping everything by default.

@@ -85,7 +85,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
 ## Latest full run (2026-10-20, after the glass instrument redesign)
-`pnpm typecheck` passes; `pnpm test`: **19 packages, 784 tests, 0 failures** (core 106, interaction 75, bridges 36, overlay 11, extract-web 74, harness 47, extension 22, api-core 88, agent-runtime 102, …). The repository defines no lint script; typecheck is the static check.
+`pnpm typecheck` passes; `pnpm test`: **19 packages, 793 tests, 0 failures** (core 106, interaction 83, bridges 36, overlay 11, extract-web 74, harness 48, extension 22, api-core 88, agent-runtime 102, …). The repository defines no lint script; typecheck is the static check.
 
 ## 3. In progress
 | Requirement | Where | State |

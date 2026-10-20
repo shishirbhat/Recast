@@ -258,7 +258,7 @@ describe("the trigger", () => {
     expect(await page.locator("#recast-trigger").getAttribute("aria-pressed")).toBe("false");
     expect(errors).toEqual([]); await ctx.close();
   });
-  it("the button and Control twice turn it on and off; Ctrl+C and a held Control do not; Escape turns it off; only ever one module", async () => {
+  it("Control twice turns it on and Control once turns it off; Ctrl+C and a held Control do neither; the button and Escape too; one module", async () => {
     const { page, ctx } = await open({ off: true });
     expect(await page.locator(".trigger-kbd").innerText()).toMatch(/^(Ctrl Ctrl|⌃ ⌃)$/);
     await page.keyboard.press("Control+c"); await page.keyboard.press("Control+c");
@@ -267,7 +267,11 @@ describe("the trigger", () => {
     await page.waitForTimeout(450); await controlTwice(page);
     expect((await st(page)).armed).toBe(true); expect(await page.locator(".rg").getAttribute("data-mode")).toBe("pill");
     expect(await page.locator("#recast-trigger").getAttribute("aria-pressed")).toBe("true");
-    await page.waitForTimeout(450); await controlTwice(page); expect((await st(page)).armed).toBe(false); expect(await page.locator(".rg").isHidden()).toBe(true);
+    expect(await page.locator(".trigger-kbd").innerText()).toMatch(/^(Ctrl|⌃)$/);                  // on: the hint says once
+    await page.keyboard.press("Control+c"); expect((await st(page)).armed).toBe(true);           // a shortcut does not turn it off
+    await page.waitForTimeout(450); await page.keyboard.press("Control"); expect((await st(page)).armed).toBe(false); expect(await page.locator(".rg").isHidden()).toBe(true);
+    await page.keyboard.press("Control"); expect((await st(page)).armed).toBe(false);            // a habitual second press leaves it off
+    await page.waitForTimeout(450);
     await page.locator("#recast-trigger").click(); expect((await st(page)).armed).toBe(true);
     await page.keyboard.press("Escape"); expect((await st(page)).armed).toBe(false);
     await page.locator("#recast-trigger").click(); await page.locator("#recast-trigger").click(); await page.locator("#recast-trigger").click();
@@ -335,12 +339,12 @@ describe("the glass module and the destination selector", () => {
     expect(steps).toEqual(["choosing", "composed", "idle"]);
     expect(await page.locator(".rg").getAttribute("data-mode")).toBe("pill");
     expect(await page.locator(".rg-title").innerText()).toBe("Meet Maya at Dakshin is ready");
-    await controlTwice(page); expect((await st(page)).phase).toBe("composed");
-    await page.waitForTimeout(450); await controlTwice(page); expect((await st(page)).phase).toBe("composed");    // invoking again: no second module
+    await page.locator("#recast-trigger").click(); expect((await st(page)).phase).toBe("composed");   // the button reopens it
+    await page.locator("#recast-trigger").click(); expect((await st(page)).phase).toBe("composed");   // again: no second module
     expect(await page.locator(".rg").count()).toBe(1);
-    await key("Escape"); await key("Escape"); expect((await st(page)).armed).toBe(false);
-    expect((await st(page)).focus).not.toBeNull();                                // off, and the composition is kept
-    await controlTwice(page); expect(await st(page)).toMatchObject({ armed: true, phase: "composed" });
+    await key("Control"); expect((await st(page)).armed).toBe(false);              // on: Control once turns it off
+    expect((await st(page)).focus).not.toBeNull();                                // and the composition is kept
+    await page.waitForTimeout(450); await controlTwice(page); expect(await st(page)).toMatchObject({ armed: true, phase: "composed" });   // twice: on, reopened
     expect(errors).toEqual([]); await ctx.close();
   });
   it("More lists the rest of the registry, each with its reason; nothing that is not in the registry appears", async () => {
@@ -388,6 +392,22 @@ describe("the glass module and the destination selector", () => {
     const style = await page.locator(".rg").evaluate((el) => { const c = getComputedStyle(el); return { blur: c.backdropFilter, bg: c.backgroundColor, img: c.backgroundImage }; });
     expect(style.blur).toBe("none"); expect(style.img).toBe("none"); expect(style.bg).toBe("rgb(244, 241, 234)");
     await page.getByRole("button", { name: /Choose where it goes/ }).click(); expect((await st(page)).phase).toBe("choosing");
+    await ctx.close();
+  });
+  it("once placed and the receipt is closed, the object is gone from Your objects; undone, it stays", async () => {
+    const { page, ctx } = await open();
+    const id = await makeDinner(page);
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.getByRole("button", { name: "Open" }).click();
+    await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    expect(await page.locator(objectSel(id)).count()).toBe(1);                    // still there while the receipt shows (Undo)
+    await page.getByRole("button", { name: "Done" }).click();
+    const s = await st(page); expect(s.desk).toEqual([]); expect(s.objects[id]).toBeUndefined();
+    await expect.poll(() => page.locator(".clay-item").count()).toBe(0);
+    expect(await page.locator("#desk-empty").isVisible()).toBe(true);
+    expect(await page.locator("[data-placed='event']").count()).toBe(1);        // the event itself is in the calendar
     await ctx.close();
   });
 });
