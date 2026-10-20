@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Bell, Blocks, Bot, CircleAlert, CircleUserRound, Files, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { selectAll, selectLine, selectParentSyntax, cursorDocStart } from "@codemirror/commands";
 import { openSearchPanel, gotoLine, selectNextOccurrence } from "@codemirror/search";
 import { api, ApiError } from "@/lib/api";
@@ -16,13 +16,15 @@ import type { Member, ProjectState, Task } from "@/lib/types";
 import { useProject } from "@/lib/useProject";
 import { Coordination } from "../Coordination";
 import type { CoordTab } from "../Coordination";
-import { Editor } from "../Editor";
+import { DEFAULT_PREFS, Editor } from "../Editor";
+import type { EditorPrefs, LineMark, SyntaxProblem } from "../Editor";
 import { FileTree } from "../FileTree";
 import { Avatar, Mark, StatePill } from "../ui";
 import { AgentPanel } from "./AgentPanel";
+import { PeopleView } from "./People";
 import { RecordsPanel } from "./Records";
 import { CommandPalette } from "./CommandPalette";
-import { AccountView, CommunityView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
+import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
 import { BottomPanel, Section, SearchView, SourceControlView, ViewHeader, problemsOf } from "./Views";
@@ -165,7 +167,7 @@ function useSessionState(session: DocSession | null) {
     },
     [session],
   );
-  const snap = useCallback(() => (session ? `${session.status}|${session.pendingOffline}|${session.peers().map((p) => p.clientId).join(",")}` : "none"), [session]);
+  const snap = useCallback(() => (session ? `${session.status}|${session.pendingOffline}|${session.peers().map((p) => p.clientId).join(",")}|${session.typing().join(",")}` : "none"), [session]);
   useSyncExternalStore(sub, snap, () => "none");
   return session ? { status: session.status, pending: session.pendingOffline, peers: session.peers() } : { status: "offline" as const, pending: false, peers: [] };
 }
@@ -308,7 +310,7 @@ function MenuItem({ c, focused, onRun, onHover }: { c: Command; focused?: boolea
    =================================================================================================== */
 
 export function Workbench() {
-  const { load, events, files, live, refresh, refreshFiles } = useProject();
+  const { load, events, files, live, presence: feed, refresh, refreshFiles } = useProject();
   const win = useWindowSize();
   const [theme, setTheme] = useState<Theme>("dark");
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
@@ -332,13 +334,28 @@ export function Workbench() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [toasts, setToasts] = useState<Note[]>([]);
   const [bell, setBell] = useState(false);
+  const [following, setFollowing] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<EditorPrefs>(DEFAULT_PREFS);
+  const [showAuthors, setShowAuthors] = useState(false);
+  const [authors, setAuthors] = useState<Map<number, LineMark> | null>(null);
+  const [syntax, setSyntax] = useState<SyntaxProblem[] | null>(null);
   const sessions = useRef(new Map<string, DocSession>());
   const editorView = useRef<EditorView | null>(null);
 
   useEffect(() => {
     setTheme(initialTheme());
     setLayout(loadLayout());
+    try {
+      setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem("relay.editor.v1") ?? "{}") });
+      setShowAuthors(localStorage.getItem("relay.authors") === "1");
+    } catch {}
   }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("relay.editor.v1", JSON.stringify(prefs));
+      localStorage.setItem("relay.authors", showAuthors ? "1" : "0");
+    } catch {}
+  }, [prefs, showAuthors]);
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     try {
@@ -409,6 +426,92 @@ export function Workbench() {
   const session = me && active ? sessionFor(active, me) : null;
   const { status, pending, peers } = useSessionState(session);
   const onCursor = useCallback((l: number, c: number) => setCursor([l, c]), []);
+
+  // Syntax diagnostics and line authorship follow the shared document: refetched shortly after it changes.
+  const memberColors = useMemo(() => new Map((load.kind === "ready" ? load.state.members : []).map((m) => [m.id, m])), [load]);
+  useEffect(() => {
+    setSyntax(null);
+    setAuthors(null);
+    if (!session || !active) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    let live = true;
+    const fetchAll = () => {
+      void api<{ problems: SyntaxProblem[] }>("GET", `/diagnostics?path=${encodeURIComponent(active)}`).then((r) => live && setSyntax(r.problems), () => {});
+      if (showAuthors)
+        void api<{ lines: { line: number; kind: string; authors: string[] }[] }>("GET", `/attribution?path=${encodeURIComponent(active)}`).then((r) => {
+          if (!live) return;
+          const m = new Map<number, LineMark>();
+          for (const l of r.lines) {
+            if (l.kind === "member") {
+              const who = memberColors.get(l.authors[0]!);
+              m.set(l.line, { color: who?.color ?? "var(--muted)", label: `${who?.name ?? l.authors[0]}`, kind: "member" });
+            } else if (l.kind === "shared") m.set(l.line, { color: "var(--muted)", label: `Shared: ${l.authors.map((a) => memberColors.get(a)?.name ?? a.replace(/^relay:/, "")).join(", ")}`, kind: "shared" });
+            else if (l.kind === "agent") m.set(l.line, { color: "var(--accent)", label: `Agent: ${l.authors[0]!.replace(/^agent:/, "")}`, kind: "agent" });
+            else if (l.kind === "disk") m.set(l.line, { color: "var(--faint)", label: "Changed outside Relay (disk)", kind: "disk" });
+          }
+          setAuthors(m);
+        }, () => {});
+    };
+    fetchAll();
+    const on = () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(fetchAll, 700);
+    };
+    session.doc.on("update", on);
+    return () => {
+      live = false;
+      if (t) clearTimeout(t);
+      session.doc.off("update", on);
+    };
+  }, [session, active, showAuthors, memberColors]);
+
+  // Follow mode: open whatever file the followed person is in, and keep their caret in view. Esc stops.
+  const jumpTo = useCallback(
+    (memberId: string) => {
+      const where = feed.participants.find((p) => p.memberId === memberId);
+      if (!where) return notify("They aren't in a file right now.", "danger");
+      const s = me ? sessionFor(where.path, me) : null;
+      open(where.path);
+      let tries = 0;
+      const tick = () => {
+        const c = s?.cursorOf(memberId);
+        if (c) setReveal({ line: c.line, nonce: Date.now() });
+        else if (tries++ < 20) setTimeout(tick, 100);
+      };
+      tick();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [feed, me?.id],
+  );
+  const followedPath = following ? feed.participants.find((p) => p.memberId === following)?.path : undefined;
+  useEffect(() => {
+    if (following && followedPath && followedPath !== active) open(followedPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [following, followedPath]);
+  useEffect(() => {
+    if (!following || !session) return;
+    const aw = session.provider.awareness;
+    let last = -1;
+    const on = () => {
+      const c = session.cursorOf(following);
+      if (c && c.line !== last) {
+        last = c.line;
+        editorView.current?.dispatch({ effects: EditorView.scrollIntoView(editorView.current.state.doc.line(Math.min(c.line, editorView.current.state.doc.lines)).from, { y: "center" }) });
+      }
+    };
+    on();
+    aw.on("change", on);
+    return () => aw.off("change", on);
+  }, [following, session]);
+  useEffect(() => {
+    if (!following) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setFollowing(null);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [following]);
+  useEffect(() => {
+    if (following && !feed.online.includes(following) && !feed.participants.some((p) => p.memberId === following)) setFollowing(null);
+  }, [following, feed]);
 
   const showView = useCallback((v: View) => {
     setLayout((l) => ({ ...l, view: v, sidebar: l.view === v ? !l.sidebar : true }));
@@ -498,7 +601,7 @@ export function Workbench() {
       { id: "github.ship", category: "GitHub", title: "Ship Changes or Merge Pull Request…", keywords: ["github", "push", "pr", "pull request", "merge", "deploy"], when: () => ownerOnly, run: () => (set({ view: "scm", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.run", category: "View", title: "Run", keywords: ["scripts", "npm"], keybinding: "Mod+Shift+D", run: () => (set({ view: "run", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.extensions", category: "View", title: "Extensions", keybinding: "Mod+Shift+X", run: () => (set({ view: "extensions", sidebar: true }), setLastOpened("sidebar")) },
-      { id: "view.community", category: "View", title: "Community", keywords: ["people", "members", "invite"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
+      { id: "view.community", category: "View", title: "People", keywords: ["people", "members", "invite"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.relay", category: "View", title: "Relay Tasks", keywords: ["coordination", "tasks"], run: () => (set({ view: "relay", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.settings", category: "Preferences", title: "Settings and Keyboard Shortcuts", keywords: ["preferences", "keybindings"], keybinding: "Mod+,", run: () => (set({ view: "settings", sidebar: true }), setLastOpened("sidebar")) },
       { id: "view.account", category: "Account", title: "Account", run: () => (set({ view: "account", sidebar: true }), setLastOpened("sidebar")) },
@@ -514,6 +617,22 @@ export function Workbench() {
       { id: "terminal.toggle", category: "Terminal", title: "Toggle Terminal", keybinding: "Ctrl+`", run: () => (layout.panel && panelTab === "terminal" ? set({ panel: false }) : openPanel("terminal")) },
       { id: "terminal.new", category: "Terminal", title: "New Terminal", keybinding: "Ctrl+Shift+`", when: term, run: () => (openPanel("terminal"), setTermNew((n) => n + 1)) },
       { id: "run.debug", category: "Run", title: "Start Debugging", when: () => "Breakpoint debugging isn't available yet (no debug adapter)", run: () => {} },
+      { id: "editor.zoomIn", category: "Editor", title: "Increase Font Size", keywords: ["zoom"], keybinding: "Mod+=", run: () => setPrefs((p) => ({ ...p, fontSize: Math.min(24, p.fontSize + 1) })) },
+      { id: "editor.zoomOut", category: "Editor", title: "Decrease Font Size", keywords: ["zoom"], keybinding: "Mod+-", run: () => setPrefs((p) => ({ ...p, fontSize: Math.max(10, p.fontSize - 1) })) },
+      { id: "editor.zoomReset", category: "Editor", title: "Reset Font Size", keywords: ["zoom"], keybinding: "Mod+0", run: () => setPrefs((p) => ({ ...p, fontSize: DEFAULT_PREFS.fontSize })) },
+      { id: "editor.wrap", category: "Editor", title: prefs.wrap ? "Turn Off Word Wrap" : "Turn On Word Wrap", keybinding: "Alt+Z", run: () => setPrefs((p) => ({ ...p, wrap: !p.wrap })) },
+      { id: "editor.authors", category: "Collaboration", title: showAuthors ? "Hide Line Authorship" : "Show Line Authorship", keywords: ["blame", "who wrote", "attribution"], run: () => setShowAuthors((x) => !x) },
+      { id: "people.show", category: "Collaboration", title: "Show People and Contributions", keywords: ["contributions", "history", "who"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
+      { id: "people.stopFollowing", category: "Collaboration", title: "Stop Following", when: () => (following ? null : "You aren't following anyone"), run: () => setFollowing(null) },
+      ...feed.participants
+        .filter((p) => p.memberId !== me.id)
+        .flatMap((p) => {
+          const who = state.members.find((m) => m.id === p.memberId)?.name ?? p.memberId;
+          return [
+            { id: `people.goto:${p.memberId}`, category: "Collaboration", title: `Go to ${who} (${p.path})`, run: () => jumpTo(p.memberId) },
+            { id: `people.follow:${p.memberId}`, category: "Collaboration", title: `Follow ${who}`, run: () => setFollowing(p.memberId) },
+          ];
+        }),
       { id: "theme.toggle", category: "Preferences", title: theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme", keybinding: "Mod+Alt+T", run: () => setTheme((t) => (t === "dark" ? "light" : "dark")) },
       { id: "agent.focus", category: "Relay", title: "Ask the Agent…", keywords: ["chat", "code with agent", "claude"], keybinding: "Mod+I", when: () => viewOnly, run: () => (showRight("agent"), setAgentNonce((n) => n + 1)) },
       { id: "relay.tasks", category: "Relay", title: "Show Tasks", run: () => (showRight("tasks"), setSelectedTask(null)) },
@@ -535,7 +654,7 @@ export function Workbench() {
     ];
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view]);
+  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs.wrap, showAuthors, following, feed, jumpTo]);
 
   /*
     Keyboard. Bound chords dispatch through the registry in the capture phase, so workbench shortcuts work even when
@@ -586,7 +705,7 @@ export function Workbench() {
     { id: "scm", icon: <GitBranch size={20} strokeWidth={1.5} />, label: "Source Control", badge: git.size || undefined, cmd: "view.scm" },
     { id: "run", icon: <Play size={20} strokeWidth={1.5} />, label: "Run", cmd: "view.run" },
     { id: "extensions", icon: <Blocks size={20} strokeWidth={1.5} />, label: "Extensions", cmd: "view.extensions" },
-    { id: "community", icon: <Users size={20} strokeWidth={1.5} />, label: "Community", badge: online.size > 1 ? online.size : undefined, cmd: "view.community" },
+    { id: "community", icon: <Users size={20} strokeWidth={1.5} />, label: "People", badge: online.size > 1 ? online.size : undefined, cmd: "view.community" },
     { id: "relay", icon: <Bot size={20} strokeWidth={1.5} />, label: "Relay", badge: needsPerson || undefined, cmd: "view.relay" },
   ];
   const kb = (id: string) => commands.find((c) => c.id === id)?.keybinding;
@@ -722,10 +841,10 @@ export function Workbench() {
               {layout.view === "scm" && <SourceControlView onOpen={open} tick={events.length} canShip={me!.role === "owner"} notify={notify} />}
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
               {layout.view === "extensions" && <ExtensionsView />}
-              {layout.view === "community" && <CommunityView state={s} online={online} where={where} onInvite={invite} />}
+              {layout.view === "community" && <PeopleView me={me!} members={s.members} presence={feed} tick={events.length} following={following} onOpen={open} onJump={jumpTo} onFollow={setFollowing} onInvite={invite} notify={notify} />}
               {layout.view === "relay" && <RelayView state={s} onTask={showTask} onNewTask={() => execute(commands.find((c) => c.id === "relay.newTask")!)} />}
               {layout.view === "account" && <AccountView me={me!} onSignOut={signOut} />}
-              {layout.view === "settings" && <SettingsView theme={theme} setTheme={setTheme} commands={commands} terminal={termCaps} onResetLayout={() => setLayout(DEFAULT_LAYOUT)} />}
+              {layout.view === "settings" && <SettingsView theme={theme} setTheme={setTheme} commands={commands} terminal={termCaps} onResetLayout={() => setLayout(DEFAULT_LAYOUT)} prefs={prefs} setPrefs={setPrefs} showAuthors={showAuthors} setShowAuthors={setShowAuthors} />}
             </aside>
             <Sash dir="x" label="Primary side bar width" value={fit.sw} min={SIDEBAR.min} max={Math.min(SIDEBAR.max, win.w - ACTIVITY_W - 300)} onChange={(v) => set({ sidebarW: v })} />
           </>
@@ -778,7 +897,7 @@ export function Workbench() {
                   </span>
                 </div>
                 <div className="min-h-0 flex-1">
-                  <Editor key={session.path} session={session} readOnly={me!.role === "viewer"} onCursor={onCursor} reveal={reveal} viewHandle={editorView} />
+                  <Editor key={session.path} session={session} readOnly={me!.role === "viewer"} onCursor={onCursor} reveal={reveal} viewHandle={editorView} prefs={prefs} authors={showAuthors ? authors : null} problems={syntax} />
                 </div>
               </>
             ) : (
@@ -797,6 +916,7 @@ export function Workbench() {
                 members={s.members}
                 onTask={showTask}
                 onOpen={open}
+                syntax={active && syntax ? syntax.map((p) => ({ ...p, path: active })) : []}
                 onClose={() => set({ panel: false })}
                 output={<OutputPanel tick={events.length} />}
                 terminal={<TerminalPanel availability={termCaps} visible={layout.panel && panelTab === "terminal"} focusNonce={termFocus} newNonce={termNew} theme={theme} run={termRun} />}
@@ -847,7 +967,7 @@ export function Workbench() {
           {git.size > 0 && <span>*</span>}
         </StatusItem>
         <StatusItem title="Problems" onClick={() => openPanel("problems")} testId="status-problems">
-          <CircleAlert size={12} /> {problems.filter((p) => p.severity === "error").length} <TriangleAlert size={12} className="ml-1" /> {problems.filter((p) => p.severity === "warning").length}
+          <CircleAlert size={12} /> {problems.filter((p) => p.severity === "error").length + (syntax?.length ?? 0)} <TriangleAlert size={12} className="ml-1" /> {problems.filter((p) => p.severity === "warning").length}
         </StatusItem>
         {runningAgents > 0 && (
           <StatusItem title="Agents working" onClick={() => openPanel("agents")}>
@@ -867,6 +987,14 @@ export function Workbench() {
             <StatusItem title="End of line">{eol}</StatusItem>
             <StatusItem title="Language">{LANG[ext] ?? "Plain Text"}</StatusItem>
           </>
+        )}
+        {following && (
+          <button onClick={() => setFollowing(null)} title="Stop following (Esc)" data-testid="following" className="inline-flex items-center gap-1.5 bg-accent-soft px-2 text-accent-ink hover:brightness-110">
+            <span className="size-1.5 rounded-full bg-accent" /> following {s.members.find((m) => m.id === following)?.name ?? following} · stop
+          </button>
+        )}
+        {session && session.typing().filter((id) => id !== me!.id).length > 0 && (
+          <StatusItem title="Typing in this file">{session.typing().filter((id) => id !== me!.id).map((id) => s.members.find((m) => m.id === id)?.name ?? id).join(", ")} typing</StatusItem>
         )}
         <StatusItem title={`${online.size} people here`} onClick={() => showView("community")}>
           <Users size={12} /> {online.size}

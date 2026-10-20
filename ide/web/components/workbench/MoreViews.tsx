@@ -5,6 +5,7 @@ import { Check, CircleSlash, Copy, LogOut, Play, Puzzle, RefreshCw, SquareTermin
 import { api, ApiError } from "@/lib/api";
 import { keyLabel } from "@/lib/commands";
 import type { Command } from "@/lib/commands";
+import type { EditorPrefs } from "../Editor";
 import type { Member, ProjectState } from "@/lib/types";
 import type { Theme } from "@/lib/theme";
 import { Avatar } from "../ui";
@@ -191,7 +192,7 @@ export function AccountView({ me, onSignOut }: { me: Member; onSignOut: () => vo
   );
 }
 
-export function SettingsView({ theme, setTheme, commands, terminal, onResetLayout }: { theme: Theme; setTheme: (t: Theme) => void; commands: Command[]; terminal: TerminalAvailability | null; onResetLayout: () => void }) {
+export function SettingsView({ theme, setTheme, commands, terminal, onResetLayout, prefs, setPrefs, showAuthors, setShowAuthors }: { theme: Theme; setTheme: (t: Theme) => void; commands: Command[]; terminal: TerminalAvailability | null; onResetLayout: () => void; prefs: EditorPrefs; setPrefs: (p: EditorPrefs) => void; showAuthors: boolean; setShowAuthors: (b: boolean) => void }) {
   const [filter, setFilter] = useState("");
   const bound = commands.filter((c) => c.keybinding && `${c.category} ${c.title}`.toLowerCase().includes(filter.toLowerCase()));
   return (
@@ -209,6 +210,34 @@ export function SettingsView({ theme, setTheme, commands, terminal, onResetLayou
           <button onClick={onResetLayout} className={rowBtn}>
             <RefreshCw size={12} className="text-muted" /> Reset layout
           </button>
+        </Section>
+        <Section title="Editor">
+          {(
+            [
+              ["Font size", "fontSize", [11, 12, 13, 14, 15, 16, 18, 20]],
+              ["Line height", "lineHeight", [1.4, 1.5, 1.6, 1.7, 1.8]],
+              ["Tab size", "tabSize", [2, 4, 8]],
+            ] as const
+          ).map(([label, key, opts]) => (
+            <label key={key} className="flex items-center justify-between px-5 py-1 text-[13px]">
+              <span className="text-ink-2">{label}</span>
+              <select value={prefs[key]} onChange={(e) => setPrefs({ ...prefs, [key]: Number(e.target.value) })} className="h-[24px] rounded-sm border border-rule bg-editor px-1.5 font-mono text-[12px] text-ink" aria-label={label} data-testid={`pref-${key}`}>
+                {opts.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <label className="flex items-center justify-between px-5 py-1 text-[13px]">
+            <span className="text-ink-2">Word wrap</span>
+            <input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} />
+          </label>
+          <label className="flex items-center justify-between px-5 py-1 text-[13px]">
+            <span className="text-ink-2">Show line authorship</span>
+            <input type="checkbox" checked={showAuthors} onChange={(e) => setShowAuthors(e.target.checked)} data-testid="pref-authors" />
+          </label>
         </Section>
         <Section title="Terminal">
           <p className="flex items-start gap-2 px-5 py-1 text-[12.5px] text-muted">

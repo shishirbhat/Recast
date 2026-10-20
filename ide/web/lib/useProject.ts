@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import type { ProjectState, RelayEvent } from "./types";
 
+/** Live presence from the server (ephemeral): who is online, which file they're in, when they last acted. */
+export interface Presence {
+  online: string[];
+  participants: { memberId: string; path: string; at: number; typedAt: number | null; typing: boolean }[];
+}
+
 export type Load = { kind: "loading" } | { kind: "signed-out" } | { kind: "error"; message: string } | { kind: "ready"; state: ProjectState };
 
 /**
@@ -15,6 +21,7 @@ export function useProject() {
   const [events, setEvents] = useState<RelayEvent[]>([]);
   const [files, setFiles] = useState<string[]>([]);
   const [live, setLive] = useState(false);
+  const [presence, setPresence] = useState<Presence>({ online: [], participants: [] });
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -52,7 +59,8 @@ export function useProject() {
       ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/events`);
       ws.onopen = () => setLive(true);
       ws.onmessage = (m) => {
-        const msg = JSON.parse(String(m.data)) as { type: string; events: RelayEvent[] };
+        const msg = JSON.parse(String(m.data)) as { type: string; events: RelayEvent[] } & Presence;
+        if (msg.type === "presence") return setPresence({ online: msg.online, participants: msg.participants });
         if (msg.type !== "events") return;
         setEvents((prev) => [...prev, ...msg.events].slice(-400));
         if (msg.events.some((e) => e.type === "file.created")) void refreshFiles();
@@ -72,5 +80,5 @@ export function useProject() {
     };
   }, [refresh, refreshFiles, soon]);
 
-  return { load, events, files, live, refresh, refreshFiles };
+  return { load, events, files, live, presence, refresh, refreshFiles };
 }

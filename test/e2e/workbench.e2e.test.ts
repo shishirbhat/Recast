@@ -111,7 +111,7 @@ test("every activity opens its own view, and switching keeps open editors", { sk
     ["scm", /^source control$/i],
     ["run", /^run$/i],
     ["extensions", /^extensions$/i],
-    ["community", /^community$/i],
+    ["community", /^people$/i],
     ["relay", /^relay$/i],
     ["account", /^account$/i],
     ["settings", /^settings$/i],
@@ -129,7 +129,7 @@ test("every activity opens its own view, and switching keeps open editors", { sk
   await p.getByTestId("activity-explorer").click();
   // Distinct, real destinations.
   await p.getByTestId("activity-community").click();
-  await p.getByText("People in this project").waitFor();
+  await p.getByTestId("people-view").waitFor();
   await p.getByTestId("activity-extensions").click();
   await p.getByText("JavaScript & TypeScript").waitFor();
   await p.getByTestId("activity-run").click();

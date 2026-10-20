@@ -184,8 +184,8 @@ export function problemsOf(state: ProjectState): Problem[] {
 
 export type PanelTab = "terminal" | "problems" | "impact" | "output" | "agents" | "activity";
 
-export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode }) {
-  const problems = problemsOf(state);
+export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output, syntax = [] }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode; syntax?: { path: string; line: number; col: number; message: string }[] }) {
+  const problems = [...syntax.map((p) => ({ severity: "error" as const, text: `${p.path}:${p.line}:${p.col} ${p.message}`, path: p.path, line: p.line, taskId: undefined as string | undefined })), ...problemsOf(state)];
   const runs = state.tasks.flatMap((t) => t.runs.map((r) => ({ ...r, taskId: t.id }))).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const tabs: [PanelTab, string, number?][] = [
     ["terminal", "Terminal"],
@@ -223,7 +223,7 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
             <p className="px-4 py-2 font-sans text-[13px] text-muted">No coordination problems. Contracts, tasks and shared files agree.</p>
           ) : (
             problems.map((p, i) => (
-              <button key={i} onClick={() => (p.taskId ? onTask(p.taskId) : p.path && onOpen(p.path))} className="flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-hover">
+              <button key={i} onClick={() => (p.taskId ? onTask(p.taskId) : p.path && onOpen(p.path, "line" in p ? (p.line as number) : undefined))} className="flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-hover">
                 {p.severity === "error" ? <CircleAlert size={13} className="shrink-0 text-danger" /> : <TriangleAlert size={13} className="shrink-0 text-warn" />}
                 <span className="font-sans text-[13px] text-ink-2">{p.text}</span>
                 {p.taskId && <span className="ml-auto text-[11.5px] text-faint">{p.taskId}</span>}

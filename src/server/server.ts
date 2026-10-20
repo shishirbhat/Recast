@@ -13,6 +13,7 @@ import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { changeRecord } from "../analysis/change.ts";
+import { syntaxProblems } from "../analysis/syntax.ts";
 import { authorKind, authorTotals, lineAuthors, sessionDiff, sessions as editSessions } from "./attribution.ts";
 import { ImpactService } from "../analysis/impact.ts";
 import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
@@ -404,6 +405,13 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       });
       const a = collab.participants().find((p) => p.memberId === id);
       return json(res, 200, { id, sessions: ss, files: [...files.values()], surviving, now: a ? { path: a.path, at: new Date(a.at).toISOString() } : null });
+    }
+    if (method === "GET" && parts[0] === "diagnostics") {
+      // Syntax errors from the TypeScript parser (JS/TS) or JSON.parse, on the shared document's current text.
+      requireMember(req, "read");
+      const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
+      const text = docs.get(path)?.text.toString() ?? readText(root, path) ?? "";
+      return json(res, 200, { path, problems: syntaxProblems(path, text) });
     }
     if (method === "GET" && parts[0] === "attribution") {
       requireMember(req, "read");

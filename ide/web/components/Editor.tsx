@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorView, GutterMarker, gutter, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
+import { Compartment, EditorState, RangeSet, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { defaultKeymap, indentWithTab, history, historyKeymap } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
@@ -16,6 +16,9 @@ import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { python } from "@codemirror/lang-python";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
+import { indentUnit } from "@codemirror/language";
+import { lintGutter, setDiagnostics } from "@codemirror/lint";
+import type { Diagnostic } from "@codemirror/lint";
 import type { DocSession } from "@/lib/collab";
 
 /** Restrained syntax colours from the theme tokens. */
@@ -63,6 +66,11 @@ const relayTheme = EditorView.theme({
     userSelect: "none", pointerEvents: "none", opacity: "1", zIndex: "5",
   },
   ".cm-ySelection": { borderRadius: "2px" },
+  ".relay-author-gutter": { width: "4px", marginRight: "2px" },
+  ".relay-author-gutter .cm-gutterElement": { padding: "0" },
+  ".relay-author": { display: "block", width: "3px", height: "100%", borderRadius: "1px" },
+  ".cm-lintRange-error": { backgroundImage: "none", textDecoration: "underline wavy var(--danger)", textUnderlineOffset: "3px" },
+  ".cm-tooltip-lint": { fontFamily: "var(--font-sans)", fontSize: "12px" },
 });
 
 export function languageFor(path: string): Extension {
@@ -77,9 +85,107 @@ export function languageFor(path: string): Extension {
   return [];
 }
 
-export function Editor({ session, readOnly, onCursor, reveal, viewHandle }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null } }) {
+export interface EditorPrefs {
+  fontSize: number;
+  lineHeight: number;
+  tabSize: number;
+  wrap: boolean;
+}
+export const DEFAULT_PREFS: EditorPrefs = { fontSize: 13, lineHeight: 1.6, tabSize: 2, wrap: false };
+
+/** One line's author, as the authorship gutter shows it. */
+export interface LineMark {
+  color: string;
+  label: string;
+  kind: "member" | "agent" | "shared" | "disk";
+}
+export interface SyntaxProblem {
+  line: number;
+  col: number;
+  endLine: number;
+  endCol: number;
+  message: string;
+}
+
+class AuthorMarker extends GutterMarker {
+  constructor(readonly m: LineMark) {
+    super();
+  }
+  eq(o: AuthorMarker) {
+    return o.m.color === this.m.color && o.m.label === this.m.label && o.m.kind === this.m.kind;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "relay-author";
+    el.title = this.m.label;
+    el.style.background = this.m.kind === "shared" ? `repeating-linear-gradient(180deg, ${this.m.color} 0 3px, transparent 3px 5px)` : this.m.kind === "agent" ? "transparent" : this.m.color;
+    if (this.m.kind === "agent") el.style.boxShadow = `inset 0 0 0 1px ${this.m.color}`;
+    return el;
+  }
+}
+const setAuthors = StateEffect.define<Map<number, LineMark> | null>();
+const authorsField = StateField.define<Map<number, LineMark> | null>({
+  create: () => null,
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setAuthors)) return e.value;
+    return v;
+  },
+});
+const authorGutter = [
+  authorsField,
+  gutter({
+    class: "relay-author-gutter",
+    markers: (view) => {
+      const marks = view.state.field(authorsField);
+      if (!marks) return RangeSet.empty;
+      const out = [];
+      for (let n = 1; n <= view.state.doc.lines; n++) {
+        const m = marks.get(n);
+        if (m) out.push(new AuthorMarker(m).range(view.state.doc.line(n).from));
+      }
+      return RangeSet.of(out);
+    },
+  }),
+];
+
+function prefsExtension(p: EditorPrefs): Extension {
+  return [
+    EditorView.theme({ "&": { fontSize: `${p.fontSize}px` }, ".cm-scroller": { lineHeight: String(p.lineHeight) } }),
+    EditorState.tabSize.of(p.tabSize),
+    indentUnit.of(" ".repeat(p.tabSize)),
+    p.wrap ? EditorView.lineWrapping : [],
+  ];
+}
+
+export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null }) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const prefsC = useRef(new Compartment());
+  const authorC = useRef(new Compartment());
+  const initialPrefs = useRef(prefs);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: prefsC.current.reconfigure(prefsExtension(prefs)) });
+  }, [prefs]);
+  useEffect(() => {
+    const v = viewRef.current;
+    if (!v) return;
+    v.dispatch({ effects: [authorC.current.reconfigure(authors ? authorGutter : []), ...(authors ? [setAuthors.of(authors)] : [])] });
+  }, [authors]);
+  useEffect(() => {
+    const v = viewRef.current;
+    if (!v) return;
+    const doc = v.state.doc;
+    const pos = (line: number, col: number) => {
+      const l = doc.line(Math.min(Math.max(1, line), doc.lines));
+      return Math.min(l.from + Math.max(0, col - 1), l.to);
+    };
+    const diags: Diagnostic[] = (problems ?? []).map((p) => {
+      const from = pos(p.line, p.col);
+      return { from, to: Math.max(from, pos(p.endLine, p.endCol)), severity: "error", message: p.message, source: "syntax" };
+    });
+    v.dispatch(setDiagnostics(v.state, diags));
+  }, [problems]);
 
   // Jump to a line (from search results, problems, quick open) once the document has synced.
   useEffect(() => {
@@ -102,7 +208,9 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle }: { se
       state: EditorState.create({
         doc: session.text.toString(),
         extensions: [
+          authorC.current.of([]),
           lineNumbers(),
+          lintGutter(),
           highlightActiveLineGutter(),
           foldGutter({ markerDOM: (open) => Object.assign(document.createElement("span"), { textContent: open ? "⌄" : "›", className: "text-faint" }) }),
           drawSelection(),
@@ -110,6 +218,7 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle }: { se
           EditorState.allowMultipleSelections.of(true),
           indentOnInput(),
           relayTheme,
+          prefsC.current.of(prefsExtension(initialPrefs.current)),
           syntaxHighlighting(relayHighlight),
           bracketMatching(),
           closeBrackets(),

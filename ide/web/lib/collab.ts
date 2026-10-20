@@ -16,6 +16,9 @@ export class DocSession {
   /** Local edits made while not connected: kept in the CRDT and sent on reconnect, but not yet on the server. */
   pendingOffline = false;
   private listeners = new Set<() => void>();
+  /** Member id -> when their last document update arrived. Typing is read from the edits themselves, not extra messages. */
+  private typedAt = new Map<string, number>();
+  private typingLapse: ReturnType<typeof setTimeout> | undefined;
 
   constructor(path: string, me: Member) {
     this.path = path;
@@ -34,7 +37,17 @@ export class DocSession {
       if (synced) this.pendingOffline = false;
       this.set(synced ? "synced" : "connecting");
     });
-    this.doc.on("update", (_u: Uint8Array, origin: unknown) => {
+    this.doc.on("update", (u: Uint8Array, origin: unknown) => {
+      if (origin === this.provider) {
+        const clients = new Set(Y.decodeUpdate(u).structs.map((s) => s.id.client));
+        for (const [cid, st] of this.provider.awareness.getStates()) if (clients.has(cid) && st.user?.id) this.typedAt.set(st.user.id, Date.now());
+        if (clients.size) {
+          this.set(this.status);
+          // Let the "typing" state lapse visibly once the edits stop.
+          clearTimeout(this.typingLapse);
+          this.typingLapse = setTimeout(() => this.set(this.status), 2600);
+        }
+      }
       // Origin is the provider for remote updates; anything else is a local edit.
       if (origin !== this.provider && this.status !== "synced" && !this.pendingOffline) {
         this.pendingOffline = true;
@@ -53,6 +66,25 @@ export class DocSession {
     return () => this.listeners.delete(fn);
   }
 
+  /** Collaborators who changed this file in the last few seconds. */
+  typing(windowMs = 2500): string[] {
+    const t = Date.now();
+    return [...this.typedAt.entries()].filter(([, at]) => t - at < windowMs).map(([id]) => id);
+  }
+
+  /** A collaborator's caret in this file (1-based line), resolved from their awareness state. */
+  cursorOf(memberId: string): { line: number; col: number } | null {
+    for (const [, s] of this.provider.awareness.getStates()) {
+      if (s.user?.id !== memberId || !s.cursor?.head) continue;
+      const abs = Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(s.cursor.head), this.doc);
+      if (!abs) return null;
+      const before = this.text.toString().slice(0, abs.index);
+      const line = before.split("\n").length;
+      return { line, col: abs.index - before.lastIndexOf("\n") };
+    }
+    return null;
+  }
+
   /** Collaborators currently in this file (excluding me), from live awareness. */
   peers(): { clientId: number; name: string; color: string; id: string }[] {
     const out: { clientId: number; name: string; color: string; id: string }[] = [];
@@ -64,6 +96,7 @@ export class DocSession {
   }
 
   destroy(): void {
+    clearTimeout(this.typingLapse);
     this.provider.destroy();
     this.doc.destroy();
   }
