@@ -26,6 +26,9 @@ export function CommandPalette({ open, mode, files, openEditors, commands, onClo
       setQ(mode === "commands" ? ">" : "");
       setSel(0);
       setNotice(null);
+      // Take focus now, not a frame later: keys typed right after the shortcut must land in the palette, never in
+      // the code behind it. (The frame-later call covers the first open, before the input exists.)
+      input.current?.focus();
       requestAnimationFrame(() => input.current?.focus());
     }
   }, [open, mode]);

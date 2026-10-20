@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { HUMAN } from "./helpers.ts";
 import { client, join as joinAs, testServer, until } from "./collab-helpers.ts";
@@ -203,6 +203,9 @@ test("recovery: after the combined gate blocks, rerunning only the broken task i
     process.env.RELAY_SIM_EDITS = JSON.stringify({ "T-ui": { "src/ui.js": [["getUser(id).name", "getUser(id).fullName"]] } });
     r.transition("T-ui", "failed", HUMAN, { reason: "missed the rename" });
     r.transition("T-ui", "queued", HUMAN);
+    // The shared state moves on before the rerun (a teammate adds notes), so the rerun really starts from a newer
+    // snapshot. Without a content change the snapshot commit is only "newer" if the clock crossed a second.
+    writeFileSync(join(repo, "NOTES.md"), "Rerun T-ui after the gate found the rename.\n");
     await server.runs.start("T-ui", owner);
     await until(() => server.runs.forTask("T-ui").length === 2 && server.runs.forTask("T-ui").at(-1)!.status === "finished", 15000, "rerun");
     assert.notEqual(server.runs.forTask("T-ui").at(-1)!.snapshot, server.runs.forTask("T-api").at(-1)!.snapshot);

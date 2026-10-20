@@ -506,6 +506,24 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         return json(res, 200, {});
       }
     }
+    if (parts[0] === "conflicts" && parts[1]) {
+      // An outside edit that couldn't be merged automatically: both sides, and an explicit decision.
+      if (method === "GET") {
+        requireMember(req, "read");
+        const c = docs.conflict(parts[1]);
+        if (!c) throw new HttpError(404, "not_found", "No such conflict");
+        return json(res, 200, { ...c, current: docs.get(c.path)?.text.toString() ?? readText(root, c.path) ?? "" });
+      }
+      if (method === "POST" && parts[2] === "resolve") {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req);
+        const take = b.take === "outside" ? "outside" : b.take === "shared" ? "shared" : null;
+        if (!take) throw new HttpError(400, "invalid", 'take must be "shared" or "outside"');
+        const { path } = docs.resolveConflict(parts[1], take);
+        relay.record("doc.conflict_resolved", actorFor(m), { path, conflictId: parts[1], kept: take });
+        return json(res, 200, { path, kept: take });
+      }
+    }
     if (parts[0] === "tests") {
       if (method === "GET") {
         requireMember(req, "read");

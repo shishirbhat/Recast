@@ -105,8 +105,17 @@ Consequences:
 | `GET/POST /api/decisions` · `/:id/accept\|reject\|invalidate` | read / edit / approve | decision records |
 | `GET /api/github` · `POST /github/ship\|merge\|refresh` | read / approve | GitHub delivery (token stays server-side) |
 | `POST /api/members` | admin | one-time invite links |
+| `POST /api/members/:id/revoke` | admin | revoke a member: sessions, invites, live collab/event sockets and terminals end |
+| `GET /api/people` · `/people/:id` | read | presence states, per-person history (sessions) and surviving line contributions |
+| `GET /api/attribution?path=` · `/sessions/:id/diff` · `/history?path=&seq=` | read | per-line authorship, one edit session's diff, a file at any revision |
+| `GET /api/diagnostics?path=` | read | syntax problems (JS/TS via the TypeScript parser, JSON) |
+| `GET /api/git/state` · `/git/diff?path=&staged=1` | read | branch, staged/unstaged files, log; diff sides |
+| `POST /api/git/stage\|unstage\|commit\|branch` · `/git/switch\|pull\|push` | edit / admin | Git workflow; switching refuses a dirty tree, pull is fast-forward only |
+| `GET /api/tasks/:id/diff?path=` · `GET/POST /api/reviews` · `/reviews/:id/resolve` | read / edit | a task's change to one file; line comments pinned to the reviewed revision |
+| `GET /api/tests` · `POST /tests/run` · `/tests/stop` | read / admin | discover and run the project's tests on the Relay machine; latest run with per-test results and a stale flag |
+| `GET /api/conflicts/:id` · `POST /conflicts/:id/resolve` | read / edit | an outside edit that couldn't merge: both sides; keep the shared copy or take the outside version (both stay recorded) |
 | WS `/collab/file:<path>` | read (viewers read-only) | Yjs sync and awareness |
-| WS `/events` | read | `{ type: "events", events: RelayEvent[] }`, pushed when this server records events and polled every 200 ms for events from hooks, MCP servers and the CLI |
+| WS `/events` | read | `{ type: "events", events: RelayEvent[] }`, pushed when this server records events and polled every 200 ms for events from hooks, MCP servers and the CLI; also `{ type: "presence" }` (ephemeral, throttled) and `{ type: "tests", run }` |
 | WS `/terminal` | owner, loopback unless `--allow-terminal` | PTY sessions |
 
 **Events (`RelayEvent`: `seq`, `id`, `taskId`, `type`, `actor`, `at`, `fromState`, `toState`, `data`).** By family:
@@ -122,4 +131,7 @@ Consequences:
 | Investigations | `investigation.created`, `investigation.entry`, `investigation.command`, `investigation.updated` |
 | Decisions | `decision.proposed`, `decision.accepted`, `decision.rejected`, `decision.invalidated` |
 | GitHub | `github.shipped`, `github.merged` |
-| Other | `member.joined`, `file.created`, `server.error` |
+| Git and review | `git.committed`, `git.branch_created`, `git.branch_switched`, `git.pulled`, `git.pushed`, `review.commented`, `review.resolved` |
+| Tests | `tests.started`, `tests.stopped` |
+| Documents | `doc.edit_session`, `doc.update_rejected`, `doc.external_change_merged`, `doc.external_change_conflict`, `doc.conflict_resolved` |
+| Other | `member.joined`, `member.revoked`, `file.created`, `server.error` |

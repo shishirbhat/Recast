@@ -11,17 +11,18 @@ import { api, ApiError } from "@/lib/api";
 import { languageFor } from "../Editor";
 
 /** What a diff tab shows. Encoded in the tab id so tabs survive like any other editor. */
-export type DiffSpec = { kind: "working" | "staged"; path: string } | { kind: "task"; task: string; path: string };
+export type DiffSpec = { kind: "working" | "staged"; path: string } | { kind: "task"; task: string; path: string } | { kind: "conflict"; id: string; path: string };
 
-export const diffTabId = (d: DiffSpec) => (d.kind === "task" ? `diff:task:${d.task}:${d.path}` : `diff:${d.kind}:${d.path}`);
+export const diffTabId = (d: DiffSpec) => (d.kind === "task" ? `diff:task:${d.task}:${d.path}` : d.kind === "conflict" ? `diff:conflict:${d.id}:${d.path}` : `diff:${d.kind}:${d.path}`);
 export function parseDiffTab(id: string): DiffSpec | null {
   if (!id.startsWith("diff:")) return null;
   const [, kind, ...rest] = id.split(":");
   if (kind === "task") return { kind: "task", task: rest[0]!, path: rest.slice(1).join(":") };
+  if (kind === "conflict") return { kind: "conflict", id: rest[0]!, path: rest.slice(1).join(":") };
   if (kind === "working" || kind === "staged") return { kind, path: rest.join(":") };
   return null;
 }
-export const diffTabLabel = (d: DiffSpec) => `${d.path.split("/").pop()} (${d.kind === "task" ? d.task : d.kind === "staged" ? "Staged" : "Working Tree"})`;
+export const diffTabLabel = (d: DiffSpec) => `${d.path.split("/").pop()} (${d.kind === "task" ? d.task : d.kind === "conflict" ? "Conflict" : d.kind === "staged" ? "Staged" : "Working Tree"})`;
 
 const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.definitionKeyword], color: "var(--syn-keyword)" },
@@ -33,7 +34,7 @@ const highlight = HighlightStyle.define([
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "transparent", color: "var(--ink)", fontSize: "13px" },
   ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.6" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--faint)" },
+  ".cm-gutters": { backgroundColor: "var(--editor)", border: "none", color: "var(--faint)" },
   ".cm-changedLine": { backgroundColor: "color-mix(in oklab, var(--ok-soft) 70%, transparent) !important" },
   ".cm-deletedChunk, .cm-deletedLine": { backgroundColor: "color-mix(in oklab, var(--danger-soft) 80%, transparent) !important" },
   ".cm-changedText": { background: "color-mix(in oklab, var(--ok) 28%, transparent) !important" },
@@ -54,7 +55,7 @@ interface Comment {
 }
 
 /** A read-only diff of one file, side by side or inline, with revision-pinned review comments for task diffs. */
-export function DiffView({ spec, canEdit, onOpenFile, onStage, notify }: { spec: DiffSpec; canEdit: boolean; onOpenFile: (p: string, line?: number) => void; onStage?: (p: string) => void; notify: (m: string, t?: "ok" | "danger") => void }) {
+export function DiffView({ spec, canEdit, onOpenFile, onStage, onResolved, notify }: { spec: DiffSpec; canEdit: boolean; onOpenFile: (p: string, line?: number) => void; onStage?: (p: string) => void; onResolved?: () => void; notify: (m: string, t?: "ok" | "danger") => void }) {
   const host = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"split" | "inline">(() => {
     try {
@@ -72,13 +73,27 @@ export function DiffView({ spec, canEdit, onOpenFile, onStage, notify }: { spec:
   useEffect(() => {
     setSides(null);
     setError(null);
+    if (spec.kind === "conflict") {
+      void api<{ theirs: string; current: string; resolvedAt: string | null }>("GET", `/conflicts/${encodeURIComponent(spec.id)}`).then(
+        (r) => (setSides({ before: r.theirs, after: r.current, beforeLabel: "Outside edit (from disk)", afterLabel: "Shared copy (now)" }), setResolved(!!r.resolvedAt)),
+        (e) => setError(e instanceof ApiError ? e.message : String(e)),
+      );
+      return;
+    }
     const url = spec.kind === "task" ? `/tasks/${encodeURIComponent(spec.task)}/diff?path=${encodeURIComponent(spec.path)}` : `/git/diff?path=${encodeURIComponent(spec.path)}${spec.kind === "staged" ? "&staged=1" : ""}`;
     void api<{ before: string; after: string; beforeLabel?: string; afterLabel?: string }>("GET", url).then(
       (r) => setSides({ before: r.before, after: r.after, beforeLabel: r.beforeLabel ?? (spec.kind === "staged" ? "HEAD" : "Index"), afterLabel: r.afterLabel ?? (spec.kind === "staged" ? "Index (staged)" : "Working tree") }),
       (e) => setError(e instanceof ApiError ? e.message : String(e)),
     );
     if (spec.kind === "task") void api<{ comments: Comment[] }>("GET", `/reviews?task=${encodeURIComponent(spec.task)}&path=${encodeURIComponent(spec.path)}`).then((r) => setComments(r.comments), () => {});
-  }, [spec.kind, spec.path, spec.kind === "task" ? spec.task : "", nonce]);
+  }, [spec.kind, spec.path, spec.kind === "task" ? spec.task : spec.kind === "conflict" ? spec.id : "", nonce]);
+  const [resolved, setResolved] = useState(false);
+  const resolve = (take: "shared" | "outside") =>
+    spec.kind === "conflict" &&
+    void api("POST", `/conflicts/${encodeURIComponent(spec.id)}/resolve`, { take }).then(
+      () => (notify(take === "shared" ? `Kept the shared copy of ${spec.path}. The outside version stays recorded.` : `Replaced the shared copy of ${spec.path} with the outside version. The previous text stays in its history.`), onResolved?.()),
+      (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"),
+    );
 
   useEffect(() => {
     if (!host.current || !sides) return;
@@ -122,6 +137,25 @@ export function DiffView({ spec, canEdit, onOpenFile, onStage, notify }: { spec:
           </span>
         </span>
       </div>
+      {spec.kind === "conflict" && sides && (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule bg-warn-soft/40 px-4 py-2.5 text-[13px]" data-testid="conflict-bar">
+          <p className="min-w-0 flex-1 text-ink-2">
+            {resolved
+              ? "This conflict is resolved. Both versions stay recorded."
+              : "Someone changed this file on disk while it was being edited here, and the changes overlap. Nothing was overwritten: compare the two and choose which to keep. You can also edit the shared copy by hand first."}
+          </p>
+          {!resolved && canEdit && (
+            <span className="flex gap-2">
+              <button onClick={() => resolve("shared")} className="h-[26px] rounded-sm border border-rule-strong px-2.5 text-[12.5px] text-ink hover:bg-hover">
+                Keep shared copy
+              </button>
+              <button onClick={() => resolve("outside")} className="h-[26px] rounded-sm border border-rule-strong px-2.5 text-[12.5px] text-ink hover:bg-hover">
+                Use outside version
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       {error && <p className="px-4 py-3 text-[12.5px] text-danger">{error}</p>}
       {!sides && !error && <div className="m-4 h-24 animate-pulse rounded-sm bg-sunken/50" />}
       <div ref={host} className="min-h-0 flex-1 overflow-auto [&_.cm-mergeView]:h-full [&_.cm-mergeViewEditors]:min-h-full" />

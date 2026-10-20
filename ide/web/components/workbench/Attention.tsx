@@ -23,6 +23,7 @@ export interface AttentionActions {
   openTask: (id: string) => void;
   openContracts: () => void;
   openFile: (path: string) => void;
+  resolveConflict: (id: string, path: string) => void;
   showTests: () => void;
 }
 
@@ -50,7 +51,7 @@ export function attentionOf(state: ProjectState, tests: TestRunView | null, go: 
         if (h.status === "proposed") out.push({ key: `contract:${c.id}:${h.version}`, level: "review", title: `${c.id} v${h.version} is proposed`, why: "Tasks that depend on this contract keep building on the accepted version until an owner decides.", action: { label: "Review contract", run: go.openContracts } });
   for (const c of state.conflicts) {
     const path = c.doc.replace(/^file:/, "");
-    out.push({ key: `conflict:${c.id}`, level: "block", title: `An outside edit to ${path} conflicted`, why: "Both versions were kept. Nothing was overwritten; the shared copy needs a person to merge them.", action: { label: "Open file", run: () => go.openFile(path) } });
+    out.push({ key: `conflict:${c.id}`, level: "block", title: `An outside edit to ${path} conflicted`, why: "Both versions were kept and nothing was overwritten. Compare them and choose which to keep.", action: { label: "Resolve", run: () => go.resolveConflict(c.id, path) } });
   }
   const failing = tests && tests.status !== "running" && !tests.stale ? tests.results.filter((r) => r.status === "fail").length : 0;
   if (failing) out.push({ key: `tests:${tests!.id}`, level: "block", title: `${failing} test${failing === 1 ? "" : "s"} failing`, why: `From ${tests!.command}, run on the current files.`, action: { label: "Show tests", run: go.showTests } });
@@ -68,10 +69,18 @@ const ICON = {
 export function AttentionButton({ items }: { items: AttentionItem[] }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  // Keyboard: opening moves focus to the first action; Escape closes and returns focus to where it was (the editor).
+  const returnTo = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!open) return;
+    returnTo.current = document.activeElement instanceof HTMLElement && !box.current?.contains(document.activeElement) ? document.activeElement : null;
+    requestAnimationFrame(() => box.current?.querySelector<HTMLButtonElement>("[role=dialog] button")?.focus());
     const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !box.current?.contains(e.target as Node)) setOpen(false);
+      if (e instanceof KeyboardEvent) {
+        if (e.key !== "Escape") return;
+        setOpen(false);
+        returnTo.current?.focus();
+      } else if (!box.current?.contains(e.target as Node)) setOpen(false);
     };
     window.addEventListener("mousedown", close);
     window.addEventListener("keydown", close);

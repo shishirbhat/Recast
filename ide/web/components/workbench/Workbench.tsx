@@ -185,6 +185,8 @@ interface Note {
   tone: "ok" | "danger" | "attention";
   at: string;
   action?: { label: string; run: () => void };
+  /** For notices about a situation: the notice goes away by itself once the situation is resolved. */
+  key?: string;
 }
 
 /* ===================================================================================================
@@ -373,8 +375,8 @@ export function Workbench() {
 
   // Toasts never pile up over the code: at most three, routine ones fade fast, problems stay longer, and every one can be
   // dismissed. The full message stays in the notification list (capped at 50).
-  const notify = useCallback((msg: string, tone: Note["tone"] = "ok", action?: Note["action"]) => {
-    const n: Note = { id: Date.now() + Math.random(), msg, tone, at: new Date().toISOString(), action };
+  const notify = useCallback((msg: string, tone: Note["tone"] = "ok", action?: Note["action"], key?: string) => {
+    const n: Note = { id: Date.now() + Math.random(), msg, tone, at: new Date().toISOString(), action, key };
     setNotes((x) => [n, ...x].slice(0, 50));
     setToasts((t) => [...t, n].slice(-3));
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), tone === "ok" ? 3500 : 12000);
@@ -594,10 +596,11 @@ export function Workbench() {
             openTask: showTask,
             openContracts: () => (showRight("contracts"), setSelectedTask(null)),
             openFile: (p) => open(p),
+            resolveConflict: (id, path) => openDiff({ kind: "conflict", id, path }),
             showTests: () => openPanel("tests"),
           })
         : [],
-    [state, testRun, showTask, showRight, open, openPanel],
+    [state, testRun, showTask, showRight, open, openPanel, openDiff],
   );
   // A new situation that needs a person raises one quiet notification; routine activity never does. Items already
   // present when the workbench opened are only listed, not announced.
@@ -609,8 +612,11 @@ export function Workbench() {
     for (const a of attention) {
       if (a.level === "info" || announced.current.has(a.key)) continue;
       announced.current.add(a.key);
-      notify(a.title, a.level === "block" ? "danger" : "attention", a.action);
+      notify(a.title, a.level === "block" ? "danger" : "attention", a.action, a.key);
     }
+    // A notice whose situation has been dealt with (approved, resolved, rerun) leaves on its own.
+    const live = new Set(attention.map((a) => a.key));
+    setToasts((t) => (t.some((x) => x.key && !live.has(x.key)) ? t.filter((x) => !x.key || live.has(x.key)) : t));
   }, [attention, state, notify]);
   const fileTask = useMemo(() => {
     if (!state || !activePath) return null;
@@ -931,7 +937,7 @@ export function Workbench() {
               </div>
             )}
             {activeDiff ? (
-              <DiffView spec={activeDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
+              <DiffView spec={activeDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onResolved={() => (closeTab(active!), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
             ) : session ? (
               <>
                 <div className="flex h-[28px] shrink-0 items-center justify-between gap-4 px-4 text-[12.5px] text-muted">

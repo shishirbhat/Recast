@@ -30,6 +30,18 @@ if (process.env.RELAY_SIM_MODE === "sleep") {
   out({ type: "assistant", message: { content: [{ type: "text", text: "thinking for a long time" }] } });
   setInterval(() => {}, 1000);
 } else {
+  // RELAY_SIM_DELAY_MS: stay "working" this long first, so a person can keep editing while agents run.
+  // RELAY_SIM_FAIL: comma-separated task ids whose run fails with an error after one tool call.
+  const delay = Number(process.env.RELAY_SIM_DELAY_MS ?? 0);
+  if (delay > 0) {
+    out({ type: "assistant", message: { content: [{ type: "text", text: `Reading the code for ${task}.` }] } });
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+  }
+  if ((process.env.RELAY_SIM_FAIL ?? "").split(",").includes(task)) {
+    out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "npm run build" } }] } });
+    out({ type: "result", is_error: true, result: "simulated failure: the build step exited with code 2 (src/server.js:3 Unexpected token)", total_cost_usd: 0 });
+    process.exit(2);
+  }
   const relay = new Relay(db);
   const agent = { kind: "agent" as const, id: "simulated-agent" };
   relay.claim(task, agent);

@@ -104,6 +104,16 @@ test("calm type: switchable faces, no uppercase labels, and a comfortable editor
   const editor = await p.getByTestId("editor-group").evaluate((el) => el.getBoundingClientRect().width);
   assert.ok(editor >= 480, `editor is ${editor}px wide at 1024`);
 
+  // Keys typed the instant after the palette shortcut go to the palette, never into the code behind it.
+  await p.locator(".cm-content").click();
+  const code = await p.locator(".cm-content").innerText();
+  for (let i = 0; i < 5; i++) {
+    await p.keyboard.press("Control+Shift+P");
+    await p.keyboard.type("Wrap", { delay: 0 });
+    await p.keyboard.press("Escape");
+  }
+  assert.equal(await p.locator(".cm-content").innerText(), code, "no stray characters in the file");
+
   await p.keyboard.press("Control+Comma");
   await p.getByTestId("pref-codeFont").selectOption("jetbrains");
   await p.waitForFunction(() => getComputedStyle(document.querySelector(".cm-content")!).fontFamily.includes("JetBrains"));

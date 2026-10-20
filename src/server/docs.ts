@@ -5,6 +5,7 @@ import type { FSWatcher } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { merge3, readText, splice, writeAtomic } from "./files.ts";
+import { RelayError } from "../core/types.ts";
 import { tx } from "../core/db.ts";
 
 /** Who caused a document change. Connections are objects; server-side origins are these strings. */
@@ -288,6 +289,26 @@ export class DocStore {
       ? this.db.prepare("SELECT id, doc, theirs, created_at FROM doc_conflicts WHERE doc = ? AND resolved_at IS NULL").all(DocStore.docName(path))
       : this.db.prepare("SELECT id, doc, theirs, created_at FROM doc_conflicts WHERE resolved_at IS NULL").all();
     return (rows as { id: string; doc: string; theirs: string; created_at: string }[]).map((r) => ({ id: r.id, doc: r.doc, theirs: r.theirs, createdAt: r.created_at }));
+  }
+
+  /** One recorded conflict with both sides, resolved or not. Both versions stay stored after resolution. */
+  conflict(id: string): { id: string; path: string; base: string; ours: string; theirs: string; createdAt: string; resolvedAt: string | null } | null {
+    const r = this.db.prepare("SELECT * FROM doc_conflicts WHERE id = ?").get(id) as Record<string, string | null> | undefined;
+    if (!r) return null;
+    return { id: r.id!, path: String(r.doc).replace(/^file:/, ""), base: r.base!, ours: r.ours!, theirs: r.theirs!, createdAt: r.created_at!, resolvedAt: r.resolved_at ?? null };
+  }
+
+  /**
+   * Settle a conflict: keep the shared document as it is, or replace it with the outside version. Nothing is lost
+   * either way: the outside version stays in doc_conflicts, and the shared version stays in the document's history.
+   */
+  resolveConflict(id: string, take: "shared" | "outside"): { path: string } {
+    const c = this.conflict(id);
+    if (!c) throw new RelayError("not_found", "No such conflict");
+    if (c.resolvedAt) throw new RelayError("conflict", "This conflict was already resolved");
+    if (take === "outside") this.applyText(c.path, c.theirs, "disk");
+    this.db.prepare("UPDATE doc_conflicts SET resolved_at = ? WHERE id = ?").run(now(), id);
+    return { path: c.path };
   }
 
   private scheduleFlush(entry: DocEntry): void {

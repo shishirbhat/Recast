@@ -57,3 +57,59 @@ These are kept as they are:
    - Toasts can be dismissed, and at most three show at once.
    - Errors stay until dismissed and keep their full message in the notification list.
    - The list is capped at 50 entries.
+
+## Found while validating, and fixed
+
+The workflow run and its screenshots turned up problems the earlier tests didn't catch:
+
+- **Outside-edit conflicts could not be resolved anywhere in the IDE.** They were recorded, and after this pass also listed under *Needs you*, but nothing could clear them.
+  - Added `GET /api/conflicts/:id` and `POST /api/conflicts/:id/resolve`, plus a conflict tab that shows the outside version beside the shared copy with **Keep shared copy** / **Use outside version**.
+  - Either way both versions stay recorded. Only editors and owners can decide, and a conflict is decided once.
+  - Covered by `test/conflicts.test.ts` and workflow 7.
+- **The review contradicted itself.** Its Tests line said "Passed on the current files" while evidence-staleness notes sat in red under *Depends on*.
+  - The agent's check ran on its own copy, and the person kept editing the shared files meanwhile.
+  - The summary now says "Passed. 1 passed on this exact workspace. The shared files changed since; see Re-check." Evidence staleness sits in its own *Re-check* row, in warning colour. *Depends on* holds only contracts and partner tasks.
+- **A failed agent run was only visible in its log.** The task itself reads "Ready" after a failed run. The summary now leads with *Last run: Failed: <error>* and the next reasonable action, and the log opens by itself.
+- **The editor gutter was transparent**, so horizontally scrolled code showed through the line numbers. The gutter is now opaque in the editor and in diffs.
+- **Notices outlived their situation.** A notice now disappears once its item leaves *Needs you* (approved, resolved, rerun).
+- **"Not safe to integrate yet" showed under an already-integrated task.** It is now hidden once the change is in the shared project.
+- **Agent-log timestamps wrapped onto two lines** in 12-hour locales. They are now 24-hour.
+- **Keyboard:** opening *Needs you* with Ctrl+Shift+A now moves focus to its first action, and Escape returns focus to where it was (the editor).
+
+- **Keys typed right after Ctrl+Shift+P could land in the code.** The palette took focus one animation frame late, so a fast "Ctrl+Shift+P, S…" inserted a stray character into the open file. Workflow 10 caught it intermittently, with the caret off by one column. The palette now takes focus synchronously as it opens. A regression test types immediately after the shortcut five times and checks the file is unchanged.
+- **An intermittent unit test.** About one run in three, `agents.test.ts`'s recovery test failed. It assumed a rerun's snapshot always differs from its partner's. When the shared files haven't changed, the snapshot commit is identical within the same second, so the test failed depending on the clock. The product was correct: identical state means nothing to rebase. The test now changes the shared state before the rerun, as its scenario describes, and passed 8 of 8 runs.
+
+## Validation
+
+`test/e2e/workflows.e2e.test.ts` runs the brief's ten workflows in Chromium against a real server.
+
+- **What is real:** edits are real keystrokes, and outside edits are real file writes, reconciled through the same function the watcher calls.
+- **What is simulated:** agents are the SIMULATED agent (`test/fixtures/simulated-agent`, with new `RELAY_SIM_DELAY_MS` and `RELAY_SIM_FAIL` modes). They exercise Relay's orchestration and the interface, not a model.
+- **Screenshots:** `RELAY_SHOTS=<dir>` saves one at each key moment.
+
+| # | Workflow | What is checked |
+|---|---|---|
+| 1 | Open the project, navigate files | Quick open, explorer, next/previous editor by keyboard |
+| 2 | Edit for a while | 40 lines typed key by key. All reach the shared document intact, with no page errors. Markdown list continuation behaves like other editors. |
+| 3 | Open and close panels | Six panel toggles; the caret is unchanged afterwards |
+| 4 | Agents running while editing | Two agents (one started from the task's button) run while the person types. The overview shows both as Working. The only notice is the confirmation of the person's own click, and focus never leaves the editor. Completion raises exactly one notice per agent: one review, one failure. |
+| 5 | Investigate a failure | From the failure notice, the task opens with *Last run: Failed* first and the log open, showing the error and the tool call |
+| 6 | Review changes and test evidence | The changed file links to the diff. The tests line is honest about staleness, *Re-check* lists what changed, and *If approved* states the consequence. Approve & apply updates the shared copy. |
+| 7 | Resolve an integration conflict | Overlapping outside edit → notice → *Needs you* → Resolve → compare → use outside version. Both versions stay recorded, and the item clears. |
+| 8 | Smaller window (900×620) | No horizontal scroll, the editor stays at least 480 px wide, and the *Needs you* list fits in the window |
+| 9 | Keyboard only | Ctrl+Shift+A focuses the first action; Escape returns to the editor |
+| 10 | Return after side trips | People, tests, a task, source control, then back: the file, caret and text are as they were, and the Relay bar closes |
+
+Other browser coverage:
+
+- `calm.e2e.test.ts` checks the *Needs you* contents, the file's task, one dismissible notice per new situation, the typefaces (with persistence), no uppercase text anywhere, and a 1024 px window.
+- All earlier suites still pass.
+
+Final run: 76 unit tests and 24 browser tests passing, and both type-checks clean (numbers from the run recorded in the commit).
+
+## Not done in this pass
+
+- **Agents in validation are simulated.** A real Claude Code run was proven in earlier phases (docs/09), but it was not repeated for this UI pass.
+- **Split editors and project-wide replace** are still not built (tracked separately).
+- **Notices** stack at the bottom right. When the Relay side bar is open they can cover its lower edge (the agent composer) for up to 12 s; they never sit over the editor at the default layout.
+- **Visual review** was done from screenshots at 1440, 1100, 1024, 900 and 820 px in the light theme. The dark theme uses the same tokens but was not re-screenshotted in this pass.

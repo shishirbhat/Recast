@@ -44,7 +44,7 @@ const relayTheme = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.6", fontVariantLigatures: "none" },
   ".cm-content": { padding: "4px 0 40vh", caretColor: "var(--ink)" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--faint)", paddingLeft: "10px" },
+  ".cm-gutters": { backgroundColor: "var(--editor)", border: "none", color: "var(--faint)", paddingLeft: "10px" },
   ".cm-lineNumbers .cm-gutterElement": { padding: "0 14px 0 6px", fontSize: "12px" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--ink-2)" },
   ".cm-activeLine": { backgroundColor: "color-mix(in oklab, var(--hover) 60%, transparent)" },

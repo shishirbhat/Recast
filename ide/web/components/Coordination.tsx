@@ -279,7 +279,7 @@ function Ladder({ change }: { change: ChangeRec | null }) {
           </li>
         ))}
       </ol>
-      <p className={`micro mt-3 ${change.safeToIntegrate ? "text-ok" : "text-faint"}`}>{change.safeToIntegrate ? "Safe to integrate · needs a person's approval" : "Not safe to integrate yet"}</p>
+      {change.stages.find((x) => x.id === "integrated")?.state !== "done" && <p className={`micro mt-3 ${change.safeToIntegrate ? "text-ok" : "text-faint"}`}>{change.safeToIntegrate ? "Safe to integrate · needs a person's approval" : "Not safe to integrate yet"}</p>}
       {change.security.length > 0 && (
         <details className="mt-2 text-[11.5px] text-muted">
           <summary className="cursor-pointer text-faint">Security-relevant activity ({change.security.length})</summary>
@@ -334,7 +334,12 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
     const cur = current(c);
     return cur !== undefined && cur > v ? [`Built on ${c} v${v}, but v${cur} is accepted; it has to be updated to v${cur} before it can be integrated.`] : [];
   });
-  const gaps = [...staleContracts, ...(why ? visibleGaps(task, why).filter((g) => !staleContracts.length || !/contract .* v\d+ .*accepted|superseded/i.test(g)) : [])];
+  const whyGaps = why ? visibleGaps(task, why).filter((g) => !staleContracts.length || !/contract .* v\d+ .*accepted|superseded/i.test(g)) : [];
+  // Dependencies (contracts, partner tasks) are blockers; evidence that went stale is a re-check, not a dependency.
+  const isDependency = (g: string) => /contract|unfinished task|partner|integrat/i.test(g);
+  const gaps = [...staleContracts, ...whyGaps.filter(isDependency)];
+  const rechecks = whyGaps.filter((g) => !isDependency(g));
+  const lastError = run?.status === "failed" ? ([...run.activity].reverse().find((a) => a.kind === "error" || a.kind === "result" || a.kind === "denied")?.detail ?? "The agent process exited with an error.") : null;
   const stage = (id: string) => change?.stages.find((x) => x.id === id);
   const tested = stage("tested");
   const contractStage = stage("contracts");
@@ -351,7 +356,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
   const testLine = !tested
     ? { tone: "text-muted", text: "…" }
     : tested.state === "done"
-      ? { tone: "text-ok", text: `Passed on the current files. ${tested.detail}` }
+      ? { tone: rechecks.some((g) => /verification|test/i.test(g)) ? "text-warn" : "text-ok", text: `Passed. ${tested.detail.replace(/\.?$/, ".")}${rechecks.some((g) => /verification|test/i.test(g)) ? " The shared files changed since; see Re-check." : ""}` }
       : tested.state === "failed"
         ? { tone: "text-danger", text: `Failed. ${tested.detail}` }
         : tested.state === "stale"
@@ -435,6 +440,15 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
       {/* The decision first: what changed, what was tested, what's unresolved, and what approving does. */}
       {!decided && (
         <section className="divide-y divide-rule border-y border-rule" data-testid="review-summary" aria-label="Review summary">
+          {lastError && (
+            <div className={row} data-testid="review-failure">
+              <span className="text-muted">Last run</span>
+              <span className="text-danger">
+                Failed: {lastError}
+                <span className="block text-muted">Fix the cause and run it again, or take the task yourself. The full log is below.</span>
+              </span>
+            </div>
+          )}
           <div className={row}>
             <span className="text-muted">Changed</span>
             {change === null ? (
@@ -477,6 +491,16 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
               </span>
             )}
           </div>
+          {rechecks.length > 0 && (
+            <div className={row}>
+              <span className="text-muted">Re-check</span>
+              <ul className="space-y-1 text-warn" data-testid="review-rechecks">
+                {rechecks.map((g) => (
+                  <li key={g}>{g[0]!.toUpperCase() + g.slice(1)}.</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className={row}>
             <span className="text-muted">Approval</span>
             <span className="text-ink-2">{task.state === "review_required" || task.state === "proposed" ? (isOwner ? "Needed from you (an owner)." : "Needed from a project owner.") : "Not needed yet; the work isn't ready for review."}</span>
@@ -565,7 +589,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
                 .filter((a) => a.kind !== "text")
                 .map((a, i) => (
                   <li key={i} className={`flex gap-2 ${a.kind === "denied" || a.kind === "error" ? "text-danger" : "text-ink-2"}`}>
-                    <span className="w-14 shrink-0 text-faint">{new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                    <span className="w-16 shrink-0 text-faint">{new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}</span>
                     <span className="min-w-0 break-words">{a.kind === "tool" ? `${a.tool} ${a.target ?? ""}` : (a.detail ?? a.kind)}</span>
                   </li>
                 ))}
