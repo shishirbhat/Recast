@@ -48,7 +48,7 @@ async function signIn(role: "owner" | "editor" | "viewer", width = 1440): Promis
   (page as Page & { errors: string[] }).errors = errors;
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   return page;
 }
 /** xterm pads rows with spaces, so poll the terminal's text rather than matching elements exactly. */

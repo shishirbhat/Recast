@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, CircleCheck, CircleX, CircleMinus, Play, RotateCcw, Square } from "lucide-react";
+import { ChevronRight, CircleCheck, CircleX, CircleMinus, FileCode2, Play, RotateCcw, Square } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { TestRunView } from "@/lib/useProject";
+import { ViewHeader } from "./Views";
 
 type Discover = { runner: "node-test" | "npm-script" | null; command: string | null; testFiles: string[]; perTest: boolean; reason?: string };
 
@@ -133,6 +134,97 @@ export function TestsPanel({ run, setRun, canRun, onOpen, notify }: { run: TestR
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Testing view (activity bar), as VS Code has it: every test file the project's runner finds, each with the tests
+ * the latest run reported. Run everything, one file, or the failures; click a test to open it. Files the latest run
+ * didn't cover say "not run", never "passed".
+ */
+export function TestingView({ run, setRun, canRun, onOpen, notify }: { run: TestRunView | null; setRun: (r: TestRunView | null) => void; canRun: boolean; onOpen: (p: string, line?: number) => void; notify: (m: string, t?: "ok" | "danger") => void }) {
+  const [disc, setDisc] = useState<Discover | null>(null);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("");
+  useEffect(() => {
+    void api<{ discover: Discover; latest: TestRunView | null }>("GET", "/tests").then((r) => (setDisc(r.discover), r.latest && setRun(r.latest)), () => {});
+  }, [setRun]);
+  const byFile = useMemo(() => {
+    const m = new Map<string, TestRunView["results"]>();
+    for (const f of disc?.testFiles ?? []) m.set(f, []);
+    for (const r of run?.results ?? []) if (r.file) m.set(r.file, [...(m.get(r.file) ?? []), r]);
+    return [...m.entries()].filter(([f, rs]) => !filter || f.toLowerCase().includes(filter.toLowerCase()) || rs.some((r) => r.name.toLowerCase().includes(filter.toLowerCase())));
+  }, [disc, run, filter]);
+  const running = run?.status === "running";
+  const failed = failedNames(run);
+  const perFile = disc?.runner === "node-test";
+  const why = !canRun ? "Only project owners can run tests (they run on the Relay host)" : !disc?.runner ? (disc?.reason ?? "No test runner found in this project") : running ? "Tests are already running" : null;
+  const iconBtn = "grid size-6 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink disabled:text-faint disabled:hover:bg-transparent";
+  const fileStatus = (rs: TestRunView["results"]) => (!rs.length ? null : rs.some((r) => r.status === "fail") ? "fail" : rs.every((r) => r.status !== "pass") ? "skip" : "pass");
+  return (
+    <div className="flex h-full flex-col" data-testid="testing-view">
+      <ViewHeader
+        title="Testing"
+        actions={
+          <>
+            {running ? (
+              <button aria-label="Stop tests" title={canRun ? "Stop" : (why ?? "")} disabled={!canRun} onClick={() => void stopTests()} className={iconBtn}>
+                <Square size={13} />
+              </button>
+            ) : (
+              <button aria-label="Run all tests" title={why ?? "Run All Tests"} disabled={!!why} onClick={() => void runTests({}, notify)} className={iconBtn} data-testid="testing-run-all">
+                <Play size={13} />
+              </button>
+            )}
+            <button aria-label="Rerun failed tests" title={why ?? (!failed.length ? "No failed tests in the latest run" : !perFile ? "Rerunning single tests needs Node's test runner" : "Rerun Failed Tests")} disabled={!!why || !failed.length || !perFile} onClick={() => void runTests(rerunFailed(run), notify)} className={iconBtn}>
+              <RotateCcw size={13} />
+            </button>
+          </>
+        }
+      />
+      <div className="px-3 pb-2">
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter tests" aria-label="Filter tests" className="h-[26px] w-full rounded-sm border border-rule bg-editor px-2 text-[13px] outline-none focus:border-accent" />
+        <p className="mt-1.5 text-[11.5px] text-muted">
+          {!disc ? "Finding tests…" : !disc.runner ? (disc.reason ?? "No test runner found") : run ? `${run.results.filter((r) => r.status === "pass").length} passed, ${failed.length} failed${run.stale ? " · out of date" : ""}${running ? " · running…" : ""}` : `${disc.testFiles.length} test files · not run yet`}
+        </p>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+        {byFile.map(([file, rs]) => {
+          const st = fileStatus(rs);
+          const isOpen = open.has(file) || (!!filter && rs.length > 0);
+          return (
+            <div key={file}>
+              <div className="group flex h-6 items-center pr-1 hover:bg-hover">
+                <button onClick={() => setOpen((s) => (s.has(file) ? (s.delete(file), new Set(s)) : new Set(s).add(file)))} className="flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-left text-[13px]" data-testid={`testing-file-${file}`}>
+                  <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                  {st ? ICON[st] : <CircleMinus size={13} className="shrink-0 text-faint" aria-label="not run" />}
+                  <span className="truncate text-ink-2">{file.split("/").pop()}</span>
+                  <span className="truncate text-[11px] text-faint">{file.split("/").slice(0, -1).join("/")}</span>
+                </button>
+                <button aria-label={`Run tests in ${file}`} title={why ?? (perFile ? `Run ${file}` : "Running one file needs Node's test runner")} disabled={!!why || !perFile} onClick={() => void runTests({ files: [file] }, notify)} className={`${iconBtn} hidden group-hover:grid`}>
+                  <Play size={12} />
+                </button>
+                <button aria-label={`Open ${file}`} title="Open file" onClick={() => onOpen(file)} className={`${iconBtn} hidden group-hover:grid`}>
+                  <FileCode2 size={12} />
+                </button>
+              </div>
+              {isOpen &&
+                (rs.length ? (
+                  rs.map((r, i) => (
+                    <button key={`${r.name}:${i}`} onClick={() => onOpen(file, r.line ?? undefined)} title={r.error ?? undefined} className="flex h-6 w-full items-center gap-1.5 pl-9 pr-2 text-left text-[12.5px] hover:bg-hover">
+                      {ICON[r.status]}
+                      <span className={`truncate ${r.status === "fail" ? "text-danger" : "text-ink-2"}`}>{r.name}</span>
+                      {r.durationMs !== null && <span className="tnum ml-auto shrink-0 text-[11px] text-faint">{Math.round(r.durationMs)} ms</span>}
+                    </button>
+                  ))
+                ) : (
+                  <p className="py-1 pl-9 text-[12px] text-faint">Not run yet</p>
+                ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

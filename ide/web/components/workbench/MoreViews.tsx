@@ -82,33 +82,98 @@ const BUILT_IN = [
   { id: "css", name: "CSS", detail: "Syntax", files: ".css" },
   { id: "html", name: "HTML", detail: "Syntax", files: ".html" },
   { id: "python", name: "Python", detail: "Syntax", files: ".py" },
+  { id: "prettier", name: "Prettier formatting", detail: "Format Document and Format Selection, in the browser", files: ".js .ts .jsx .tsx .json .css .html .md" },
+  { id: "editor", name: "Minimap, indent guides, whitespace", detail: "View menu toggles, persisted per browser", files: "all text files" },
   { id: "collab", name: "Relay collaboration", detail: "Live editing, cursors and presence", files: "all text files" },
 ];
 
+interface VsxExtension {
+  namespace: string;
+  name: string;
+  displayName?: string;
+  description?: string;
+  version: string;
+  downloadCount?: number;
+  verified?: boolean;
+  deprecated?: boolean;
+  files?: { icon?: string };
+}
+const NO_HOST = "Installing needs a VS Code extension host, which Relay doesn't have yet";
+const OPEN_VSX = "https://open-vsx.org";
+const compact = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
+
+/**
+ * Extensions, in VS Code's shape: what's built in, and the Open VSX marketplace (the open registry VS Code-compatible
+ * editors use), searched straight from the browser. Results are real; Install says why it can't run here yet.
+ */
 export function ExtensionsView() {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState<{ q: string; items: VsxExtension[]; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    const t = setTimeout(() => {
+      const query = q.trim();
+      const url = query ? `${OPEN_VSX}/api/-/search?query=${encodeURIComponent(query)}&size=30` : `${OPEN_VSX}/api/-/search?sortBy=downloadCount&sortOrder=desc&size=20`;
+      fetch(url, { signal: ctl.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Open VSX answered ${r.status}`))))
+        .then((j: { extensions: VsxExtension[]; totalSize: number }) => (setRes({ q: query, items: j.extensions ?? [], total: j.totalSize ?? 0 }), setError(null)))
+        .catch((e: Error) => e.name !== "AbortError" && setError(`Couldn't reach Open VSX: ${e.message}`));
+    }, 250);
+    return () => (clearTimeout(t), ctl.abort());
+  }, [q]);
   return (
     <div className="flex h-full flex-col">
       <ViewHeader title="Extensions" />
       <div className="px-3 pb-2">
-        <input disabled placeholder="Search the marketplace" title="The extension marketplace isn't available yet" className="h-[26px] w-full cursor-not-allowed rounded-sm border border-rule bg-editor px-2 text-[13px] text-faint" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Extensions in Open VSX" aria-label="Search extensions" data-testid="extensions-search" className="h-[26px] w-full rounded-sm border border-rule bg-editor px-2 text-[13px] text-ink outline-none focus:border-accent" />
       </div>
-      <Section title="Built in" count={BUILT_IN.length}>
-        {BUILT_IN.map((x) => (
-          <div key={x.id} className="flex gap-2.5 px-5 py-1.5 hover:bg-hover">
-            <Puzzle size={26} strokeWidth={1.3} className="mt-0.5 shrink-0 text-faint" />
-            <div className="min-w-0">
-              <p className="flex items-center gap-1.5 text-[13px] text-ink">
-                {x.name} <Check size={12} className="text-ok" aria-label="enabled" />
-              </p>
-              <p className="truncate text-[12px] text-muted">{x.detail}</p>
-              <p className="truncate font-mono text-[11px] text-faint">{x.files}</p>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {!q.trim() && (
+          <Section title="Built in" count={BUILT_IN.length}>
+            {BUILT_IN.map((x) => (
+              <div key={x.id} className="flex gap-2.5 px-5 py-1.5 hover:bg-hover">
+                <Puzzle size={26} strokeWidth={1.3} className="mt-0.5 shrink-0 text-faint" />
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-[13px] text-ink">
+                    {x.name} <Check size={12} className="text-ok" aria-label="enabled" />
+                  </p>
+                  <p className="truncate text-[12px] text-muted">{x.detail}</p>
+                  <p className="truncate font-mono text-[11px] text-faint">{x.files}</p>
+                </div>
+              </div>
+            ))}
+          </Section>
+        )}
+        <Section title={q.trim() ? "Open VSX" : "Popular on Open VSX"} count={res?.total}>
+          {error && <Empty>{error}</Empty>}
+          {!error && !res && <Empty>Searching…</Empty>}
+          {!error && res?.items.length === 0 && <Empty>No extensions match.</Empty>}
+          {res?.items.map((x) => (
+            <div key={`${x.namespace}.${x.name}`} className="group flex gap-2.5 px-4 py-1.5 hover:bg-hover" data-testid="extension-result">
+              {x.files?.icon ? <img src={x.files.icon} alt="" width={30} height={30} className="mt-0.5 size-[30px] shrink-0 rounded-sm object-contain" /> : <Puzzle size={30} strokeWidth={1.3} className="mt-0.5 shrink-0 text-faint" />}
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-1.5 text-[13px] text-ink">
+                  <span className="truncate">{x.displayName || x.name}</span>
+                  {x.deprecated && <span className="text-[11px] text-warn">deprecated</span>}
+                  {x.downloadCount !== undefined && <span className="tnum ml-auto shrink-0 text-[11px] text-faint">{compact(x.downloadCount)}</span>}
+                </p>
+                <p className="truncate text-[12px] text-muted">{x.description}</p>
+                <p className="flex items-center gap-2 text-[11.5px] text-faint">
+                  <a href={`${OPEN_VSX}/extension/${x.namespace}/${x.name}`} target="_blank" rel="noreferrer" className="truncate hover:text-ink hover:underline">
+                    {x.namespace}
+                    {x.verified ? " ✓" : ""} · v{x.version}
+                  </a>
+                  <button disabled title={NO_HOST} aria-label={`Install ${x.displayName || x.name}`} className="ml-auto shrink-0 cursor-not-allowed rounded-sm border border-rule px-1.5 text-[11px] text-faint">
+                    Install
+                  </button>
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
-      </Section>
-      <Section title="Marketplace">
-        <Empty>Not available yet. Relay runs CodeMirror in the browser, so VS Code extensions can&apos;t load here; an extension host and a registry are planned. Language intelligence (LSP) is the next step.</Empty>
-      </Section>
+          ))}
+          {res && <Empty>Searched from your browser at open-vsx.org. {NO_HOST}; language support above is built in.</Empty>}
+        </Section>
+      </div>
     </div>
   );
 }

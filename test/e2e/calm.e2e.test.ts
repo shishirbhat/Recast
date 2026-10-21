@@ -40,7 +40,7 @@ async function signIn(name: string, width = 1440, height = 860): Promise<Page & 
   page.on("pageerror", (e) => page.errors.push(e.message));
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   return page;
 }
 
@@ -118,7 +118,7 @@ test("calm type: switchable faces, no uppercase labels, and a comfortable editor
   await p.getByTestId("pref-codeFont").selectOption("jetbrains");
   await p.waitForFunction(() => getComputedStyle(document.querySelector(".cm-content")!).fontFamily.includes("JetBrains"));
   await p.reload();
-  await p.getByTestId("empty-editor").waitFor();
+  await p.getByTestId("welcome").waitFor();
   assert.match(await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--code-font")), /JetBrains/, "the choice persists");
   assert.deepEqual(p.errors, []);
 });

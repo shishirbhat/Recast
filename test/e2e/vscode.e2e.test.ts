@@ -44,7 +44,7 @@ async function signIn(role: "owner" | "editor" | "viewer"): Promise<Page> {
   const page = await ctx.newPage();
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   return page;
 }
 async function openFile(p: Page, path: string) {

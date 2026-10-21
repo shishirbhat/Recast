@@ -36,7 +36,7 @@ async function signIn(name: string, role: "owner" | "editor"): Promise<Page & { 
   page.on("pageerror", (e) => page.errors.push(e.message));
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   return page;
 }
 async function openFile(p: Page, path: string) {

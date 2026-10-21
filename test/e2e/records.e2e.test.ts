@@ -36,7 +36,7 @@ async function signIn(name: string, role: "owner" | "editor") {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   await page.getByTestId("activity-relay").click();
   await page.getByTestId("right-tab-records").click();
   return Object.assign(page, { errors });
@@ -51,7 +51,7 @@ test("an investigation started in one browser is continued from another, with so
   await ada.getByRole("button", { name: "Start investigation" }).click();
   await ada.getByTestId("investigation-view").waitFor();
   await ada.getByLabel("Command", { exact: true }).fill("node --test src/ui.test.js");
-  await ada.getByRole("button", { name: "Run" }).click();
+  await ada.getByRole("button", { name: "Run", exact: true }).click();
   await ada.getByText("run by relay").waitFor({ timeout: 20000 });
 
   // Bo sees it appear live (event feed), opens it, adds a sourced finding with a secret in it.

@@ -16,8 +16,6 @@ export interface TestRunView {
   command: string;
   runner: "node-test" | "npm-script";
   files: string[];
-  /** Empty folders, so New Folder shows up before its first file. */
-  folders: string[];
   revision: string;
   status: "running" | "passed" | "failed" | "stopped" | "error";
   exitCode: number | null;

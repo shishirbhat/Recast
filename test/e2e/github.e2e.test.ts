@@ -50,7 +50,7 @@ async function signIn(role: "owner" | "editor") {
   const page = await (await browser.newContext({ viewport: { width: 1440, height: 860 } })).newPage();
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   return page;
 }
 

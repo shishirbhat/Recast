@@ -36,7 +36,7 @@ try {
     const page = await (await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, colorScheme: process.env.THEME === "dark" ? "dark" : "light" })).newPage();
     await page.goto(`${server.url}/join#${token}`);
     await page.waitForURL(`${server.url}/`);
-    await page.getByTestId("empty-editor").waitFor();
+    await page.getByTestId("welcome").waitFor();
     await page.screenshot({ path: join(out, `${label}-${w}-empty.png`) });
     await page.getByTestId("file-src/ui.js").click().catch(() => {});
     await page.locator(".cm-content").waitFor({ timeout: 5000 }).catch(() => {});

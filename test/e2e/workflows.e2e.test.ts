@@ -40,7 +40,7 @@ before(async () => {
   p.on("pageerror", (e) => p.errors.push(e.message));
   await p.goto(`${server.url}/join#${token}`);
   await p.waitForURL(`${server.url}/`);
-  await p.getByTestId("empty-editor").waitFor();
+  await p.getByTestId("welcome").waitFor();
 });
 after(async () => {
   if (skip) return;

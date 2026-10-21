@@ -39,7 +39,7 @@ async function signIn(name: string, role: "owner" | "editor" | "viewer"): Promis
   page.on("pageerror", (e) => page.errors.push(e.message));
   await page.goto(`${server.url}/join#${token}`);
   await page.waitForURL(`${server.url}/`);
-  await page.getByTestId("empty-editor").waitFor();
+  await page.getByTestId("welcome").waitFor();
   return page;
 }
 
@@ -121,7 +121,7 @@ test("tests panel: a real run with per-test results, open a failure at its line,
 
   writeFileSync(join(repo, "test/math.test.mjs"), 'import { test } from "node:test";\ntest("adds", () => {});\n');
   await p.reload();
-  await p.getByTestId("empty-editor").waitFor();
+  await p.getByTestId("welcome").waitFor();
   await p.keyboard.press("Control+Shift+P");
   await p.keyboard.type("Show Tests");
   await p.keyboard.press("Enter");

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, Blocks, Bot, CircleAlert, CircleUserRound, Files, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
+import { Bell, Blocks, Bot, CircleAlert, CircleUserRound, Files, FlaskConical, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
 import { EditorView } from "@codemirror/view";
 import { selectAll, selectLine, cursorDocStart, cursorDocEnd, moveLineUp, moveLineDown, copyLineUp, copyLineDown, deleteLine, insertBlankLine, toggleComment, toggleBlockComment, indentMore, indentLess, indentSelection, addCursorAbove, addCursorBelow, cursorMatchingBracket, transposeChars, deleteTrailingWhitespace } from "@codemirror/commands";
 import { openSearchPanel, selectNextOccurrence, selectSelectionMatches, findNext, findPrevious } from "@codemirror/search";
@@ -37,7 +37,8 @@ import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from 
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
 import { AttentionButton, attentionOf } from "./Attention";
-import { TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
+import { TestingView, TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
+import { WelcomePage } from "./Welcome";
 import { BottomPanel, Section, SearchView, SourceControlView, ViewHeader, problemsOf } from "./Views";
 import type { PanelTab } from "./Views";
 
@@ -45,7 +46,12 @@ import type { PanelTab } from "./Views";
    Layout model
    =================================================================================================== */
 
-type View = "explorer" | "search" | "scm" | "run" | "extensions" | "community" | "relay" | "account" | "settings";
+type View = "explorer" | "search" | "scm" | "run" | "testing" | "extensions" | "community" | "relay" | "account" | "settings";
+
+/** Editor tabs that aren't files: diffs ("diff:…") and the Welcome page. */
+const WELCOME = "welcome:";
+const isFileTab = (t: string) => !t.startsWith("diff:") && t !== WELCOME;
+const tabLabel = (t: string) => (t === WELCOME ? "Welcome" : parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!);
 type RightTab = "agent" | CoordTab | "records";
 
 interface Layout {
@@ -215,6 +221,7 @@ const OPEN_VIEWS: [string, string, string][] = [
   ["Side Bar", "Search", "view.search"],
   ["Side Bar", "Source Control", "view.scm"],
   ["Side Bar", "Run", "view.run"],
+  ["Side Bar", "Testing", "view.testing"],
   ["Side Bar", "Extensions", "view.extensions"],
   ["Side Bar", "People", "view.community"],
   ["Side Bar", "Settings", "view.settings"],
@@ -237,11 +244,11 @@ const MENUS: [string, MenuEntry[]][] = [
   ["File", ["file.newFile", "file.newFolder", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
   ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "search.replaceInFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
   ["Selection", ["selection.all", "selection.expand", "selection.shrink", "-", "edit.copyLineUp", "edit.copyLineDown", "edit.moveLineUp", "edit.moveLineDown", "edit.duplicateSelection", "-", "selection.cursorAbove", "selection.cursorBelow", "selection.cursorsLineEnds", "selection.nextOccurrence", "selection.allOccurrences", "-", "selection.line"]],
-  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
+  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
   ["Go", ["go.back", "go.forward", "-", "go.switchEditor", "go.nextEditor", "go.previousEditor", "-", "palette.files", "go.symbol", "go.workspaceSymbol", "-", "go.line", "go.bracket", "-", "go.nextProblem", "go.previousProblem"]],
   ["Run", ["run.debug", "run.withoutDebugging", "-", "run.toggleBreakpoint", "run.addConfiguration", "-", "tests.runAll", "tests.rerunFailed", "tests.stop", "-", "relay.runActiveTask"]],
   ["Terminal", ["terminal.new", "terminal.toggle", "-", "terminal.runTask", "terminal.runActiveFile", "terminal.runSelection"]],
-  ["Help", ["palette.commands", "help.shortcuts", "-", "help.about"]],
+  ["Help", ["help.welcome", "palette.commands", "help.shortcuts", "-", "help.about"]],
 ];
 
 function MenuBar({ commands, compact }: { commands: Command[]; compact: boolean }) {
@@ -396,6 +403,7 @@ export function Workbench() {
   const [following, setFollowing] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<EditorPrefs>(DEFAULT_PREFS);
   const [showAuthors, setShowAuthors] = useState(false);
+  const [welcomeOnStartup, setWelcomeOnStartup] = useState(true);
   const [authors, setAuthors] = useState<Map<number, LineMark> | null>(null);
   const [syntax, setSyntax] = useState<SyntaxProblem[] | null>(null);
   const sessions = useRef(new Map<string, DocSession>());
@@ -407,14 +415,19 @@ export function Workbench() {
     try {
       setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem("relay.editor.v1") ?? "{}") });
       setShowAuthors(localStorage.getItem("relay.authors") === "1");
+      const welcome = localStorage.getItem("relay.welcome") !== "0";
+      setWelcomeOnStartup(welcome);
+      // VS Code opens on its Welcome page; so does Relay, unless it was turned off.
+      if (welcome) (setTabs([WELCOME]), setActive(WELCOME));
     } catch {}
   }, []);
   useEffect(() => {
     try {
       localStorage.setItem("relay.editor.v1", JSON.stringify(prefs));
       localStorage.setItem("relay.authors", showAuthors ? "1" : "0");
+      localStorage.setItem("relay.welcome", welcomeOnStartup ? "1" : "0");
     } catch {}
-  }, [prefs, showAuthors]);
+  }, [prefs, showAuthors, welcomeOnStartup]);
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => applyFonts(prefs), [prefs.uiFont, prefs.codeFont]);
   useEffect(() => {
@@ -521,7 +534,7 @@ export function Workbench() {
   }, []);
 
   // Diff tabs live in the same tab strip; only real file tabs have a collaborative session.
-  const activePath = active && !active.startsWith("diff:") ? active : null;
+  const activePath = active && isFileTab(active) ? active : null;
   const activeDiff = active ? parseDiffTab(active) : null;
   const session = me && activePath ? sessionFor(activePath, me) : null;
   const openDiff = useCallback((d: DiffSpec) => {
@@ -838,7 +851,7 @@ export function Workbench() {
         when: () => (tabs.length ? null : "No editors are open"),
         run: () => {
           const order = [...new Set([...recent.filter((r) => tabs.includes(r)), ...tabs])];
-          showPick({ placeholder: "Select an open editor", items: order.map((t) => ({ id: t, label: parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!, description: t.startsWith("diff:") ? "diff" : t.split("/").slice(0, -1).join("/"), picked: t === active, run: () => setActive(t) })) });
+          showPick({ placeholder: "Select an open editor", items: order.map((t) => ({ id: t, label: tabLabel(t), description: !isFileTab(t) ? "" : t.split("/").slice(0, -1).join("/"), picked: t === active, run: () => setActive(t) })) });
         },
       },
       {
@@ -853,9 +866,9 @@ export function Workbench() {
         id: "file.saveAll",
         category: "File",
         title: "Save All",
-        when: () => viewOnly ?? (tabs.some((t) => !t.startsWith("diff:")) ? null : "No files are open"),
+        when: () => viewOnly ?? (tabs.some(isFileTab) ? null : "No files are open"),
         run: () => {
-          const paths = tabs.filter((t) => !t.startsWith("diff:"));
+          const paths = tabs.filter(isFileTab);
           void Promise.all(paths.map((p) => api("POST", "/save", { path: p }))).then(() => notify(`Saved ${paths.length} ${paths.length === 1 ? "file" : "files"} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"));
         },
       },
@@ -895,6 +908,8 @@ export function Workbench() {
       { id: "run.withoutDebugging", category: "Run", title: "Run Without Debugging", keybinding: "Ctrl+F5", when: () => term() ?? (!activePath ? "Open a file first" : runnerFor(activePath) ? null : `Relay doesn't know how to run .${activePath.split(".").pop()} files`), run: () => void runActiveFile() },
       { id: "run.toggleBreakpoint", category: "Run", title: "Toggle Breakpoint", keybinding: "F9", when: () => NO_DEBUG, run: () => {} },
       { id: "run.addConfiguration", category: "Run", title: "Add Configuration…", when: () => NO_DEBUG, run: () => {} },
+      { id: "help.welcome", category: "Help", title: "Welcome", keywords: ["start", "get started"], run: () => (setTabs((t) => (t.includes(WELCOME) ? t : [WELCOME, ...t])), setActive(WELCOME)) },
+      { id: "view.testing", category: "View", title: "Testing", keywords: ["tests", "test explorer"], run: () => (set({ view: "testing", sidebar: true }), setLastOpened("sidebar")) },
       { id: "help.shortcuts", category: "Help", title: "Keyboard Shortcuts Reference", run: () => (set({ view: "settings", sidebar: true }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector("[data-testid=shortcuts]")?.scrollIntoView())) },
       { id: "go.top", category: "Go", title: "Go to Top of File", when: needEditor, run: onEditor((v) => cursorDocStart(v)) },
       { id: "go.bottom", category: "Go", title: "Go to End of File", when: needEditor, run: onEditor((v) => cursorDocEnd(v)) },
@@ -1050,6 +1065,7 @@ export function Workbench() {
     { id: "search", icon: <Search size={20} strokeWidth={1.5} />, label: "Search", cmd: "search.inFiles" },
     { id: "scm", icon: <GitBranch size={20} strokeWidth={1.5} />, label: "Source Control", badge: git.size || undefined, cmd: "view.scm" },
     { id: "run", icon: <Play size={20} strokeWidth={1.5} />, label: "Run", cmd: "view.run" },
+    { id: "testing", icon: <FlaskConical size={20} strokeWidth={1.5} />, label: "Testing", badge: testRun && !testRun.stale && failedNames(testRun).length ? failedNames(testRun).length : undefined, cmd: "view.testing" },
     { id: "extensions", icon: <Blocks size={20} strokeWidth={1.5} />, label: "Extensions", cmd: "view.extensions" },
     { id: "community", icon: <Users size={20} strokeWidth={1.5} />, label: "People", badge: online.size > 1 ? online.size : undefined, cmd: "view.community" },
   ];
@@ -1190,6 +1206,7 @@ export function Workbench() {
               {layout.view === "search" && <SearchView onOpen={open} focusNonce={searchNonce} replaceNonce={replaceNonce} canEdit={me!.role !== "viewer"} notify={notify} />}
               {layout.view === "scm" && <SourceControlView onOpen={open} onDiff={(p, staged) => openDiff({ kind: staged ? "staged" : "working", path: p })} tick={events.length} canShip={me!.role === "owner"} canEdit={me!.role !== "viewer"} notify={notify} />}
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
+              {layout.view === "testing" && <TestingView run={testRun} setRun={setTestRun} canRun={me?.role === "owner"} onOpen={open} notify={notify} />}
               {layout.view === "extensions" && <ExtensionsView />}
               {layout.view === "community" && <PeopleView me={me!} members={s.members} presence={feed} tick={events.length} following={following} onOpen={open} onJump={jumpTo} onFollow={setFollowing} onInvite={invite} notify={notify} />}
               {layout.view === "account" && <AccountView me={me!} onSignOut={signOut} />}
@@ -1212,7 +1229,7 @@ export function Workbench() {
                     <div key={t} role="tab" aria-selected={on} data-testid={`tab-${t}`} onMouseDown={(e) => e.button === 1 && (e.preventDefault(), closeTab(t))} className={`group relative flex min-w-0 shrink-0 items-center gap-1.5 border-r border-rule pl-3 pr-1 text-[12.5px] transition-colors ${on ? "bg-editor text-ink" : "border-b text-muted hover:bg-hover/50 hover:text-ink"}`}>
                       {on && <motion.span layoutId="tab-indicator" transition={{ type: "spring", stiffness: 520, damping: 42 }} className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
                       <button onClick={() => setActive(t)} className="max-w-56 truncate" title={t}>
-                        {parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()}
+                        {tabLabel(t)}
                       </button>
                       {here.slice(0, 3).map((id) => (
                         <span key={id} title={`${membersById.get(id)?.name} is here`} className="size-1.5 shrink-0 rounded-full" style={{ background: membersById.get(id)?.color }} />
@@ -1226,7 +1243,9 @@ export function Workbench() {
                 <div className="min-w-4 flex-1 border-b border-rule" />
               </div>
             )}
-            {activeDiff ? (
+            {active === WELCOME ? (
+              <WelcomePage state={s} commands={commands} recent={recent} attention={attention} showOnStartup={welcomeOnStartup} setShowOnStartup={setWelcomeOnStartup} onOpen={open} onTask={showTask} />
+            ) : activeDiff ? (
               <DiffView spec={activeDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onResolved={() => (closeTab(active!), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
             ) : session ? (
               <>
