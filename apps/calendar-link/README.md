@@ -31,20 +31,15 @@ Use a **throwaway Google account**, not your personal one.
    6. Don't paste these into a chat, an email, or any file except the one below.
 
 ## Part 2: Put the credentials on your computer
-Do this in your own copy of the Recast repository, not in a cloud session.
-1. **Get the latest code:**
-   ```
-   git pull
-   pnpm install
-   ```
-2. **Make your private settings file:** copy `apps/calendar-link/.env.example` to a new file named `.env` in the same folder.
-   - macOS or Linux: `cp apps/calendar-link/.env.example apps/calendar-link/.env`
-   - Windows (PowerShell): `Copy-Item apps/calendar-link/.env.example apps/calendar-link/.env`
-3. **Fill it in:** open `apps/calendar-link/.env` in a text editor.
-   - Replace `paste-your-client-id-here.apps.googleusercontent.com` with your Client ID.
-   - Replace `paste-your-client-secret-here` with your Client secret.
-   - No quotes, no spaces around `=`. Save.
-4. **Check that git ignores it:** run `git status`. `.env` must **not** be listed. If it is, stop and tell me.
+In a terminal, in your Recast folder:
+```
+git pull
+pnpm install
+pnpm --filter @recast/calendar-link setup
+```
+It asks for the **Client ID**, then the **Client secret**. Paste each one and press Enter. The secret stays hidden while you paste it.
+
+It saves them in `apps/calendar-link/.env`, which only you can read and git ignores.
 
 ## Part 3: Start the sign-in page
 ```
