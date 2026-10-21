@@ -9,18 +9,22 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLinkServer, GMAIL_SCOPE, SCOPE } from "../../calendar-link/src/server.js";
+import { createLinkServer, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../../calendar-link/src/server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ext = path.join(root, "dist-test");
 const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") && !existsSync("/opt/pw-browsers/chromium/chrome") ? "/opt/pw-browsers/chromium" : undefined);
 
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
-const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const seenByGoogle: string[] = [];
+const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const seenByGoogle: string[] = [];
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fakeGoogle: typeof fetch = async (u, init) => {
   const url = String(u), method = init?.method ?? "GET"; seenByGoogle.push(`${method} ${url}`);
   if ((init?.headers as Record<string, string>)?.authorization !== "Bearer AT-1") return json(401, {});
+  if (url.startsWith("https://tasks.googleapis.com/")) {
+    if (method === "POST") { const id = `t${tasks.size + 1}`; tasks.set(id, JSON.parse(String(init!.body))); return json(200, { id }); }
+    if (method === "DELETE") { tasks.delete(url.split("/tasks/").pop()!); return json(204, null); }
+  }
   if (url.includes("/gmail/")) {
     if (method === "POST") { const id = `d${drafts.size + 1}`; drafts.set(id, JSON.parse(String(init!.body))); return json(200, { id, message: { id: `m${id}` } }); }
     if (method === "DELETE") { drafts.delete(url.split("/drafts/")[1]!); return json(204, null); }
@@ -41,7 +45,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => pages.listen(0, "127.0.0.1", r)); base = `http://127.0.0.1:${(pages.address() as { port: number }).port}`;
   // Already signed in (the sign-in itself is tested in apps/calendar-link).
   mkdirSync(path.dirname(tokenFile), { recursive: true });
-  writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: `${SCOPE} ${GMAIL_SCOPE}`, token_type: "Bearer", connected_at: "test" }));
+  writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE}`, token_type: "Bearer", connected_at: "test" }));
   link = createLinkServer({ clientId: "abc.apps.googleusercontent.com", clientSecret: "SECRET-x", port: 8787, tokenFile, fetch: fakeGoogle, tokenUrl: "https://google.test/token" });
   await new Promise<void>((r) => link.listen(8787, "127.0.0.1", r));
   const profile = path.join(root, "dist-test/.profile-link"); rmSync(profile, { recursive: true, force: true });
@@ -92,8 +96,9 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await home.getByRole("button", { name: "Allow" }).click();
     await popup.getByRole("button", { name: "I allowed it" }).click();
     await until(async () => /Connected\. Placing in Calendar adds a real event/.test(await popup.locator("#link-text").innerText()));
-    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false]]);
+    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false]]);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Mail saves a real Gmail draft \(never sent\)/);
+    expect(await popup.locator("#link-text").innerText()).toMatch(/Tasks adds a page to Google Tasks/);
     await popup.close(); await home.close();
   });
 
@@ -165,6 +170,29 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await stored()).phase === "idle");
     expect(drafts.size).toBe(0);
+  });
+
+  it("'This page' takes the whole page as one object; Tasks adds it to Google Tasks (title, canonical link), Undo deletes it", async () => {
+    const page = await openTab("article.html?utm_source=newsletter");
+    await page.locator("recast-clay >> button[data-act=takePage]").click();
+    await until(async () => (await stored()).phase === "composed");
+    const s = await stored(); const v = s.objects[s.focus];
+    expect(v.ingredients).toHaveLength(1); expect(v.ingredients[0]).toMatchObject({ kind: "page", text: "Q3 planning notes", value: { url: `${base}/article.html` } });
+    await page.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    // A page fits only Tasks (Notion is not connected), so the drum rests on it; Calendar and Mail say why not.
+    await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-tasks");
+    expect(await page.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")).toBe("true");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await stored()).phase === "previewing");
+    const review = await page.locator("recast-clay").evaluate((h) => h.shadowRoot!.textContent!);
+    expect(review).toContain("Q3 planning notes"); expect(review).toContain(`${base}/article.html`); expect(review).not.toMatch(/stand-in/i);
+    expect(tasks.size).toBe(0);                                             // reviewing writes nothing
+    await page.locator("recast-clay >> button", { hasText: "Add a task" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect([...tasks.values()]).toEqual([{ title: "Q3 planning notes", notes: `${base}/article.html` }]);
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(tasks.size).toBe(0);
   });
 
   it("how much Recast asks: chosen once in the popup; 'Only when it matters' places a complete event right away, with Undo", async () => {

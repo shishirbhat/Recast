@@ -18,7 +18,7 @@ declare global { interface Window { __recastClay?: boolean } }
 const send = <T = { state: ClumpState; error?: string; stale?: true }>(m: ToBackground) => chrome.runtime.sendMessage(m) as Promise<T>;
 
 /** A page declares a destination with data-recast-kind; it performs the registry's contract for that kind, as a stand-in. */
-const KINDS: Record<string, CapabilityContract> = { calendar: CONTRACTS.googleCalendarEvent, drafts: CONTRACTS.gmailMessageDraft };
+const KINDS: Record<string, CapabilityContract> = { calendar: CONTRACTS.googleCalendarEvent, drafts: CONTRACTS.gmailMessageDraft, tasks: CONTRACTS.googleTasks };
 
 const SHELF_CSS = `
 :host { all: initial; }
@@ -58,9 +58,12 @@ async function main() {
 
   const clay = createClay($(".clay"), { onPointerDown: (id, e) => pressObject(id, e) });
   const glass = createGlass($(".glass"), {
-    onIntent: async (i) => { for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
+    onIntent: async (i) => {
+      if (i.type === "takePage") { await takePage(); return; }
+      for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
     onLayout: () => requestAnimationFrame(() => render()),
     shortcut: /Mac/.test(navigator.platform) ? "⌃" : "Ctrl",   // shown while on: once turns it off
+    takePage: "This page",
   });
 
   async function dispatch(event: EventInput) {
@@ -85,6 +88,26 @@ async function main() {
     const sel = getSelection()?.toString().replace(/\s+/g, " ").trim();
     if (sel && sel.length <= 300) return { id: `t${++seq}-${Date.now()}`, kind: "text", text: sel, confidence: 0.9, evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: sel.slice(0, 200) }], source };
     return null;
+  }
+
+  /**
+   * The page itself as one piece: its title and address, from its own metadata (the og:title or <title>, and the canonical
+   * link when it is on the same site, so a tracking address is not what gets saved). On its own it is a document, so the
+   * module opens on it straight away.
+   */
+  function pageFragment(): Fragment {
+    const og = document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content?.trim();
+    const title = (og || document.title || "").replace(/\s+/g, " ").trim().slice(0, 200);
+    const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
+    const url = canonical && /^https?:/.test(canonical) && new URL(canonical).hostname === location.hostname ? canonical : location.href.split("#")[0]!;
+    const source = { app: location.hostname || "page", url: location.href, ...(document.title ? { title: document.title.slice(0, 200) } : {}) };
+    return { id: `pg${++seq}-${Date.now()}`, kind: "page", text: title, value: { ...(title ? { name: title } : {}), url }, confidence: title ? 0.95 : 0.5,
+      evidence: [{ locator: { kind: "meta", value: og ? 'meta[property="og:title"]' : "title" }, excerpt: title }], source };
+  }
+  async function takePage() {
+    const cap = await dispatch({ type: "capture", fragment: pageFragment(), carry: false }); if (cap.error) { state = cap.state; render(); return; }
+    const r = await dispatch({ type: "openModule", id: `obj-${cap.state.seq}` }); state = r.state; render();
+    setTimeout(() => glass.focus(), 0);
   }
 
   function destinations(): DestinationSpec[] {
@@ -207,7 +230,7 @@ async function main() {
         // Test control on the page (like data-recast-silent): answer only after a delay, so a write can be in flight.
         const delay = Number(el.dataset["recastDelay"] ?? 0); if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         const li = document.createElement("li"); li.dataset["placed"] = op.proposal.relationId; li.id = `recast-${op.opId}`;
-        li.textContent = op.dataMoved.filter((d) => ["Event.title", "Event.start", "Event.location", "Message.to", "Message.snippet"].includes(d.path)).map((d) => d.value).join(" · ");
+        li.textContent = op.dataMoved.filter((d) => ["Event.title", "Event.start", "Event.location", "Message.to", "Message.snippet", "Document.title", "Document.url"].includes(d.path)).map((d) => d.value).join(" · ");
         list().appendChild(li);
         if (el.dataset["recastSilent"] === "true") throw new OutcomeUnknownError(`${el.dataset["recastLabel"] ?? "The page"} did not answer in time`, li.id);
         return { ref: li.id };

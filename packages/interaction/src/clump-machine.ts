@@ -251,7 +251,8 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       const id = ev.id ?? s.focus;
       if (!s.armed) return refuse("turn Recast on first");
       if (!id || !s.objects[id] || !s.desk.includes(id)) return refuse("there is no composition to show");
-      if (s.objects[id]!.ingredients.length < 2) return refuse("the module opens for a composition: press two things together first");
+      // A composition, or one piece that is already a whole object by itself (a page is a document).
+      if (s.objects[id]!.ingredients.length < 2 && !viewOf(s, id).placeableAs.length) return refuse("the module opens for a composition: press two things together first");
       return ok({ ...s, phase: "composed", focus: id, inspecting: null, placement: null });
     }
     case "openWheel": return ok({ ...s, phase: "choosing", choice: ev.choice ?? s.choice });

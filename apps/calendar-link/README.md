@@ -85,6 +85,11 @@ Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.
 2. Turn on the **Gmail API** in Google Cloud first. Then sign in again and tick both boxes. The steps are in `docs/REAL_TEST_PLAN.md`, section C.
 3. If you leave Gmail unticked, Calendar works as before.
 
+## Part 8: Google Tasks (optional)
+1. The sign-in also offers Google Tasks. If you tick it, Recast can **add a task to your default list and delete the tasks it added**. Google has no narrower permission than "see, edit, create and delete your tasks", so this is what Google's screen will say; Recast uses only add and delete-its-own.
+2. Turn on the **Google Tasks API** in Google Cloud first. Then sign in again and tick the Tasks box. The steps are in `docs/REAL_TEST_PLAN.md`, section E.
+3. In the extension, **This page** (in the Recast pill) takes the whole page as one object; Tasks adds it with the page title and its link.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

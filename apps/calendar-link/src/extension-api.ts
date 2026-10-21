@@ -1,4 +1,4 @@
-// The Recast extension's door to the connected Google Calendar. The extension never sees the Google token: it sends the
+// The Recast extension's door to the connected Google account (Calendar; Gmail drafts and Tasks if allowed). The extension never sees the Google token: it sends the
 // operation it wants (already reviewed and consented to by the person in the glass module), and this server places it
 // through the same bridge as the test event, keeps the receipt, and answers with the outcome.
 //
@@ -8,9 +8,9 @@ import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { randomInt } from "node:crypto";
 import { commit, InMemoryEventLog, OutcomeUnknownError, undo, type Consent, type Operation, type Receipt } from "@recast/core";
-import { calendarEventId, DuplicateError, gmailMessageDraft, googleCalendarEvent, HttpBridge } from "@recast/bridges";
+import { calendarEventId, DuplicateError, gmailMessageDraft, googleCalendarEvent, googleTasks, HttpBridge } from "@recast/bridges";
 import { type CalendarAccess, googleTransport } from "./test-event.js";
-import { hasGmail, readToken } from "./server.js";
+import { hasGmail, hasTasks, readToken } from "./server.js";
 
 interface Pairing { allowed: string[]; pending: { origin: string; code: string; at: number }[] }
 const EXT_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
@@ -32,10 +32,13 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
   };
   const receipts = () => readJson<Receipt[]>(receiptFile, []);
   const keep = (r: Receipt) => writePrivate(receiptFile, [...receipts().filter((x) => x.receiptId !== r.receiptId), r].slice(-200));
-  // Two destinations behind one sign-in. Gmail only if the person ticked it (its own permission).
-  type Dest = "calendar" | "gmail";
-  const bridge = (d: Dest = "calendar") => d === "gmail" ? new HttpBridge(gmailMessageDraft, { userId: "me" }, googleTransport(a)) : new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
-  const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t) }; };
+  // Three destinations behind one sign-in. Gmail and Tasks only if the person ticked them (each its own permission).
+  type Dest = "calendar" | "gmail" | "tasks";
+  const bridge = (d: Dest = "calendar") => d === "gmail" ? new HttpBridge(gmailMessageDraft, { userId: "me" }, googleTransport(a))
+    : d === "tasks" ? new HttpBridge(googleTasks, { taskListId: "@default" }, googleTransport(a))
+    : new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
+  const destOf = (destination: string): Dest => destination === gmailMessageDraft.contract.destination ? "gmail" : destination === googleTasks.contract.destination ? "tasks" : "calendar";
+  const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t), tasks: hasTasks(t) }; };
   const iso = () => new Date(a.now()).toISOString();
 
   return {
@@ -61,9 +64,10 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
       }
       if (!pairing().allowed.includes(origin)) return { status: 403, body: { error: "not paired: allow this extension on the Recast page first" } };
       if (route === "status") return { status: 200, body: statusBody() };
-      const dest: Dest = body.destination === "gmail" ? "gmail" : "calendar";
+      const dest: Dest = body.destination === "gmail" ? "gmail" : body.destination === "tasks" ? "tasks" : "calendar";
       if (!readToken(a.tokenFile)) return { status: 409, body: { outcome: "failed", message: "Google is not connected. Sign in on the Recast page first." } };
       if (dest === "gmail" && !hasGmail(readToken(a.tokenFile))) return { status: 409, body: { outcome: "failed", message: "Gmail drafts are not allowed. Sign in again on the Recast page and tick Gmail." } };
+      if (dest === "tasks" && !hasTasks(readToken(a.tokenFile))) return { status: 409, body: { outcome: "failed", message: "Google Tasks is not allowed. Sign in again on the Recast page and tick Tasks." } };
 
       if (route === "commit") {
         const op = body.op as Operation, consent = body.consent as Consent;
@@ -73,7 +77,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
           keep(receipt);
           return { status: 200, body: { outcome: "done", receipt } };
         } catch (e) {
-          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: dest === "gmail" ? "Gmail did not answer; the draft may have been saved" : "Google Calendar did not answer; it may have been added" } };
+          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: dest === "gmail" ? "Gmail did not answer; the draft may have been saved" : dest === "tasks" ? "Google Tasks did not answer; the task may have been added" : "Google Calendar did not answer; it may have been added" } };
           if (e instanceof DuplicateError) return { status: 200, body: { outcome: "failed", message: "It is already in your Google Calendar, so it was not added a second time" } };
           return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } };
         }
@@ -83,6 +87,8 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         const op = body.op as Operation;
         // Gmail drafts carry no key Recast chose, so Gmail cannot be asked about one: say so, never guess "absent".
         if (dest === "gmail") return { status: 200, body: { checkable: false, message: "Gmail can't be asked about one draft. Look in Gmail Drafts: if it's there, keep it; if not, dismiss this and place again." } };
+        // The same for Google Tasks: a task's id is Google's, not Recast's, so there is nothing exact to ask about.
+        if (dest === "tasks") return { status: 200, body: { checkable: false, message: "Google Tasks can't be asked about one task. Look in Google Tasks: if it's there, keep it; if not, dismiss this and place again." } };
         const ref = JSON.stringify({ id: calendarEventId(op.proposal.object.id, "primary") });
         const found = (await bridge().reconcile(ref)) === "present";
         if (!found) return { status: 200, body: { found: false } };
@@ -97,7 +103,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         const stored = receipts().find((r) => r.receiptId === id);
         if (!stored) return { status: 200, body: { outcome: "failed", message: "That placement is not one this computer made" } };
         const log = new InMemoryEventLog(); await log.append({ at: stored.at, kind: "commit", receipt: stored });
-        try { await undo(stored, { bridge: bridge(stored.destination === gmailMessageDraft.contract.destination ? "gmail" : "calendar"), log, now: iso }); }
+        try { await undo(stored, { bridge: bridge(destOf(stored.destination)), log, now: iso }); }
         catch (e) { return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } }; }
         writePrivate(receiptFile, receipts().filter((r) => r.receiptId !== id));
         return { status: 200, body: { outcome: "undone" } };

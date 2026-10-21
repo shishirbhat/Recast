@@ -5,7 +5,7 @@
 import { compose, type ComposeContext, type Composition, type Conflict, type EventField, type Fragment, type Missing, type Origin } from "./compose.js";
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
-export type ClumpType = "Fragment" | "Event" | "Message" | "People";
+export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document";
 export type MessageField = "to" | "snippet" | "subject";
 export type AnswerField = EventField | MessageField;
 
@@ -25,18 +25,25 @@ export interface MessageView {
   missing: { field: MessageField; reason: string; suggestions?: string[] }[];
 }
 
+/** A page or file as one object: its title (the page's, or what the person typed) and its address. */
+export interface DocumentView {
+  status: "ready" | "incomplete";
+  fields: Partial<Record<"title" | "url", { value: string; origin: Origin; fragments: string[] }>>;
+  missing: { field: "title"; reason: string }[];
+}
+
 export interface ClumpView {
   type: ClumpType;
   /** The one name the capsule shows. `proposed` when it is Recast's suggestion, not something the person accepted or the page said. */
   label: string; proposed: boolean;
   /** A few short things to show on the capsule: names, the place, the time. */
   summary: string[];
-  event?: Composition; message?: MessageView;
+  event?: Composition; message?: MessageView; document?: DocumentView;
   missing: { field: AnswerField; reason: string; suggestions?: string[] }[];
   conflicts: Conflict[];
   assumptions: string[];
   /** Where this kind of object can be placed. Empty when it cannot be placed as it is. */
-  placeableAs: ("Calendar" | "Drafts")[];
+  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project")[];
   /** A complete object ready for the normal propose → plan → consent → commit path. Null until nothing is missing. */
   candidate: Candidate | null;
 }
@@ -56,7 +63,10 @@ const nameOf = (f: Fragment) => (f.value?.name ?? f.text).replace(/\s+/g, " ").t
 
 /** The rules. Kept here, in the domain layer, so every surface (page, extension, desktop) behaves the same. */
 export function typeOf(fs: Fragment[]): ClumpType | { incompatible: string } {
+  if (fs.length === 1 && fs[0]!.kind === "page") return "Document";
   if (fs.length <= 1) return "Fragment";
+  const pages = fs.filter((f) => f.kind === "page");
+  if (pages.length) return { incompatible: `${nameOf(pages[0]!)} is a whole page: it is placed on its own, as a task or a document, and cannot be pressed into other pieces yet` };
   const things = fs.filter((f) => f.kind === "thing");
   if (things.length) return { incompatible: `${nameOf(things[0]!)} can be carried and placed on its own, but it cannot be combined with other pieces yet` };
   if (has(fs, "time") || has(fs, "place") || has(fs, "title")) return "Event";
@@ -124,6 +134,10 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
     return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [] };
   }
   if (typeof t !== "string") return { ...base, type: "Fragment", label: fs.map(nameOf).join(" + "), proposed: false, summary: [], missing: [{ field: "title", reason: t.incompatible }] };
+  if (t === "Document") {
+    const d = documentView(c);
+    return { ...base, type: "Document", label: d.fields.title?.value ?? nameOf(fs[0]!), proposed: false, summary: ["Page", ...(d.fields.url ? [hostOf(d.fields.url.value)] : [])], document: d, missing: d.missing, placeableAs: ["Task", "Project"], candidate: d.status === "ready" ? documentCandidate(c, d, ctx) : null };
+  }
   if (t === "People") return { ...base, type: "People", label: people.join(" + "), proposed: false, summary: [`${people.length} people`], missing: [{ field: "title", reason: "add a time or place to plan something, or a sentence to write to them" }] };
   if (t === "Message") {
     const m = message(c);
@@ -139,7 +153,32 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   return { ...base, type: "Event", label, proposed: typeof title !== "string", summary, event, missing: event.missing, conflicts: event.conflicts, assumptions: event.assumptions, placeableAs: ["Calendar"], candidate: event.candidate };
 }
 
-function kindLabel(k: Fragment["kind"]) { return ({ person: "Person", place: "Place", time: "Time", title: "Title", text: "Text", thing: "Thing" } as const)[k]; }
+function kindLabel(k: Fragment["kind"]) { return ({ person: "Person", place: "Place", time: "Time", title: "Title", text: "Text", thing: "Thing", page: "Page" } as const)[k]; }
+
+const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url.slice(0, 40); } };
+
+function documentView(c: Clump): DocumentView {
+  const f = c.ingredients[0]!; const fields: DocumentView["fields"] = {};
+  const typed = c.answers.title;
+  const found = (f.value?.name ?? f.text).replace(/\s+/g, " ").trim();
+  if (typeof typed === "string" && typed.trim()) fields.title = { value: typed.trim(), origin: "user", fragments: [] };
+  else if (found) fields.title = { value: found, origin: "extracted", fragments: [f.id] };
+  const url = f.value?.url ?? f.source?.url;
+  if (url) fields.url = { value: url, origin: "extracted", fragments: [f.id] };
+  const missing: DocumentView["missing"] = fields.title ? [] : [{ field: "title", reason: "the page has no title; type one" }];
+  return { status: missing.length ? "incomplete" : "ready", fields, missing };
+}
+
+function documentCandidate(c: Clump, d: DocumentView, ctx: ComposeContext): Candidate {
+  const f = c.ingredients[0]!;
+  const properties: Record<string, unknown> = {}; const meta: Record<string, FieldMeta> = {};
+  for (const [name, v] of Object.entries(d.fields)) {
+    properties[name] = v!.value;
+    const ev: Evidence[] = v!.origin === "user" ? [{ locator: { kind: "user", value: `user:${name}` }, origin: "user" }] : f.evidence.map((e): Evidence => ({ ...e, origin: v!.origin, ...(f.source ? { source: f.source } : {}) }));
+    meta[name] = { confidence: v!.origin === "user" ? 1 : f.confidence, evidence: ev.length ? ev : [{ locator: { kind: "user", value: `user:${name}` }, origin: v!.origin }] };
+  }
+  return { type: "Document", properties, fields: meta, provenance: { source: { app: ctx.app ?? f.source?.app ?? "recast", ...(f.source?.url ? { url: f.source.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
+}
 
 function message(c: Clump): MessageView {
   const fs = c.ingredients; const people = fs.filter((f) => f.kind === "person"); const texts = fs.filter((f) => f.kind === "text");

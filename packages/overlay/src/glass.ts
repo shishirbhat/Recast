@@ -14,7 +14,9 @@ export type GlassIntent =
   | { type: "openWheel" } | { type: "select"; choice: WheelKey } | { type: "pick"; destinationId: string }
   | { type: "inspect" } | { type: "remove"; ingredientId: string }
   | { type: "answer"; field: AnswerField; value: string } | { type: "choose"; field: EventField; ingredientId: string }
-  | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean };
+  | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean }
+  /** Only where the host offers it (`takePage`): the host captures the page itself, then opens the module on it. */
+  | { type: "takePage" };
 
 /** The state-machine events for what the person asked the module for. Shared by every host, so they behave the same. */
 export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
@@ -44,6 +46,7 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
     case "dismiss": return [{ type: "dismiss" }];
     case "reconcile": return [{ type: "reconcile" }];
     case "confirmMerge": return [{ type: "confirmMerge", yes: i.yes }];
+    case "takePage": return [];
   }
 }
 
@@ -78,7 +81,7 @@ const ICON: Record<WheelKey, string> = {
 const svg = (k: WheelKey, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject" };
+const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link" };
 const ORIGIN: Record<string, string> = { extracted: "from the page", inferred: "Recast's reading", default: "a default", user: "you" };
 const INPUT_HINT: Record<string, string> = { start: "2026-10-23T19:30", end: "2026-10-23T21:00", title: "Dinner with Maya", to: "maya@example.com" };
 function fmt(field: string, v: unknown): string {
@@ -97,7 +100,9 @@ const HOLD_MS = 600;
 
 type Row = { key: string; label: string; sub: string; available: boolean; reason?: string; destinationId?: string; icon: WheelKey };
 
-export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i: GlassIntent) => void; onLayout?: () => void; reducedMotion?: () => boolean; shortcut?: string; theme?: () => "light" | "dark" | undefined }): Glass {
+export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i: GlassIntent) => void; onLayout?: () => void; reducedMotion?: () => boolean; shortcut?: string; theme?: () => "light" | "dark" | undefined;
+  /** The label of a pill button that takes the whole page as one object ("This page"). Absent: no such button. */
+  takePage?: string }): Glass {
   const reduced = opts.reducedMotion ?? (() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const el = document.createElement("div"); el.className = "rg"; el.dataset["mode"] = "off"; el.hidden = true;
   el.setAttribute("role", "region"); el.setAttribute("aria-label", "Recast");
@@ -254,7 +259,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   // ---- everything else: rebuilt only when its text changes, keeping focus where it was ---------------------------------
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
-    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
+    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
     const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
     const missing = v.missing.map((x) => {
       const id = `rg-in-${x.field}`;
@@ -271,7 +276,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode === "off") return { title: "", head: "", facts: "", body: "", actions: "" };
     if (m.mode === "pill") return {
       title: esc(m.text), facts: "", body: "", actions: "",
-      head: `${m.reopen ? `<button type="button" class="rg-pill-btn" data-act="reopen">Open</button>` : ""}${opts.shortcut ? `<span class="rg-kbd" aria-hidden="true">${esc(opts.shortcut)}</span>` : ""}${iconBtn("turnOff", `Turn Recast off${opts.shortcut ? ` (${opts.shortcut})` : ""}`, X)}`,
+      head: `${m.reopen ? `<button type="button" class="rg-pill-btn" data-act="reopen">Open</button>` : ""}${opts.takePage && !m.carrying ? `<button type="button" class="rg-pill-btn ghost" data-act="takePage">${esc(opts.takePage)}</button>` : ""}${opts.shortcut ? `<span class="rg-kbd" aria-hidden="true">${esc(opts.shortcut)}</span>` : ""}${iconBtn("turnOff", `Turn Recast off${opts.shortcut ? ` (${opts.shortcut})` : ""}`, X)}`,
     };
     const v = m.object.view; const facts = v.summary.filter(Boolean).slice(0, 3).map((s) => `<span>${esc(s)}</span>`).join("");
     const err = error ? `<p class="rg-error" role="alert">${esc(error.charAt(0).toUpperCase() + error.slice(1))}</p>` : "";
@@ -357,6 +362,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     switch (b.dataset["act"]) {
       case "turnOff": return emit({ type: "turnOff" });
       case "reopen": return emit({ type: "reopen" });
+      case "takePage": return emit({ type: "takePage" });
       case "close": return emit({ type: "close" });
       case "back": if (drill) { drill = null; update(model); return; } return emit({ type: "back" });
       case "openWheel": return emit({ type: "openWheel" });
@@ -441,6 +447,8 @@ export const GLASS_CSS = `
 .rg-x { width: 30px; height: 30px; border: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--g-muted); cursor: pointer; }
 .rg-x:hover { background: var(--g-sel); color: var(--g-ink); }
 .rg-pill-btn { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--g-ink); color: var(--g-solid); font-family: inherit; font-weight: 600; font-size: 12px; line-height: 1; cursor: pointer; }
+.rg-pill-btn.ghost { background: transparent; color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); margin-left: 4px; }
+.rg-pill-btn.ghost:hover { background: var(--g-sel); }
 .rg :focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
 
 /* The stage: the object on the left (its well), and on the right whatever the instrument is doing with it. */

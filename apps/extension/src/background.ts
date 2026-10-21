@@ -48,27 +48,30 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
   return run;
 }
 
-// ---- the real Google Calendar, through the Recast program on this computer (apps/calendar-link) ---------------------------
+// ---- the real Google Calendar (and Gmail drafts, Google Tasks), through the Recast program on this computer (apps/calendar-link)
 // Off unless the person connects it from the popup: that grants access to http://localhost only, and the program then
 // asks the person to Allow this extension (a code shown in both places). The Google token never reaches the extension:
 // the program places the reviewed operation and answers with the outcome.
-export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts";
+export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks";
 const linkDest: DestinationSpec = { id: LINK_DEST, label: "Google Calendar", contract: CONTRACTS.googleCalendarEvent };
 const gmailDest: DestinationSpec = { id: LINK_GMAIL, label: "Gmail drafts", contract: CONTRACTS.gmailMessageDraft };
-const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL;
+const tasksDest: DestinationSpec = { id: LINK_TASKS, label: "Google Tasks", contract: CONTRACTS.googleTasks };
+const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS;
+/** What the program calls each destination. */
+const linkName = (id: string) => (id === LINK_GMAIL ? "gmail" : id === LINK_TASKS ? "tasks" : "calendar");
 
 async function link(route: string, body: unknown = {}): Promise<{ status: number; body: Record<string, unknown> }> {
   const r = await fetch(`${LINK}/ext/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, body: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 /** Whether the program is reachable, this extension is allowed there, and a Google account is connected. */
-async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean }> {
+async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean; tasks?: boolean }> {
   if (!(await chrome.permissions.contains({ origins: LINK_ORIGINS }))) return { state: "off" };
   try {
     const r = await link("pair");
     if (r.status === 202) return { state: "pending", code: String(r.body["code"]) };
     if (r.status !== 200) return { state: "unreachable" };
-    return r.body["connected"] ? { state: "ready", gmail: !!r.body["gmail"] } : { state: "not-signed-in" };
+    return r.body["connected"] ? { state: "ready", gmail: !!r.body["gmail"], tasks: !!r.body["tasks"] } : { state: "not-signed-in" };
   } catch { return { state: "unreachable" }; }
 }
 /** Real Google Calendar first in the list (the wheel takes the first live destination of a kind), only while ready. */
@@ -76,13 +79,13 @@ async function syncLink() {
   const st = await linkStatus();
   await apply((s) => {
     const others = s.destinations.filter((d) => !isLink(d.id));
-    const mine = st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : [])] : [];
+    const mine = st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest] : [])] : [];
     return { state: { ...s, destinations: [...mine, ...others] } };
   });
   return st;
 }
 async function viaLink(e: ClumpEffect) {
-  const at = () => Date.now(); const destination = e.destinationId === LINK_GMAIL ? "gmail" : "calendar";
+  const at = () => Date.now(); const destination = linkName(e.destinationId);
   if (e.type === "commit") {
     const opId = e.op.opId;
     let r: Awaited<ReturnType<typeof link>>;
@@ -106,7 +109,7 @@ async function viaLink(e: ClumpEffect) {
     try {
       const r = await link("undo", { destination, receipt: e.receipt });
       await apply((s) => reduceClump(s, r.body["outcome"] === "undone" ? { type: "undone", opId, now: at() } : { type: "undoFailed", opId, message: String(r.body["message"] ?? r.body["error"] ?? `answered ${r.status}`), now: at() }));
-    } catch { await apply((s) => reduceClump(s, { type: "undoFailed", opId, message: "The Recast program on this computer did not answer; the event may still be there", now: at() })); }
+    } catch { await apply((s) => reduceClump(s, { type: "undoFailed", opId, message: "The Recast program on this computer did not answer; it may still be there", now: at() })); }
   }
 }
 

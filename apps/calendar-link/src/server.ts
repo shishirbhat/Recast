@@ -7,7 +7,8 @@
 // - A forged callback is refused: each sign-in has a one-time `state`, held both here and in an HttpOnly cookie, that
 //   expires after ten minutes.
 // - A stolen authorization code is useless: PKCE (S256) ties the code to a verifier only this server knows.
-// - Least privilege: one scope, calendar.events (create and delete events), not the whole calendar account.
+// - Least privilege: one required scope, calendar.events (create and delete events), not the whole calendar account.
+//   Gmail drafts and Google Tasks are optional boxes on Google's screen; each works only if it was ticked.
 // - Tokens are written to one local file, readable only by you (0600), in a git-ignored folder; never shown, never logged.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
@@ -20,6 +21,12 @@ export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 /** Optional: create (and delete its own) Gmail drafts. Never sends mail; the person sends a draft from Gmail. */
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.compose";
 export const hasGmail = (t: StoredToken | null) => !!t && t.scope.split(" ").includes(GMAIL_SCOPE);
+/**
+ * Optional: Google Tasks. Google has no narrower scope than `tasks` (read and change task lists); Recast only adds a task
+ * to the default list and deletes the tasks it added.
+ */
+export const TASKS_SCOPE = "https://www.googleapis.com/auth/tasks";
+export const hasTasks = (t: StoredToken | null) => !!t && t.scope.split(" ").includes(TASKS_SCOPE);
 export interface LinkConfig {
   clientId: string; clientSecret: string; port: number;
   /** Where the tokens are kept on this computer. */
@@ -95,8 +102,9 @@ ${paired.map((o) => `<p class="muted">Allowed: <code>${esc(o.replace("chrome-ext
       return send(res, 200, page("Recast: connect Google Calendar", `<h1>Connect Google Calendar</h1>
 <p class="muted">This page runs only on your computer. It lets Recast add events to, and remove its own events from, one Google account's calendar.</p>
 <div class="box">${t
-        ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create and delete calendar events.${hasGmail(t) ? " Create and delete Gmail drafts (never sends mail)." : ""}${t.refresh_token ? "" : " (No long-lived permission was granted: connect again if it stops working.)"}</p>
+        ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create and delete calendar events.${hasGmail(t) ? " Create and delete Gmail drafts (never sends mail)." : ""}${hasTasks(t) ? " Add tasks to your default Google Tasks list, and remove the ones Recast added." : ""}${t.refresh_token ? "" : " (No long-lived permission was granted: connect again if it stops working.)"}</p>
 ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them, <a href="/oauth/start">sign in again</a> and tick the Gmail box.</p>`}
+${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
         : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}`));
     }
@@ -106,7 +114,7 @@ ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them
       for (const [k, v] of pending) if (now() - v.at > STATE_TTL_MS) pending.delete(k);
       pending.set(state, { verifier, at: now() });
       const q = new URLSearchParams({
-        client_id: c.clientId, redirect_uri: redirectUri, response_type: "code", scope: `${SCOPE} ${GMAIL_SCOPE}`, state,
+        client_id: c.clientId, redirect_uri: redirectUri, response_type: "code", scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE}`, state,
         code_challenge: b64url(createHash("sha256").update(verifier).digest()), code_challenge_method: "S256",
         access_type: "offline", prompt: "consent", include_granted_scopes: "false",
       });

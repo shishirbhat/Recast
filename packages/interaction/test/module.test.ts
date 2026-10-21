@@ -199,3 +199,41 @@ describe("a placed object leaves the desk", () => {
     expect(r.desk).toEqual([]);
   });
 });
+
+describe("a whole page, taken on its own", () => {
+  const TASKS: DestinationSpec = { id: "tasks", label: "Google Tasks", contract: CONTRACTS.googleTasks };
+  const page = () => frag("page", "Q3 plan", { value: { name: "Q3 plan", url: "https://example.com/q3" }, confidence: 0.95 });
+  function taken(destinations = [...DESTS, TASKS]) {
+    const on = command(initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations })).s;
+    return run([{ type: "capture", fragment: page() }, { type: "openModule", id: "obj-1" }], on);
+  }
+  it("is a document: the module opens on it (no second piece needed), and Tasks is the place it fits", () => {
+    const { s, errors } = taken();
+    expect(errors).toEqual([]);
+    expect(s).toMatchObject({ phase: "composed", focus: "obj-1" });
+    const m = moduleModel(s, REGISTRY);
+    expect(m).toMatchObject({ mode: "composed", object: { view: { type: "Document", label: "Q3 plan" } }, choice: "tasks" });
+    const e = Object.fromEntries(wheelEntries(s, "obj-1", REGISTRY).map((x) => [x.key, x]));
+    expect(e["tasks"]).toMatchObject({ available: true, destinationId: "tasks" });
+    expect(e["tasks"]!.standIn).toBeUndefined();
+    expect(e["calendar"]).toMatchObject({ available: false, reason: "Google Calendar takes events; this is a document" });
+    expect(e["documents"]).toMatchObject({ available: false, reason: "Notion is not connected here" });
+  });
+  it("without Google Tasks connected, Tasks says so and nothing can be chosen there", () => {
+    const { s } = taken();
+    const off = { ...s, destinations: DESTS };
+    expect(wheelEntries(off, "obj-1", REGISTRY).find((x) => x.key === "tasks")).toMatchObject({ available: false, reason: "Google Tasks is not connected here" });
+  });
+  it("choosing Tasks opens a review of the title and address (writes nothing); confirming commits one task", () => {
+    const { s } = taken();
+    const r = run([{ type: "openWheel" }, { type: "pickDestination", destinationId: "tasks" }], s);
+    expect(r.s.phase).toBe("previewing"); expect(r.effects).toEqual([]);
+    expect(r.s.placement!.op!.dataMoved).toEqual([{ path: "Document.title", value: "Q3 plan" }, { path: "Document.url", value: "https://example.com/q3" }]);
+    const placed = run([{ type: "place", consent: { kind: "confirm" } }], r.s);
+    expect(placed.effects).toMatchObject([{ type: "commit", destinationId: "tasks" }]);
+  });
+  it("a single loose piece that is not a whole object still does not open the module", () => {
+    const on = command(initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: DESTS })).s;
+    expect(run([{ type: "capture", fragment: frag("person", "Maya Rao") }, { type: "openModule", id: "obj-1" }], on).errors).toEqual(["the module opens for a composition: press two things together first"]);
+  });
+});

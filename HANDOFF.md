@@ -17,7 +17,8 @@ The repository's own records stay authoritative for what they cover; this file p
 ## Current state (2026-10-21)
 - Last full run: **850 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
 - **One capability at R (real provider):** Google Calendar event creation from `apps/calendar-link`, run by hand by the owner on a throwaway Google account. Nothing else has touched real Google, Notion, Supabase or Vercel. No users yet (nothing at P).
-- Most recent features: local Google sign-in (`apps/calendar-link`); extension places in real Google Calendar and saves Gmail drafts through that local program (tested only against a Google stand-in); "How much Recast asks" setting (D24, D28).
+- **Newest (this session): a whole page → real Google Tasks.** "This page" in the extension's Recast pill takes the page (title and canonical link) as a Document; the module opens on it with Tasks in the wheel; Google Tasks is a third optional permission in `apps/calendar-link`; Undo deletes the task. Tested in real Chromium against a Google stand-in. The owner's real run is `docs/REAL_TEST_PLAN.md` section E (needs the Google Tasks API enabled in Google Cloud and a re-sign-in ticking Tasks).
+- Earlier: local Google sign-in (`apps/calendar-link`); extension places in real Google Calendar and saves Gmail drafts through that local program (tested only against a Google stand-in); "How much Recast asks" setting (D24, D28).
 - Nothing is deployed (API, agent server, control center, database).
 
 ## Open threads
@@ -32,10 +33,15 @@ The repository's own records stay authoritative for what they cover; this file p
 
 ## Next steps (in order)
 1. Recover the uncommitted edits (thread 1) and fix whatever breaks the two extension tests.
-2. Owner runs `docs/REAL_TEST_PLAN.md` B1–B12 (extension → real Calendar), C1–C6 (Gmail drafts), D (confirmation setting). Record results in `docs/ENGINEERING_STATUS.md`; passing B and C moves those rows to R and strengthens the deck.
+2. Owner runs `docs/REAL_TEST_PLAN.md` B1–B12 (extension → real Calendar), C1–C6 (Gmail drafts), D (confirmation setting), E1–E9 (page → Google Tasks). Record results in `docs/ENGINEERING_STATUS.md`; passing B and C moves those rows to R and strengthens the deck.
 3. Finish the deck: ask, use of funds, team; confirm the guesses above.
 4. Deploy: API and docs page to Vercel, database to Supabase (both connectors are available in Claude sessions). Gives the `/agents` page and developer docs live links.
 5. Design-partner outreach from `docs/outreach/mcp-agent-startups.md`.
+
+## Build ideas queued (no owner input needed)
+- "This page + a date" as a task with a due date (needs a page to combine with a time; today a page is refused in merges, with the reason).
+- Files (PDF links) as documents, not only the page.
+- Keyboard path in the extension beyond Escape (the clay page has it).
 
 ## Session log (newest first, keep each entry short)
 - **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb:** reconstructed context from the repo and the owner's pasted transcript; re-ran `apps/extension` on committed code (28/28 pass); created this file and `CLAUDE.md`.

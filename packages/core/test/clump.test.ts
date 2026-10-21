@@ -1,6 +1,6 @@
 // Clumps: pieces pressed together into one object, recursively, without losing any ingredient.
 import { describe, expect, it } from "vitest";
-import { answerClump, canMerge, chooseClump, mergeClumps, newClump, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
+import { answerClump, canMerge, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
 import { relationById } from "../src/rules.js";
 
 const CTX = { now: "2026-10-19T09:00:00Z", timezone: "Asia/Kolkata" };   // Monday 19 Oct 2026, 14:30 in Bengaluru
@@ -106,5 +106,38 @@ describe("pulling apart", () => {
     expect(JSON.stringify(viewClump(merged(a, b), CTX))).toBe(JSON.stringify(viewClump(merged(a, b), CTX)));
     expect(JSON.stringify([a, b])).toBe(snapshot);
     expect(typeOf([frag("place", "x")])).toBe("Fragment");
+  });
+});
+
+describe("a whole page is a document", () => {
+  const page = (title: string, url = "https://example.com/q3-plan") => one("page", title, { value: { name: title, url }, confidence: 0.95, evidence: [{ locator: { kind: "meta", value: "title" }, excerpt: title }], source: { app: "example.com", url } });
+  // The registry's Google Tasks contract, copied here so the core stays free of the bridges package.
+  const tasks = { destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task" as const, reliability: "official-api" as const, accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }] };
+
+  it("on its own it can go to a task list or a documents tool, with its title and address from the page", () => {
+    const v = viewClump(page("Q3 plan"), CTX);
+    expect(v).toMatchObject({ type: "Document", label: "Q3 plan", proposed: false, summary: ["Page", "example.com"], placeableAs: ["Task", "Project"], missing: [] });
+    expect(v.document!.fields).toMatchObject({ title: { value: "Q3 plan", origin: "extracted" }, url: { value: "https://example.com/q3-plan", origin: "extracted" } });
+    expect(v.candidate).toMatchObject({ type: "Document", properties: { title: "Q3 plan", url: "https://example.com/q3-plan" } });
+    expect(v.candidate!.fields["title"]!.evidence[0]).toMatchObject({ locator: { kind: "meta", value: "title" }, origin: "extracted", source: { url: "https://example.com/q3-plan" } });
+  });
+  it("goes through the normal proposal path to Google Tasks: low risk, nobody notified", () => {
+    const [p] = propose(resolve(viewClump(page("Q3 plan"), CTX).candidate!), tasks);
+    expect(p).toMatchObject({ relationId: "document-task-reference", status: "ready", effectFlags: [] });
+    expect(plan(p!, { now: () => CTX.now }).dataMoved).toEqual([{ path: "Document.title", value: "Q3 plan" }, { path: "Document.url", value: "https://example.com/q3-plan" }]);
+  });
+  it("a page with no title asks for one; what the person types wins, and is marked as theirs", () => {
+    const blank = page("");
+    const v = viewClump(blank, CTX);
+    expect(v).toMatchObject({ type: "Document", candidate: null, missing: [{ field: "title" }] });
+    const named = viewClump(answerClump(blank, "title", "Read later: Q3 plan"), CTX);
+    expect(named.document!.fields.title).toMatchObject({ value: "Read later: Q3 plan", origin: "user" });
+    expect(named.candidate!.fields["title"]!.confidence).toBe(1);
+  });
+  it("is not pressed into other pieces: the page and the piece stay whole", () => {
+    const c = canMerge(one("person", "Maya Rao"), page("Q3 plan"));
+    expect(c).toMatchObject({ ok: false, code: "incompatible" });
+    expect(c.ok ? "" : c.reason).toMatch(/Q3 plan is a whole page/);
+    expect(typeOf([frag("page", "A"), frag("time", "Friday")])).toHaveProperty("incompatible");
   });
 });

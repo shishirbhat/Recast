@@ -139,7 +139,8 @@ Otherwise it stays visible, disabled, with the reason, for example "Gmail takes 
 ## Which destinations are genuinely available
 - **Calendar:** for events. On the clay page, an in-page stand-in calendar. In the extension, any open page that declares `data-recast-kind="calendar"` (the test fixture `calendar.html`) and has Recast in it.
 - **Mail:** for messages. The same arrangement with `data-recast-kind="drafts"`.
-- **Tasks and Documents:** in the registry, but they take documents, and no composition is a document today. So they are always unavailable, with that reason.
+- **Tasks:** for documents. A page taken whole (**This page** in the extension's pill) is a document. In the extension, Tasks is the real Google Tasks through the local program (`apps/calendar-link`) when the Tasks permission was granted, or a page that declares `data-recast-kind="tasks"` as a stand-in.
+- **Documents:** for documents too (Notion). No Notion bridge is connected anywhere, so it says "Notion is not connected here".
 - **More:** Sheets, the event editor and Gmail-to-person are listed with reasons. None of them takes an event or a message.
 - **No destination is backed by a real provider.**
   - Every available one is a stand-in that performs the registry contract locally and says so ("stand-in" under the name, and a note in the review).
@@ -168,8 +169,9 @@ The worker's only tab or window change is `tabs.update({active: true})` and `win
   - Next step: the Windows shell (`docs/09-windows-spike-kit.md`, task #23), drawing the same `moduleModel` in a layered window. The model and the glass component are already framework-free.
 - **Per-tab activation is kept.** It is activeTab, with no host permissions.
 - **No pointer continuity across real tabs.** The object waits in the next tab's shelf.
-- **Tasks and Documents never have a fitting object today.**
-  - Next step: a document fragment (a page or a file, captured from the page's own metadata) so Google Tasks and Notion can be offered.
+- **A document is a whole page, on its own.** **This page** takes the page's title (og:title, else `<title>`) and its address (the canonical link when it is on the same site, so tracking parameters are not saved). It cannot be pressed into other pieces yet; that is refused with the reason.
+  - Not yet: files (PDFs), and "this page + a date" as a task with a due date.
+  - Notion still has no connected bridge.
 - **Stand-ins only.**
   - Next step: OAuth apps (#22), then a real `HttpBridge` destination in the extension's worker, which needs host permissions for the Google APIs and its own review.
 - **Selector keys in the extension** work once focus is in the module. The command focuses it (via a `focus` message). The full page-level keyboard path (Tab between pieces) remains a clay-page feature.

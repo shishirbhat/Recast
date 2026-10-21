@@ -4,15 +4,18 @@
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
 export type Origin = "extracted" | "inferred" | "default" | "user";
-/** `thing`: something recognised but not composable (a product, a paper): it can be carried, never merged. */
-export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing";
+/**
+ * `thing`: something recognised but not composable (a product, a paper): it can be carried, never merged.
+ * `page`: the page (or file) itself, from its own metadata (title and address): on its own it is a document.
+ */
+export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing" | "page";
 
 /** One piece the person captured. `text` is exactly what was on screen; `value` is optional structure from extraction. */
 export interface Fragment {
   id: string;
   kind: FragmentKind;
   text: string;
-  value?: { name?: string; address?: string; email?: string };
+  value?: { name?: string; address?: string; email?: string; url?: string };
   confidence: number;
   evidence: Evidence[];
   source?: { app: string; url?: string; title?: string };

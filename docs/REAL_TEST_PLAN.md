@@ -67,3 +67,23 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | D4 | Compose a message with no email address on the page → Mail | The review opens and asks for the address | missing info still asked |
 | D5 | Switch back to **Every time** and repeat D3 | The review opens first | high |
 | D6 | Quit and restart Chrome, then open the popup | Your last choice is still selected | survives restarts |
+
+## E. A whole page to Google Tasks (needs the Tasks permission)
+**Checks:** the optional Tasks permission, taking a page whole, a real task created and deleted.
+
+**Setup, once:**
+1. In Google Cloud (same project), turn on the Tasks API: search **Google Tasks API**, then click **Enable**.
+2. The program asks for the `tasks` scope itself (Google has no narrower one). It is not a restricted scope; an app in **Testing** works for its test users.
+3. At http://localhost:8787/, click **Sign in with Google** again. On Google's screen, **tick the Tasks box** (calendar events stays ticked).
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| E1 | Open http://localhost:8787/ | "Permission: … Add tasks to your default Google Tasks list, and remove the ones Recast added." | permission recorded |
+| E2 | Open the Recast popup | "Tasks adds a page to Google Tasks." | extension sees it |
+| E3 | On any article page, turn Recast on (Control twice, or the popup button). In the pill, click **This page** | The module opens on one object named after the page | page taken whole |
+| E4 | **Choose where it goes** | The wheel rests on **Tasks**. Calendar and Mail are unavailable, with "… takes events; this is a document" and similar | fit rules |
+| E5 | **Open** | The review shows the page title and its link, with no "stand-in" note | review |
+| E6 | Click **Add a task** | "Placed". In Google Tasks (calendar.google.com side panel, or tasks.google.com), the default list has a task with the page title, and the link in its details | real task |
+| E7 | **Undo** | The task disappears from Google Tasks | real undo |
+| E8 | Take the same page again → Tasks → stop the program (Ctrl+C) before clicking **Add a task**, then click it | "…did not answer". **Check** says Google Tasks can't be asked about one task and tells you to look. Nothing is added twice | honest unknown |
+| E9 | Sign in again without the Tasks box | The popup says Google Tasks is not allowed. Tasks shows as unavailable | permission is optional |
