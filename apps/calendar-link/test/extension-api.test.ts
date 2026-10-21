@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createExtensionApi } from "../src/extension-api.js";
 import { GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
-import { newClump, plan, propose, resolve, viewClump } from "@recast/core";
+import { mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
 import { CONTRACTS } from "@recast/bridges";
 
 const EXT = `chrome-extension://${"a".repeat(32)}`;
@@ -76,6 +76,25 @@ describe("Google Tasks through the same door", () => {
     const u = await b.api.handle("undo", EXT, { destination: "tasks", receipt: r.body.receipt });
     expect(u.body).toEqual({ outcome: "undone" }); expect(tasks.size).toBe(0);
     expect(b.calls.at(-1)).toBe("DELETE https://tasks.googleapis.com/tasks/v1/lists/%40default/tasks/t1");
+  });
+  it("a page with a date goes to the same list as a whole task, due that day; Undo deletes it", async () => {
+    const page = newClump("obj-2", { id: "pg2", kind: "page", text: "Q3 plan", value: { name: "Q3 plan", url: "https://example.com/q3" }, confidence: 0.95, evidence: [{ locator: { kind: "meta", value: "title" } }], source: { app: "example.com", url: "https://example.com/q3" } });
+    const withDate = mergeClumps(page, newClump("obj-3", { id: "tm", kind: "time", text: "2026-10-23", confidence: 0.9, evidence: [{ locator: { kind: "css", value: "#due" } }] }), { confirmChange: true });
+    if (!withDate.ok) throw new Error(withDate.reason);
+    const v = viewClump(withDate.clump, { now: "2026-10-21T09:00:00Z", timezone: "UTC" });
+    const taskOp = plan(propose(resolve(v.candidate!), CONTRACTS.googleTasksEntry)[0]!, { now: () => "2026-10-21T09:00:00Z" });
+    const tasks = new Map<string, unknown>();
+    const b = setup(`${SCOPE} ${TASKS_SCOPE}`, (url, init) => {
+      if (init.method === "POST") { const id = `t${tasks.size + 1}`; tasks.set(id, JSON.parse(String(init.body))); return new Response(JSON.stringify({ id }), { status: 200 }); }
+      if (init.method === "DELETE") { tasks.delete(url.split("/tasks/").pop()!); return new Response(null, { status: 204 }); }
+      return new Response("{}", { status: 400 });
+    });
+    await pair(b.api);
+    const r = await b.api.handle("commit", EXT, { destination: "tasks", op: taskOp, consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "done", receipt: { destination: "google-tasks.tasklist", relationId: "task-tasklist-entry" } });
+    expect([...tasks.values()]).toEqual([{ title: "Q3 plan", notes: "https://example.com/q3", due: "2026-10-23T00:00:00.000Z" }]);
+    expect((await b.api.handle("undo", EXT, { destination: "tasks", receipt: r.body.receipt })).body).toEqual({ outcome: "undone" });
+    expect(tasks.size).toBe(0);
   });
   it("a lost answer cannot be checked against Google Tasks, and the check says so instead of guessing", async () => {
     const b = setup(`${SCOPE} ${TASKS_SCOPE}`); await pair(b.api);

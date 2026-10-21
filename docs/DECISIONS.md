@@ -179,3 +179,11 @@ Consequential architecture and product decisions, so that separate workstreams d
   - it is not below the 0.5 deliberate-choice line.
 - **Not covered:** a blind drop onto a page still opens the review, because the person has not seen the values in the module.
 - **Unchanged:** the core consent check (`checkConsent`) runs on that confirmation and again in `commit()`. Receipts, Undo and unknown-outcome handling are unchanged.
+
+### D29. A page is a document; a page and a date are a task, placed whole on a task list (2026-10-21)
+- **Decision:** a new piece kind, `page` (the page itself, from its title and same-site canonical link). On its own it is a `Document` (to Google Tasks as a reference, or Notion). Pressed together with a time it is a `Task` (title, link, due day). Anything else with a page is refused, with what would work.
+- **Grammar:** one new relation, `task-tasklist-entry` (Task → TaskList; low risk; reversible; requires a title), and one new target kind, `TaskList`. It follows the Calendar pattern: one contract changes something inside an object (`googleTasks`: a document as a task), and another places a whole object on a list (`googleTasksEntry`).
+- **Why not reuse `document-task-reference`:** a Document has no due date (its schema forbids extra properties), and a reference is not a task. Bending the Document schema would make every document carry a field that only means something on a task list.
+- **Due dates:** Google Tasks keeps only the date. The time of day is dropped, and the review says so ("the time (5:00 PM) is not kept"). The date is read exactly like an event's start (relative days, the person's time zone), and conflicting dates are shown rather than chosen.
+- **Turning a document into a task** changes where it can go, so pressing them together asks first (the existing "changes what it is" confirmation).
+- **Change if:** a task list needs times, or people want a page combined with other pieces (a person → a task assigned to them).

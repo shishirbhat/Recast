@@ -60,6 +60,8 @@ async function main() {
   const glass = createGlass($(".glass"), {
     onIntent: async (i) => {
       if (i.type === "takePage") { await takePage(); return; }
+      // Combine, pressed here, starts the fusion here: this tab plays it and settles the merge (as a drop here would).
+      if (i.type === "confirmMerge" && i.yes) iDropped = true;
       for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
     onLayout: () => requestAnimationFrame(() => render()),
     shortcut: /Mac/.test(navigator.platform) ? "⌃" : "Ctrl",   // shown while on: once turns it off

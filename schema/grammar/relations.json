@@ -169,6 +169,19 @@
         ]
       ],
       "reversible": true
+    },
+    {
+      "id": "task-tasklist-entry",
+      "from": "Task",
+      "to": "TaskList",
+      "relation": "entry",
+      "risk": "low",
+      "requires": [
+        [
+          "title"
+        ]
+      ],
+      "reversible": true
     }
   ]
 }

@@ -16,7 +16,10 @@ beforeAll(async () => {
   server = createServer((req, res) => { const f = path.join(root, "test/fixtures", (req.url ?? "/").replace(/^\/+/, "").split("?")[0]!); if (!existsSync(f)) { res.writeHead(404).end(); return; } res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(readFileSync(f)); });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const profile = path.join(root, "dist-test/.profile-clay"); rmSync(profile, { recursive: true, force: true });
-  ctx = await chromium.launchPersistentContext(profile, { executablePath: chromiumPath(), headless: false, timezoneId: "Asia/Kolkata", viewport: { width: 1200, height: 800 },
+  ctx = await chromium.launchPersistentContext(profile, { executablePath: chromiumPath(), headless: false, timezoneId: "Asia/Kolkata",
+    // timezoneId covers pages only, and reaches the extension's service worker only sometimes (not under load). TZ sets the
+    // zone for every browser process, the worker included, so dates are read in Asia/Kolkata everywhere.
+    env: { ...process.env, TZ: "Asia/Kolkata" }, viewport: { width: 1200, height: 800 },
     args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, "--headless=new", "--no-first-run"] });
   sw = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent("serviceworker");
 });

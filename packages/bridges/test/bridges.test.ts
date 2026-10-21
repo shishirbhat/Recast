@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryEventLog, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleSheets, googleTasks, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,7 +26,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, notion })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
 });
@@ -146,6 +146,20 @@ describe("Google Tasks", () => {
   });
 });
 
+describe("Google Tasks: a whole task with a due date", () => {
+  it("sends the title, the link as notes and the due day as midnight UTC (Google keeps only the date); undo deletes it", async () => {
+    const s = fake((r) => (r.method === "POST" ? ok({ id: "t9" }) : ok()));
+    const r = await place(googleTasksEntry, { taskListId: "@default" }, s.t, obj("Task", { title: "Q3 plan", url: "https://example.com/q3", due: "2026-10-23" }), "task-tasklist-entry");
+    expect(s.calls[0]).toMatchObject({ method: "POST", url: "https://tasks.googleapis.com/tasks/v1/lists/%40default/tasks", body: { title: "Q3 plan", notes: "https://example.com/q3", due: "2026-10-23T00:00:00.000Z" } });
+    await r.undo(); expect(s.calls[1]).toMatchObject({ method: "DELETE", url: "https://tasks.googleapis.com/tasks/v1/lists/%40default/tasks/t9" });
+  });
+  it("a task without a due date or a link is just its title", async () => {
+    const s = fake(() => ok({ id: "t1" }));
+    await place(googleTasksEntry, { taskListId: "@default" }, s.t, obj("Task", { title: "Call the bank" }), "task-tasklist-entry");
+    expect(s.calls[0]!.body).toEqual({ title: "Call the bank" });
+  });
+});
+
 describe("Notion", () => {
   it("creates a page in the chosen database with the version header, and undo archives it", async () => {
     const s = fake((r) => (r.method === "POST" ? ok({ id: "page-1" }) : ok()));
@@ -176,8 +190,9 @@ describe("shared behaviour", () => {
 
 describe("the registry", () => {
   it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
-    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-sheets.range", "google-tasks.list", "notion.database"]);
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
     expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
     expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
+    expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);
   });
 });

@@ -107,6 +107,19 @@ export const googleTasks: Spec<TasksTarget> = {
   async undo(token, t, send) { await send({ method: "DELETE", url: `${TASKS}/${seg(t.taskListId)}/tasks/${seg((JSON.parse(token) as { id: string }).id)}` }); },
 };
 
+// A whole task, with its due date. Google keeps only the date of `due` (the time part is discarded), so it is sent as
+// midnight UTC of that day: the date the person saw is the date Google shows.
+export const googleTasksEntry: Spec<TasksTarget> = {
+  contract: CONTRACTS.googleTasksEntry,
+  capabilities: { "task-tasklist-entry": unkeyedCreate("tasks", "delete-created") },
+  async execute(op, t, send) {
+    const url = moved(op, "Task.url"), due = moved(op, "Task.due");
+    const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Task.title"), ...(url ? { notes: url } : {}), ...(due ? { due: `${String(due).slice(0, 10)}T00:00:00.000Z` } : {}) } }));
+    return JSON.stringify({ id: str(r.id, "task id") });
+  },
+  undo: googleTasks.undo,
+};
+
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
 export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
 const NOTION = "https://api.notion.com/v1/pages";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { commit, InMemoryEventLog, OutcomeUnknownError, plan, propose, resolve, undo, type Candidate, type SemanticObject } from "@recast/core";
-import { calendarEventId, DuplicateError, googleCalendar, googleCalendarEvent, googleSheets, googleTasks, gmailDraft, gmailMessageDraft, HttpBridge, notion, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { calendarEventId, DuplicateError, googleCalendar, googleCalendarEvent, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, HttpBridge, notion, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-19T10:00:00Z";
 const event = (props: Record<string, unknown> = {}): SemanticObject => {
@@ -37,7 +37,7 @@ async function placeEvent(o: SemanticObject, t: Transport, calendarId = "primary
 }
 
 describe("every bridge declares what its operations do", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, notion }) as [string, Spec<unknown>][]) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion }) as [string, Spec<unknown>][]) {
     it(name, () => {
       for (const a of spec.contract.accepts) {
         const c = spec.capabilities[a.relationId];

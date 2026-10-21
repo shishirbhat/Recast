@@ -86,4 +86,7 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | E6 | Click **Add a task** | "Placed". In Google Tasks (calendar.google.com side panel, or tasks.google.com), the default list has a task with the page title, and the link in its details | real task |
 | E7 | **Undo** | The task disappears from Google Tasks | real undo |
 | E8 | Take the same page again → Tasks → stop the program (Ctrl+C) before clicking **Add a task**, then click it | "…did not answer". **Check** says Google Tasks can't be asked about one task and tells you to look. Nothing is added twice | honest unknown |
+| E8b | On a page with a date on it (e.g. "Friday 23 October, 5:00 PM"): **This page**, then Alt-drag the date onto the object in the module | "Combine them?" (it turns the document into a task). Click **Combine** | page + date |
+| E8c | **Choose where it goes** → Tasks → **Open** | The review shows Title, Link, **Due** with the day, and "the time (5:00 PM) is not kept" | due date |
+| E8d | **Add a task**, then look in Google Tasks | The task is due on that day. Then **Undo**: it disappears | real due date |
 | E9 | Sign in again without the Tasks box | The popup says Google Tasks is not allowed. Tasks shows as unavailable | permission is optional |

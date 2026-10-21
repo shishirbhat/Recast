@@ -8,7 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { randomInt } from "node:crypto";
 import { commit, InMemoryEventLog, OutcomeUnknownError, undo, type Consent, type Operation, type Receipt } from "@recast/core";
-import { calendarEventId, DuplicateError, gmailMessageDraft, googleCalendarEvent, googleTasks, HttpBridge } from "@recast/bridges";
+import { calendarEventId, DuplicateError, gmailMessageDraft, googleCalendarEvent, googleTasks, googleTasksEntry, HttpBridge } from "@recast/bridges";
 import { type CalendarAccess, googleTransport } from "./test-event.js";
 import { hasGmail, hasTasks, readToken } from "./server.js";
 
@@ -34,10 +34,11 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
   const keep = (r: Receipt) => writePrivate(receiptFile, [...receipts().filter((x) => x.receiptId !== r.receiptId), r].slice(-200));
   // Three destinations behind one sign-in. Gmail and Tasks only if the person ticked them (each its own permission).
   type Dest = "calendar" | "gmail" | "tasks";
-  const bridge = (d: Dest = "calendar") => d === "gmail" ? new HttpBridge(gmailMessageDraft, { userId: "me" }, googleTransport(a))
-    : d === "tasks" ? new HttpBridge(googleTasks, { taskListId: "@default" }, googleTransport(a))
+  // Tasks has two contracts on the same list: a document as a task, and a whole task with its due date.
+  const bridge = (d: Dest = "calendar", destination?: string) => d === "gmail" ? new HttpBridge(gmailMessageDraft, { userId: "me" }, googleTransport(a))
+    : d === "tasks" ? new HttpBridge(destination === googleTasksEntry.contract.destination ? googleTasksEntry : googleTasks, { taskListId: "@default" }, googleTransport(a))
     : new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
-  const destOf = (destination: string): Dest => destination === gmailMessageDraft.contract.destination ? "gmail" : destination === googleTasks.contract.destination ? "tasks" : "calendar";
+  const destOf = (destination: string): Dest => destination === gmailMessageDraft.contract.destination ? "gmail" : destination === googleTasks.contract.destination || destination === googleTasksEntry.contract.destination ? "tasks" : "calendar";
   const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t), tasks: hasTasks(t) }; };
   const iso = () => new Date(a.now()).toISOString();
 
@@ -71,7 +72,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
 
       if (route === "commit") {
         const op = body.op as Operation, consent = body.consent as Consent;
-        const b = bridge(dest); const log = new InMemoryEventLog();
+        const b = bridge(dest, op?.proposal?.destination?.destination); const log = new InMemoryEventLog();
         try {
           const receipt = await commit(op, consent, { bridge: b, log, now: iso });
           keep(receipt);
@@ -103,7 +104,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         const stored = receipts().find((r) => r.receiptId === id);
         if (!stored) return { status: 200, body: { outcome: "failed", message: "That placement is not one this computer made" } };
         const log = new InMemoryEventLog(); await log.append({ at: stored.at, kind: "commit", receipt: stored });
-        try { await undo(stored, { bridge: bridge(destOf(stored.destination)), log, now: iso }); }
+        try { await undo(stored, { bridge: bridge(destOf(stored.destination), stored.destination), log, now: iso }); }
         catch (e) { return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } }; }
         writePrivate(receiptFile, receipts().filter((r) => r.receiptId !== id));
         return { status: 200, body: { outcome: "undone" } };

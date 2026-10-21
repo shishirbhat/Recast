@@ -170,7 +170,8 @@ The worker's only tab or window change is `tabs.update({active: true})` and `win
 - **Per-tab activation is kept.** It is activeTab, with no host permissions.
 - **No pointer continuity across real tabs.** The object waits in the next tab's shelf.
 - **A document is a whole page, on its own.** **This page** takes the page's title (og:title, else `<title>`) and its address (the canonical link when it is on the same site, so tracking parameters are not saved). It cannot be pressed into other pieces yet; that is refused with the reason.
-  - Not yet: files (PDFs), and "this page + a date" as a task with a due date.
+  - **A page and a date** pressed together make a task due that day (D29); pressing them asks first, since it changes what the object is.
+  - Not yet: files (PDFs).
   - Notion still has no connected bridge.
 - **Stand-ins only.**
   - Next step: OAuth apps (#22), then a real `HttpBridge` destination in the extension's worker, which needs host permissions for the Google APIs and its own review.

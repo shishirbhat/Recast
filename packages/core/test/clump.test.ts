@@ -134,10 +134,46 @@ describe("a whole page is a document", () => {
     expect(named.document!.fields.title).toMatchObject({ value: "Read later: Q3 plan", origin: "user" });
     expect(named.candidate!.fields["title"]!.confidence).toBe(1);
   });
-  it("is not pressed into other pieces: the page and the piece stay whole", () => {
+  it("is not pressed into anything but a date: the page and the piece stay whole, and the reason says what would work", () => {
     const c = canMerge(one("person", "Maya Rao"), page("Q3 plan"));
     expect(c).toMatchObject({ ok: false, code: "incompatible" });
-    expect(c.ok ? "" : c.reason).toMatch(/Q3 plan is a whole page/);
-    expect(typeOf([frag("page", "A"), frag("time", "Friday")])).toHaveProperty("incompatible");
+    expect(c.ok ? "" : c.reason).toMatch(/Q3 plan is a whole page: add a date to make it a task/);
+    expect(typeOf([frag("page", "A"), frag("page", "B")])).toHaveProperty("incompatible");
+    expect(typeOf([frag("page", "A"), frag("time", "Friday"), frag("person", "Maya")])).toHaveProperty("incompatible");
+  });
+});
+
+describe("a page and a date are a task", () => {
+  const page = (title = "Q3 plan") => one("page", title, { value: { name: title, url: "https://example.com/q3" }, confidence: 0.95, source: { app: "example.com", url: "https://example.com/q3" } });
+  const list = { destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList" as const, reliability: "official-api" as const, accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }] };
+
+  it("turning the document into a task is the person's call (it changes where it can go)", () => {
+    const r = mergeClumps(page(), one("time", "Friday"));
+    expect(r).toMatchObject({ ok: false, code: "needs_confirmation", becomes: "Task" });
+    expect(r.ok ? "" : r.reason).toBe("this turns the document into a task");
+  });
+  it("is due on the day the time piece names, read in the person's time zone; a time of day is shown as not kept", () => {
+    const v = viewClump(merged(page(), one("time", "Friday 5 PM"), true), CTX);
+    expect(v).toMatchObject({ type: "Task", label: "Q3 plan", placeableAs: ["TaskList"], summary: ["Task", "due Fri, 23 Oct"], missing: [] });
+    expect(v.task!.fields.due).toMatchObject({ value: "2026-10-23", origin: "inferred" });
+    expect(v.assumptions).toEqual(["A task is due on a day: the time (5:00 PM) is not kept"]);
+    expect(v.candidate).toMatchObject({ type: "Task", properties: { title: "Q3 plan", url: "https://example.com/q3", due: "2026-10-23" } });
+    const [p] = propose(resolve(v.candidate!), list);
+    expect(p).toMatchObject({ relationId: "task-tasklist-entry", status: "ready", effectFlags: [] });
+    expect(plan(p!, { now: () => CTX.now }).dataMoved).toEqual([{ path: "Task.title", value: "Q3 plan" }, { path: "Task.url", value: "https://example.com/q3" }, { path: "Task.due", value: "2026-10-23" }]);
+  });
+  it("two dates that disagree are shown, not chosen; the person's pick wins; a typed date wins over both", () => {
+    const fri = one("time", "Friday"), sat = one("time", "Saturday");
+    const c = merged(merged(page(), fri, true), sat);
+    const v = viewClump(c, CTX);
+    expect(v.candidate).toBeNull(); expect(v.conflicts.map((x) => x.field)).toEqual(["start"]);
+    const picked = viewClump(chooseClump(c, "start", sat.ingredients[0]!.id), CTX);
+    expect(picked.task!.fields.due!.value).toBe("2026-10-24"); expect(picked.candidate).not.toBeNull();
+    const typed = viewClump(answerClump(c, "due", "2026-11-02"), CTX);
+    expect(typed.task!.fields.due).toMatchObject({ value: "2026-11-02", origin: "user" });
+  });
+  it("a time piece with no readable date asks for the date", () => {
+    const v = viewClump(merged(page(), one("time", "sometime soon"), true), CTX);
+    expect(v.candidate).toBeNull(); expect(v.missing.map((m) => m.field)).toEqual(["due"]);
   });
 });

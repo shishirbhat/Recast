@@ -81,12 +81,12 @@ const ICON: Record<WheelKey, string> = {
 const svg = (k: WheelKey, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link" };
+const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link", due: "Due" };
 const ORIGIN: Record<string, string> = { extracted: "from the page", inferred: "Recast's reading", default: "a default", user: "you" };
-const INPUT_HINT: Record<string, string> = { start: "2026-10-23T19:30", end: "2026-10-23T21:00", title: "Dinner with Maya", to: "maya@example.com" };
+const INPUT_HINT: Record<string, string> = { start: "2026-10-23T19:30", end: "2026-10-23T21:00", title: "Dinner with Maya", to: "maya@example.com", due: "2026-10-23" };
 function fmt(field: string, v: unknown): string {
   if (Array.isArray(v)) return v.join(", ");
-  if ((field === "start" || field === "end") && typeof v === "string") { const d = new Date(v.length === 10 ? `${v}T00:00` : v); return isNaN(+d) ? v : d.toLocaleString("en", { weekday: "short", day: "numeric", month: "short", ...(v.length > 10 ? { hour: "numeric", minute: "2-digit" } : {}) }); }
+  if ((field === "start" || field === "end" || field === "due") && typeof v === "string") { const d = new Date(v.length === 10 ? `${v}T00:00` : v); return isNaN(+d) ? v : d.toLocaleString("en", { weekday: "short", day: "numeric", month: "short", ...(v.length > 10 ? { hour: "numeric", minute: "2-digit" } : {}) }); }
   return String(v);
 }
 const sure = (c: number) => (c >= 0.85 ? "sure" : c >= 0.6 ? "likely" : "unsure");
@@ -259,7 +259,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   // ---- everything else: rebuilt only when its text changes, keeping focus where it was ---------------------------------
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
-    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
+    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
     const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
     const missing = v.missing.map((x) => {
       const id = `rg-in-${x.field}`;

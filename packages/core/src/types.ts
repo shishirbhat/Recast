@@ -2,7 +2,7 @@ import type { CapabilityContract, Evidence, Provenance } from "./generated/types
 export type { CapabilityContract, Evidence, Provenance };
 
 export type ObjectType = "Person" | "Document" | "Event" | "Location" | "Image" | "Message" | "Task" | "Product" | "ResearchPaper";
-export type TargetKind = "Event" | "Task" | "Project" | "Message" | "Claim" | "ResearchPaper" | "Product" | "Calendar" | "Drafts";
+export type TargetKind = "Event" | "Task" | "Project" | "Message" | "Claim" | "ResearchPaper" | "Product" | "Calendar" | "Drafts" | "TaskList";
 export type RiskTier = "low" | "medium" | "high";
 export type Reliability = CapabilityContract["reliability"];
 export type EffectFlag = NonNullable<CapabilityContract["accepts"][number]["effectFlags"]>[number];

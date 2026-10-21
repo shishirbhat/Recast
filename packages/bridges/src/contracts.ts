@@ -30,6 +30,11 @@ export const CONTRACTS = {
     destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api",
     accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
   },
+  /** A whole task (a page with a due date) placed on the default list; `googleTasks` adds a document as a task. */
+  googleTasksEntry: {
+    destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api",
+    accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
+  },
   notion: {
     destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api",
     accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],

@@ -5,9 +5,9 @@
 import { compose, type ComposeContext, type Composition, type Conflict, type EventField, type Fragment, type Missing, type Origin } from "./compose.js";
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
-export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document";
+export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document" | "Task";
 export type MessageField = "to" | "snippet" | "subject";
-export type AnswerField = EventField | MessageField;
+export type AnswerField = EventField | MessageField | "due";
 
 export interface Clump {
   id: string;
@@ -32,18 +32,25 @@ export interface DocumentView {
   missing: { field: "title"; reason: string }[];
 }
 
+/** A page with a date: a task, due that day. The title and link are the page's; the date is read from the time piece. */
+export interface TaskView {
+  status: "ready" | "incomplete";
+  fields: Partial<Record<"title" | "url" | "due", { value: string; origin: Origin; fragments: string[] }>>;
+  missing: { field: "title" | "due"; reason: string }[];
+}
+
 export interface ClumpView {
   type: ClumpType;
   /** The one name the capsule shows. `proposed` when it is Recast's suggestion, not something the person accepted or the page said. */
   label: string; proposed: boolean;
   /** A few short things to show on the capsule: names, the place, the time. */
   summary: string[];
-  event?: Composition; message?: MessageView; document?: DocumentView;
+  event?: Composition; message?: MessageView; document?: DocumentView; task?: TaskView;
   missing: { field: AnswerField; reason: string; suggestions?: string[] }[];
   conflicts: Conflict[];
   assumptions: string[];
   /** Where this kind of object can be placed. Empty when it cannot be placed as it is. */
-  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project")[];
+  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList")[];
   /** A complete object ready for the normal propose → plan → consent → commit path. Null until nothing is missing. */
   candidate: Candidate | null;
 }
@@ -66,7 +73,9 @@ export function typeOf(fs: Fragment[]): ClumpType | { incompatible: string } {
   if (fs.length === 1 && fs[0]!.kind === "page") return "Document";
   if (fs.length <= 1) return "Fragment";
   const pages = fs.filter((f) => f.kind === "page");
-  if (pages.length) return { incompatible: `${nameOf(pages[0]!)} is a whole page: it is placed on its own, as a task or a document, and cannot be pressed into other pieces yet` };
+  // A page and a date: a task due that day. Anything else with a page is refused, with what would work.
+  if (pages.length === 1 && fs.every((f) => f.kind === "page" || f.kind === "time")) return "Task";
+  if (pages.length) return { incompatible: pages.length > 1 ? "two pages do not make one object; place each on its own" : `${nameOf(pages[0]!)} is a whole page: add a date to make it a task due that day, or place it on its own` };
   const things = fs.filter((f) => f.kind === "thing");
   if (things.length) return { incompatible: `${nameOf(things[0]!)} can be carried and placed on its own, but it cannot be combined with other pieces yet` };
   if (has(fs, "time") || has(fs, "place") || has(fs, "title")) return "Event";
@@ -92,7 +101,7 @@ const union = (a: Fragment[], b: Fragment[]) => { const ids = new Set(a.map((f) 
 export function mergeClumps(target: Clump, incoming: Clump, opts: { confirmChange?: boolean } = {}): MergeResult {
   const check = canMerge(target, incoming);
   if (!check.ok) return check;
-  if (check.change && !opts.confirmChange) return { ok: false, code: "needs_confirmation", reason: `this turns the ${check.change.from.toLowerCase()} into an ${check.change.to.toLowerCase()}`, becomes: check.becomes };
+  if (check.change && !opts.confirmChange) return { ok: false, code: "needs_confirmation", reason: `this turns the ${check.change.from.toLowerCase()} into ${/^[aeiou]/i.test(check.change.to) ? "an" : "a"} ${check.change.to.toLowerCase()}`, becomes: check.becomes };
   return {
     ok: true, becomes: check.becomes,
     clump: { id: target.id, ingredients: union(target.ingredients, incoming.ingredients), answers: { ...incoming.answers, ...target.answers }, choices: { ...incoming.choices, ...target.choices } },
@@ -138,6 +147,13 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
     const d = documentView(c);
     return { ...base, type: "Document", label: d.fields.title?.value ?? nameOf(fs[0]!), proposed: false, summary: ["Page", ...(d.fields.url ? [hostOf(d.fields.url.value)] : [])], document: d, missing: d.missing, placeableAs: ["Task", "Project"], candidate: d.status === "ready" ? documentCandidate(c, d, ctx) : null };
   }
+  if (t === "Task") {
+    const k = taskView(c, ctx);
+    const due = k.fields.due?.value;
+    const conflicts = compose(fs.filter((f) => f.kind === "time"), { ...ctx, choose: c.choices }).conflicts.filter((x) => x.field === "start");
+    return { ...base, type: "Task", label: k.fields.title?.value ?? nameOf(fs.find((f) => f.kind === "page")!), proposed: false, summary: ["Task", ...(due ? [`due ${shortTime(due)}`] : [])], task: k, missing: k.missing, conflicts,
+      assumptions: k.timeDropped ? [`A task is due on a day: the time (${k.timeDropped}) is not kept`] : [], placeableAs: ["TaskList"], candidate: k.status === "ready" ? taskCandidate(c, k, ctx) : null };
+  }
   if (t === "People") return { ...base, type: "People", label: people.join(" + "), proposed: false, summary: [`${people.length} people`], missing: [{ field: "title", reason: "add a time or place to plan something, or a sentence to write to them" }] };
   if (t === "Message") {
     const m = message(c);
@@ -167,6 +183,34 @@ function documentView(c: Clump): DocumentView {
   if (url) fields.url = { value: url, origin: "extracted", fragments: [f.id] };
   const missing: DocumentView["missing"] = fields.title ? [] : [{ field: "title", reason: "the page has no title; type one" }];
   return { status: missing.length ? "incomplete" : "ready", fields, missing };
+}
+
+function taskView(c: Clump, ctx: ComposeContext): TaskView & { timeDropped?: string } {
+  const page = c.ingredients.find((f) => f.kind === "page")!;
+  const d = documentView({ ...c, ingredients: [page] });
+  const fields: TaskView["fields"] = { ...d.fields }; const missing: TaskView["missing"] = [...d.missing];
+  // The date comes from the time pieces, read exactly as an event's start is (relative days, the person's time zone).
+  const typed = c.answers.due;
+  const read = compose(c.ingredients.filter((f) => f.kind === "time"), { ...ctx, answers: typeof typed === "string" && typed ? { start: typed } : {}, choose: c.choices });
+  const start = read.fields.start; let timeDropped: string | undefined;
+  if (start && typeof start.value === "string") {
+    fields.due = { value: start.value.slice(0, 10), origin: start.origin, fragments: start.fragments };
+    if (start.value.length > 10) timeDropped = shortTime(start.value).split(", ").pop();
+  } else if (!read.conflicts.some((x) => x.field === "start")) missing.push({ field: "due", reason: read.missing.find((m) => m.field === "start")?.reason ?? "no date could be read; type one" });
+  return { status: missing.length || read.conflicts.length ? "incomplete" : "ready", fields, missing, ...(timeDropped ? { timeDropped } : {}) };
+}
+
+function taskCandidate(c: Clump, k: TaskView, ctx: ComposeContext): Candidate {
+  const doc = documentCandidate({ ...c, ingredients: c.ingredients.filter((f) => f.kind === "page") }, { status: "ready", fields: { ...(k.fields.title ? { title: k.fields.title } : {}), ...(k.fields.url ? { url: k.fields.url } : {}) }, missing: [] }, ctx);
+  const properties: Record<string, unknown> = { ...doc.properties }; const meta: Record<string, FieldMeta> = { ...doc.fields };
+  const due = k.fields.due;
+  if (due) {
+    properties["due"] = due.value;
+    const byId = new Map(c.ingredients.map((f) => [f.id, f]));
+    const ev: Evidence[] = due.origin === "user" ? [{ locator: { kind: "user", value: "user:due" }, origin: "user" }] : due.fragments.flatMap((id) => byId.get(id)!.evidence.map((e): Evidence => ({ ...e, origin: due.origin, ...(byId.get(id)!.source ? { source: byId.get(id)!.source! } : {}) })));
+    meta["due"] = { confidence: due.origin === "user" ? 1 : Math.min(...due.fragments.map((id) => byId.get(id)!.confidence)), evidence: ev };
+  }
+  return { ...doc, type: "Task", properties, fields: meta };
 }
 
 function documentCandidate(c: Clump, d: DocumentView, ctx: ComposeContext): Candidate {

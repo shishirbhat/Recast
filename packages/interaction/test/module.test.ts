@@ -237,3 +237,25 @@ describe("a whole page, taken on its own", () => {
     expect(run([{ type: "capture", fragment: frag("person", "Maya Rao") }, { type: "openModule", id: "obj-1" }], on).errors).toEqual(["the module opens for a composition: press two things together first"]);
   });
 });
+
+describe("a page and a date, pressed together", () => {
+  const LIST: DestinationSpec = { id: "tasks-list", label: "Google Tasks", contract: CONTRACTS.googleTasksEntry };
+  const DOC: DestinationSpec = { id: "tasks", label: "Google Tasks", contract: CONTRACTS.googleTasks };
+  it("asks first (it turns the document into a task), then the module opens on a task with Tasks in the wheel, due that day", () => {
+    const on = command(initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: [...DESTS, DOC, LIST] })).s;
+    const asked = run([
+      { type: "capture", fragment: frag("page", "Q3 plan", { value: { name: "Q3 plan", url: "https://example.com/q3" }, confidence: 0.95 }) },
+      { type: "capture", fragment: frag("time", "Friday 5 PM"), carry: true },
+      { type: "approach", target: { kind: "object", id: "obj-1" } }, { type: "drop" },
+    ], on);
+    expect(asked.s.phase).toBe("confirmingMerge");
+    expect(moduleModel(asked.s, REGISTRY)).toMatchObject({ mode: "confirm", confirm: "Pressing these together this turns the document into a task." });
+    const { s } = run([{ type: "confirmMerge", yes: true }, { type: "settled" }], asked.s);
+    expect(moduleModel(s, REGISTRY)).toMatchObject({ mode: "composed", object: { view: { type: "Task", label: "Q3 plan" } }, choice: "tasks" });
+    const tasks = wheelEntries(s, "obj-1", REGISTRY).find((x) => x.key === "tasks")!;
+    expect(tasks).toMatchObject({ available: true, destinationId: "tasks-list" });
+    expect(tasks.options.find((o) => o.destination === "google-tasks.list")).toMatchObject({ available: false, reason: "Google Tasks takes documents (a page or a file); this is a task" });
+    const r = run([{ type: "openWheel" }, { type: "pickDestination", destinationId: "tasks-list" }], s);
+    expect(r.s.placement!.op!.dataMoved).toEqual([{ path: "Task.title", value: "Q3 plan" }, { path: "Task.url", value: "https://example.com/q3" }, { path: "Task.due", value: "2026-10-23" }]);
+  });
+});

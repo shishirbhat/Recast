@@ -52,13 +52,14 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
 // Off unless the person connects it from the popup: that grants access to http://localhost only, and the program then
 // asks the person to Allow this extension (a code shown in both places). The Google token never reaches the extension:
 // the program places the reviewed operation and answers with the outcome.
-export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks";
+export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks", LINK_TASKS_DUE = "link:google-tasks-due";
 const linkDest: DestinationSpec = { id: LINK_DEST, label: "Google Calendar", contract: CONTRACTS.googleCalendarEvent };
 const gmailDest: DestinationSpec = { id: LINK_GMAIL, label: "Gmail drafts", contract: CONTRACTS.gmailMessageDraft };
 const tasksDest: DestinationSpec = { id: LINK_TASKS, label: "Google Tasks", contract: CONTRACTS.googleTasks };
-const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS;
+const tasksDueDest: DestinationSpec = { id: LINK_TASKS_DUE, label: "Google Tasks", contract: CONTRACTS.googleTasksEntry };
+const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS || id === LINK_TASKS_DUE;
 /** What the program calls each destination. */
-const linkName = (id: string) => (id === LINK_GMAIL ? "gmail" : id === LINK_TASKS ? "tasks" : "calendar");
+const linkName = (id: string) => (id === LINK_GMAIL ? "gmail" : id === LINK_TASKS || id === LINK_TASKS_DUE ? "tasks" : "calendar");
 
 async function link(route: string, body: unknown = {}): Promise<{ status: number; body: Record<string, unknown> }> {
   const r = await fetch(`${LINK}/ext/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -79,7 +80,7 @@ async function syncLink() {
   const st = await linkStatus();
   await apply((s) => {
     const others = s.destinations.filter((d) => !isLink(d.id));
-    const mine = st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest] : [])] : [];
+    const mine = st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest, tasksDueDest] : [])] : [];
     return { state: { ...s, destinations: [...mine, ...others] } };
   });
   return st;

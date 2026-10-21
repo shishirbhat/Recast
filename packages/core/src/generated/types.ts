@@ -147,7 +147,17 @@ export interface Provenance {
 export interface CapabilityContract {
   destination: string;
   app: string;
-  targetKind: "Event" | "Task" | "Project" | "Message" | "Claim" | "ResearchPaper" | "Product" | "Calendar" | "Drafts";
+  targetKind:
+    | "Event"
+    | "Task"
+    | "Project"
+    | "Message"
+    | "Claim"
+    | "ResearchPaper"
+    | "Product"
+    | "Calendar"
+    | "Drafts"
+    | "TaskList";
   reliability: "native" | "official-api" | "structured-interface" | "deep-link" | "ui-automation" | "unsupported";
   accepts: {
     relationId: string;

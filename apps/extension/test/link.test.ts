@@ -49,7 +49,10 @@ beforeAll(async () => {
   link = createLinkServer({ clientId: "abc.apps.googleusercontent.com", clientSecret: "SECRET-x", port: 8787, tokenFile, fetch: fakeGoogle, tokenUrl: "https://google.test/token" });
   await new Promise<void>((r) => link.listen(8787, "127.0.0.1", r));
   const profile = path.join(root, "dist-test/.profile-link"); rmSync(profile, { recursive: true, force: true });
-  ctx = await chromium.launchPersistentContext(profile, { executablePath: chromiumPath(), headless: false, timezoneId: "Asia/Kolkata", viewport: { width: 1200, height: 800 },
+  ctx = await chromium.launchPersistentContext(profile, { executablePath: chromiumPath(), headless: false, timezoneId: "Asia/Kolkata",
+    // timezoneId covers pages only, and reaches the extension's service worker only sometimes (not under load). TZ sets the
+    // zone for every browser process, the worker included, so dates are read in Asia/Kolkata everywhere.
+    env: { ...process.env, TZ: "Asia/Kolkata" }, viewport: { width: 1200, height: 800 },
     args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, "--headless=new", "--no-first-run"] });
   sw = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent("serviceworker");
 });
@@ -96,7 +99,7 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await home.getByRole("button", { name: "Allow" }).click();
     await popup.getByRole("button", { name: "I allowed it" }).click();
     await until(async () => /Connected\. Placing in Calendar adds a real event/.test(await popup.locator("#link-text").innerText()));
-    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false]]);
+    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false], ["link:google-tasks-due", "Google Tasks", false]]);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Mail saves a real Gmail draft \(never sent\)/);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Tasks adds a page to Google Tasks/);
     await popup.close(); await home.close();
@@ -184,12 +187,37 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(await page.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")).toBe("true");
     await page.locator("recast-clay >> button[data-act=open]").click();
     await until(async () => (await stored()).phase === "previewing");
-    const review = await page.locator("recast-clay").evaluate((h) => h.shadowRoot!.textContent!);
-    expect(review).toContain("Q3 planning notes"); expect(review).toContain(`${base}/article.html`); expect(review).not.toMatch(/stand-in/i);
+    const shown = () => page.locator("recast-clay").evaluate((h) => h.shadowRoot!.querySelector(".rg")?.textContent ?? "");
+    await until(async () => (await shown()).includes(`${base}/article.html`));   // the tab redraws after the state changes
+    expect(await shown()).toContain("Q3 planning notes"); expect(await shown()).not.toMatch(/stand-in/i);
     expect(tasks.size).toBe(0);                                             // reviewing writes nothing
     await page.locator("recast-clay >> button", { hasText: "Add a task" }).click();
     await until(async () => (await stored()).phase === "succeeded");
     expect([...tasks.values()]).toEqual([{ title: "Q3 planning notes", notes: `${base}/article.html` }]);
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(tasks.size).toBe(0);
+  });
+
+  it("the page + a date is a task: Combine is asked; Google Tasks gets it due that day (the time is said not to be kept)", async () => {
+    const page = await openTab("article.html?utm_source=newsletter");
+    await page.locator("recast-clay >> button[data-act=takePage]").click();
+    await until(async () => (await stored()).phase === "composed");
+    const id = (await stored()).focus;
+    await altDrag(page, "#due", item(id));
+    await until(async () => (await stored()).phase === "confirmingMerge");
+    await page.locator("recast-clay >> button", { hasText: "Combine" }).click();
+    await until(async () => { const s = await stored(); return s.phase === "composed" && s.objects[id]?.ingredients.length === 2; });
+    await page.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-tasks");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await stored()).phase === "previewing");
+    const shown = () => page.locator("recast-clay").evaluate((h) => h.shadowRoot!.querySelector(".rg")?.textContent ?? "");
+    await until(async () => /Due/.test(await shown()));             // the tab redraws after the state changes
+    expect(await shown()).toContain("the time (5:00 PM) is not kept");
+    await page.locator("recast-clay >> button", { hasText: "Add a task" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect([...tasks.values()]).toEqual([{ title: "Q3 planning notes", notes: `${base}/article.html`, due: "2026-10-23T00:00:00.000Z" }]);
     await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await stored()).phase === "idle");
     expect(tasks.size).toBe(0);
