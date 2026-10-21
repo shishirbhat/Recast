@@ -3,7 +3,7 @@
 This small program runs **on your own computer** at `http://localhost:8787`. It lets you sign in with a Google account so Recast can add events to that account's calendar, and remove the events it added. Nothing is hosted or deployed.
 
 - **What it isn't:** the Recast Clay Desk artifact on claude.ai is a separate, static page running in claude.ai's sandbox. It cannot read your computer's files or this program's settings, and it does not use this sign-in. It keeps using its built-in stand-in calendar.
-- **What this program does today:** the sign-in, and a test event you can place, check and undo in the connected calendar (Part 5).
+- **What this program does today:** the sign-in; a test event you can place, check and undo (Part 5); and a door for the Recast browser extension, so placing in Calendar from the glass module adds a real event (Part 6).
 
 Use a **throwaway Google account**, not your personal one.
 
@@ -70,6 +70,15 @@ After you're connected, the page shows **Try it with a test event**. Open <https
 5. **Place with a lost answer.** The event really is added, but the page ignores Google's reply on purpose. It says it doesn't know whether it worked. Press **Check**: Google says it's there. Press **Place** once more: still one event. Then **Undo**.
 
 Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.json` (git-ignored), so Undo works after a restart.
+
+## Part 6: Let the Recast extension use it
+1. Follow `docs/REAL_TEST_PLAN.md`, section B. In short:
+   1. Build and load the extension.
+   2. Click **Connect the real Google Calendar** in its popup.
+   3. On this page, click **Allow** next to the matching code.
+2. **What the extension sees:** it never gets the Google permission. It sends the event you reviewed, and this program places it.
+3. **Who can use it:** only extensions you allowed here. Web pages can't use it.
+4. **What's stored:** the allowed extensions and the receipts (for Undo), in `.secrets/`.
 
 ## If something goes wrong
 | You see | Fix |

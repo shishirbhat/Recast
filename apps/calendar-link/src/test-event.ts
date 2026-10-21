@@ -40,7 +40,7 @@ export async function accessToken(a: CalendarAccess): Promise<string> {
 }
 
 /** Calls Google with the user's token. `dropAnswer` lets a write succeed for real, then pretends the reply never came. */
-function transport(a: CalendarAccess, dropAnswer = false): Transport {
+export function googleTransport(a: CalendarAccess, dropAnswer = false): Transport {
   return async (req) => {
     const r = await a.fetch(req.url, { method: req.method,
       headers: { authorization: `Bearer ${await accessToken(a)}`, ...(req.body !== undefined ? { "content-type": "application/json" } : {}), ...req.headers },
@@ -63,7 +63,7 @@ function testObject(now: number): SemanticObject {
 
 export function createTestEvents(a: CalendarAccess) {
   const iso = () => new Date(a.now()).toISOString();
-  const bridge = (dropAnswer = false) => new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, transport(a, dropAnswer));
+  const bridge = (dropAnswer = false) => new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a, dropAnswer));
   // The history log Undo checks against; rebuilt from the state file so Undo still works after a restart.
   const logFor = async (s: TestState) => { const log = new InMemoryEventLog(); if (s.receipt) await log.append({ at: s.receipt.at, kind: "commit", receipt: s.receipt }); return log; };
   const current = (): TestState => readState(a.stateFile) ?? { object: serialize(testObject(a.now())) };
@@ -98,7 +98,7 @@ export function createTestEvents(a: CalendarAccess) {
       if (!s) return { ok: false, text: "There is no test event to undo." };
       const o = deserialize(s.object); const b = bridge();
       if ((await b.reconcile(refOf(o))) === "absent") return { ok: true, text: "Nothing to undo: Google has no test event." };
-      await googleCalendarEvent.undo(refOf(o), { calendarId: "primary" }, async (req) => { const r = await transport(a)(req); if (r.status >= 300) throw new Error(`Google answered ${r.status}`); return r.json; });
+      await googleCalendarEvent.undo(refOf(o), { calendarId: "primary" }, async (req) => { const r = await googleTransport(a)(req); if (r.status >= 300) throw new Error(`Google answered ${r.status}`); return r.json; });
       writePrivate(a.stateFile, { object: s.object } satisfies TestState);
       return { ok: true, text: "Removed the test event from your calendar." };
     }

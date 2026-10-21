@@ -4,6 +4,7 @@
 // is kept in memory by the browser (never written to disk), and is gone when the browser closes.
 import { commandEvents, initialClumpState, reduceClump, type ClumpEffect, type ClumpState, type DestinationSpec } from "@recast/interaction";
 import type { ToBackground, ToTab } from "./clay-messages.js";
+import { CONTRACTS } from "@recast/bridges/src/contracts";
 
 const KEY = "clay", TABS = "clayTabs";
 
@@ -25,10 +26,15 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
     const before = await load(); const r = mutate(before);
     await save(r.state); await broadcast(r.state);
     // An effect (commit, undo, reconcile) runs in the tab that holds the destination: only that page can write to itself.
-    for (const e of r.effects ?? []) { const [tabId] = e.destinationId.split(":"); await tell(Number(tabId), { type: "effect", effect: e }); }
+    // The real Google Calendar is not a tab: its effects go to the Recast program on this computer (not awaited here,
+    // since the answer comes back through this same queue).
+    for (const e of r.effects ?? []) {
+      if (e.destinationId === LINK_DEST) { void viaLink(e); continue; }
+      const [tabId] = e.destinationId.split(":"); await tell(Number(tabId), { type: "effect", effect: e });
+    }
     // Chosen in the module while looking at another tab: bring the destination's tab to the front, so the review and the
     // write happen where the person can see them.
-    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing")) {
+    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && r.state.placement.destinationId !== LINK_DEST) {
       const tabId = Number(r.state.placement.destinationId.split(":")[0]);
       try { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); } catch { /* the tab is gone; the review still shows */ }
     }
@@ -36,6 +42,63 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
   });
   queue = run.catch(() => undefined);
   return run;
+}
+
+// ---- the real Google Calendar, through the Recast program on this computer (apps/calendar-link) ---------------------------
+// Off unless the person connects it from the popup: that grants access to http://localhost only, and the program then
+// asks the person to Allow this extension (a code shown in both places). The Google token never reaches the extension:
+// the program places the reviewed operation and answers with the outcome.
+export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar";
+const linkDest: DestinationSpec = { id: LINK_DEST, label: "Google Calendar", contract: CONTRACTS.googleCalendarEvent };
+
+async function link(route: string, body: unknown = {}): Promise<{ status: number; body: Record<string, unknown> }> {
+  const r = await fetch(`${LINK}/ext/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return { status: r.status, body: (await r.json().catch(() => ({}))) as Record<string, unknown> };
+}
+/** Whether the program is reachable, this extension is allowed there, and a Google account is connected. */
+async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string }> {
+  if (!(await chrome.permissions.contains({ origins: LINK_ORIGINS }))) return { state: "off" };
+  try {
+    const r = await link("pair");
+    if (r.status === 202) return { state: "pending", code: String(r.body["code"]) };
+    if (r.status !== 200) return { state: "unreachable" };
+    return { state: r.body["connected"] ? "ready" : "not-signed-in" };
+  } catch { return { state: "unreachable" }; }
+}
+/** Real Google Calendar first in the list (the wheel takes the first live destination of a kind), only while ready. */
+async function syncLink() {
+  const st = await linkStatus();
+  await apply((s) => {
+    const others = s.destinations.filter((d) => d.id !== LINK_DEST);
+    return { state: { ...s, destinations: st.state === "ready" ? [linkDest, ...others] : others } };
+  });
+  return st;
+}
+async function viaLink(e: ClumpEffect) {
+  const at = () => Date.now();
+  if (e.type === "commit") {
+    const opId = e.op.opId;
+    let r: Awaited<ReturnType<typeof link>>;
+    try { r = await link("commit", { op: e.op, consent: e.consent }); }
+    // The request may or may not have reached Google: never assumed to have failed, checked before any retry.
+    catch { await apply((s) => reduceClump(s, { type: "outcomeUnknown", opId, message: "The Recast program on this computer did not answer", now: at() })); return; }
+    const b = r.body;
+    if (b["outcome"] === "done") await apply((s) => reduceClump(s, { type: "committed", receipt: b["receipt"] as never, undoable: (b["receipt"] as { reversible: boolean }).reversible, now: at() }));
+    else if (b["outcome"] === "unknown") await apply((s) => reduceClump(s, { type: "outcomeUnknown", opId, message: String(b["message"]), now: at() }));
+    else await apply((s) => reduceClump(s, { type: "commitFailed", opId, message: String(b["message"] ?? b["error"] ?? `answered ${r.status}`), now: at() }));
+  } else if (e.type === "reconcile") {
+    // If the check itself cannot be made, the placement stays "unknown": the person can press Check again.
+    try {
+      const r = await link("reconcile", { op: e.op });
+      if (r.status === 200) await apply((s) => reduceClump(s, { type: "reconciled", opId: e.op.opId, found: !!r.body["found"], ...(r.body["receipt"] ? { receipt: r.body["receipt"] as never } : {}), now: at() }));
+    } catch { /* stays unknown */ }
+  } else if (e.type === "undo") {
+    const opId = e.receipt.opId;
+    try {
+      const r = await link("undo", { receipt: e.receipt });
+      await apply((s) => reduceClump(s, r.body["outcome"] === "undone" ? { type: "undone", opId, now: at() } : { type: "undoFailed", opId, message: String(r.body["message"] ?? r.body["error"] ?? `answered ${r.status}`), now: at() }));
+    } catch { await apply((s) => reduceClump(s, { type: "undoFailed", opId, message: "The Recast program on this computer did not answer; the event may still be there", now: at() })); }
+  }
 }
 
 /**
@@ -75,6 +138,7 @@ chrome.runtime.onMessage.addListener((msg: ToBackground, sender, reply) => {
   // A content script can only run the command for its own tab (sender.tab), never name another one.
   if (msg.type === "command" && tabId !== undefined) { void invoke(tabId).then(() => reply({ ok: true })); return true; }
   if (msg.type === "invoke" && fromExtensionPage(sender)) { void invoke(msg.tabId).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) })); return true; }
+  if (msg.type === "link" && fromExtensionPage(sender)) { void syncLink().then(reply, () => reply({ state: "unreachable" })); return true; }
   if (msg.type === "activate" && fromExtensionPage(sender)) { void activate(msg.tabId).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) })); return true; }
   return false;
 });
@@ -103,5 +167,8 @@ async function forget(tabId: number) {
 chrome.tabs.onRemoved.addListener((tabId) => { void forget(tabId); });
 chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.status === "loading") void forget(tabId); });
 
+// The program may have been started, stopped or signed in since: look again whenever the worker starts.
+void syncLink();
+
 // For tests and for debugging from the worker's console.
-(globalThis as unknown as { recastClay: unknown }).recastClay = { load, activate, invoke, tabs };
+(globalThis as unknown as { recastClay: unknown }).recastClay = { load, activate, invoke, tabs, syncLink };

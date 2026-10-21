@@ -14,6 +14,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { createTestEvents, type Outcome } from "./test-event.js";
+import { createExtensionApi } from "./extension-api.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 export interface LinkConfig {
@@ -44,6 +45,8 @@ export function createLinkServer(c: LinkConfig): Server {
   const redirectUri = `http://localhost:${c.port}/oauth/callback`;
   const tests = createTestEvents({ clientId: c.clientId, clientSecret: c.clientSecret, tokenFile: c.tokenFile, tokenUrl, fetch: f, now,
     stateFile: path.join(path.dirname(c.tokenFile), "test-event.json") });
+  const ext = createExtensionApi({ clientId: c.clientId, clientSecret: c.clientSecret, tokenFile: c.tokenFile, tokenUrl, fetch: f, now,
+    stateFile: path.join(path.dirname(c.tokenFile), "test-event.json"), dir: path.dirname(c.tokenFile) });
   let last: Outcome | null = null;   // the result of the last test button, shown once on the page
   const pending = new Map<string, { verifier: string; at: number }>();   // state → PKCE verifier, one use each
 
@@ -63,6 +66,8 @@ export function createLinkServer(c: LinkConfig): Server {
 .ghost{background:transparent;color:#191714;box-shadow:inset 0 0 0 1px #d6d0c4}.ok{color:#15803d;font-weight:600}.muted{color:#5d574e;font-size:14px}code{font-size:14px}
 @media (prefers-color-scheme:dark){body{background:#141311;color:#f5f1e8}.box{background:#1d1b19;border-color:#34302b}button,.btn{background:#f5f1e8;color:#141311}.ghost{background:transparent;color:#f5f1e8;box-shadow:inset 0 0 0 1px #46413a}.muted{color:#b0aba3}.ok{color:#4ade80}}</style></head><body>${body}</body></html>`;
 
+  const json = (res: ServerResponse, status: number, body: unknown) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" }); res.end(JSON.stringify(body)); };
+
   async function handle(req: IncomingMessage, res: ServerResponse) {
     // Only this computer, by name: a web page elsewhere cannot point a DNS name at 127.0.0.1 and talk to this server.
     const host = req.headers.host ?? "";
@@ -79,12 +84,17 @@ ${shown ? `<p class="${shown.ok ? "ok" : ""}" role="status">${esc(shown.text)}</
 <div>${btn("place", "Place a test event")}${btn("undo", "Undo", true)}${btn("check", "Check", true)}</div>
 <p class="muted" style="margin-top:12px">Safety tests: press <b>Place</b> twice (you should still get one event), or <b>Place with a lost answer</b>, which really adds it but ignores Google's reply, then press <b>Check</b>.</p>
 <div>${btn("lost", "Place with a lost answer", true)}</div></div>` : "";
+      const form = (act: string, origin: string, label: string, ghost = false) => `<form method="post" action="/extension/${act}" style="display:inline-block;margin:4px 4px 0 0"><input type="hidden" name="origin" value="${esc(origin)}"><button${ghost ? ' class="ghost"' : ""} type="submit">${label}</button></form>`;
+      const pend = ext.pending(), paired = ext.allowed();
+      const extBox = pend.length || paired.length ? `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Recast browser extension</h2>
+${pend.map((p) => `<p><b>An extension asks to place events in this calendar.</b> Allow it only if the code matches the one in Recast's popup: <b style="font-size:20px;letter-spacing:.1em">${esc(p.code)}</b></p><div>${form("allow", p.origin, "Allow")}${form("refuse", p.origin, "Refuse", true)}</div>`).join("")}
+${paired.map((o) => `<p class="muted">Allowed: <code>${esc(o.replace("chrome-extension://", "").slice(0, 8))}…</code></p>${form("remove", o, "Remove", true)}`).join("")}</div>` : "";
       return send(res, 200, page("Recast: connect Google Calendar", `<h1>Connect Google Calendar</h1>
 <p class="muted">This page runs only on your computer. It lets Recast add events to, and remove its own events from, one Google account's calendar.</p>
 <div class="box">${t
         ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create and delete calendar events.${t.refresh_token ? "" : " (No long-lived permission was granted: connect again if it stops working.)"}</p>
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${testBox}`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start") {
@@ -128,6 +138,15 @@ ${shown ? `<p class="${shown.ok ? "ok" : ""}" role="status">${esc(shown.text)}</
       return send(res, 200, page("Connected", `<h1 class="ok">Connected</h1><p>Recast can now add events to this Google account's calendar. You can close this tab.</p><p><a href="/">Back</a></p>`), clear);
     }
 
+    // The Recast extension: JSON in, JSON out; only an extension the person allowed here (see extension-api.ts).
+    const extRoute = /^\/ext\/(pair|status|commit|reconcile|undo)$/.exec(url.pathname)?.[1];
+    if (req.method === "POST" && extRoute) {
+      let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 256_000) return json(res, 413, { error: "too large" }); }
+      let body: Record<string, unknown> = {}; try { body = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return json(res, 400, { error: "not JSON" }); }
+      const r = await ext.handle(extRoute, req.headers.origin, body);
+      return json(res, r.status, r.body);
+    }
+
     // Forms on this page only (Origin checked), so another site cannot press these buttons for you.
     const origin = req.headers.origin;
     const site = req.headers["sec-fetch-site"];
@@ -137,6 +156,15 @@ ${shown ? `<p class="${shown.ok ? "ok" : ""}" role="status">${esc(shown.text)}</
       if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
       try { last = await (action === "place" ? tests.place() : action === "lost" ? tests.placeLosingAnswer() : action === "check" ? tests.check() : tests.undo()); }
       catch (e) { last = { ok: false, text: (e as Error).message }; }
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
+    const decision = /^\/extension\/(allow|refuse|remove)$/.exec(url.pathname)?.[1];
+    if (req.method === "POST" && decision) {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) break; }
+      const origin = new URLSearchParams(raw).get("origin") ?? "";
+      if (decision === "remove") ext.forget(origin); else ext.decide(origin, decision === "allow");
       res.writeHead(303, { location: "/" }); return res.end();
     }
 

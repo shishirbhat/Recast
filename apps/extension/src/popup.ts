@@ -92,5 +92,24 @@ async function main() {
     $("root").appendChild(el("p", { cls: "empty", text: "Browser pages, the extension store and some protected pages can't be read. Try an ordinary web page." }));
   }
 }
+// The real Google Calendar, through the Recast program on this computer. Access to http://localhost is asked for only
+// when the person presses Connect; the program then shows the same code and asks them to Allow this extension.
+type LinkState = { state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string };
+function showLink(l: LinkState) {
+  const text = $("link-text"), btn = $<HTMLButtonElement>("link-btn");
+  text.replaceChildren(); btn.hidden = false;
+  if (l.state === "off") { text.textContent = "Calendar placements go to a local stand-in."; btn.textContent = "Connect the real Google Calendar"; }
+  else if (l.state === "unreachable") { text.textContent = "The Recast program isn't running on this computer. In a terminal: pnpm --filter @recast/calendar-link run start"; btn.textContent = "Try again"; }
+  else if (l.state === "pending") { text.append("Open http://localhost:8787 and press Allow if it shows this code: ", el("span", { cls: "code", text: l.code ?? "" })); btn.textContent = "I allowed it"; }
+  else if (l.state === "not-signed-in") { text.textContent = "Allowed. Now sign in with Google on http://localhost:8787."; btn.textContent = "Check again"; }
+  else { text.textContent = "Connected. Placing in Calendar adds a real event, with Undo."; btn.hidden = true; }
+}
+async function linkFlow(ask: boolean) {
+  if (ask && !(await chrome.permissions.request({ origins: ["http://localhost/*"] }))) return showLink({ state: "off" });
+  showLink(await chrome.runtime.sendMessage({ type: "link" }) as LinkState);
+}
+$("link-btn").addEventListener("click", () => { void linkFlow(true); });
+void chrome.permissions.contains({ origins: ["http://localhost/*"] }).then((has) => { if (has) void linkFlow(false); });
+
 addEventListener("keydown", (e) => { if (e.key === "Escape") window.close(); });
 void main();

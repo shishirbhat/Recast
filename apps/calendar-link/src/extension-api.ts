@@ -1,0 +1,101 @@
+// The Recast extension's door to the connected Google Calendar. The extension never sees the Google token: it sends the
+// operation it wants (already reviewed and consented to by the person in the glass module), and this server places it
+// through the same bridge as the test event, keeps the receipt, and answers with the outcome.
+//
+// Who may knock: only a browser extension the person approved on http://localhost:8787 (pairing). Web pages cannot
+// forge an Origin of chrome-extension://…, and an unapproved extension gets a pending request the person must Allow.
+import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import path from "node:path";
+import { randomInt } from "node:crypto";
+import { commit, InMemoryEventLog, OutcomeUnknownError, undo, type Consent, type Operation, type Receipt } from "@recast/core";
+import { calendarEventId, DuplicateError, googleCalendarEvent, HttpBridge } from "@recast/bridges";
+import { type CalendarAccess, googleTransport } from "./test-event.js";
+import { readToken } from "./server.js";
+
+interface Pairing { allowed: string[]; pending: { origin: string; code: string; at: number }[] }
+const EXT_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
+const PENDING_TTL_MS = 10 * 60 * 1000;
+
+const readJson = <T>(file: string, fallback: T): T => { try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return fallback; } };
+const writePrivate = (file: string, data: unknown) => {
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  writeFileSync(file, JSON.stringify(data), { mode: 0o600 }); chmodSync(file, 0o600);
+};
+
+export type ExtReply = { status: number; body: Record<string, unknown> };
+
+export function createExtensionApi(a: CalendarAccess & { dir: string }) {
+  const pairFile = path.join(a.dir, "extensions.json"), receiptFile = path.join(a.dir, "receipts.json");
+  const pairing = (): Pairing => {
+    const p = readJson<Pairing>(pairFile, { allowed: [], pending: [] });
+    return { allowed: p.allowed, pending: p.pending.filter((x) => a.now() - x.at < PENDING_TTL_MS) };
+  };
+  const receipts = () => readJson<Receipt[]>(receiptFile, []);
+  const keep = (r: Receipt) => writePrivate(receiptFile, [...receipts().filter((x) => x.receiptId !== r.receiptId), r].slice(-200));
+  const bridge = () => new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
+  const iso = () => new Date(a.now()).toISOString();
+
+  return {
+    isAllowed: (origin: string | undefined) => !!origin && pairing().allowed.includes(origin),
+    pending: () => pairing().pending,
+    allowed: () => pairing().allowed,
+    /** From the page (same-origin form): the person allows or refuses a pending extension. */
+    decide(origin: string, allow: boolean) {
+      const p = pairing(); if (!p.pending.some((x) => x.origin === origin)) return;
+      writePrivate(pairFile, { allowed: allow ? [...new Set([...p.allowed, origin])] : p.allowed, pending: p.pending.filter((x) => x.origin !== origin) });
+    },
+    forget(origin: string) { const p = pairing(); writePrivate(pairFile, { ...p, allowed: p.allowed.filter((x) => x !== origin) }); },
+
+    async handle(route: string, origin: string | undefined, body: Record<string, unknown>): Promise<ExtReply> {
+      if (!origin || !EXT_ORIGIN.test(origin)) return { status: 403, body: { error: "only a browser extension may use this" } };
+      if (route === "pair") {
+        const p = pairing();
+        if (p.allowed.includes(origin)) return { status: 200, body: { paired: true, connected: !!readToken(a.tokenFile) } };
+        const existing = p.pending.find((x) => x.origin === origin);
+        const code = existing?.code ?? String(randomInt(1000, 10000));
+        if (!existing) writePrivate(pairFile, { ...p, pending: [...p.pending, { origin, code, at: a.now() }].slice(-5) });
+        return { status: 202, body: { paired: false, code } };
+      }
+      if (!pairing().allowed.includes(origin)) return { status: 403, body: { error: "not paired: allow this extension on the Recast page first" } };
+      if (route === "status") return { status: 200, body: { paired: true, connected: !!readToken(a.tokenFile) } };
+      if (!readToken(a.tokenFile)) return { status: 409, body: { outcome: "failed", message: "Google Calendar is not connected. Sign in on the Recast page first." } };
+
+      if (route === "commit") {
+        const op = body.op as Operation, consent = body.consent as Consent;
+        const b = bridge(); const log = new InMemoryEventLog();
+        try {
+          const receipt = await commit(op, consent, { bridge: b, log, now: iso });
+          keep(receipt);
+          return { status: 200, body: { outcome: "done", receipt } };
+        } catch (e) {
+          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: "Google Calendar did not answer; it may have been added" } };
+          if (e instanceof DuplicateError) return { status: 200, body: { outcome: "failed", message: "It is already in your Google Calendar, so it was not added a second time" } };
+          return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } };
+        }
+      }
+      if (route === "reconcile") {
+        // Ask Google about the event this operation would have made. Found: it was placed, and gets a receipt for Undo.
+        const op = body.op as Operation;
+        const ref = JSON.stringify({ id: calendarEventId(op.proposal.object.id, "primary") });
+        const found = (await bridge().reconcile(ref)) === "present";
+        if (!found) return { status: 200, body: { found: false } };
+        const p = op.proposal;
+        const receipt: Receipt = { receiptId: `rc-${op.opId}`, opId: op.opId, at: iso(), status: "done", objectId: p.object.id, destination: p.destination.destination, relationId: p.relationId, effect: p.effect, reversible: p.reversible, bridgeRef: ref };
+        keep(receipt);
+        return { status: 200, body: { found: true, receipt } };
+      }
+      if (route === "undo") {
+        // Only a receipt this server issued can be undone: the extension names it, the stored copy is used.
+        const id = (body.receipt as Receipt | undefined)?.receiptId;
+        const stored = receipts().find((r) => r.receiptId === id);
+        if (!stored) return { status: 200, body: { outcome: "failed", message: "That placement is not one this computer made" } };
+        const log = new InMemoryEventLog(); await log.append({ at: stored.at, kind: "commit", receipt: stored });
+        try { await undo(stored, { bridge: bridge(), log, now: iso }); }
+        catch (e) { return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } }; }
+        writePrivate(receiptFile, receipts().filter((r) => r.receiptId !== id));
+        return { status: 200, body: { outcome: "undone" } };
+      }
+      return { status: 404, body: { error: "unknown route" } };
+    },
+  };
+}

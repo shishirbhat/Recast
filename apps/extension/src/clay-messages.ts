@@ -12,7 +12,9 @@ export type ToBackground =
   /** From the toolbar popup only: the same as the keyboard command, for the tab the person is looking at. */
   | { type: "invoke"; tabId: number }
   /** Control pressed twice in a tab Recast is already in: the Recast command for that tab. */
-  | { type: "command" };
+  | { type: "command" }
+  /** From the popup only: look at (and, once allowed, use) the Recast program on this computer for the real Google Calendar. */
+  | { type: "link" };
 
 export type ToTab =
   | { type: "state"; state: ClumpState }

@@ -12,7 +12,10 @@ describe("production manifest: least privilege", () => {
     expect(manifest.manifest_version).toBe(3);
     // storage is for chrome.storage.session only (the objects you carry between tabs; memory, cleared with the browser).
     expect(manifest.permissions.sort()).toEqual(["activeTab", "scripting", "storage"]);
-    for (const k of ["host_permissions", "optional_permissions", "optional_host_permissions", "content_scripts", "web_accessible_resources", "externally_connectable", "declarative_net_request", "devtools_page", "omnibox", "side_panel"]) {
+    // The one optional host: the Recast program on this computer (real Google Calendar), asked for only when the person
+    // presses Connect in the popup. No site on the web.
+    expect(manifest.optional_host_permissions).toEqual(["http://localhost/*"]);
+    for (const k of ["host_permissions", "optional_permissions", "content_scripts", "web_accessible_resources", "externally_connectable", "declarative_net_request", "devtools_page", "omnibox", "side_panel"]) {
       expect(manifest[k], k).toBeUndefined();
     }
     expect(manifest.background).toEqual({ service_worker: "background.js" });
@@ -23,21 +26,26 @@ describe("production manifest: least privilege", () => {
     const csp: string = manifest.content_security_policy.extension_pages;
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("script-src 'self'");
-    expect(csp).toContain("connect-src 'none'");
-    expect(csp).not.toMatch(/unsafe-eval|unsafe-inline|https?:/);
+    // The only network the extension can reach: the Recast program on this computer.
+    expect(csp).toMatch(/connect-src http:\/\/localhost:8787(;|$)/);
+    expect(csp).not.toMatch(/unsafe-eval|unsafe-inline|https:/);
+    expect(csp.replace("connect-src http://localhost:8787", "")).not.toMatch(/http:/);
   });
-  it("the test build differs from production only by 127.0.0.1 host permission", () => {
+  it("the test build differs from production only by host permissions for local test servers", () => {
     const t = JSON.parse(read("dist-test/manifest.json"));
     const { host_permissions, ...rest } = t;
-    expect(host_permissions).toEqual(["http://127.0.0.1/*"]);
+    expect(host_permissions).toEqual(["http://127.0.0.1/*", "http://localhost/*"]);
     expect(rest).toEqual(manifest);
   });
 });
 
 describe("built code: no dynamic execution, no network, no storage, no unsafe HTML", () => {
-  it("the service worker keeps state only in session storage and talks to no network", () => {
+  it("the service worker keeps state only in session storage and talks only to the Recast program on this computer", () => {
     const src = read("dist/background.js");
-    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /\bfetch\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(local|sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.create/, /chrome\.downloads/]) {
+    // One fetch, to http://localhost:8787/ext/…, which only works after the person granted localhost and allowed the extension there.
+    expect(read("src/background.ts").match(/\bfetch\s*\([^,]*/g)).toEqual(["fetch(`${LINK}/ext/${route}`"]);
+    expect(read("src/background.ts")).toContain('LINK = "http://localhost:8787"');
+    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(local|sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.create/, /chrome\.downloads/]) {
       expect(src, String(pat)).not.toMatch(pat);
     }
     expect(src).toContain("chrome.storage.session");
@@ -59,9 +67,10 @@ describe("built code: no dynamic execution, no network, no storage, no unsafe HT
       }
     });
   }
-  it("the page script sends nothing; the popup sends exactly one message, the Recast command for the tab it was opened on", () => {
+  it("the page script sends nothing; the popup sends two messages: the Recast command for its tab, and the calendar link check", () => {
     expect(read("dist/page.js")).not.toMatch(/chrome\.runtime\.sendMessage/);
-    expect(read("src/popup.ts").match(/chrome\.runtime\.sendMessage\([^)]*\)/g)).toEqual(['chrome.runtime.sendMessage({ type: "invoke", tabId })']);
+    expect(read("src/popup.ts").match(/chrome\.runtime\.sendMessage\([^)]*\)/g)).toEqual(['chrome.runtime.sendMessage({ type: "invoke", tabId })', 'chrome.runtime.sendMessage({ type: "link" })']);
+    expect(read("src/background.ts")).toMatch(/msg\.type === "link" && fromExtensionPage\(sender\)/);
   });
   it("the worker accepts the command and activation only from the extension's own pages, never from a content script", () => {
     const src = read("src/background.ts");

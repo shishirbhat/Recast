@@ -27,3 +27,7 @@ summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); 
 .empty { padding: var(--sp-4) 0; color: var(--text-muted); font-size: var(--fs-sm); }
 .related-head { margin: var(--sp-4) 0 var(--sp-1); color: var(--text-muted); font-size: var(--fs-xs); }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+.link { margin: 0 var(--sp-4) var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line-soft); border-radius: var(--r-input); }
+.link h2 { margin: 0; font-size: var(--fs-sm); }
+.link p { margin: var(--sp-1) 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
+.link .code { font: 600 var(--fs-lg)/1 var(--font-mono); letter-spacing: .1em; color: var(--text); }
