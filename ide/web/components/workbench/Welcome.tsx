@@ -40,6 +40,7 @@ export function WelcomePage({ state, commands, recent, attention, showOnStartup,
             {row("search.inFiles")}
             {row("terminal.runTask")}
             {row("agent.focus", "Ask an Agent…")}
+            {row("relay.coordination", "Open Coordination")}
             {row("relay.newTask", "New Relay Task…")}
             {row("relay.invite")}
           </section>

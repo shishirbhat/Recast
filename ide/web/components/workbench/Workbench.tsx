@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, Blocks, Bot, CircleAlert, Columns2, CircleUserRound, Files, FlaskConical, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
+import { Bell, Blocks, Bot, CircleAlert, Columns2, Network, CircleUserRound, Files, FlaskConical, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
 import { EditorView } from "@codemirror/view";
 import { selectAll, selectLine, cursorDocStart, cursorDocEnd, moveLineUp, moveLineDown, copyLineUp, copyLineDown, deleteLine, insertBlankLine, toggleComment, toggleBlockComment, indentMore, indentLess, indentSelection, addCursorAbove, addCursorBelow, cursorMatchingBracket, transposeChars, deleteTrailingWhitespace } from "@codemirror/commands";
 import { openSearchPanel, selectNextOccurrence, selectSelectionMatches, findNext, findPrevious } from "@codemirror/search";
@@ -39,6 +39,7 @@ import type { TerminalAvailability } from "./Terminal";
 import { AttentionButton, attentionOf } from "./Attention";
 import { TestingView, TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { WelcomePage } from "./Welcome";
+import { CoordinationView } from "./CoordinationView";
 import { BottomPanel, Section, SearchView, SourceControlView, ViewHeader, problemsOf } from "./Views";
 import type { PanelTab } from "./Views";
 
@@ -50,8 +51,9 @@ type View = "explorer" | "search" | "scm" | "run" | "testing" | "extensions" | "
 
 /** Editor tabs that aren't files: diffs ("diff:…") and the Welcome page. */
 const WELCOME = "welcome:";
-const isFileTab = (t: string) => !t.startsWith("diff:") && t !== WELCOME;
-const tabLabel = (t: string) => (t === WELCOME ? "Welcome" : parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!);
+const COORD = "relay:coordination";
+const isFileTab = (t: string) => !t.startsWith("diff:") && t !== WELCOME && t !== COORD;
+const tabLabel = (t: string) => (t === WELCOME ? "Welcome" : t === COORD ? "Coordination" : parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!);
 type RightTab = "agent" | CoordTab | "records";
 
 interface Layout {
@@ -233,6 +235,7 @@ const OPEN_VIEWS: [string, string, string][] = [
   ["Panel", "Change Impact", "panel.impact"],
   ["Panel", "Activity", "panel.activity"],
   ["Relay", "Agents", "panel.agents"],
+  ["Relay", "Coordination", "relay.coordination"],
   ["Relay", "Tasks", "relay.tasks"],
   ["Relay", "Contracts", "relay.contracts"],
   ["Relay", "Investigations and Decisions", "relay.records"],
@@ -249,7 +252,7 @@ const MENUS: [string, MenuEntry[]][] = [
   ["File", ["file.newFile", "file.newFolder", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
   ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "search.replaceInFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
   ["Selection", ["selection.all", "selection.expand", "selection.shrink", "-", "edit.copyLineUp", "edit.copyLineDown", "edit.moveLineUp", "edit.moveLineDown", "edit.duplicateSelection", "-", "selection.cursorAbove", "selection.cursorBelow", "selection.cursorsLineEnds", "selection.nextOccurrence", "selection.allOccurrences", "-", "selection.line"]],
-  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "editor.split", "editor.moveToOtherGroup", "editor.focusGroup1", "editor.focusGroup2", "editor.closeGroup", "-", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
+  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "editor.split", "editor.moveToOtherGroup", "editor.focusGroup1", "editor.focusGroup2", "editor.closeGroup", "-", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "relay.coordination", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
   ["Go", ["go.back", "go.forward", "-", "go.switchEditor", "go.nextEditor", "go.previousEditor", "-", "palette.files", "go.symbol", "go.workspaceSymbol", "-", "go.line", "go.bracket", "-", "go.nextProblem", "go.previousProblem"]],
   ["Run", ["run.debug", "run.withoutDebugging", "-", "run.toggleBreakpoint", "run.addConfiguration", "-", "tests.runAll", "tests.rerunFailed", "tests.stop", "-", "relay.runActiveTask"]],
   ["Terminal", ["terminal.new", "terminal.toggle", "-", "terminal.runTask", "terminal.runActiveFile", "terminal.runSelection"]],
@@ -1080,6 +1083,7 @@ export function Workbench() {
         }),
       { id: "theme.toggle", category: "Preferences", title: theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme", keybinding: "Mod+Alt+T", run: () => setTheme((t) => (t === "dark" ? "light" : "dark")) },
       { id: "agent.focus", category: "Relay", title: "Ask the Agent…", keywords: ["chat", "code with agent", "claude"], keybinding: "Mod+I", when: () => viewOnly, run: () => (showRight("agent"), setAgentNonce((n) => n + 1)) },
+      { id: "relay.coordination", category: "Relay", title: "Show Coordination", keywords: ["agents", "tasks", "dependencies", "blockers", "integrate", "overview", "board"], keybinding: "Mod+Alt+C", run: () => (setTabs((t) => (t.includes(COORD) ? t : [...t, COORD])), setActive(COORD)) },
       { id: "relay.tasks", category: "Relay", title: "Show Tasks", run: () => (showRight("tasks"), setSelectedTask(null)) },
       { id: "relay.contracts", category: "Relay", title: "Show Contracts", run: () => (showRight("contracts"), setSelectedTask(null)) },
       { id: "relay.records", category: "Relay", title: "Show Investigations and Decisions", keywords: ["bug", "debug", "investigation", "decision", "adr", "knowledge"], run: () => showRight("records") },
@@ -1215,7 +1219,9 @@ export function Workbench() {
             </div>
           </div>
         )}
-        {gActive === WELCOME ? (
+        {gActive === COORD ? (
+          <CoordinationView tick={events.length} members={s.members} role={me!.role} onOpenTask={showTask} onOpenFile={open} onOpenDiff={(task, p) => openDiff({ kind: "task", task, path: p })} notify={notify} onNewTask={() => (showRight("tasks"), setSelectedTask(null), setNewTaskNonce((n) => n + 1))} />
+        ) : gActive === WELCOME ? (
           <WelcomePage state={s} commands={commands} recent={recent} attention={attention} showOnStartup={welcomeOnStartup} setShowOnStartup={setWelcomeOnStartup} onOpen={open} onTask={showTask} />
         ) : gDiff ? (
           <DiffView spec={gDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onResolved={() => (closeTab(gActive!, gi), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
@@ -1333,6 +1339,19 @@ export function Workbench() {
               </button>
             );
           })}
+          <button
+            role="tab"
+            aria-selected={active === COORD}
+            aria-label="Coordination"
+            title={tip("Coordination: what's running, blocked and safe to integrate", "relay.coordination")}
+            data-testid="activity-coordination"
+            onClick={() => execute(commands.find((c) => c.id === "relay.coordination")!)}
+            className={`relative grid h-11 w-12 place-items-center transition-colors ${active === COORD ? "text-ink" : "text-faint hover:text-ink-2"}`}
+          >
+            {active === COORD && <span className="absolute inset-y-2.5 left-0 w-[2px] bg-accent" />}
+            <Network size={20} strokeWidth={1.5} />
+            {runningAgents > 0 && <span className="tnum absolute bottom-1.5 right-1.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-accent-soft px-[3px] text-[10px] font-semibold text-accent-ink ring-1 ring-accent-line">{runningAgents}</span>}
+          </button>
           {(() => {
             const on = fit.secondary && layout.rightTab !== "agent";
             return (

@@ -51,13 +51,13 @@ export const STATUS: Record<CoordStatus, { label: string; tone: "run" | "wait" |
   cancelled: { label: "Cancelled", tone: "idle", engine: "cancelled" },
   done: { label: "Done", tone: "idle", engine: "completed" },
 };
-const TONE: Record<string, { dot: string; text: string }> = {
-  run: { dot: "bg-accent", text: "text-ink" },
-  wait: { dot: "bg-faint", text: "text-muted" },
-  need: { dot: "bg-warn", text: "text-warn" },
-  bad: { dot: "bg-danger", text: "text-danger" },
-  good: { dot: "bg-ok", text: "text-ok" },
-  idle: { dot: "bg-rule-strong", text: "text-muted" },
+const TONE: Record<string, { dot: string; text: string; color: string }> = {
+  run: { dot: "bg-accent", text: "text-ink", color: "var(--accent)" },
+  wait: { dot: "bg-faint", text: "text-muted", color: "var(--faint)" },
+  need: { dot: "bg-warn", text: "text-warn", color: "var(--warn)" },
+  bad: { dot: "bg-danger", text: "text-danger", color: "var(--danger)" },
+  good: { dot: "bg-ok", text: "text-ok", color: "var(--ok)" },
+  idle: { dot: "bg-rule-strong", text: "text-muted", color: "var(--rule-strong)" },
 };
 
 export function StatusLabel({ status }: { status: CoordStatus }) {
@@ -306,7 +306,7 @@ function TaskRow({ t, canEdit, busy, owner, onOpenTask, onOpenFile, onOpenDiff, 
             {t.run.last.text.slice(0, 80)} · {ago(t.run.last.at)}
           </span>
         )}
-        <Stages stages={t.stages} />
+        {["running", "blocked", "review_required"].includes(t.state) && <Stages stages={t.stages} />}
       </div>
       {(t.files.length > 0 || t.waitingOn.length > 0 || t.blocks.length > 0 || t.partners.length > 0) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted">
@@ -382,7 +382,7 @@ function DependencyGraph({ tasks, onOpen }: { tasks: CoordTask[]; onOpen: (id: s
   for (const id of involved) d(id);
   const cols = new Map<number, string[]>();
   for (const id of involved) cols.set(depth.get(id)!, [...(cols.get(depth.get(id)!) ?? []), id]);
-  const W = 168;
+  const W = 220;
   const H = 30;
   const GX = 64;
   const GY = 14;
@@ -421,12 +421,12 @@ function DependencyGraph({ tasks, onOpen }: { tasks: CoordTask[]; onOpen: (id: s
             return (
               <g key={id} transform={`translate(${p.x},${p.y})`} onClick={() => onOpen(id)} className="cursor-pointer" role="button" aria-label={`${id}: ${STATUS[t.status].label}`}>
                 <rect width={W} height={H} rx={4} fill="var(--panel-2)" stroke="var(--rule-strong)" />
-                <circle cx={12} cy={H / 2} r={3.5} className={TONE[STATUS[t.status].tone]!.dot.replace("bg-", "fill-")} />
+                <circle cx={12} cy={H / 2} r={3.5} fill={TONE[STATUS[t.status].tone]!.color} />
                 <text x={22} y={H / 2 + 4} fontSize={11.5} fontFamily="var(--font-mono)" fill="var(--ink)">
                   {id}
                 </text>
                 <text x={W - 8} y={H / 2 + 4} fontSize={10.5} textAnchor="end" fill="var(--muted)">
-                  {STATUS[t.status].label.length > 14 ? `${STATUS[t.status].label.slice(0, 13)}…` : STATUS[t.status].label}
+                  {STATUS[t.status].label}
                 </text>
               </g>
             );
