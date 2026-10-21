@@ -13,6 +13,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import path from "node:path";
+import { createTestEvents, type Outcome } from "./test-event.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 export interface LinkConfig {
@@ -41,6 +42,9 @@ export function createLinkServer(c: LinkConfig): Server {
   const revokeUrl = c.revokeUrl ?? "https://oauth2.googleapis.com/revoke";
   const f = c.fetch ?? fetch; const now = c.now ?? Date.now;
   const redirectUri = `http://localhost:${c.port}/oauth/callback`;
+  const tests = createTestEvents({ clientId: c.clientId, clientSecret: c.clientSecret, tokenFile: c.tokenFile, tokenUrl, fetch: f, now,
+    stateFile: path.join(path.dirname(c.tokenFile), "test-event.json") });
+  let last: Outcome | null = null;   // the result of the last test button, shown once on the page
   const pending = new Map<string, { verifier: string; at: number }>();   // state → PKCE verifier, one use each
 
   const send = (res: ServerResponse, status: number, html: string, extra: Record<string, string> = {}) => {
@@ -66,12 +70,20 @@ export function createLinkServer(c: LinkConfig): Server {
 
     if (req.method === "GET" && url.pathname === "/") {
       const t = readToken(c.tokenFile);
+      const shown = last; last = null;
+      const btn = (action: string, label: string, ghost = false) => `<form method="post" action="/test/${action}" style="display:inline-block;margin:4px 4px 0 0"><button${ghost ? ' class="ghost"' : ""} type="submit">${label}</button></form>`;
+      const testBox = t ? `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Try it with a test event</h2>
+<p class="muted">Adds “Recast test event” tomorrow 10:00–11:00 to this account's calendar. Open Google Calendar alongside to watch.</p>
+${shown ? `<p class="${shown.ok ? "ok" : ""}" role="status">${esc(shown.text)}</p>` : ""}
+<div>${btn("place", "Place a test event")}${btn("undo", "Undo", true)}${btn("check", "Check", true)}</div>
+<p class="muted" style="margin-top:12px">Safety tests: press <b>Place</b> twice (you should still get one event), or <b>Place with a lost answer</b>, which really adds it but ignores Google's reply, then press <b>Check</b>.</p>
+<div>${btn("lost", "Place with a lost answer", true)}</div></div>` : "";
       return send(res, 200, page("Recast: connect Google Calendar", `<h1>Connect Google Calendar</h1>
 <p class="muted">This page runs only on your computer. It lets Recast add events to, and remove its own events from, one Google account's calendar.</p>
 <div class="box">${t
         ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create and delete calendar events.${t.refresh_token ? "" : " (No long-lived permission was granted: connect again if it stops working.)"}</p>
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${testBox}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start") {
@@ -115,10 +127,19 @@ export function createLinkServer(c: LinkConfig): Server {
       return send(res, 200, page("Connected", `<h1 class="ok">Connected</h1><p>Recast can now add events to this Google account's calendar. You can close this tab.</p><p><a href="/">Back</a></p>`), clear);
     }
 
+    // Forms on this page only (Origin checked), so another site cannot press these buttons for you.
+    const origin = req.headers.origin;
+    const foreign = !!origin && origin !== `http://localhost:${c.port}` && origin !== `http://127.0.0.1:${c.port}`;
+    const action = /^\/test\/(place|lost|check|undo)$/.exec(url.pathname)?.[1];
+    if (req.method === "POST" && action) {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      try { last = await (action === "place" ? tests.place() : action === "lost" ? tests.placeLosingAnswer() : action === "check" ? tests.check() : tests.undo()); }
+      catch (e) { last = { ok: false, text: (e as Error).message }; }
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
     if (req.method === "POST" && url.pathname === "/disconnect") {
-      // A form on this page only (Origin checked), so another site cannot disconnect you.
-      const origin = req.headers.origin;
-      if (origin && origin !== `http://localhost:${c.port}` && origin !== `http://127.0.0.1:${c.port}`) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
       const t = readToken(c.tokenFile);
       if (t) { try { await f(revokeUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token: t.refresh_token ?? t.access_token }) }); } catch { /* removed locally regardless */ } }
       if (existsSync(c.tokenFile)) rmSync(c.tokenFile);

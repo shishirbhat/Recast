@@ -118,6 +118,12 @@ importers:
 
   apps/calendar-link:
     dependencies:
+      '@recast/bridges':
+        specifier: workspace:*
+        version: link:../../packages/bridges
+      '@recast/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       tsx:
         specifier: ^4.19.0
         version: 4.23.15

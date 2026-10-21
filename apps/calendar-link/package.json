@@ -10,6 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@recast/bridges": "workspace:*",
+    "@recast/core": "workspace:*",
     "tsx": "^4.19.0"
   },
   "devDependencies": {

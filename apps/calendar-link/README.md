@@ -3,7 +3,7 @@
 This small program runs **on your own computer** at `http://localhost:8787`. It lets you sign in with a Google account so Recast can add events to that account's calendar, and remove the events it added. Nothing is hosted or deployed.
 
 - **What it isn't:** the Recast Clay Desk artifact on claude.ai is a separate, static page running in claude.ai's sandbox. It cannot read your computer's files or this program's settings, and it does not use this sign-in. It keeps using its built-in stand-in calendar.
-- **What this program does today:** it only does the sign-in. Placing events with it is the next step.
+- **What this program does today:** the sign-in, and a test event you can place, check and undo in the connected calendar (Part 5).
 
 Use a **throwaway Google account**, not your personal one.
 
@@ -60,6 +60,16 @@ pnpm --filter @recast/calendar-link run start
 The permission is saved in `apps/calendar-link/.secrets/google-token.json`. It's readable only by your user and ignored by git. Don't share it.
 
 **To undo everything:** open <http://localhost:8787/> and click **Disconnect and remove the permission**. This revokes it at Google and deletes the file. You can also remove access at <https://myaccount.google.com/permissions>.
+
+## Part 5: Place a test event (real Google Calendar)
+After you're connected, the page shows **Try it with a test event**. Open <https://calendar.google.com/> for the throwaway account in another tab, and look at tomorrow.
+1. **Place a test event.** "Recast test event" appears tomorrow 10:00–11:00.
+2. **Place again.** The page says it's already there. Your calendar still shows **one** event.
+3. **Check.** The page asks Google and says the event is there.
+4. **Undo.** The event disappears. **Check** now says it's gone.
+5. **Place with a lost answer.** The event really is added, but the page ignores Google's reply on purpose. It says it doesn't know whether it worked. Press **Check**: Google says it's there. Press **Place** once more: still one event. Then **Undo**.
+
+Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.json` (git-ignored), so Undo works after a restart.
 
 ## If something goes wrong
 | You see | Fix |
