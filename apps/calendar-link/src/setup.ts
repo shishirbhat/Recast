@@ -35,4 +35,4 @@ while (secret.length < 10) {
 }
 writeFileSync(envFile, `GOOGLE_CLIENT_ID=${id}\nGOOGLE_CLIENT_SECRET=${secret}\nPORT=8787\n`, { mode: 0o600 }); chmodSync(envFile, 0o600);
 rl.close();
-console.log(`Saved. Now start the sign-in page with:\n  pnpm --filter @recast/calendar-link start`);
+console.log(`Saved. Now start the sign-in page with:\n  pnpm --filter @recast/calendar-link run start`);

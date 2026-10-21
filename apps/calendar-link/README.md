@@ -35,7 +35,7 @@ In a terminal, in your Recast folder:
 ```
 git pull
 pnpm install
-pnpm --filter @recast/calendar-link setup
+pnpm --filter @recast/calendar-link run setup
 ```
 It asks for the **Client ID**, then the **Client secret**. Paste each one and press Enter. The secret stays hidden while you paste it.
 
@@ -43,7 +43,7 @@ It saves them in `apps/calendar-link/.env`, which only you can read and git igno
 
 ## Part 3: Start the sign-in page
 ```
-pnpm --filter @recast/calendar-link start
+pnpm --filter @recast/calendar-link run start
 ```
 - **If it worked,** you'll see: `Recast Google Calendar sign-in is running. Open http://localhost:8787/ in your browser.`
 - **If something is wrong,** it says what. For example, "GOOGLE_CLIENT_ID is missing in .env".
