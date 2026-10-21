@@ -111,7 +111,8 @@ describe("pressing pieces into one object (mouse)", () => {
     const a = await centre(page, "#giftcard"); await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(a.x + 10, a.y + 10, { steps: 3 });
     await atRest(page, objectSel(target)); const b = await centre(page, objectSel(target)); await page.mouse.move(b.x, b.y, { steps: 6 });
     expect(await page.locator("#hint").innerText()).toMatch(/^Won't combine: Gift card · ₹2,000 can be carried and placed on its own/);
-    expect(await page.locator(objectSel(target)).getAttribute("class")).toContain("mode-refuses");
+    // The class is redrawn on the next animation frame, after the hint: wait for it rather than read it once.
+    await page.waitForFunction((sel) => document.querySelector(sel)?.classList.contains("mode-refuses"), objectSel(target), { timeout: 2000 });
     await page.mouse.up(); await settled(page);
     const s = await st(page); expect(s.desk).toHaveLength(2); expect(s.objects[target].ingredients).toHaveLength(2);
     await ctx.close();
