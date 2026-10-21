@@ -40,8 +40,16 @@ Deliberately disabled (with reasons): debugging (no debug adapter), installing e
 ## State
 
 - `relay` at `a5613f5` before this work: calm editor-first IDE, ten workflows validated end to end. See `README.md` (its status table is dated 2026-10-19 and lags).
-- Phase 1–4: not started in a pushed commit yet (an earlier attempt was lost; see log).
+- **Phase 1 done** (see log). Phases 2–4 next.
+
+### Conventions introduced (keep using them)
+
+- `Command.native`: CodeMirror's keymap already binds the chord; the registry shows the binding but never dispatches it from the keyboard (no double-firing). `Command.editorKey`: the shortcut only applies while the editor has focus (VS Code's `editorTextFocus`). `Command.checked()`: toggle state for menu check marks.
+- Chords are matched by physical key (`e.code`) with modifiers in canonical order, so `Shift+Alt+F` works on every layout and platform.
+- Quick picks: `showPick({ placeholder, items })` in the Workbench opens the palette in pick mode (`CommandPalette` `QuickPick`).
+- Editing commands that change text go through CodeMirror transactions, so they reach collaborators as ordinary shared edits. Whole-document rewrites (Format Document) use `applyMinimalEdits` (`lib/format.ts`) so unchanged text keeps its CRDT identity, carets and authorship.
 
 ## Log
 
 - 2026-10-21 — An earlier session began the VS Code parity work (minimap, Prettier, editor commands, palette prefixes, Replace in Files, Welcome/Settings/Extensions surfaces) but never committed; the container is gone and the work was lost. Restarted from `a5613f5`. This file created.
+- 2026-10-21 — **Phase 1 (editor).** Minimap (`@replit/codemirror-minimap`), indent guides (`@replit/codemirror-indentation-markers`), render whitespace (none/trailing/all), line-number toggle, all persisted in editor prefs and in Settings. Language registry `lib/languages.ts` and per-file Change Language Mode (status bar click). Format Document / Format Selection with Prettier 3 in the browser (`lib/format.ts`; plugins loaded per language; aborts if someone typed meanwhile). ~45 VS Code editor commands in the registry (clipboard, find/replace/next/previous, comments, line move/copy/delete/insert, indent/outdent/reindent, join, transpose, case transforms, sort, duplicate, expand/shrink selection, multi-cursor, fold/unfold, go to bracket/top/end, indentation conversion, indentation quick pick from the status bar); custom ones in `lib/editorCommands.ts`. Fixed: Ctrl+L in the editor reached the browser; chord matching depended on modifier order; palette Enter could hit a stale selection right after typing. Tests: `test/e2e/vscode.e2e.test.ts` (5); full suite 76 unit + 29 E2E passing.

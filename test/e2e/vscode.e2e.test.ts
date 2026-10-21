@@ -1,0 +1,131 @@
+/**
+ * VS Code parity in a real browser: editor surfaces (minimap, indent guides, line numbers), Format Document through
+ * Prettier as minimal shared edits, editor chords that must run exactly once, language and indentation quick picks.
+ * Skipped unless RELAY_E2E=1.
+ */
+import { after, afterEach, before, test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { chromium } from "playwright-core";
+import type { Browser, BrowserContext, Page } from "playwright-core";
+import { testServer } from "../collab-helpers.ts";
+import type { RelayServer } from "../../src/server/server.ts";
+import { SHOP_FILES, seed } from "./fixture.ts";
+
+const RUN = process.env.RELAY_E2E === "1";
+const STATIC = resolve(import.meta.dirname, "../../ide/web/out");
+const CHROME = process.env.CHROME_PATH ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const skip = !RUN || !existsSync(STATIC);
+
+let server: RelayServer;
+let browser: Browser;
+const contexts: BrowserContext[] = [];
+
+before(async () => {
+  if (skip) return;
+  server = (await testServer({ ...SHOP_FILES, "src/messy.js": "const a = {b:1,\n      c:'two'}\nexport default a\n" }, { staticDir: STATIC })).server;
+  seed(server);
+  browser = await chromium.launch({ executablePath: CHROME });
+});
+afterEach(async () => {
+  for (const c of contexts.splice(0)) await c.close();
+});
+after(async () => {
+  if (skip) return;
+  await browser.close();
+  await server.close();
+});
+
+async function signIn(role: "owner" | "editor" | "viewer"): Promise<Page> {
+  const { token } = server.members.invite(`${role} ${Math.random().toString(36).slice(2, 6)}`, role);
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 860 } });
+  contexts.push(ctx);
+  const page = await ctx.newPage();
+  await page.goto(`${server.url}/join#${token}`);
+  await page.waitForURL(`${server.url}/`);
+  await page.getByTestId("empty-editor").waitFor();
+  return page;
+}
+async function openFile(p: Page, path: string) {
+  if ((await p.getByTestId("activity-explorer").getAttribute("aria-selected")) !== "true") await p.getByTestId("activity-explorer").click();
+  await p.getByTestId(`file-${path}`).click();
+  await p.locator(".cm-content").waitFor();
+  await p.waitForFunction(() => (document.querySelector(".cm-content")?.textContent ?? "").length > 0);
+}
+const docText = (p: Page) => p.locator(".cm-content").evaluate((el) => [...el.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n"));
+async function runCommand(p: Page, title: string) {
+  await p.keyboard.press("Control+Shift+P");
+  await p.keyboard.type(title);
+  await p.keyboard.press("Enter");
+}
+
+test("editor surfaces: minimap, indent guides and line numbers, each toggled from the palette", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/ui.js");
+  await p.locator(".cm-minimap-gutter").waitFor();
+  assert.ok((await p.locator(".cm-indent-markers").count()) > 0, "indent guides drawn");
+  assert.ok((await p.locator(".cm-lineNumbers").count()) > 0);
+  await runCommand(p, "Toggle Minimap");
+  await p.locator(".cm-minimap-gutter").waitFor({ state: "detached" });
+  await runCommand(p, "Toggle Line Numbers");
+  await p.locator(".cm-lineNumbers").waitFor({ state: "detached" });
+  await runCommand(p, "Toggle Line Numbers");
+  await runCommand(p, "Toggle Minimap");
+  await p.locator(".cm-minimap-gutter").waitFor();
+});
+
+test("Format Document runs Prettier and writes the result into the shared document", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/messy.js");
+  await p.locator(".cm-content").click();
+  await p.keyboard.press("Shift+Alt+F");
+  await p.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes('c: "two"'));
+  assert.equal(await docText(p), 'const a = { b: 1, c: "two" };\nexport default a;\n');
+  // The shared document (what every collaborator and the disk flush see) has the formatted text.
+  for (let i = 0; i < 50 && !server.docs.get("src/messy.js")?.text.toString().includes('c: "two"'); i++) await p.waitForTimeout(100);
+  assert.equal(server.docs.get("src/messy.js")?.text.toString(), 'const a = { b: 1, c: "two" };\nexport default a;\n');
+});
+
+test("editor chords run once: Alt+Down moves a line by one, Ctrl+L selects the line, Ctrl+/ comments", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/server.js");
+  const before = (await docText(p)).split("\n");
+  await p.locator(".cm-line").first().click();
+  await p.keyboard.press("Alt+ArrowDown");
+  const moved = (await docText(p)).split("\n");
+  assert.equal(moved[1], before[0], "moved down exactly one line");
+  assert.equal(moved[0], before[1]);
+  await p.keyboard.press("Alt+ArrowUp");
+  assert.deepEqual((await docText(p)).split("\n"), before);
+  await p.keyboard.press("Control+L");
+  const sel = await p.evaluate(() => getSelection()?.toString() ?? "");
+  assert.ok(sel.includes(before[0]!.slice(0, 20)), "Ctrl+L selected the line instead of reaching the browser");
+  await p.locator(".cm-line").nth(1).click();
+  await p.keyboard.press("Control+/");
+  assert.equal((await docText(p)).split("\n")[1], `// ${before[1]}`, "commented once, not toggled twice");
+});
+
+test("language and indentation quick picks from the status bar", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/ui.js");
+  assert.equal(await p.getByTestId("status-language").textContent(), "JavaScript");
+  await p.getByTestId("status-language").click();
+  await p.getByTestId("palette-input").fill("plain");
+  await p.keyboard.press("Enter");
+  await p.getByTestId("status-language").filter({ hasText: "Plain Text" }).waitFor({ timeout: 3000 });
+  await p.getByTestId("status-indent").click();
+  await p.getByTestId("palette-input").fill("4");
+  await p.keyboard.press("Enter");
+  await p.getByTestId("status-indent").filter({ hasText: "Spaces: 4" }).waitFor({ timeout: 3000 });
+});
+
+test("viewers see editing commands disabled with a reason", { skip }, async () => {
+  const p = await signIn("viewer");
+  await openFile(p, "src/ui.js");
+  await p.keyboard.press("Control+Shift+P");
+  await p.keyboard.type("Format Document");
+  const row = p.getByRole("option").filter({ hasText: "Format Document" });
+  assert.equal(await row.getAttribute("aria-disabled"), "true");
+  assert.match((await row.textContent()) ?? "", /Viewers can't change the project/);
+});

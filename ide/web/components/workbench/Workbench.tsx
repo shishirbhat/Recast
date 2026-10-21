@@ -4,8 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { AnimatePresence, motion } from "motion/react";
 import { Bell, Blocks, Bot, CircleAlert, CircleUserRound, Files, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
 import { EditorView } from "@codemirror/view";
-import { selectAll, selectLine, selectParentSyntax, cursorDocStart } from "@codemirror/commands";
-import { openSearchPanel, gotoLine, selectNextOccurrence } from "@codemirror/search";
+import { selectAll, selectLine, cursorDocStart, cursorDocEnd, moveLineUp, moveLineDown, copyLineUp, copyLineDown, deleteLine, insertBlankLine, toggleComment, toggleBlockComment, indentMore, indentLess, indentSelection, addCursorAbove, addCursorBelow, cursorMatchingBracket, transposeChars, deleteTrailingWhitespace } from "@codemirror/commands";
+import { openSearchPanel, gotoLine, selectNextOccurrence, selectSelectionMatches, findNext, findPrevious } from "@codemirror/search";
+import { foldCode, unfoldCode, foldAll, unfoldAll } from "@codemirror/language";
+import { LANGUAGES, languageById, languageIdFor } from "@/lib/languages";
+import { applyMinimalEdits, formatText, formatUnavailable } from "@/lib/format";
+import * as ec from "@/lib/editorCommands";
 import { api, ApiError } from "@/lib/api";
 import { DocSession } from "@/lib/collab";
 import { availability, chordOf, execute, isMac, keyLabel, matches } from "@/lib/commands";
@@ -26,6 +30,7 @@ import { DiffView, diffTabId, diffTabLabel, parseDiffTab } from "./DiffView";
 import type { DiffSpec } from "./DiffView";
 import { RecordsPanel } from "./Records";
 import { CommandPalette } from "./CommandPalette";
+import type { QuickPick } from "./CommandPalette";
 import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
@@ -177,8 +182,6 @@ function useSessionState(session: DocSession | null) {
   return session ? { status: session.status, pending: session.pendingOffline, peers: session.peers() } : { status: "offline" as const, pending: false, peers: [] };
 }
 
-const LANG: Record<string, string> = { js: "JavaScript", mjs: "JavaScript", cjs: "JavaScript", jsx: "JavaScript JSX", ts: "TypeScript", tsx: "TypeScript JSX", json: "JSON", md: "Markdown", css: "CSS", html: "HTML", py: "Python" };
-
 interface Note {
   id: number;
   msg: string;
@@ -328,7 +331,10 @@ export function Workbench() {
   const [recent, setRecent] = useState<string[]>([]);
   const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(null);
   const [cursor, setCursor] = useState<[number, number]>([1, 1]);
-  const [palette, setPalette] = useState<{ open: boolean; mode: "files" | "commands" }>({ open: false, mode: "files" });
+  const [palette, setPalette] = useState<{ open: boolean; mode: "files" | "commands" | "pick" }>({ open: false, mode: "files" });
+  const [pick, setPick] = useState<QuickPick | null>(null);
+  /** Language mode chosen for a file with Change Language Mode; otherwise the extension decides. */
+  const [langs, setLangs] = useState<Record<string, string>>({});
   const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [newTaskNonce, setNewTaskNonce] = useState(0);
@@ -586,6 +592,41 @@ export function Workbench() {
     }
   };
   const activeTask: Task | undefined = state?.tasks.find((t) => t.id === selectedTask);
+  const activeLang = activePath ? (langs[activePath] ?? languageIdFor(activePath)) : null;
+  const showPick = useCallback((p: QuickPick) => (setPick(p), setPalette({ open: true, mode: "pick" })), []);
+  const format = async (selection: boolean) => {
+    const v = editorView.current;
+    if (!v || !activePath || !activeLang) return;
+    const text = v.state.doc.toString();
+    const sel = v.state.selection.main;
+    try {
+      const out = await formatText(text, activeLang, prefs.tabSize, selection ? { from: sel.from, to: sel.to } : undefined);
+      // Someone may have typed while Prettier ran; formatting a stale copy would undo their edit.
+      if (v.state.doc.toString() !== text) return notify("The file changed while it was being formatted. Run Format Document again.", "attention");
+      const n = applyMinimalEdits(v, out);
+      notify(n ? `Formatted ${activePath.split("/").pop()} (${n} ${n === 1 ? "change" : "changes"}).` : `${activePath.split("/").pop()} is already formatted.`);
+    } catch (e) {
+      notify(`Couldn't format ${activePath.split("/").pop()}: ${String(e instanceof Error ? e.message : e).split("\n")[0]}`, "danger");
+    }
+  };
+  const clipboard = async (op: "copy" | "cut" | "paste") => {
+    const v = editorView.current;
+    if (!v) return;
+    try {
+      if (op === "paste") {
+        const text = await navigator.clipboard.readText();
+        v.dispatch(v.state.replaceSelection(text), { userEvent: "input.paste" });
+      } else {
+        // Like VS Code, an empty selection copies or cuts the whole line.
+        const ranges = v.state.selection.ranges.map((r) => (r.empty ? { from: v.state.doc.lineAt(r.head).from, to: Math.min(v.state.doc.length, v.state.doc.lineAt(r.head).to + 1) } : r));
+        await navigator.clipboard.writeText(ranges.map((r) => v.state.sliceDoc(r.from, r.to)).join(v.state.lineBreak));
+        if (op === "cut" && !v.state.readOnly) v.dispatch({ changes: ranges.map((r) => ({ from: r.from, to: r.to })), userEvent: "delete.cut" });
+      }
+      v.focus();
+    } catch {
+      notify(`The browser didn't allow ${op === "paste" ? "reading" : "writing"} the clipboard from a menu. Use ${keyLabel(op === "paste" ? "Mod+V" : op === "cut" ? "Mod+X" : "Mod+C")} in the editor.`, "attention");
+    }
+  };
 
   /* ---------------- the command registry ---------------- */
   /* ---------------- what needs a person, and what this file belongs to ---------------- */
@@ -632,6 +673,7 @@ export function Workbench() {
     const viewOnly = canEdit ? null : "Viewers can't change the project";
     const ownerOnly = isOwner ? null : "Only project owners can do this";
     const term = () => (termCaps?.available ? null : (termCaps?.reason ?? "Checking terminal availability…"));
+    const needWrite = () => needEditor() ?? viewOnly;
     const list: Command[] = [
       { id: "palette.files", category: "Go", title: "Go to File…", keywords: ["open", "quick open"], keybinding: "Mod+P", run: () => setPalette({ open: true, mode: "files" }) },
       { id: "palette.commands", category: "View", title: "Command Palette…", keywords: ["commands"], keybinding: "Mod+Shift+P", run: () => setPalette({ open: true, mode: "commands" }) },
@@ -639,16 +681,85 @@ export function Workbench() {
       { id: "file.save", category: "File", title: "Save", keywords: ["write", "flush"], keybinding: "Mod+S", when: () => (!activePath ? "Open a file first" : viewOnly), run: () => activePath && void api("POST", "/save", { path: activePath }).then(() => notify(`Saved ${activePath} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")) },
       { id: "view.closeEditor", category: "View", title: "Close Editor", keybinding: "Mod+Alt+W", when: () => (active ? null : "No editor is open"), run: () => active && closeTab(active) },
       { id: "view.closeAllEditors", category: "View", title: "Close All Editors", when: () => (tabs.length ? null : "No editors are open"), run: () => [...tabs].forEach(closeTab) },
-      { id: "edit.undo", category: "Edit", title: "Undo (your edits)", keybinding: "Mod+Z", when: needEditor, run: onEditor(() => session?.undoManager.undo()) },
-      { id: "edit.redo", category: "Edit", title: "Redo (your edits)", keybinding: "Mod+Shift+Z", when: needEditor, run: onEditor(() => session?.undoManager.redo()) },
-      { id: "edit.find", category: "Edit", title: "Find in File", keybinding: "Mod+F", when: needEditor, run: onEditor((v) => openSearchPanel(v)) },
+      { id: "edit.undo", category: "Edit", title: "Undo (your edits)", keybinding: "Mod+Z", native: true, when: needEditor, run: onEditor(() => session?.undoManager.undo()) },
+      { id: "edit.redo", category: "Edit", title: "Redo (your edits)", keybinding: "Mod+Shift+Z", native: true, when: needEditor, run: onEditor(() => session?.undoManager.redo()) },
+      { id: "edit.cut", category: "Edit", title: "Cut", keybinding: "Mod+X", native: true, when: needWrite, run: () => void clipboard("cut") },
+      { id: "edit.copy", category: "Edit", title: "Copy", keybinding: "Mod+C", native: true, when: needEditor, run: () => void clipboard("copy") },
+      { id: "edit.paste", category: "Edit", title: "Paste", keybinding: "Mod+V", native: true, when: needWrite, run: () => void clipboard("paste") },
+      { id: "edit.find", category: "Edit", title: "Find", keybinding: "Mod+F", native: true, when: needEditor, run: onEditor((v) => openSearchPanel(v)) },
+      { id: "edit.replace", editorKey: true, category: "Edit", title: "Replace", keybinding: "Mod+H", when: needWrite, run: onEditor((v) => (openSearchPanel(v), requestAnimationFrame(() => v.dom.querySelector<HTMLInputElement>(".cm-search input[name=replace]")?.focus()))) },
+      { id: "edit.findNext", category: "Edit", title: "Find Next", keybinding: "F3", native: true, when: needEditor, run: onEditor((v) => findNext(v)) },
+      { id: "edit.findPrevious", category: "Edit", title: "Find Previous", keybinding: "Shift+F3", native: true, when: needEditor, run: onEditor((v) => findPrevious(v)) },
+      { id: "edit.toggleLineComment", category: "Edit", title: "Toggle Line Comment", keybinding: "Mod+/", native: true, when: needWrite, run: onEditor((v) => toggleComment(v)) },
+      { id: "edit.toggleBlockComment", category: "Edit", title: "Toggle Block Comment", keybinding: "Shift+Alt+A", native: true, when: needWrite, run: onEditor((v) => toggleBlockComment(v)) },
+      { id: "edit.formatDocument", editorKey: true, category: "Edit", title: "Format Document", keywords: ["prettier", "beautify"], keybinding: "Shift+Alt+F", when: () => needWrite() ?? formatUnavailable(activeLang!), run: () => void format(false) },
+      { id: "edit.formatSelection", category: "Edit", title: "Format Selection", keywords: ["prettier"], when: () => needWrite() ?? formatUnavailable(activeLang!) ?? (editorView.current?.state.selection.main.empty ? "Select some code first" : null), run: () => void format(true) },
+      { id: "edit.trimWhitespace", category: "Edit", title: "Trim Trailing Whitespace", when: needWrite, run: onEditor((v) => deleteTrailingWhitespace(v)) },
+      { id: "edit.deleteLine", category: "Edit", title: "Delete Line", keybinding: "Mod+Shift+K", native: true, when: needWrite, run: onEditor((v) => deleteLine(v)) },
+      { id: "edit.insertLineBelow", category: "Edit", title: "Insert Line Below", keybinding: "Mod+Enter", native: true, when: needWrite, run: onEditor((v) => insertBlankLine(v)) },
+      { id: "edit.insertLineAbove", editorKey: true, category: "Edit", title: "Insert Line Above", keybinding: "Mod+Shift+Enter", when: needWrite, run: onEditor(ec.insertLineAbove) },
+      { id: "edit.moveLineUp", category: "Edit", title: "Move Line Up", keybinding: "Alt+ArrowUp", native: true, when: needWrite, run: onEditor((v) => moveLineUp(v)) },
+      { id: "edit.moveLineDown", category: "Edit", title: "Move Line Down", keybinding: "Alt+ArrowDown", native: true, when: needWrite, run: onEditor((v) => moveLineDown(v)) },
+      { id: "edit.copyLineUp", category: "Edit", title: "Copy Line Up", keybinding: "Shift+Alt+ArrowUp", native: true, when: needWrite, run: onEditor((v) => copyLineUp(v)) },
+      { id: "edit.copyLineDown", category: "Edit", title: "Copy Line Down", keybinding: "Shift+Alt+ArrowDown", native: true, when: needWrite, run: onEditor((v) => copyLineDown(v)) },
+      { id: "edit.duplicateSelection", category: "Edit", title: "Duplicate Selection", when: needWrite, run: onEditor(ec.duplicateSelection) },
+      { id: "edit.indent", category: "Edit", title: "Indent Line", keybinding: "Mod+]", native: true, when: needWrite, run: onEditor((v) => indentMore(v)) },
+      { id: "edit.outdent", category: "Edit", title: "Outdent Line", keybinding: "Mod+[", native: true, when: needWrite, run: onEditor((v) => indentLess(v)) },
+      { id: "edit.reindent", category: "Edit", title: "Reindent Lines", when: needWrite, run: onEditor((v) => indentSelection(v)) },
+      { id: "edit.joinLines", category: "Edit", title: "Join Lines", when: needWrite, run: onEditor(ec.joinLines) },
+      { id: "edit.transpose", category: "Edit", title: "Transpose Characters", when: needWrite, run: onEditor((v) => transposeChars(v)) },
+      { id: "edit.upper", category: "Edit", title: "Transform to Uppercase", when: needWrite, run: onEditor(ec.toUpperCase) },
+      { id: "edit.lower", category: "Edit", title: "Transform to Lowercase", when: needWrite, run: onEditor(ec.toLowerCase) },
+      { id: "edit.title", category: "Edit", title: "Transform to Title Case", when: needWrite, run: onEditor(ec.toTitleCase) },
+      { id: "edit.sortAsc", category: "Edit", title: "Sort Lines Ascending", when: needWrite, run: onEditor(ec.sortLinesAscending) },
+      { id: "edit.sortDesc", category: "Edit", title: "Sort Lines Descending", when: needWrite, run: onEditor(ec.sortLinesDescending) },
       { id: "search.inFiles", category: "Search", title: "Find in Files", keywords: ["grep", "project search"], keybinding: "Mod+Shift+F", run: () => (set({ view: "search", sidebar: true }), setLastOpened("sidebar"), setSearchNonce((n) => n + 1)) },
-      { id: "selection.all", category: "Selection", title: "Select All", keybinding: "Mod+A", when: needEditor, run: onEditor((v) => selectAll(v)) },
-      { id: "selection.line", category: "Selection", title: "Select Line", keybinding: "Mod+L", when: needEditor, run: onEditor((v) => selectLine(v)) },
-      { id: "selection.expand", category: "Selection", title: "Expand Selection", keybinding: "Mod+Shift+ArrowUp", when: needEditor, run: onEditor((v) => selectParentSyntax(v)) },
-      { id: "selection.nextOccurrence", category: "Selection", title: "Add Next Occurrence", keybinding: "Mod+D", when: needEditor, run: onEditor((v) => selectNextOccurrence(v)) },
+      { id: "selection.all", category: "Selection", title: "Select All", keybinding: "Mod+A", native: true, when: needEditor, run: onEditor((v) => selectAll(v)) },
+      { id: "selection.line", editorKey: true, category: "Selection", title: "Select Line", keybinding: "Mod+L", when: needEditor, run: onEditor((v) => selectLine(v)) },
+      { id: "selection.expand", editorKey: true, category: "Selection", title: "Expand Selection", keybinding: "Shift+Alt+ArrowRight", when: needEditor, run: onEditor(ec.expandSelection) },
+      { id: "selection.shrink", editorKey: true, category: "Selection", title: "Shrink Selection", keybinding: "Shift+Alt+ArrowLeft", when: needEditor, run: onEditor(ec.shrinkSelection) },
+      { id: "selection.cursorAbove", category: "Selection", title: "Add Cursor Above", keybinding: "Mod+Alt+ArrowUp", native: true, when: needEditor, run: onEditor((v) => addCursorAbove(v)) },
+      { id: "selection.cursorBelow", category: "Selection", title: "Add Cursor Below", keybinding: "Mod+Alt+ArrowDown", native: true, when: needEditor, run: onEditor((v) => addCursorBelow(v)) },
+      { id: "selection.cursorsLineEnds", editorKey: true, category: "Selection", title: "Add Cursors to Line Ends", keybinding: "Shift+Alt+I", when: () => needEditor() ?? (editorView.current?.state.selection.ranges.some((r) => !r.empty) ? null : "Select several lines first"), run: onEditor(ec.cursorsAtLineEnds) },
+      { id: "selection.nextOccurrence", category: "Selection", title: "Add Next Occurrence", keybinding: "Mod+D", native: true, when: needEditor, run: onEditor((v) => selectNextOccurrence(v)) },
+      { id: "selection.allOccurrences", category: "Selection", title: "Select All Occurrences", keybinding: "Mod+Shift+L", native: true, when: needEditor, run: onEditor((v) => selectSelectionMatches(v)) },
       { id: "go.line", category: "Go", title: "Go to Line…", keybinding: "Ctrl+G", when: needEditor, run: onEditor((v) => gotoLine(v)) },
-      { id: "go.top", category: "Go", title: "Go to Top of File", palette: true, when: needEditor, run: onEditor((v) => cursorDocStart(v)) },
+      { id: "go.top", category: "Go", title: "Go to Top of File", when: needEditor, run: onEditor((v) => cursorDocStart(v)) },
+      { id: "go.bottom", category: "Go", title: "Go to End of File", when: needEditor, run: onEditor((v) => cursorDocEnd(v)) },
+      { id: "go.bracket", category: "Go", title: "Go to Bracket", keybinding: "Mod+Shift+\\", native: true, when: needEditor, run: onEditor((v) => cursorMatchingBracket(v)) },
+      { id: "editor.fold", category: "Editor", title: "Fold", keybinding: "Ctrl+Shift+[", native: true, when: needEditor, run: onEditor((v) => foldCode(v)) },
+      { id: "editor.unfold", category: "Editor", title: "Unfold", keybinding: "Ctrl+Shift+]", native: true, when: needEditor, run: onEditor((v) => unfoldCode(v)) },
+      { id: "editor.foldAll", category: "Editor", title: "Fold All", keybinding: "Ctrl+Alt+[", native: true, when: needEditor, run: onEditor((v) => foldAll(v)) },
+      { id: "editor.unfoldAll", category: "Editor", title: "Unfold All", keybinding: "Ctrl+Alt+]", native: true, when: needEditor, run: onEditor((v) => unfoldAll(v)) },
+      { id: "editor.toggleMinimap", category: "View", title: "Toggle Minimap", checked: () => prefs.minimap, run: () => setPrefs((p) => ({ ...p, minimap: !p.minimap })) },
+      { id: "editor.toggleWhitespace", category: "View", title: "Toggle Render Whitespace", checked: () => prefs.whitespace === "all", run: () => setPrefs((p) => ({ ...p, whitespace: p.whitespace === "all" ? "trailing" : "all" })) },
+      { id: "editor.toggleIndentGuides", category: "View", title: "Toggle Indent Guides", checked: () => prefs.indentGuides, run: () => setPrefs((p) => ({ ...p, indentGuides: !p.indentGuides })) },
+      { id: "editor.toggleLineNumbers", category: "View", title: "Toggle Line Numbers", checked: () => prefs.lineNumbers, run: () => setPrefs((p) => ({ ...p, lineNumbers: !p.lineNumbers })) },
+      {
+        id: "editor.changeLanguage",
+        category: "Editor",
+        title: "Change Language Mode…",
+        keywords: ["syntax", "mode"],
+        when: () => (activePath ? null : "Open a file first"),
+        run: () =>
+          activePath &&
+          showPick({
+            placeholder: `Language mode for ${activePath.split("/").pop()}`,
+            items: [
+              { id: "auto", label: "Auto Detect", description: `from the file extension (${languageById(languageIdFor(activePath)).label})`, run: () => setLangs(({ [activePath]: _, ...rest }) => rest) },
+              ...LANGUAGES.map((l) => ({ id: l.id, label: l.label, description: l.id, picked: l.id === activeLang, run: () => setLangs((x) => ({ ...x, [activePath]: l.id })) })),
+            ],
+          }),
+      },
+      {
+        id: "editor.indentUsingSpaces",
+        category: "Editor",
+        title: "Indent Using Spaces…",
+        keywords: ["tab size", "indentation"],
+        run: () => showPick({ placeholder: "Tab size (applies to every file)", items: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: String(n), label: String(n), description: n === 2 ? "default" : undefined, picked: n === prefs.tabSize, run: () => setPrefs((p) => ({ ...p, tabSize: n })) })) }),
+      },
+      { id: "editor.toSpaces", category: "Editor", title: "Convert Indentation to Spaces", when: needWrite, run: onEditor((v) => notify(`${ec.convertIndentation(v, "spaces", prefs.tabSize)} lines converted to spaces.`)) },
+      { id: "editor.toTabs", category: "Editor", title: "Convert Indentation to Tabs", when: needWrite, run: onEditor((v) => notify(`${ec.convertIndentation(v, "tabs", prefs.tabSize)} lines converted to tabs.`)) },
       { id: "go.nextEditor", category: "Go", title: "Next Editor", keybinding: "Mod+Alt+ArrowRight", when: () => (tabs.length > 1 ? null : "Only one editor is open"), run: () => setActive((a) => tabs[(tabs.indexOf(a ?? "") + 1) % tabs.length] ?? a) },
       { id: "go.previousEditor", category: "Go", title: "Previous Editor", keybinding: "Mod+Alt+ArrowLeft", when: () => (tabs.length > 1 ? null : "Only one editor is open"), run: () => setActive((a) => tabs[(tabs.indexOf(a ?? "") - 1 + tabs.length) % tabs.length] ?? a) },
       { id: "view.explorer", category: "View", title: "Explorer", keybinding: "Mod+Shift+E", run: () => (set({ view: "explorer", sidebar: true }), setLastOpened("sidebar")) },
@@ -681,8 +792,8 @@ export function Workbench() {
       { id: "editor.zoomIn", category: "Editor", title: "Increase Font Size", keywords: ["zoom"], keybinding: "Mod+=", run: () => setPrefs((p) => ({ ...p, fontSize: Math.min(24, p.fontSize + 1) })) },
       { id: "editor.zoomOut", category: "Editor", title: "Decrease Font Size", keywords: ["zoom"], keybinding: "Mod+-", run: () => setPrefs((p) => ({ ...p, fontSize: Math.max(10, p.fontSize - 1) })) },
       { id: "editor.zoomReset", category: "Editor", title: "Reset Font Size", keywords: ["zoom"], keybinding: "Mod+0", run: () => setPrefs((p) => ({ ...p, fontSize: DEFAULT_PREFS.fontSize })) },
-      { id: "editor.wrap", category: "Editor", title: prefs.wrap ? "Turn Off Word Wrap" : "Turn On Word Wrap", keybinding: "Alt+Z", run: () => setPrefs((p) => ({ ...p, wrap: !p.wrap })) },
-      { id: "editor.authors", category: "Collaboration", title: showAuthors ? "Hide Line Authorship" : "Show Line Authorship", keywords: ["blame", "who wrote", "attribution"], run: () => setShowAuthors((x) => !x) },
+      { id: "editor.wrap", category: "View", title: "Toggle Word Wrap", keybinding: "Alt+Z", checked: () => prefs.wrap, run: () => setPrefs((p) => ({ ...p, wrap: !p.wrap })) },
+      { id: "editor.authors", category: "Collaboration", title: "Toggle Line Authorship", keywords: ["blame", "who wrote", "attribution"], checked: () => showAuthors, run: () => setShowAuthors((x) => !x) },
       { id: "people.show", category: "Collaboration", title: "Show People and Contributions", keywords: ["contributions", "history", "who"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
       { id: "people.stopFollowing", category: "Collaboration", title: "Stop Following", when: () => (following ? null : "You aren't following anyone"), run: () => setFollowing(null) },
       ...feed.participants
@@ -715,7 +826,7 @@ export function Workbench() {
     ];
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs.wrap, showAuthors, following, feed, jumpTo, testRun, notify]);
+  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs, showAuthors, following, feed, jumpTo, testRun, notify, activeLang, showPick]);
 
   /*
     Keyboard. Bound chords dispatch through the registry in the capture phase, so workbench shortcuts work even when
@@ -730,9 +841,8 @@ export function Workbench() {
       const inField = !inEditor && ["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement | null)?.tagName ?? "");
       const cmd = commands.find((c) => c.keybinding && matches(c.keybinding, chord));
       if (!cmd) return;
-      // Editing chords belong to the focused editor or field (CodeMirror handles them natively there).
-      const editing = ["edit.undo", "edit.redo", "selection.all", "selection.line", "selection.expand", "selection.nextOccurrence", "edit.find"].includes(cmd.id);
-      if (editing && (inEditor || inField)) return;
+      // Editor chords act only in the editor; there, CodeMirror handles the native ones itself (see Command.native).
+      if (cmd.native || (cmd.editorKey && !inEditor)) return;
       if (inField && !e.metaKey && !e.ctrlKey) return;
       if (availability(cmd)) return;
       e.preventDefault();
@@ -757,8 +867,8 @@ export function Workbench() {
   const problems = problemsOf(s);
   const needsPerson = s.tasks.filter((t) => t.state === "review_required" || t.state === "proposed" || t.state === "blocked").length;
   const runningAgents = s.tasks.flatMap((t) => t.runs).filter((r) => r.status === "running").length;
-  const ext = activePath?.split(".").pop() ?? "";
   const eol = session && session.text.toString().includes("\r\n") ? "CRLF" : "LF";
+  const indent = session ? ec.detectIndent(session.text.toString()) : null;
 
   const activities: { id: View; icon: React.ReactNode; label: string; badge?: number; cmd: string }[] = [
     { id: "explorer", icon: <Files size={20} strokeWidth={1.5} />, label: "Explorer", cmd: "view.explorer" },
@@ -965,7 +1075,7 @@ export function Workbench() {
                   </span>
                 </div>
                 <div className="min-h-0 flex-1">
-                  <Editor key={session.path} session={session} readOnly={me!.role === "viewer"} onCursor={onCursor} reveal={reveal} viewHandle={editorView} prefs={prefs} authors={showAuthors ? authors : null} problems={syntax} />
+                  <Editor key={session.path} session={session} readOnly={me!.role === "viewer"} onCursor={onCursor} reveal={reveal} viewHandle={editorView} prefs={prefs} authors={showAuthors ? authors : null} problems={syntax} language={activeLang ?? undefined} />
                 </div>
               </>
             ) : (
@@ -1059,8 +1169,13 @@ export function Workbench() {
             <StatusItem title="Go to Line" onClick={() => execute(commands.find((c) => c.id === "go.line")!)}>
               Ln {cursor[0]}, Col {cursor[1]}
             </StatusItem>
+            <StatusItem title="Select Indentation" onClick={() => execute(commands.find((c) => c.id === "editor.indentUsingSpaces")!)} testId="status-indent">
+              {indent?.tabs ? "Tabs" : `Spaces: ${prefs.tabSize}`}
+            </StatusItem>
             <StatusItem title="End of line">{eol}</StatusItem>
-            <StatusItem title="Language">{LANG[ext] ?? "Plain Text"}</StatusItem>
+            <StatusItem title="Select Language Mode" onClick={() => execute(commands.find((c) => c.id === "editor.changeLanguage")!)} testId="status-language">
+              {languageById(activeLang ?? "plaintext").label}
+            </StatusItem>
           </>
         )}
         {following && (
@@ -1101,7 +1216,7 @@ export function Workbench() {
         </div>
       </footer>
 
-      <CommandPalette open={palette.open} mode={palette.mode} files={files} openEditors={[...new Set([...(active ? [active] : []), ...recent.filter((r) => tabs.includes(r))])]} commands={commands} onClose={() => setPalette((p) => ({ ...p, open: false }))} onOpenFile={(p) => open(p)} />
+      <CommandPalette open={palette.open} mode={palette.mode} files={files} openEditors={[...new Set([...(active ? [active] : []), ...recent.filter((r) => tabs.includes(r))])]} commands={commands} pick={palette.mode === "pick" ? pick : null} onClose={() => setPalette((p) => ({ ...p, open: false }))} onOpenFile={(p) => open(p)} />
 
       <div className="pointer-events-none fixed bottom-9 right-4 z-50 flex flex-col items-end gap-2" aria-live="polite">
         <AnimatePresence>

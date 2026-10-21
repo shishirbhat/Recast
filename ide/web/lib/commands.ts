@@ -17,6 +17,15 @@ export interface Command {
   run: () => void;
   /** Shown in the palette (default true). Contextual commands like "Open Task X" set false for menus only. */
   palette?: boolean;
+  /**
+   * The focused editor already binds this chord (CodeMirror's keymap). The registry shows the binding in menus and the
+   * palette but leaves the key to the editor, so the command never runs twice.
+   */
+  native?: boolean;
+  /** The shortcut applies only while the editor has focus (VS Code's `editorTextFocus`). Implied by `native`. */
+  editorKey?: boolean;
+  /** For toggles: menus show a check mark when this returns true. */
+  checked?: () => boolean;
 }
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -28,6 +37,8 @@ export function keyLabel(k: string): string {
     .join(isMac ? "" : "+");
 }
 
+const CODE_KEYS: Record<string, string> = { Backquote: "`", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Slash: "/", Equal: "=", Minus: "-", Comma: ",", Period: ".", Semicolon: ";", Quote: "'" };
+
 /** Normalised chord for a keyboard event, in the same notation as `keybinding`. */
 export function chordOf(e: KeyboardEvent): string {
   const parts: string[] = [];
@@ -36,17 +47,26 @@ export function chordOf(e: KeyboardEvent): string {
   if (isMac && e.ctrlKey) parts.push("Ctrl");
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
-  const key = e.key === "Dead" ? e.code : e.key;
-  parts.push(key === "`" || e.code === "Backquote" ? "`" : key.length === 1 ? key.toUpperCase() : key);
+  // The physical key, not the produced character: Shift+[ is "{" and Alt+F is "ƒ" on macOS, but the chord is the key.
+  const code = e.code ?? "";
+  const key = /^Key[A-Z]$/.test(code) ? code.slice(3) : /^Digit\d$/.test(code) ? code.slice(5) : (CODE_KEYS[code] ?? (e.key === "Dead" ? code : e.key));
+  parts.push(key.length === 1 ? key.toUpperCase() : key);
   return parts.join("+");
 }
 
 /** Bindings are written with Mod; on macOS "Ctrl+`" stays Ctrl (as in VS Code). */
 export function matches(binding: string, chord: string): boolean {
-  if (binding === chord) return true;
   // On non-mac platforms Mod and Ctrl are the same key.
-  if (!isMac) return binding.replace("Ctrl+", "Mod+") === chord;
-  return false;
+  const b = isMac ? binding : binding.replace("Ctrl+", "Mod+");
+  return canonical(b) === canonical(chord);
+}
+
+/** Modifiers in one order, so "Shift+Alt+F" and "Alt+Shift+F" are the same chord. */
+function canonical(chord: string): string {
+  const parts = chord.split("+");
+  const key = parts.pop()!;
+  const order = ["Mod", "Ctrl", "Alt", "Shift"];
+  return [...parts.sort((a, b) => order.indexOf(a) - order.indexOf(b)), key.length === 1 ? key.toUpperCase() : key].join("+");
 }
 
 /** Subsequence fuzzy score: higher is better, null if `q` is not a subsequence of `s`. */

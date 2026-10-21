@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { EditorView, GutterMarker, gutter, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
+import { EditorView, GutterMarker, gutter, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightWhitespace, highlightTrailingWhitespace, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
 import { Compartment, EditorState, RangeSet, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { defaultKeymap, indentWithTab, history, historyKeymap } from "@codemirror/commands";
@@ -9,17 +9,14 @@ import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { bracketMatching, foldGutter, indentOnInput, syntaxHighlighting, HighlightStyle, foldKeymap } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { python } from "@codemirror/lang-python";
+import { showMinimap } from "@replit/codemirror-minimap";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import { indentUnit } from "@codemirror/language";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import type { Diagnostic } from "@codemirror/lint";
 import type { DocSession } from "@/lib/collab";
+import { languageById, languageIdFor } from "@/lib/languages";
 
 /** Restrained syntax colours from the theme tokens. */
 const relayHighlight = HighlightStyle.define([
@@ -71,18 +68,16 @@ const relayTheme = EditorView.theme({
   ".relay-author": { display: "block", width: "3px", height: "100%", borderRadius: "1px" },
   ".cm-lintRange-error": { backgroundImage: "none", textDecoration: "underline wavy var(--danger)", textUnderlineOffset: "3px" },
   ".cm-tooltip-lint": { fontFamily: "var(--font-sans)", fontSize: "12px" },
+  ".cm-trailingSpace": { backgroundColor: "color-mix(in oklab, var(--danger) 18%, transparent)" },
+  ".cm-highlightSpace": { backgroundImage: "radial-gradient(circle at 50% 55%, var(--faint) 12%, transparent 10%)" },
+  ".cm-highlightTab": { backgroundImage: "none", position: "relative" },
+  ".cm-highlightTab::before": { content: "'→'", position: "absolute", color: "var(--faint)", left: "1px" },
+  ".cm-minimap-gutter": { borderLeft: "1px solid var(--rule)", backgroundColor: "var(--editor)" },
+  ".cm-minimap-overlay": { backgroundColor: "var(--hover) !important" },
 });
 
 export function languageFor(path: string): Extension {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  if (["js", "mjs", "cjs", "jsx"].includes(ext)) return javascript({ jsx: true });
-  if (["ts", "mts", "cts", "tsx"].includes(ext)) return javascript({ jsx: ext === "tsx", typescript: true });
-  if (ext === "json") return json();
-  if (["md", "mdx", "markdown"].includes(ext)) return markdown();
-  if (ext === "css") return css();
-  if (["html", "htm"].includes(ext)) return html();
-  if (ext === "py") return python();
-  return [];
+  return languageById(languageIdFor(path)).mode();
 }
 
 export interface EditorPrefs {
@@ -92,12 +87,17 @@ export interface EditorPrefs {
   wrap: boolean;
   uiFont: UiFont;
   codeFont: CodeFont;
+  minimap: boolean;
+  indentGuides: boolean;
+  /** As VS Code's editor.renderWhitespace. */
+  whitespace: "none" | "trailing" | "all";
+  lineNumbers: boolean;
 }
 export const UI_FONTS = { figtree: { label: "Figtree", css: '"Figtree Variable"' }, geist: { label: "Geist", css: '"Geist Variable"' }, system: { label: "System", css: "system-ui" } } as const;
 export const CODE_FONTS = { plex: { label: "IBM Plex Mono", css: '"IBM Plex Mono"' }, jetbrains: { label: "JetBrains Mono", css: '"JetBrains Mono Variable"' }, fira: { label: "Fira Code", css: '"Fira Code Variable"' }, geist: { label: "Geist Mono", css: '"Geist Mono Variable"' } } as const;
 export type UiFont = keyof typeof UI_FONTS;
 export type CodeFont = keyof typeof CODE_FONTS;
-export const DEFAULT_PREFS: EditorPrefs = { fontSize: 14, lineHeight: 1.65, tabSize: 2, wrap: false, uiFont: "figtree", codeFont: "plex" };
+export const DEFAULT_PREFS: EditorPrefs = { fontSize: 14, lineHeight: 1.65, tabSize: 2, wrap: false, uiFont: "figtree", codeFont: "plex", minimap: true, indentGuides: true, whitespace: "trailing", lineNumbers: true };
 
 /** Apply the chosen typefaces to the whole IDE (UI chrome, editor, diffs, terminal read the same variables). */
 export function applyFonts(p: EditorPrefs): void {
@@ -161,22 +161,38 @@ const authorGutter = [
   }),
 ];
 
+function minimapDom() {
+  const dom = document.createElement("div");
+  dom.className = "relay-minimap";
+  return { dom };
+}
+
 function prefsExtension(p: EditorPrefs): Extension {
   return [
     EditorView.theme({ "&": { fontSize: `${p.fontSize}px` }, ".cm-scroller": { lineHeight: String(p.lineHeight) } }),
     EditorState.tabSize.of(p.tabSize),
     indentUnit.of(" ".repeat(p.tabSize)),
     p.wrap ? EditorView.lineWrapping : [],
+    p.lineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [],
+    p.indentGuides ? indentationMarkers({ thickness: 1, colors: { light: "var(--rule)", dark: "var(--rule)", activeLight: "var(--rule-strong)", activeDark: "var(--rule-strong)" } }) : [],
+    p.whitespace === "all" ? highlightWhitespace() : p.whitespace === "trailing" ? highlightTrailingWhitespace() : [],
+    p.minimap ? showMinimap.compute(["doc"], () => ({ create: minimapDom, displayText: "blocks", showOverlay: "mouse-over" })) : [],
   ];
 }
 
-export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null }) {
+export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null, language }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null; /** Language mode id; defaults to the file extension's. */ language?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const prefsC = useRef(new Compartment());
   const authorC = useRef(new Compartment());
+  const langC = useRef(new Compartment());
   const initialPrefs = useRef(prefs);
+  const langId = language ?? languageIdFor(session.path);
+  const initialLang = useRef(langId);
 
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: langC.current.reconfigure(languageById(langId).mode()) });
+  }, [langId]);
   useEffect(() => {
     viewRef.current?.dispatch({ effects: prefsC.current.reconfigure(prefsExtension(prefs)) });
   }, [prefs]);
@@ -222,16 +238,14 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
         doc: session.text.toString(),
         extensions: [
           authorC.current.of([]),
-          lineNumbers(),
           lintGutter(),
-          highlightActiveLineGutter(),
+          prefsC.current.of(prefsExtension(initialPrefs.current)),
           foldGutter({ markerDOM: (open) => Object.assign(document.createElement("span"), { textContent: open ? "⌄" : "›", className: "text-faint" }) }),
           drawSelection(),
           dropCursor(),
           EditorState.allowMultipleSelections.of(true),
           indentOnInput(),
           relayTheme,
-          prefsC.current.of(prefsExtension(initialPrefs.current)),
           syntaxHighlighting(relayHighlight),
           bracketMatching(),
           closeBrackets(),
@@ -242,7 +256,7 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
           highlightSelectionMatches(),
           history(),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...yUndoManagerKeymap, indentWithTab]),
-          languageFor(session.path),
+          langC.current.of(languageById(initialLang.current).mode()),
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
           // Collaboration: CRDT sync, remote carets and selections (positions are CRDT-relative, so they move with edits).

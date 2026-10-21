@@ -239,7 +239,7 @@ export function SettingsView({ theme, setTheme, commands, terminal, onResetLayou
             [
               ["Font size", "fontSize", [11, 12, 13, 14, 15, 16, 18, 20]],
               ["Line height", "lineHeight", [1.4, 1.5, 1.6, 1.65, 1.7, 1.8]],
-              ["Tab size", "tabSize", [2, 4, 8]],
+              ["Tab size", "tabSize", [1, 2, 3, 4, 5, 6, 7, 8]],
             ] as const
           ).map(([label, key, opts]) => (
             <label key={key} className="flex items-center justify-between px-5 py-1 text-[13px]">
@@ -253,9 +253,26 @@ export function SettingsView({ theme, setTheme, commands, terminal, onResetLayou
               </select>
             </label>
           ))}
+          {(
+            [
+              ["Word wrap", "wrap"],
+              ["Minimap", "minimap"],
+              ["Indent guides", "indentGuides"],
+              ["Line numbers", "lineNumbers"],
+            ] as const
+          ).map(([label, key]) => (
+            <label key={key} className="flex items-center justify-between px-5 py-1 text-[13px]">
+              <span className="text-ink-2">{label}</span>
+              <input type="checkbox" checked={prefs[key]} onChange={(e) => setPrefs({ ...prefs, [key]: e.target.checked })} data-testid={`pref-${key}`} />
+            </label>
+          ))}
           <label className="flex items-center justify-between px-5 py-1 text-[13px]">
-            <span className="text-ink-2">Word wrap</span>
-            <input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} />
+            <span className="text-ink-2">Render whitespace</span>
+            <select value={prefs.whitespace} onChange={(e) => setPrefs({ ...prefs, whitespace: e.target.value as EditorPrefs["whitespace"] })} className="h-[24px] rounded-sm border border-rule bg-editor px-1.5 text-[12.5px] text-ink" aria-label="Render whitespace" data-testid="pref-whitespace">
+              <option value="none">None</option>
+              <option value="trailing">Trailing</option>
+              <option value="all">All</option>
+            </select>
           </label>
           <label className="flex items-center justify-between px-5 py-1 text-[13px]">
             <span className="text-ink-2">Show line authorship</span>

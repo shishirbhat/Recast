@@ -93,7 +93,7 @@ test("two people: live typing, cursors, presence, go to, follow, contributions, 
   // Line authorship in the editor: Bo's line carries his marker.
   await openFile(ada, "src/ui.js");
   await ada.keyboard.press("Control+Shift+P");
-  await ada.getByTestId("palette-input").fill(">show line authorship");
+  await ada.getByTestId("palette-input").fill(">toggle line authorship");
   await ada.keyboard.press("Enter");
   await ada.locator(".relay-author[title='Bo']").first().waitFor({ timeout: 5000 });
 
