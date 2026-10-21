@@ -86,13 +86,13 @@ The previously reported harness failures (two capitalisation assertions in Layer
 |---|---|---|---|
 | Destination bridges: Calendar attendee/location, Gmail draft, Sheets row, Tasks task, Notion page | `packages/bridges/src/specs.ts` | request builders, undo tokens, injection guards; F via a fake Google over HTTP (Gmail draft, Calendar attendee, Tasks task through `apps/calendar-link`) | **R**: needs OAuth apps (task #22). Calendar *event* creation reached R separately (see section 1) |
 | `POST /v1/place` and undo | `packages/api-core/src/{api,place}.ts` | re-resolve, object-id check, consent, sealed credentials, host allowlist, atomic undo claim; release state `internal` | R (the bridge itself reached R through `apps/calendar-link`, not through this endpoint); no OAuth flow here (tokens stored as given, no refresh) |
-| Browser extension | `apps/extension` | popup lists what the page holds; the clay layer carries objects across tabs; places on pages that declare destinations **and** in the real Google Calendar and Gmail drafts through `apps/calendar-link` (28 tests, 7 in real Chromium) | never loaded by a person; real-Google run pending (`docs/REAL_TEST_PLAN.md` B–D) |
+| Browser extension | `apps/extension` | popup lists what the page holds; the clay layer carries objects across tabs; places on pages that declare destinations **and** in the real Google Calendar and Gmail drafts through `apps/calendar-link` (29 tests, 8 in real Chromium) | never loaded by a person; real-Google run pending (`docs/REAL_TEST_PLAN.md` B–D) |
 | Windows interaction | `apps/spike-win` | probes for a global hook and UI Automation, not run | everything: needs a Windows machine (task #23) |
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
-## Latest full run (2026-10-21, after the local Google link, Gmail drafts and the confirmation setting)
-`pnpm typecheck` passes; `pnpm test`: **20 packages, 850 tests, 0 failures** (core 106, interaction 113, bridges 36, overlay 11, extract-web 74, harness 52, extension 28, calendar-link 17, api-core 88, agent-runtime 102, …). The repository defines no lint script; typecheck is the static check.
+## Latest full run (2026-10-21, after a whole page → Google Tasks)
+`pnpm gen` leaves no diff; `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 862 tests, 0 failures** (core 110, interaction 117, bridges 36, overlay 11, extract-web 74, harness 52, extension 29, calendar-link 20, api-core 88, agent-runtime 102, …). The previous run (before this change) was 850. The repository defines no lint script; typecheck is the static check.
 
 ## 3. In progress
 | Requirement | Where | State |

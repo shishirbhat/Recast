@@ -15,7 +15,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-21)
-- Last full run: **850 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+- Last full run: **862 tests, 0 failures** (after the page → Tasks work) (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
 - **One capability at R (real provider):** Google Calendar event creation from `apps/calendar-link`, run by hand by the owner on a throwaway Google account. Nothing else has touched real Google, Notion, Supabase or Vercel. No users yet (nothing at P).
 - **Newest (this session): a whole page → real Google Tasks.** "This page" in the extension's Recast pill takes the page (title and canonical link) as a Document; the module opens on it with Tasks in the wheel; Google Tasks is a third optional permission in `apps/calendar-link`; Undo deletes the task. Tested in real Chromium against a Google stand-in. The owner's real run is `docs/REAL_TEST_PLAN.md` section E (needs the Google Tasks API enabled in Google Cloud and a re-sign-in ticking Tasks).
 - Earlier: local Google sign-in (`apps/calendar-link`); extension places in real Google Calendar and saves Gmail drafts through that local program (tested only against a Google stand-in); "How much Recast asks" setting (D24, D28).
@@ -44,6 +44,6 @@ The repository's own records stay authoritative for what they cover; this file p
 - Keyboard path in the extension beyond Escape (the clay page has it).
 
 ## Session log (newest first, keep each entry short)
-- **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb:** reconstructed context from the repo and the owner's pasted transcript; re-ran `apps/extension` on committed code (28/28 pass); created this file and `CLAUDE.md`.
+- **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb:** reconstructed context; re-ran `apps/extension` on committed code (28/28 pass); created this file and `CLAUDE.md`; built a whole page → real Google Tasks ("This page", Document clumps, Tasks permission, REAL_TEST_PLAN E); full run 862/0.
 - **2026-10-21, earlier session (other account):** built the investor deck, filled market, prices, pilot and cover; owner removed the Ask slide.
 - **2026-10-21, session_01DBSr5JyLYdTt34JZYgfya1:** Gmail drafts, extension → real Calendar via the local program, "How much Recast asks", full run 850/0, clay test timing fix.
