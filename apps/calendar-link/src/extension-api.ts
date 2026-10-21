@@ -8,9 +8,9 @@ import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { randomInt } from "node:crypto";
 import { commit, InMemoryEventLog, OutcomeUnknownError, undo, type Consent, type Operation, type Receipt } from "@recast/core";
-import { calendarEventId, DuplicateError, googleCalendarEvent, HttpBridge } from "@recast/bridges";
+import { calendarEventId, DuplicateError, gmailMessageDraft, googleCalendarEvent, HttpBridge } from "@recast/bridges";
 import { type CalendarAccess, googleTransport } from "./test-event.js";
-import { readToken } from "./server.js";
+import { hasGmail, readToken } from "./server.js";
 
 interface Pairing { allowed: string[]; pending: { origin: string; code: string; at: number }[] }
 const EXT_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
@@ -32,7 +32,10 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
   };
   const receipts = () => readJson<Receipt[]>(receiptFile, []);
   const keep = (r: Receipt) => writePrivate(receiptFile, [...receipts().filter((x) => x.receiptId !== r.receiptId), r].slice(-200));
-  const bridge = () => new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
+  // Two destinations behind one sign-in. Gmail only if the person ticked it (its own permission).
+  type Dest = "calendar" | "gmail";
+  const bridge = (d: Dest = "calendar") => d === "gmail" ? new HttpBridge(gmailMessageDraft, { userId: "me" }, googleTransport(a)) : new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
+  const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t) }; };
   const iso = () => new Date(a.now()).toISOString();
 
   return {
@@ -50,25 +53,27 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
       if (!origin || !EXT_ORIGIN.test(origin)) return { status: 403, body: { error: "only a browser extension may use this" } };
       if (route === "pair") {
         const p = pairing();
-        if (p.allowed.includes(origin)) return { status: 200, body: { paired: true, connected: !!readToken(a.tokenFile) } };
+        if (p.allowed.includes(origin)) return { status: 200, body: statusBody() };
         const existing = p.pending.find((x) => x.origin === origin);
         const code = existing?.code ?? String(randomInt(1000, 10000));
         if (!existing) writePrivate(pairFile, { ...p, pending: [...p.pending, { origin, code, at: a.now() }].slice(-5) });
         return { status: 202, body: { paired: false, code } };
       }
       if (!pairing().allowed.includes(origin)) return { status: 403, body: { error: "not paired: allow this extension on the Recast page first" } };
-      if (route === "status") return { status: 200, body: { paired: true, connected: !!readToken(a.tokenFile) } };
-      if (!readToken(a.tokenFile)) return { status: 409, body: { outcome: "failed", message: "Google Calendar is not connected. Sign in on the Recast page first." } };
+      if (route === "status") return { status: 200, body: statusBody() };
+      const dest: Dest = body.destination === "gmail" ? "gmail" : "calendar";
+      if (!readToken(a.tokenFile)) return { status: 409, body: { outcome: "failed", message: "Google is not connected. Sign in on the Recast page first." } };
+      if (dest === "gmail" && !hasGmail(readToken(a.tokenFile))) return { status: 409, body: { outcome: "failed", message: "Gmail drafts are not allowed. Sign in again on the Recast page and tick Gmail." } };
 
       if (route === "commit") {
         const op = body.op as Operation, consent = body.consent as Consent;
-        const b = bridge(); const log = new InMemoryEventLog();
+        const b = bridge(dest); const log = new InMemoryEventLog();
         try {
           const receipt = await commit(op, consent, { bridge: b, log, now: iso });
           keep(receipt);
           return { status: 200, body: { outcome: "done", receipt } };
         } catch (e) {
-          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: "Google Calendar did not answer; it may have been added" } };
+          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: dest === "gmail" ? "Gmail did not answer; the draft may have been saved" : "Google Calendar did not answer; it may have been added" } };
           if (e instanceof DuplicateError) return { status: 200, body: { outcome: "failed", message: "It is already in your Google Calendar, so it was not added a second time" } };
           return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } };
         }
@@ -76,6 +81,8 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
       if (route === "reconcile") {
         // Ask Google about the event this operation would have made. Found: it was placed, and gets a receipt for Undo.
         const op = body.op as Operation;
+        // Gmail drafts carry no key Recast chose, so Gmail cannot be asked about one: say so, never guess "absent".
+        if (dest === "gmail") return { status: 200, body: { checkable: false, message: "Gmail can't be asked about one draft. Look in Gmail Drafts: if it's there, keep it; if not, dismiss this and place again." } };
         const ref = JSON.stringify({ id: calendarEventId(op.proposal.object.id, "primary") });
         const found = (await bridge().reconcile(ref)) === "present";
         if (!found) return { status: 200, body: { found: false } };
@@ -90,7 +97,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         const stored = receipts().find((r) => r.receiptId === id);
         if (!stored) return { status: 200, body: { outcome: "failed", message: "That placement is not one this computer made" } };
         const log = new InMemoryEventLog(); await log.append({ at: stored.at, kind: "commit", receipt: stored });
-        try { await undo(stored, { bridge: bridge(), log, now: iso }); }
+        try { await undo(stored, { bridge: bridge(stored.destination === gmailMessageDraft.contract.destination ? "gmail" : "calendar"), log, now: iso }); }
         catch (e) { return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } }; }
         writePrivate(receiptFile, receipts().filter((r) => r.receiptId !== id));
         return { status: 200, body: { outcome: "undone" } };

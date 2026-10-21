@@ -80,6 +80,11 @@ Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.
 3. **Who can use it:** only extensions you allowed here. Web pages can't use it.
 4. **What's stored:** the allowed extensions and the receipts (for Undo), in `.secrets/`.
 
+## Part 7: Gmail drafts (optional)
+1. The sign-in also offers Gmail. If you tick it, Recast can **create drafts and delete the drafts it made**. It never sends mail: you send a draft yourself from Gmail.
+2. Turn on the **Gmail API** in Google Cloud first. Then sign in again and tick both boxes. The steps are in `docs/REAL_TEST_PLAN.md`, section C.
+3. If you leave Gmail unticked, Calendar works as before.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

@@ -29,12 +29,12 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
     // The real Google Calendar is not a tab: its effects go to the Recast program on this computer (not awaited here,
     // since the answer comes back through this same queue).
     for (const e of r.effects ?? []) {
-      if (e.destinationId === LINK_DEST) { void viaLink(e); continue; }
+      if (isLink(e.destinationId)) { void viaLink(e); continue; }
       const [tabId] = e.destinationId.split(":"); await tell(Number(tabId), { type: "effect", effect: e });
     }
     // Chosen in the module while looking at another tab: bring the destination's tab to the front, so the review and the
     // write happen where the person can see them.
-    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && r.state.placement.destinationId !== LINK_DEST) {
+    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && !isLink(r.state.placement.destinationId)) {
       const tabId = Number(r.state.placement.destinationId.split(":")[0]);
       try { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); } catch { /* the tab is gone; the review still shows */ }
     }
@@ -48,38 +48,41 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
 // Off unless the person connects it from the popup: that grants access to http://localhost only, and the program then
 // asks the person to Allow this extension (a code shown in both places). The Google token never reaches the extension:
 // the program places the reviewed operation and answers with the outcome.
-export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar";
+export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts";
 const linkDest: DestinationSpec = { id: LINK_DEST, label: "Google Calendar", contract: CONTRACTS.googleCalendarEvent };
+const gmailDest: DestinationSpec = { id: LINK_GMAIL, label: "Gmail drafts", contract: CONTRACTS.gmailMessageDraft };
+const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL;
 
 async function link(route: string, body: unknown = {}): Promise<{ status: number; body: Record<string, unknown> }> {
   const r = await fetch(`${LINK}/ext/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, body: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 /** Whether the program is reachable, this extension is allowed there, and a Google account is connected. */
-async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string }> {
+async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean }> {
   if (!(await chrome.permissions.contains({ origins: LINK_ORIGINS }))) return { state: "off" };
   try {
     const r = await link("pair");
     if (r.status === 202) return { state: "pending", code: String(r.body["code"]) };
     if (r.status !== 200) return { state: "unreachable" };
-    return { state: r.body["connected"] ? "ready" : "not-signed-in" };
+    return r.body["connected"] ? { state: "ready", gmail: !!r.body["gmail"] } : { state: "not-signed-in" };
   } catch { return { state: "unreachable" }; }
 }
 /** Real Google Calendar first in the list (the wheel takes the first live destination of a kind), only while ready. */
 async function syncLink() {
   const st = await linkStatus();
   await apply((s) => {
-    const others = s.destinations.filter((d) => d.id !== LINK_DEST);
-    return { state: { ...s, destinations: st.state === "ready" ? [linkDest, ...others] : others } };
+    const others = s.destinations.filter((d) => !isLink(d.id));
+    const mine = st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : [])] : [];
+    return { state: { ...s, destinations: [...mine, ...others] } };
   });
   return st;
 }
 async function viaLink(e: ClumpEffect) {
-  const at = () => Date.now();
+  const at = () => Date.now(); const destination = e.destinationId === LINK_GMAIL ? "gmail" : "calendar";
   if (e.type === "commit") {
     const opId = e.op.opId;
     let r: Awaited<ReturnType<typeof link>>;
-    try { r = await link("commit", { op: e.op, consent: e.consent }); }
+    try { r = await link("commit", { destination, op: e.op, consent: e.consent }); }
     // The request may or may not have reached Google: never assumed to have failed, checked before any retry.
     catch { await apply((s) => reduceClump(s, { type: "outcomeUnknown", opId, message: "The Recast program on this computer did not answer", now: at() })); return; }
     const b = r.body;
@@ -89,13 +92,15 @@ async function viaLink(e: ClumpEffect) {
   } else if (e.type === "reconcile") {
     // If the check itself cannot be made, the placement stays "unknown": the person can press Check again.
     try {
-      const r = await link("reconcile", { op: e.op });
-      if (r.status === 200) await apply((s) => reduceClump(s, { type: "reconciled", opId: e.op.opId, found: !!r.body["found"], ...(r.body["receipt"] ? { receipt: r.body["receipt"] as never } : {}), now: at() }));
+      const r = await link("reconcile", { destination, op: e.op });
+      // Some providers cannot be asked (Gmail drafts): say so and stay unknown; never report "not there" on a guess.
+      if (r.status === 200 && r.body["checkable"] === false) await apply((s) => ({ state: { ...s, ...(s.placement ? { placement: { ...s.placement, message: String(r.body["message"]) } } : {}), last: { kind: "unknown", text: String(r.body["message"]), at: at() } } }));
+      else if (r.status === 200) await apply((s) => reduceClump(s, { type: "reconciled", opId: e.op.opId, found: !!r.body["found"], ...(r.body["receipt"] ? { receipt: r.body["receipt"] as never } : {}), now: at() }));
     } catch { /* stays unknown */ }
   } else if (e.type === "undo") {
     const opId = e.receipt.opId;
     try {
-      const r = await link("undo", { receipt: e.receipt });
+      const r = await link("undo", { destination, receipt: e.receipt });
       await apply((s) => reduceClump(s, r.body["outcome"] === "undone" ? { type: "undone", opId, now: at() } : { type: "undoFailed", opId, message: String(r.body["message"] ?? r.body["error"] ?? `answered ${r.status}`), now: at() }));
     } catch { await apply((s) => reduceClump(s, { type: "undoFailed", opId, message: "The Recast program on this computer did not answer; the event may still be there", now: at() })); }
   }

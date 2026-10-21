@@ -94,7 +94,7 @@ async function main() {
 }
 // The real Google Calendar, through the Recast program on this computer. Access to http://localhost is asked for only
 // when the person presses Connect; the program then shows the same code and asks them to Allow this extension.
-type LinkState = { state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string };
+type LinkState = { state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean };
 function showLink(l: LinkState) {
   const text = $("link-text"), btn = $<HTMLButtonElement>("link-btn");
   text.replaceChildren(); btn.hidden = false;
@@ -102,7 +102,7 @@ function showLink(l: LinkState) {
   else if (l.state === "unreachable") { text.textContent = "The Recast program isn't running on this computer. In a terminal: pnpm --filter @recast/calendar-link run start"; btn.textContent = "Try again"; }
   else if (l.state === "pending") { text.append("Open http://localhost:8787 and press Allow if it shows this code: ", el("span", { cls: "code", text: l.code ?? "" })); btn.textContent = "I allowed it"; }
   else if (l.state === "not-signed-in") { text.textContent = "Allowed. Now sign in with Google on http://localhost:8787."; btn.textContent = "Check again"; }
-  else { text.textContent = "Connected. Placing in Calendar adds a real event, with Undo."; btn.hidden = true; }
+  else { text.textContent = `Connected. Placing in Calendar adds a real event, with Undo.${l.gmail ? " Mail saves a real Gmail draft (never sent)." : " Gmail drafts: not allowed (tick Gmail when signing in on http://localhost:8787)."}`; btn.hidden = true; }
 }
 async function linkFlow(ask: boolean) {
   if (ask && !(await chrome.permissions.request({ origins: ["http://localhost/*"] }))) return showLink({ state: "off" });

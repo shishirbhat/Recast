@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Server } from "node:http";
-import { createLinkServer, SCOPE } from "../src/server.js";
+import { createLinkServer, GMAIL_SCOPE, SCOPE } from "../src/server.js";
 
 const SECRET = "test-secret-should-never-leak";
 const dir = mkdtempSync(path.join(tmpdir(), "recast-link-"));
@@ -39,7 +39,7 @@ describe("Google Calendar sign-in (local server, stand-in Google)", () => {
     const { r, loc, cookie } = await start();
     expect(r.status).toBe(302);
     expect(loc.origin + loc.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
-    expect(Object.fromEntries(loc.searchParams)).toMatchObject({ client_id: "abc.apps.googleusercontent.com", redirect_uri: `http://localhost:${port}/oauth/callback`, response_type: "code", scope: SCOPE, code_challenge_method: "S256", access_type: "offline" });
+    expect(Object.fromEntries(loc.searchParams)).toMatchObject({ client_id: "abc.apps.googleusercontent.com", redirect_uri: `http://localhost:${port}/oauth/callback`, response_type: "code", scope: `${SCOPE} ${GMAIL_SCOPE}`, code_challenge_method: "S256", access_type: "offline" });
     expect(loc.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(r.headers.get("set-cookie")).toMatch(/HttpOnly; SameSite=Lax; Path=\/oauth; Max-Age=600/);
     expect(cookie).toMatch(/^recast_oauth_state=/);

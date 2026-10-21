@@ -9,18 +9,22 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLinkServer, SCOPE } from "../../calendar-link/src/server.js";
+import { createLinkServer, GMAIL_SCOPE, SCOPE } from "../../calendar-link/src/server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ext = path.join(root, "dist-test");
 const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") && !existsSync("/opt/pw-browsers/chromium/chrome") ? "/opt/pw-browsers/chromium" : undefined);
 
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
-const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const seenByGoogle: string[] = [];
+const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const seenByGoogle: string[] = [];
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fakeGoogle: typeof fetch = async (u, init) => {
   const url = String(u), method = init?.method ?? "GET"; seenByGoogle.push(`${method} ${url}`);
   if ((init?.headers as Record<string, string>)?.authorization !== "Bearer AT-1") return json(401, {});
+  if (url.includes("/gmail/")) {
+    if (method === "POST") { const id = `d${drafts.size + 1}`; drafts.set(id, JSON.parse(String(init!.body))); return json(200, { id, message: { id: `m${id}` } }); }
+    if (method === "DELETE") { drafts.delete(url.split("/drafts/")[1]!); return json(204, null); }
+  }
   const id = decodeURIComponent(url.split("/events/")[1]?.split("?")[0] ?? "");
   if (method === "POST") { const b = JSON.parse(String(init!.body)); if (events.has(b.id)) return json(409, {}); events.set(b.id, { ...b, status: "confirmed" }); if (dropNext) { dropNext = false; return json(504, {}); } return json(200, events.get(b.id)); }
   if (method === "GET") return events.has(id) ? json(200, events.get(id)) : json(404, {});
@@ -37,7 +41,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => pages.listen(0, "127.0.0.1", r)); base = `http://127.0.0.1:${(pages.address() as { port: number }).port}`;
   // Already signed in (the sign-in itself is tested in apps/calendar-link).
   mkdirSync(path.dirname(tokenFile), { recursive: true });
-  writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: SCOPE, token_type: "Bearer", connected_at: "test" }));
+  writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: `${SCOPE} ${GMAIL_SCOPE}`, token_type: "Bearer", connected_at: "test" }));
   link = createLinkServer({ clientId: "abc.apps.googleusercontent.com", clientSecret: "SECRET-x", port: 8787, tokenFile, fetch: fakeGoogle, tokenUrl: "https://google.test/token" });
   await new Promise<void>((r) => link.listen(8787, "127.0.0.1", r));
   const profile = path.join(root, "dist-test/.profile-link"); rmSync(profile, { recursive: true, force: true });
@@ -88,7 +92,8 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await home.getByRole("button", { name: "Allow" }).click();
     await popup.getByRole("button", { name: "I allowed it" }).click();
     await until(async () => /Connected\. Placing in Calendar adds a real event/.test(await popup.locator("#link-text").innerText()));
-    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false]]);
+    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false]]);
+    expect(await popup.locator("#link-text").innerText()).toMatch(/Mail saves a real Gmail draft \(never sent\)/);
     await popup.close(); await home.close();
   });
 
@@ -134,6 +139,33 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await until(async () => (await stored()).phase === "idle");
     expect(live()).toHaveLength(0);
   }, 120_000);
+
+  it("Maya + a sentence is a message: Mail saves a real Gmail draft (never sent), Undo deletes it", async () => {
+    const page = await openTab("message.html");
+    // A plain sentence is picked up by selecting it and Alt-dragging it; dropped on Maya, the two make a message.
+    await page.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.getElementById("line")!); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); });
+    await altDrag(page, "#line", "#maya");
+    await until(async () => { const s = await stored(); return s.phase === "composed" && s.objects[s.focus]?.ingredients.length === 2; });
+    await page.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await page.locator("recast-clay >> #rg-opt-mail").getAttribute("aria-disabled")) === "false");
+    // A message fits only Mail, so the drum rests on it.
+    await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-mail");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await stored()).phase === "previewing");
+    expect(drafts.size).toBe(0);
+    // The page gives no address next to her name: the review asks, and the person types it.
+    await page.locator("recast-clay >> input[data-field=to]").fill("maya.rao@example.com");
+    await page.locator("recast-clay >> button[data-submit=to]").click();
+    await page.locator("recast-clay >> button", { hasText: "Save as draft" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(drafts.size).toBe(1);
+    const raw = Buffer.from((drafts.get("d1") as any).message.raw, "base64url").toString();
+    expect(raw).toMatch(/To: maya\.rao@example\.com/); expect(raw).toContain("Free for dinner this week?");
+    expect(seenByGoogle.some((x) => /messages\/send|drafts\/send/.test(x))).toBe(false);      // never sent
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(drafts.size).toBe(0);
+  });
 
   it("a web page cannot use the program: wrong Origin is refused, an unpaired extension origin only gets a pending code", async () => {
     const r = await fetch("http://localhost:8787/ext/commit", { method: "POST", headers: { origin: "https://evil.example", "content-type": "application/json" }, body: "{}" });
