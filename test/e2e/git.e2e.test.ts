@@ -83,7 +83,7 @@ test("edit, diff, stage, commit, branch; task diff with a revision-pinned review
   await p.getByTestId("changed-files").getByText("src/ui.js").click();
   const diff = p.getByTestId("diff-view");
   await diff.getByText(/base [0-9a-f]{7}/).waitFor();
-  await diff.getByLabel("Line").fill("1");
+  await diff.getByLabel("Line", { exact: true }).fill("1");
   await diff.getByLabel("Comment", { exact: true }).fill("Keep the import first");
   await diff.getByRole("button", { name: "Comment", exact: true }).click();
   await p.getByTestId("review-comments").getByText("Keep the import first").waitFor();

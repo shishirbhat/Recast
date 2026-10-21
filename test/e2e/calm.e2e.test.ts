@@ -73,7 +73,7 @@ test("the open file names its task; a new review request raises one dismissible 
   await p.getByTestId("file-src/ui.js").click();
   await p.locator(".cm-content").waitFor();
   const ctx = p.getByTestId("file-task");
-  assert.match(await ctx.innerText(), /T-ui\s*Greeting shows the full name\s*Ready/);
+  assert.match(await ctx.innerText(), /T-ui\s*Greeting shows the full name\s*Queued/);
   await ctx.click();
   await p.getByTestId("review-summary").waitFor();
 

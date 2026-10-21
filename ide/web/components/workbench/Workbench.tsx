@@ -1419,7 +1419,18 @@ export function Workbench() {
                 </div>
               )}
               {layout.view === "search" && <SearchView onOpen={open} focusNonce={searchNonce} replaceNonce={replaceNonce} canEdit={me!.role !== "viewer"} notify={notify} />}
-              {layout.view === "scm" && <SourceControlView onOpen={open} onDiff={(p, staged) => openDiff({ kind: staged ? "staged" : "working", path: p })} tick={events.length} canShip={me!.role === "owner"} canEdit={me!.role !== "viewer"} notify={notify} />}
+              {layout.view === "scm" && (
+                <SourceControlView
+                  onOpen={open}
+                  onDiff={(p, staged) => openDiff({ kind: staged ? "staged" : "working", path: p })}
+                  tick={events.length}
+                  canShip={me!.role === "owner"}
+                  canEdit={me!.role !== "viewer"}
+                  notify={notify}
+                  worktrees={s.tasks.flatMap((t) => t.runs.filter((r) => !["applied", "cancelled"].includes(r.status)).slice(-1).map((r) => ({ task: t.id, run: r.id, provider: r.provider, status: r.status, path: r.worktree ? r.worktree.slice(Math.max(0, r.worktree.indexOf(".relay/"))) : "(worktree path not reported)", files: r.changedFiles })))}
+                  onTaskDiff={(task, p) => openDiff({ kind: "task", task, path: p })}
+                />
+              )}
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
               {layout.view === "testing" && <TestingView run={testRun} setRun={setTestRun} canRun={me?.role === "owner"} onOpen={open} notify={notify} />}
               {layout.view === "extensions" && <ExtensionsView />}
@@ -1453,6 +1464,7 @@ export function Workbench() {
                 output={<OutputPanel tick={events.length} />}
                 tests={<TestsPanel run={testRun} setRun={setTestRun} canRun={me?.role === "owner"} onOpen={open} notify={notify} />}
                 testFailures={testRun && !testRun.stale ? failedNames(testRun).length : 0}
+                failingTests={testRun && !testRun.stale ? testRun.results.filter((r) => r.status === "fail") : []}
                 terminal={<TerminalPanel availability={termCaps} visible={layout.panel && panelTab === "terminal"} focusNonce={termFocus} newNonce={termNew} theme={theme} run={termRun} />}
               />
             </section>
@@ -1509,9 +1521,17 @@ export function Workbench() {
             </>
           )}
         </StatusItem>
-        {runningAgents > 0 && (
-          <StatusItem title="Agents working" onClick={() => showRight("agent")}>
-            <Bot size={12} /> {runningAgents} working
+        {(runningAgents > 0 || needsPerson > 0) && (
+          <StatusItem title="Coordination: agents running and tasks waiting on a person" onClick={() => execute(commands.find((c) => c.id === "relay.coordination")!)} testId="status-coordination">
+            <Network size={12} /> {runningAgents > 0 ? `${runningAgents} running` : ""}
+            {runningAgents > 0 && needsPerson > 0 ? " · " : ""}
+            {needsPerson > 0 ? `${needsPerson} need you` : ""}
+          </StatusItem>
+        )}
+        {testRun && (
+          <StatusItem title={testRun.stale ? "Latest test run (the files changed since)" : "Latest test run"} onClick={() => showView("testing")} testId="status-tests">
+            <FlaskConical size={12} />
+            {testRun.status === "running" ? "Testing…" : `${testRun.results.filter((r) => r.status === "pass").length} passed${failedNames(testRun).length ? ` · ${failedNames(testRun).length} failed` : ""}${testRun.stale ? " (out of date)" : ""}`}
           </StatusItem>
         )}
         <span className="ml-auto" />

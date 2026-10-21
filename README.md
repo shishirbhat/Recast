@@ -6,7 +6,7 @@ Relay is a provider-neutral coordination engine for human developers and coding 
 
 This branch (`relay`) is an orphan branch. It shares no history with Recast.
 
-## Status (2026-10-19)
+## Status (2026-10-21)
 
 | Component | Status |
 |---|---|
@@ -22,6 +22,8 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 | Benchmark vs. baseline workflow | **Not started** |
 | Collaborative IDE (server, Yjs sync, presence, auth, IDE workbench UI) | **Implemented and tested** (real clients, two-browser E2E). Not yet tested by independent users |
 | Agent runs from the IDE (worktrees, stale input, 3-way apply, combined gate) | **Tested with a simulated agent only.** No real Claude Code run from the IDE yet |
+| IDE workbench at VS Code / Cursor structure (menus, palette prefixes, split editors, minimap, Prettier, Replace in Files, file operations, Testing view, Welcome) | **Implemented and tested** (browser E2E). See `RELAY_HANDOFF.md` |
+| Coordination workspace (`GET /api/coordination`: engine-derived statuses, dependencies, overlaps, "safe to integrate next") | **Implemented and tested** (unit, API and browser E2E with the simulated agent) |
 | VS Code extension | **Not started** |
 | Validation with independent users | **None** |
 

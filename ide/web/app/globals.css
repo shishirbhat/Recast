@@ -166,6 +166,28 @@
   --radius-md: 8px;
 }
 
+/*
+  Layout, type and motion tokens (shared by both themes). Components use these through Tailwind utilities where they
+  exist and directly otherwise; new surfaces should start here, not with new literals.
+  - Chrome rows: title bar 35, tab strip 35, breadcrumb row 28, list rows 22–24, status bar 22.
+  - Type: UI 13.5 body, 12.5 lists, 12 labels, 11.5 meta, 11 mono meta; code 14 / 1.65 (editor preferences).
+  - Motion: quick and optional. Nothing loops or pulses; everything collapses to instant with reduced motion.
+*/
+:root {
+  --row: 24px;
+  --row-dense: 22px;
+  --title-h: 35px;
+  --tab-h: 35px;
+  --status-h: 22px;
+  --text-body: 13.5px;
+  --text-list: 12.5px;
+  --text-label: 12px;
+  --text-meta: 11.5px;
+  --dur-fast: 90ms;
+  --dur: 140ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
 :root {
   /* Chosen in Settings → Appearance; these are the defaults. */
   --ui-font: "Figtree Variable";
@@ -195,7 +217,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Floating surfaces: translucent with blur where supported and wanted; solid otherwise. */
 /* Menus, quick input, notifications: solid surfaces, as in VS Code, so nothing behind them competes with the text. */
 .glass {
   background: var(--panel-2);
@@ -234,14 +255,6 @@ body {
   border-width: 0 1px 1px 0;
 }
 
-@keyframes relay-live {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-/* Live indicators are steady: nothing blinks in the corner of a developer's eye. */
-.live-dot {
-  animation: none;
-}
 
 ::selection {
   background: var(--selection);
@@ -253,6 +266,17 @@ body {
     outline-offset: -1px;
     border-radius: 2px;
   }
+}
+
+/* Side-by-side diffs: the original (left) side shows removals in the danger colour with a dashed bar, so the two
+   sides differ by more than colour. (CodeMirror themes can't target an ancestor of the editor, hence global.) */
+.cm-merge-a .cm-changedLine {
+  background-color: color-mix(in oklab, var(--danger-soft) 80%, transparent) !important;
+  box-shadow: none !important;
+  border-left: 3px dashed var(--danger);
+}
+.cm-merge-a .cm-changedText {
+  background: color-mix(in oklab, var(--danger) 28%, transparent) !important;
 }
 
 * {

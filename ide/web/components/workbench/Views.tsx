@@ -268,7 +268,17 @@ interface GitStateResp {
 const LETTER_CLS: Record<string, string> = { M: "text-warn", A: "text-ok", "?": "text-ok", D: "text-danger", R: "text-accent-ink", U: "text-danger" };
 
 /** Source control: real git status, staged and unstaged diffs, stage/unstage, commit, branches, pull/push, history. */
-export function SourceControlView({ onOpen, onDiff, tick, canShip, canEdit, notify }: { onOpen: (path: string) => void; onDiff: (path: string, staged: boolean) => void; tick: number; canShip: boolean; canEdit: boolean; notify: (msg: string, tone?: "ok" | "danger") => void }) {
+/** An agent's isolated checkout: its changes live there until they are applied to the shared project. */
+export interface AgentWorktree {
+  task: string;
+  run: string;
+  provider: string;
+  status: string;
+  path: string;
+  files: string[];
+}
+
+export function SourceControlView({ onOpen, onDiff, tick, canShip, canEdit, notify, worktrees = [], onTaskDiff }: { onOpen: (path: string) => void; onDiff: (path: string, staged: boolean) => void; tick: number; canShip: boolean; canEdit: boolean; notify: (msg: string, tone?: "ok" | "danger") => void; worktrees?: AgentWorktree[]; onTaskDiff?: (task: string, path: string) => void }) {
   const [st, setSt] = useState<GitStateResp | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -402,6 +412,9 @@ export function SourceControlView({ onOpen, onDiff, tick, canShip, canEdit, noti
             </div>
           )}
         </div>
+        <p className="mx-3 mb-2 rounded-sm border border-rule px-2 py-1 text-[11.5px] text-muted" data-testid="scm-checkout">
+          <span className="font-medium text-ink-2">Main checkout</span> · the shared project everyone edits. Changes below are here, not in agents&apos; worktrees.
+        </p>
         {st && st.conflicted.length > 0 && (
           <Section title="Merge conflicts" count={st.conflicted.length}>
             {st.conflicted.map((p) => (
@@ -425,6 +438,29 @@ export function SourceControlView({ onOpen, onDiff, tick, canShip, canEdit, noti
           {changes.map((f) => row(f, "unstaged"))}
         </Section>
         <GitHubPanel canShip={canShip} tick={tick} notify={notify} />
+        {worktrees.length > 0 && (
+          <Section title="Agent worktrees" count={worktrees.length}>
+            <p className="px-5 pb-1 text-[11.5px] text-faint">Each agent works in its own git worktree. Nothing here is in the main checkout until its task is applied.</p>
+            {worktrees.map((w) => (
+              <div key={w.run} className="pb-1" data-testid={`worktree-${w.task}`}>
+                <p className="flex items-center gap-2 px-5 text-[12.5px]">
+                  <span className="font-mono text-[11.5px] text-ink-2">{w.task}</span>
+                  <span className="text-muted">{w.provider}</span>
+                  <span className="ml-auto text-[11.5px] text-faint">{w.status}</span>
+                </p>
+                <p className="truncate px-5 font-mono text-[10.5px] text-faint" title={w.path}>
+                  {w.path}
+                </p>
+                {w.files.map((f) => (
+                  <button key={f} onClick={() => onTaskDiff?.(w.task, f)} className="flex h-[22px] w-full items-center gap-1.5 pl-8 pr-3 text-left text-[12.5px] text-ink-2 hover:bg-hover">
+                    <FileCode2 size={12} className="text-faint" /> {f}
+                  </button>
+                ))}
+                {!w.files.length && <p className="pl-8 text-[12px] text-faint">No changes yet</p>}
+              </div>
+            ))}
+          </Section>
+        )}
         <Section title="Recent commits" count={st?.log.length} defaultOpen={false}>
           {st?.log.map((c) => (
             <div key={c.sha} className="px-5 py-1">
@@ -447,6 +483,9 @@ export interface Problem {
   text: string;
   taskId?: string;
   path?: string;
+  line?: number;
+  /** Where it comes from; the panel groups by this. */
+  source?: "Syntax" | "Tests" | "Coordination" | "Conflicts";
 }
 
 export function problemsOf(state: ProjectState): Problem[] {
@@ -456,21 +495,62 @@ export function problemsOf(state: ProjectState): Problem[] {
     if (t.state === "completed" || t.state === "cancelled") continue;
     for (const [cid, v] of Object.entries(t.contracts)) {
       const cur = current.get(cid);
-      if (cur !== undefined && cur > v) out.push({ severity: "error", text: `${t.id} is built on ${cid} v${v}; the accepted contract is v${cur}`, taskId: t.id });
+      if (cur !== undefined && cur > v) out.push({ severity: "error", text: `${t.id} is built on ${cid} v${v}; the accepted contract is v${cur}`, taskId: t.id, source: "Coordination" });
     }
-    if (t.state === "blocked") out.push({ severity: "error", text: `${t.id} is blocked`, taskId: t.id });
-    if (t.state === "failed") out.push({ severity: "warning", text: `${t.id} failed and can be requeued`, taskId: t.id });
-    for (const r of t.runs) for (const s of r.staleInputs) out.push({ severity: "warning", text: `${s.by} edited ${s.path} after the agent on ${t.id} started`, taskId: t.id, path: s.path });
+    if (t.state === "blocked") out.push({ severity: "error", text: `${t.id} is blocked`, taskId: t.id, source: "Coordination" });
+    if (t.state === "failed") out.push({ severity: "warning", text: `${t.id} failed and can be requeued`, taskId: t.id, source: "Coordination" });
+    for (const r of t.runs) for (const s of r.staleInputs) out.push({ severity: "warning", text: `${s.by} edited ${s.path} after the agent on ${t.id} started`, taskId: t.id, path: s.path, source: "Coordination" });
   }
-  for (const c of state.conflicts) out.push({ severity: "error", text: `An outside edit to ${c.doc.replace(/^file:/, "")} conflicted with the shared copy and was kept for review`, path: c.doc.replace(/^file:/, "") });
-  for (const c of state.contracts) for (const h of c.history) if (h.status === "proposed") out.push({ severity: "warning", text: `${c.id} v${h.version} is proposed and waiting for an owner`, taskId: undefined });
+  for (const c of state.conflicts) out.push({ severity: "error", text: `An outside edit to ${c.doc.replace(/^file:/, "")} conflicted with the shared copy and was kept for review`, path: c.doc.replace(/^file:/, ""), source: "Conflicts" });
+  for (const c of state.contracts) for (const h of c.history) if (h.status === "proposed") out.push({ severity: "warning", text: `${c.id} v${h.version} is proposed and waiting for an owner`, taskId: undefined, source: "Coordination" });
   return out;
+}
+
+/** Problems grouped by where they come from, errors first, with a text filter, as VS Code's Problems panel. */
+function ProblemsList({ problems, onTask, onOpen }: { problems: Problem[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void }) {
+  const [filter, setFilter] = useState("");
+  const [only, setOnly] = useState<"all" | "error" | "warning">("all");
+  if (!problems.length) return <p className="px-4 py-2 font-sans text-[13px] text-muted">No problems. The open file parses, the latest test run has no failures, and contracts, tasks and shared files agree. Syntax is checked for the open file only; there is no language server.</p>;
+  const shown = problems.filter((p) => (only === "all" || p.severity === only) && (!filter || `${p.text} ${p.path ?? ""} ${p.taskId ?? ""}`.toLowerCase().includes(filter.toLowerCase())));
+  const groups = (["Syntax", "Tests", "Conflicts", "Coordination"] as const).map((g) => [g, shown.filter((p) => (p.source ?? "Coordination") === g).sort((a, b) => Number(a.severity === "warning") - Number(b.severity === "warning"))] as const).filter(([, l]) => l.length);
+  const errors = problems.filter((p) => p.severity === "error").length;
+  return (
+    <div className="font-sans" data-testid="problems-list">
+      <div className="flex items-center gap-2 px-4 pb-1.5 pt-0.5">
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter (text, file, task)" aria-label="Filter problems" className="h-[24px] w-64 rounded-sm border border-rule bg-editor px-2 text-[12.5px] outline-none focus:border-accent" />
+        {(["all", "error", "warning"] as const).map((k) => (
+          <button key={k} aria-pressed={only === k} onClick={() => setOnly(k)} className={`h-[22px] rounded-sm px-2 text-[12px] ${only === k ? "bg-hover text-ink" : "text-muted hover:text-ink"}`}>
+            {k === "all" ? `All ${problems.length}` : k === "error" ? `Errors ${errors}` : `Warnings ${problems.length - errors}`}
+          </button>
+        ))}
+      </div>
+      {groups.map(([g, list]) => (
+        <div key={g}>
+          <p className="flex items-center gap-2 px-4 pb-0.5 pt-1.5 text-[12px] font-medium text-muted">
+            {g} <span className="tnum text-faint">{list.length}</span>
+          </p>
+          {list.map((p, i) => (
+            <button key={i} onClick={() => (p.path ? onOpen(p.path, p.line) : p.taskId && onTask(p.taskId))} className="flex w-full items-center gap-2 py-[3px] pl-6 pr-4 text-left hover:bg-hover">
+              {p.severity === "error" ? <CircleAlert size={13} className="shrink-0 text-danger" aria-label="error" /> : <TriangleAlert size={13} className="shrink-0 text-warn" aria-label="warning" />}
+              <span className="min-w-0 truncate text-[13px] text-ink-2">{p.text}</span>
+              <span className="ml-auto shrink-0 font-mono text-[11px] text-faint">{p.path ? `${p.path}${p.line ? `:${p.line}` : ""}` : (p.taskId ?? "")}</span>
+            </button>
+          ))}
+        </div>
+      ))}
+      {!shown.length && <p className="px-4 py-2 text-[12.5px] text-muted">No problems match the filter.</p>}
+    </div>
+  );
 }
 
 export type PanelTab = "terminal" | "problems" | "tests" | "impact" | "output" | "activity";
 
-export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output, tests, testFailures = 0, syntax = [] }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode; tests: React.ReactNode; testFailures?: number; syntax?: { path: string; line: number; col: number; message: string }[] }) {
-  const problems = [...syntax.map((p) => ({ severity: "error" as const, text: `${p.path}:${p.line}:${p.col} ${p.message}`, path: p.path, line: p.line, taskId: undefined as string | undefined })), ...problemsOf(state)];
+export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpen, onClose, terminal, output, tests, testFailures = 0, failingTests = [], syntax = [] }: { tab: PanelTab; setTab: (t: PanelTab) => void; state: ProjectState; events: RelayEvent[]; members: Member[]; onTask: (id: string) => void; onOpen: (p: string, line?: number) => void; onClose: () => void; terminal: React.ReactNode; output: React.ReactNode; tests: React.ReactNode; testFailures?: number; failingTests?: { name: string; file: string | null; line: number | null; error: string | null }[]; syntax?: { path: string; line: number; col: number; message: string }[] }) {
+  const problems: Problem[] = [
+    ...syntax.map((p) => ({ severity: "error" as const, text: `${p.message} (${p.path.split("/").pop()}:${p.line}:${p.col})`, path: p.path, line: p.line, source: "Syntax" as const })),
+    ...failingTests.map((t) => ({ severity: "error" as const, text: `${t.name}${t.error ? `: ${t.error.split("\n")[0]}` : ""}`, path: t.file ?? undefined, line: t.line ?? undefined, source: "Tests" as const })),
+    ...problemsOf(state),
+  ];
   const tabs: [PanelTab, string, number?][] = [
     ["terminal", "Terminal"],
     ["problems", "Problems", problems.length],
@@ -503,18 +583,7 @@ export function BottomPanel({ tab, setTab, state, events, members, onTask, onOpe
         </div>
       )}
       <div className={`min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[12.5px] ${tab === "terminal" || tab === "output" || tab === "impact" || tab === "tests" ? "hidden" : ""}`}>
-        {tab === "problems" &&
-          (problems.length === 0 ? (
-            <p className="px-4 py-2 font-sans text-[13px] text-muted">No problems. The open file parses, and contracts, tasks and shared files agree.</p>
-          ) : (
-            problems.map((p, i) => (
-              <button key={i} onClick={() => (p.taskId ? onTask(p.taskId) : p.path && onOpen(p.path, "line" in p ? (p.line as number) : undefined))} className="flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-hover">
-                {p.severity === "error" ? <CircleAlert size={13} className="shrink-0 text-danger" /> : <TriangleAlert size={13} className="shrink-0 text-warn" />}
-                <span className="font-sans text-[13px] text-ink-2">{p.text}</span>
-                {p.taskId && <span className="ml-auto text-[11.5px] text-faint">{p.taskId}</span>}
-              </button>
-            ))
-          ))}
+        {tab === "problems" && <ProblemsList problems={problems} onTask={onTask} onOpen={onOpen} />}
         {tab === "activity" &&
           events
             .slice(-200)

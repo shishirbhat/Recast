@@ -64,7 +64,7 @@ export function StatusLabel({ status }: { status: CoordStatus }) {
   const s = STATUS[status];
   return (
     <span title={`Engine state: ${s.engine}`} className={`inline-flex shrink-0 items-center gap-1.5 text-[12px] font-medium ${TONE[s.tone]!.text}`} data-status={status}>
-      <span className={`size-1.5 rounded-full ${TONE[s.tone]!.dot} ${s.tone === "run" ? "motion-safe:animate-pulse" : ""}`} />
+      <span className={`size-1.5 rounded-full ${TONE[s.tone]!.dot}`} />
       {s.label}
     </span>
   );
@@ -419,7 +419,7 @@ function DependencyGraph({ tasks, onOpen }: { tasks: CoordTask[]; onOpen: (id: s
             const p = pos.get(id)!;
             const t = byId.get(id)!;
             return (
-              <g key={id} transform={`translate(${p.x},${p.y})`} onClick={() => onOpen(id)} className="cursor-pointer" role="button" aria-label={`${id}: ${STATUS[t.status].label}`}>
+              <g key={id} transform={`translate(${p.x},${p.y})`} onClick={() => onOpen(id)} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen(id))} tabIndex={0} className="cursor-pointer outline-none [&:focus-visible>rect]:stroke-[var(--accent)]" role="button" aria-label={`${id}: ${STATUS[t.status].label}. Open task`}>
                 <rect width={W} height={H} rx={4} fill="var(--panel-2)" stroke="var(--rule-strong)" />
                 <circle cx={12} cy={H / 2} r={3.5} fill={TONE[STATUS[t.status].tone]!.color} />
                 <text x={22} y={H / 2 + 4} fontSize={11.5} fontFamily="var(--font-mono)" fill="var(--ink)">

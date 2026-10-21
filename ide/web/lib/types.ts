@@ -21,6 +21,8 @@ export interface AgentRun {
   id: string;
   taskId: string;
   provider: string;
+  /** Absolute path of the run's git worktree on the Relay host. */
+  worktree?: string;
   status: "starting" | "running" | "finished" | "failed" | "cancelled" | "applied";
   startedAt: string;
   endedAt: string | null;

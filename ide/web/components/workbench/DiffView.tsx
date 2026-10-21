@@ -42,7 +42,6 @@ const theme = EditorView.theme({
   ".cm-mergeSpacer": { backgroundColor: "var(--sunken)" },
   // Not colour alone: added lines carry a solid bar, removed ones a dashed bar.
   ".cm-deletedChunk": { borderLeft: "3px dashed var(--danger)", paddingLeft: "2px" },
-  ".cm-merge-a .cm-changedLine": { boxShadow: "inset 3px 0 0 var(--danger)", backgroundImage: "repeating-linear-gradient(180deg, transparent 0 3px, color-mix(in oklab, var(--danger) 10%, transparent) 3px 6px)" },
   ".cm-merge-revert": { display: "none" },
 });
 
