@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, statSync, writeSync } from "node:fs";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { normalizePath } from "../core/conflicts.ts";
@@ -28,6 +29,28 @@ export function isSecretPath(rel: string): boolean {
 export function listProjectFiles(root: string): string[] {
   const out = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return [...new Set(out.split("\0").filter(Boolean))].filter((p) => !isSecretPath(p) && existsSync(join(root, p))).sort();
+}
+
+/**
+ * Empty folders (New Folder before its first file). Git doesn't list them as files, so the explorer would otherwise
+ * never show them. Untracked, not ignored, and not secret.
+ */
+export function listEmptyFolders(root: string): string[] {
+  const out = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "--directory", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  const found: string[] = [];
+  const walk = (rel: string, depth: number) => {
+    let names: string[];
+    try {
+      names = readdirSync(join(root, rel));
+    } catch {
+      return;
+    }
+    if (!names.length) return void found.push(rel);
+    if (depth > 8) return;
+    for (const n of names) if (statSync(join(root, rel, n), { throwIfNoEntry: false })?.isDirectory()) walk(`${rel}/${n}`, depth + 1);
+  };
+  for (const d of out.split("\0").filter((x) => x.endsWith("/"))) walk(d.slice(0, -1), 0);
+  return found.filter((f) => !isSecretPath(`${f}/`)).sort();
 }
 
 function isIgnored(root: string, rel: string): boolean {
@@ -132,18 +155,28 @@ export interface SearchHit {
   text: string;
 }
 
+/** Find in Files toggles, as VS Code has them. */
+export interface SearchOptions {
+  matchCase?: boolean;
+  wholeWord?: boolean;
+  regex?: boolean;
+}
+
 /**
- * Literal, case-insensitive search across shared files with git's own grep (tracked + untracked, never ignored).
- * Secret paths are filtered out; results are capped so a broad query can't flood the client.
+ * Search across shared files with git's own grep (tracked + untracked, never ignored): literal by default, or an
+ * extended regular expression; case-insensitive unless matchCase. Secret paths are filtered out; results are capped
+ * so a broad query can't flood the client.
  */
-export function searchProject(root: string, query: string, limit = 300): { hits: SearchHit[]; truncated: boolean } {
+export function searchProject(root: string, query: string, limit = 300, opts: SearchOptions = {}): { hits: SearchHit[]; truncated: boolean } {
   if (!query || query.length > 200) return { hits: [], truncated: false };
   let out = "";
   try {
-    out = execFileSync("git", ["grep", "-n", "-I", "-i", "-F", "--untracked", "--full-name", "-e", query, "--", ":/"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+    const flags = [...(opts.matchCase ? [] : ["-i"]), ...(opts.wholeWord ? ["-w"] : []), opts.regex ? "-E" : "-F"];
+    out = execFileSync("git", ["grep", "-n", "-I", ...flags, "--untracked", "--full-name", "-e", query, "--", ":/"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
   } catch (e) {
-    const err = e as { status?: number; stdout?: string };
+    const err = e as { status?: number; stdout?: string; stderr?: string };
     if (err.status === 1) return { hits: [], truncated: false }; // no matches
+    if (opts.regex && err.status === 128) throw new RelayError("invalid", `Invalid regular expression: ${String(err.stderr ?? "").replace(/^fatal: /, "").trim()}`);
     throw e;
   }
   const hits: SearchHit[] = [];
@@ -154,6 +187,59 @@ export function searchProject(root: string, query: string, limit = 300): { hits:
     if (hits.length >= limit) return { hits, truncated: true };
   }
   return { hits, truncated: false };
+}
+
+export interface TextMatch {
+  index: number;
+  text: string;
+  groups: (string | undefined)[];
+  named: Record<string, string> | null;
+}
+
+const MAX_MATCHES = 5000;
+
+/**
+ * Every match of a Find in Files query in `text`, exactly as Replace applies it. Regular expressions are JavaScript's,
+ * multiline (^ and $ per line); they run in a separate context with a time limit, so a pathological pattern fails
+ * with an error instead of stalling the server.
+ */
+export function findMatches(text: string, query: string, opts: SearchOptions = {}): TextMatch[] {
+  if (!query) return [];
+  const body = opts.regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // git grep -w's notion of a word: letters, digits and underscore.
+  const source = opts.wholeWord ? `(?<![A-Za-z0-9_])(?:${body})(?![A-Za-z0-9_])` : body;
+  const flags = `gm${opts.matchCase ? "" : "i"}`;
+  try {
+    new RegExp(source, flags);
+  } catch (e) {
+    throw new RelayError("invalid", (e as Error).message);
+  }
+  try {
+    const found = runInNewContext(
+      `(() => { const re = new RegExp(source, flags); const out = []; let m;
+        while ((m = re.exec(text)) && out.length < max) { out.push([m.index, m[0], Array.from(m).slice(1), m.groups ? Object.assign({}, m.groups) : null]); if (m[0] === "") re.lastIndex++; }
+        return JSON.stringify(out); })()`,
+      { text, source, flags, max: MAX_MATCHES },
+      { timeout: 1000 },
+    ) as string;
+    return (JSON.parse(found) as [number, string, (string | null)[], Record<string, string> | null][]).map(([index, t, g, named]) => ({ index, text: t, groups: g.map((x) => x ?? undefined), named }));
+  } catch (e) {
+    if ((e as { code?: string }).code === "ERR_SCRIPT_EXECUTION_TIMEOUT") throw new RelayError("invalid", "The regular expression took too long to run on this file");
+    throw e;
+  }
+}
+
+/** The replacement text for one match: literal, or with $&, $1…$99, $<name> and $$ expanded in regex mode. */
+export function expandReplacement(replacement: string, m: TextMatch, regex: boolean): string {
+  if (!regex) return replacement;
+  return replacement.replace(/\$(\$|&|<([A-Za-z_$][\w$]*)>|(\d{1,2}))/g, (all, what: string, name?: string, num?: string) => {
+    if (what === "$") return "$";
+    if (what === "&") return m.text;
+    if (name !== undefined) return m.named?.[name] ?? "";
+    const n = Number(num);
+    if (n >= 1 && n <= m.groups.length) return m.groups[n - 1] ?? "";
+    return all;
+  });
 }
 
 export interface SymbolHit {

@@ -10,6 +10,19 @@ import { tx } from "../core/db.ts";
 
 /** Who caused a document change. Connections are objects; server-side origins are these strings. */
 export type ServerOrigin = "seed" | "disk" | "agent" | "restore";
+/** A change a person asked the server to make for them (Replace in Files): attributed to that member. */
+export type MemberOrigin = `member:${string}`;
+
+/** The author recorded for a server-side origin. */
+function authorOf(origin: string): string {
+  return origin.startsWith("agent:") ? origin : origin.startsWith("member:") ? origin.slice(7) : `relay:${origin}`;
+}
+
+export interface TextEdit {
+  from: number;
+  to: number;
+  insert: string;
+}
 
 /** A pending text change from the current transaction, measured in the observer before the update is logged. */
 interface PendingDelta {
@@ -141,7 +154,7 @@ export class DocStore {
       const seq = Number(this.db.prepare("INSERT INTO doc_updates (doc, data, created_at) VALUES (?,?,?)").run(name, update, now()).lastInsertRowid);
       const delta = entry.pending;
       entry.pending = null;
-      const author = typeof origin === "string" ? (origin.startsWith("agent:") ? origin : `relay:${origin}`) : this.attributor?.(origin);
+      const author = typeof origin === "string" ? authorOf(origin) : this.attributor?.(origin);
       if (author && typeof origin !== "string") this.claimClients(path, DocStore.clientsIn(update), author);
       if (delta && author && origin !== "seed") this.recordEdit(entry, author, seq, delta);
       entry.updatesSinceCompaction++;
@@ -194,9 +207,9 @@ export class DocStore {
    * Server-made edits get their own Yjs client ID, bound to a labelled author (baseline content, a disk merge, an
    * applied agent run), so their characters are never mistaken for a person's.
    */
-  private serverTransact(entry: DocEntry, origin: string, fn: () => void): void {
+  private serverTransact(entry: DocEntry, origin: ServerOrigin | MemberOrigin | `agent:${string}`, fn: () => void): void {
     entry.doc.clientID = randomClientId();
-    const author = origin === "seed" ? "relay:baseline" : origin.startsWith("agent:") ? origin : `relay:${origin}`;
+    const author = origin === "seed" ? "relay:baseline" : authorOf(origin);
     this.claimClients(entry.path, [entry.doc.clientID], author);
     entry.doc.transact(fn, origin);
   }
@@ -251,6 +264,55 @@ export class DocStore {
       if (s.insert) entry.text.insert(s.index, s.insert);
     });
     return true;
+  }
+
+  /**
+   * Apply several edits (offsets into the current text, not overlapping) as one change. Only the edited ranges get a
+   * new author; the text around them keeps its own. Returns how many edits were applied.
+   */
+  applyEdits(path: string, edits: TextEdit[], origin: MemberOrigin): number {
+    const entry = this.open(path);
+    const len = entry.text.length;
+    const sorted = [...edits].sort((a, b) => b.from - a.from);
+    for (let i = 0; i < sorted.length; i++) {
+      const e = sorted[i]!;
+      if (e.from < 0 || e.to < e.from || e.to > len || (i > 0 && e.to > sorted[i - 1]!.from)) throw new RelayError("invalid", `Edits for ${path} overlap or fall outside the file`);
+    }
+    if (!sorted.length) return 0;
+    this.serverTransact(entry, origin, () => {
+      for (const e of sorted) {
+        if (e.to > e.from) entry.text.delete(e.from, e.to - e.from);
+        if (e.insert) entry.text.insert(e.from, e.insert);
+      }
+    });
+    return sorted.length;
+  }
+
+  /**
+   * Forget a loaded document because its file was renamed or deleted. Pending writes are dropped (a rename flushes
+   * first), so nothing is written back to the old path.
+   */
+  unload(path: string): void {
+    const entry = this.entries.get(path);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    clearTimeout(this.watchTimers.get(path));
+    this.watchTimers.delete(path);
+    for (const a of [...entry.sessions.keys()]) this.closeSession(entry, a);
+    entry.doc.destroy();
+    this.entries.delete(path);
+    this.stats.delete(path);
+  }
+
+  /**
+   * Move a document's history (updates, snapshots, authorship, sessions, conflicts) to another name. A rename keeps
+   * who wrote what; a delete moves it aside so a new file at the same path starts clean.
+   */
+  moveHistory(fromPath: string, toName: string): void {
+    const from = DocStore.docName(fromPath);
+    tx(this.db, () => {
+      for (const t of ["doc_updates", "doc_snapshots", "doc_clients", "doc_sessions", "doc_files", "doc_conflicts"]) this.db.prepare(`UPDATE ${t} SET doc = ? WHERE doc = ?`).run(toName, from);
+    });
   }
 
   /**

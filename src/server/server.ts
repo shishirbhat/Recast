@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, extname, join, normalize, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, normalize, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import { Relay } from "../core/engine.ts";
@@ -23,7 +23,8 @@ import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
 import type { EntryKind, Source } from "../knowledge/records.ts";
 import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
-import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
+import { expandReplacement, findMatches, writeAtomic, gitStatus, listEmptyFolders, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
+import type { SearchOptions } from "./files.ts";
 import { AgentRuns } from "./runs.ts";
 import { TerminalService } from "./terminal.ts";
 
@@ -279,7 +280,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (method === "GET" && parts[0] === "state") return json(res, 200, snapshot(requireMember(req, "read")));
     if (method === "GET" && parts[0] === "files") {
       requireMember(req, "read");
-      return json(res, 200, { files: listProjectFiles(root) });
+      return json(res, 200, { files: listProjectFiles(root), folders: listEmptyFolders(root) });
     }
     if (method === "GET" && parts[0] === "capabilities") {
       const m = requireMember(req, "read");
@@ -319,7 +320,30 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (method === "GET" && parts[0] === "search") {
       requireMember(req, "read");
       docs.flushAll(); // search what collaborators see, not a stale disk
-      return json(res, 200, searchProject(root, url.searchParams.get("q") ?? ""));
+      const opts: SearchOptions = { matchCase: url.searchParams.get("case") === "1", wholeWord: url.searchParams.get("word") === "1", regex: url.searchParams.get("regex") === "1" };
+      return json(res, 200, searchProject(root, url.searchParams.get("q") ?? "", 300, opts));
+    }
+    if (method === "POST" && parts[0] === "replace") {
+      // Replace in Files: applied to the shared documents (so open editors update live), attributed to the person, one
+      // change per file. With dryRun it only counts. Only the paths the person confirmed are touched.
+      const m = requireMember(req, "edit");
+      const b = await readBody(req);
+      const query = str(b.query, "query", 200);
+      const replacement = typeof b.replacement === "string" ? b.replacement : "";
+      const opts: SearchOptions = { matchCase: b.matchCase === true, wholeWord: b.wholeWord === true, regex: b.regex === true };
+      const paths = [...new Set(strList(b.paths, "paths").map((p) => resolveProjectPath(root, p)))].slice(0, 500);
+      const files: { path: string; count: number }[] = [];
+      for (const path of paths) {
+        if (readText(root, path) === null && !docs.get(path)) continue;
+        const entry = docs.open(path);
+        const text = entry.text.toString();
+        const matches = findMatches(text, query, opts);
+        if (!matches.length) continue;
+        if (b.dryRun !== true) docs.applyEdits(path, matches.map((x) => ({ from: x.index, to: x.index + x.text.length, insert: expandReplacement(replacement, x, opts.regex === true) })), `member:${m.id}`);
+        files.push({ path, count: matches.length });
+      }
+      if (b.dryRun !== true && files.length) relay.record("files.replaced", actorFor(m), { files: files.map((f) => f.path), replacements: files.reduce((n, f) => n + f.count, 0) });
+      return json(res, 200, { files, replacements: files.reduce((n, f) => n + f.count, 0) });
     }
     if (method === "GET" && parts[0] === "symbols") {
       requireMember(req, "read");
@@ -639,13 +663,70 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         return json(res, 200, merged);
       }
     }
+    if (method === "POST" && parts[0] === "files" && parts[1] === "rename") {
+      const m = requireMember(req, "edit");
+      const b = await readBody(req);
+      const from = resolveProjectPath(root, str(b.from, "from", 512));
+      const to = resolveProjectPath(root, str(b.to, "to", 512));
+      const fromAbs = join(root, from);
+      const st = statSync(fromAbs, { throwIfNoEntry: false });
+      if (!st) throw new HttpError(404, "not_found", `${from} doesn't exist`);
+      if (existsSync(join(root, to))) throw new HttpError(409, "conflict", `${to} already exists`);
+      if (to.startsWith(`${from}/`)) throw new HttpError(400, "invalid", "A folder can't be moved inside itself");
+      // Every shared file under the old path: written out, its editors closed, its history carried to the new name.
+      const moved = st.isDirectory() ? listProjectFiles(root).filter((p) => p.startsWith(`${from}/`)) : [from];
+      const pairs = moved.map((p) => ({ from: p, to: to + p.slice(from.length) }));
+      for (const p of pairs) {
+        const e = docs.get(p.from);
+        if (e) docs.flush(e);
+        collab.closeDocument(p.from, `moved:${p.to}`);
+        docs.unload(p.from);
+      }
+      mkdirSync(dirname(join(root, to)), { recursive: true });
+      renameSync(fromAbs, join(root, to));
+      for (const p of pairs) {
+        docs.moveHistory(p.to, `replaced:${Date.now()}:${DocStore.docName(p.to)}`);
+        docs.moveHistory(p.from, DocStore.docName(p.to));
+      }
+      relay.record("file.renamed", actorFor(m), { from, to, files: pairs });
+      return json(res, 200, { from, to, files: pairs });
+    }
+    if (method === "POST" && parts[0] === "files" && parts[1] === "delete") {
+      const m = requireMember(req, "edit");
+      const b = await readBody(req);
+      const path = resolveProjectPath(root, str(b.path, "path", 512));
+      const abs = join(root, path);
+      const st = statSync(abs, { throwIfNoEntry: false });
+      if (!st) throw new HttpError(404, "not_found", `${path} doesn't exist`);
+      const removed = st.isDirectory() ? listProjectFiles(root).filter((p) => p.startsWith(`${path}/`)) : [path];
+      for (const p of removed) {
+        collab.closeDocument(p, "deleted");
+        docs.unload(p);
+        // History is kept, out of the way: a new file at this path starts empty instead of reviving the old one.
+        docs.moveHistory(p, `deleted:${Date.now()}:${DocStore.docName(p)}`);
+      }
+      rmSync(abs, { recursive: st.isDirectory() });
+      relay.record("file.deleted", actorFor(m), { path, files: removed });
+      return json(res, 200, { path, files: removed });
+    }
+    if (method === "POST" && parts[0] === "folders") {
+      const m = requireMember(req, "edit");
+      const b = await readBody(req);
+      const path = resolveProjectPath(root, str(b.path, "path", 512));
+      if (existsSync(join(root, path))) throw new HttpError(409, "conflict", `${path} already exists`);
+      mkdirSync(join(root, path), { recursive: true });
+      relay.record("folder.created", actorFor(m), { path });
+      return json(res, 201, { path });
+    }
     if (method === "POST" && parts[0] === "files") {
       const m = requireMember(req, "edit");
       const body = await readBody(req);
       const path = resolveProjectPath(root, str(body.path, "path", 512));
       if (readText(root, path) !== null) throw new HttpError(409, "conflict", `${path} already exists`);
+      // Written now, even though it's empty: an empty document has nothing to flush, and a file that isn't on disk
+      // isn't in the file list (or in git) until someone types in it.
+      writeAtomic(root, path, "");
       docs.open(path);
-      docs.flush(docs.get(path)!);
       relay.record("file.created", actorFor(m), { path });
       return json(res, 201, { path });
     }
@@ -905,8 +986,11 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const name = decodeURIComponent(m[1]!);
       if (!name.startsWith("file:")) return reject(400, "Bad Request");
       const path = resolveProjectPath(root, name.slice(5));
-      readText(root, path); // binary / too-large files are refused before joining
+      // binary / too-large files are refused before joining; a renamed or deleted file is told so and never recreated
+      // by a client that still has it open.
+      const gone = readText(root, path) === null && !docs.get(path);
       wss.handleUpgrade(req, socket, head, (ws) => {
+        if (gone) return ws.close(4410, "deleted");
         (ws as unknown as { __member: string }).__member = member.name;
         collab.attach(ws, path, member);
       });

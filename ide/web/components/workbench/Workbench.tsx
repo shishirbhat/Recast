@@ -234,8 +234,8 @@ const OPEN_VIEWS: [string, string, string][] = [
 type MenuEntry = string | "-";
 /** VS Code's menu bar, item for item where Relay has the feature; Relay's own items sit at the end of their menu. */
 const MENUS: [string, MenuEntry[]][] = [
-  ["File", ["file.newFile", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
-  ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
+  ["File", ["file.newFile", "file.newFolder", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
+  ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "search.replaceInFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
   ["Selection", ["selection.all", "selection.expand", "selection.shrink", "-", "edit.copyLineUp", "edit.copyLineDown", "edit.moveLineUp", "edit.moveLineDown", "edit.duplicateSelection", "-", "selection.cursorAbove", "selection.cursorBelow", "selection.cursorsLineEnds", "selection.nextOccurrence", "selection.allOccurrences", "-", "selection.line"]],
   ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
   ["Go", ["go.back", "go.forward", "-", "go.switchEditor", "go.nextEditor", "go.previousEditor", "-", "palette.files", "go.symbol", "go.workspaceSymbol", "-", "go.line", "go.bracket", "-", "go.nextProblem", "go.previousProblem"]],
@@ -361,12 +361,14 @@ function MenuItem({ c, focused, onRun, onHover }: { c: Command; focused?: boolea
    =================================================================================================== */
 
 export function Workbench() {
-  const { load, events, files, live, presence: feed, testRun, setTestRun, refresh, refreshFiles } = useProject();
+  const { load, events, files, folders, live, presence: feed, testRun, setTestRun, refresh, refreshFiles } = useProject();
   const win = useWindowSize();
   const [theme, setTheme] = useState<Theme>("dark");
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [lastOpened, setLastOpened] = useState<"sidebar" | "secondary">("sidebar");
   const [tabs, setTabs] = useState<string[]>([]);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
   const [active, setActive] = useState<string | null>(null);
   const [recent, setRecent] = useState<string[]>([]);
   const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(null);
@@ -381,6 +383,7 @@ export function Workbench() {
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [newTaskNonce, setNewTaskNonce] = useState(0);
   const [searchNonce, setSearchNonce] = useState(0);
+  const [replaceNonce, setReplaceNonce] = useState(0);
   const [agentNonce, setAgentNonce] = useState(0);
   const [termFocus, setTermFocus] = useState(0);
   const [termNew, setTermNew] = useState(0);
@@ -479,6 +482,35 @@ export function Workbench() {
     });
   }, []);
   useEffect(() => () => sessions.current.forEach((s) => s.destroy()), []);
+  // Someone renamed or deleted a file: open editors follow the rename, or close with a notice. Their session was
+  // already closed by the server (code 4410), so nothing stale is ever written back.
+  const seenSeq = useRef<number | null>(null);
+  useEffect(() => {
+    const last = events.at(-1)?.seq ?? 0;
+    if (seenSeq.current === null) return void (seenSeq.current = last);
+    const fresh = events.filter((e) => e.seq > seenSeq.current!);
+    seenSeq.current = last;
+    const who = (actor: string) => (load.kind === "ready" ? load.state.members.find((m) => actor.endsWith(`:${m.id}`) || actor === m.id)?.name : undefined) ?? "Someone";
+    for (const e of fresh) {
+      const moves = e.type === "file.renamed" ? ((e.data.files as { from: string; to: string }[]) ?? []) : [];
+      const gone = e.type === "file.deleted" ? ((e.data.files as string[]) ?? []) : [];
+      const affected = [...moves.map((m) => m.from), ...gone].filter((p) => tabsRef.current.includes(p));
+      if (!affected.length) continue;
+      for (const p of affected) {
+        sessions.current.get(p)?.destroy();
+        sessions.current.delete(p);
+      }
+      const map = new Map(moves.map((m) => [m.from, m.to]));
+      const swap = (p: string) => map.get(p) ?? p;
+      setTabs((t) => t.filter((x) => !gone.includes(x)).map(swap));
+      setActive((a) => (a && gone.includes(a) ? null : a && swap(a)));
+      setRecent((r) => r.filter((x) => !gone.includes(x)).map(swap));
+      setLangs((l) => Object.fromEntries(Object.entries(l).filter(([k]) => !gone.includes(k)).map(([k, v]) => [swap(k), v])));
+      if (moves.length) notify(`${who(e.actor)} renamed ${String(e.data.from)} to ${String(e.data.to)}. Open editors moved with it.`);
+      else notify(`${who(e.actor)} deleted ${String(e.data.path)}. Its editor was closed.`, "attention");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
   // Never lose edits silently: warn before unloading while any open file has offline edits.
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
@@ -744,7 +776,8 @@ export function Workbench() {
     const list: Command[] = [
       { id: "palette.files", category: "Go", title: "Go to File…", keywords: ["open", "quick open"], keybinding: "Mod+P", run: () => quickOpen("") },
       { id: "palette.commands", category: "View", title: "Command Palette…", keywords: ["commands"], keybinding: "Mod+Shift+P", run: () => quickOpen(">") },
-      { id: "file.newFile", category: "File", title: "New File…", when: () => viewOnly, run: () => (set({ sidebar: true, view: "explorer" }), document.querySelector<HTMLButtonElement>("[aria-label='New file']")?.click()) },
+      { id: "file.newFile", category: "File", title: "New File…", when: () => viewOnly, run: () => (set({ sidebar: true, view: "explorer" }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector<HTMLButtonElement>("[aria-label='New file']")?.click())) },
+      { id: "file.newFolder", category: "File", title: "New Folder…", when: () => viewOnly, run: () => (set({ sidebar: true, view: "explorer" }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector<HTMLButtonElement>("[aria-label='New folder']")?.click())) },
       { id: "file.save", category: "File", title: "Save", keywords: ["write", "flush"], keybinding: "Mod+S", when: () => (!activePath ? "Open a file first" : viewOnly), run: () => activePath && void api("POST", "/save", { path: activePath }).then(() => notify(`Saved ${activePath} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")) },
       { id: "view.closeEditor", category: "View", title: "Close Editor", keybinding: "Mod+Alt+W", when: () => (active ? null : "No editor is open"), run: () => active && closeTab(active) },
       { id: "view.closeAllEditors", category: "View", title: "Close All Editors", when: () => (tabs.length ? null : "No editors are open"), run: () => [...tabs].forEach(closeTab) },
@@ -902,6 +935,7 @@ export function Workbench() {
       { id: "go.nextEditor", category: "Go", title: "Next Editor", keybinding: "Mod+Alt+ArrowRight", when: () => (tabs.length > 1 ? null : "Only one editor is open"), run: () => setActive((a) => tabs[(tabs.indexOf(a ?? "") + 1) % tabs.length] ?? a) },
       { id: "go.previousEditor", category: "Go", title: "Previous Editor", keybinding: "Mod+Alt+ArrowLeft", when: () => (tabs.length > 1 ? null : "Only one editor is open"), run: () => setActive((a) => tabs[(tabs.indexOf(a ?? "") - 1 + tabs.length) % tabs.length] ?? a) },
       { id: "view.explorer", category: "View", title: "Explorer", keybinding: "Mod+Shift+E", run: () => (set({ view: "explorer", sidebar: true }), setLastOpened("sidebar")) },
+      { id: "search.replaceInFiles", category: "Search", title: "Replace in Files", keybinding: "Mod+Shift+H", when: () => viewOnly, run: () => (set({ view: "search", sidebar: true }), setLastOpened("sidebar"), setSearchNonce((n) => n + 1), setReplaceNonce((n) => n + 1)) },
       { id: "view.search", category: "View", title: "Search", run: () => (set({ view: "search", sidebar: true }), setLastOpened("sidebar"), setSearchNonce((n) => n + 1)) },
       { id: "view.scm", category: "View", title: "Source Control", keywords: ["git"], keybinding: "Mod+Shift+G", run: () => (set({ view: "scm", sidebar: true }), setLastOpened("sidebar")) },
       { id: "github.ship", category: "GitHub", title: "Ship Changes or Merge Pull Request…", keywords: ["github", "push", "pr", "pull request", "merge", "deploy"], when: () => ownerOnly, run: () => (set({ view: "scm", sidebar: true }), setLastOpened("sidebar")) },
@@ -1132,6 +1166,11 @@ export function Workbench() {
                     <FileTree
                       title={s.project.name}
                       files={files}
+                      folders={folders}
+                      onCreateFolder={(p) => void api("POST", "/folders", { path: p }).then(() => refreshFiles(), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))}
+                      onRename={(from, to) => void api("POST", "/files/rename", { from, to }).then(() => refreshFiles(), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))}
+                      onDelete={(p) => void api("POST", "/files/delete", { path: p }).then(() => refreshFiles(), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))}
+                      onCopyPath={(p) => void navigator.clipboard?.writeText(p).then(() => notify(`Copied ${p}`))}
                       active={active}
                       presence={presence}
                       members={s.members}
@@ -1141,14 +1180,14 @@ export function Workbench() {
                       onOpen={open}
                       onCreate={(p) =>
                         void api("POST", "/files", { path: p })
-                          .then(() => (refreshFiles(), open(p)))
+                          .then(() => (refreshFiles(), open(p, 1)))
                           .catch((e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))
                       }
                     />
                   </div>
                 </div>
               )}
-              {layout.view === "search" && <SearchView onOpen={open} focusNonce={searchNonce} />}
+              {layout.view === "search" && <SearchView onOpen={open} focusNonce={searchNonce} replaceNonce={replaceNonce} canEdit={me!.role !== "viewer"} notify={notify} />}
               {layout.view === "scm" && <SourceControlView onOpen={open} onDiff={(p, staged) => openDiff({ kind: staged ? "staged" : "working", path: p })} tick={events.length} canShip={me!.role === "owner"} canEdit={me!.role !== "viewer"} notify={notify} />}
               {layout.view === "run" && <RunView terminal={termCaps} onRunInTerminal={(cmd) => (openPanel("terminal"), setTermRun({ text: cmd, nonce: Date.now() }))} />}
               {layout.view === "extensions" && <ExtensionsView />}
@@ -1305,7 +1344,7 @@ export function Workbench() {
         {session && (
           <>
             <StatusItem title="Collaboration sync" testId="sync-status">
-              {pending ? "Offline edits pending" : status === "synced" ? "Synced" : status === "connecting" ? "Connecting…" : "Offline"}
+              {status === "gone" ? "File moved or deleted" : pending ? "Offline edits pending" : status === "synced" ? "Synced" : status === "connecting" ? "Connecting…" : "Offline"}
             </StatusItem>
             <StatusItem title="Go to Line" onClick={() => execute(commands.find((c) => c.id === "go.line")!)}>
               Ln {cursor[0]}, Col {cursor[1]}

@@ -206,3 +206,73 @@ test("Run Active File and Run Task use the real terminal", { skip }, async () =>
   await p.getByRole("option").filter({ hasText: "npm run test" }).waitFor();
   await p.keyboard.press("Escape");
 });
+
+test("replace in files: preview, confirm, and the open editor updates", { skip }, async () => {
+  const p = await signIn("owner");
+  p.on("dialog", (d) => void d.accept());
+  await openFile(p, "src/server.js");
+  await p.keyboard.press("Control+Shift+H");
+  await p.getByTestId("search-input").fill("Ada Lovelace");
+  await p.getByTestId("replace-input").fill("Grace Hopper");
+  await p.locator("ins").filter({ hasText: "Grace Hopper" }).first().waitFor();
+  await p.getByTestId("replace-all").click();
+  await p.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("Grace Hopper"));
+  assert.match(server.docs.get("src/server.js")!.text.toString(), /Grace Hopper/);
+  // Regex mode with a group, via the toggle.
+  await p.getByTestId("search-regex").click();
+  await p.getByTestId("search-input").fill("(Grace) Hopper");
+  await p.getByTestId("replace-input").fill("$1 Murray Hopper");
+  await p.locator("ins").filter({ hasText: "Grace Murray Hopper" }).first().waitFor();
+  await p.getByTestId("replace-all").click();
+  await p.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("Grace Murray Hopper"));
+});
+
+test("explorer: new file and folder, rename and delete from the context menu; a collaborator's editor follows", { skip }, async () => {
+  const ada = await signIn("owner");
+  const bo = await signIn("editor");
+  for (const p of [ada, bo]) p.on("dialog", (d) => void d.accept());
+  // New folder, then a new file inside it, both from the context menu.
+  await ada.getByTestId("folder-src").click({ button: "right" });
+  await ada.getByRole("menuitem", { name: "New Folder…" }).click();
+  await ada.getByTestId("tree-name-input").fill("lib");
+  await ada.keyboard.press("Enter");
+  await ada.getByTestId("folder-src/lib").waitFor();
+  await ada.getByTestId("folder-src/lib").click({ button: "right" });
+  await ada.getByRole("menuitem", { name: "New File…" }).click();
+  await ada.getByTestId("tree-name-input").fill("tool.js");
+  await ada.keyboard.press("Enter");
+  await ada.getByTestId("tab-src/lib/tool.js").waitFor();
+  await ada.keyboard.type("export const tool = 1;\n");
+
+  // Bo opens it; Ada renames it with F2. Bo's editor moves to the new name, with a notice.
+  await bo.getByTestId("folder-src/lib").click();
+  await openFile(bo, "src/lib/tool.js");
+  await bo.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("tool = 1"));
+  await ada.getByTestId("file-src/lib/tool.js").focus();
+  await ada.keyboard.press("F2");
+  await ada.getByTestId("tree-name-input").fill("helper.js");
+  await ada.keyboard.press("Enter");
+  await bo.getByTestId("tab-src/lib/helper.js").waitFor();
+  await bo.getByTestId("toast").filter({ hasText: "renamed src/lib/tool.js to src/lib/helper.js" }).waitFor();
+  await bo.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("tool = 1"));
+  await bo.locator(".cm-line").first().click({ position: { x: 2, y: 5 } });
+  await bo.keyboard.type("// Bo\n");
+  for (let i = 0; i < 50 && !server.docs.get("src/lib/helper.js")?.text.toString().includes("// Bo"); i++) await bo.waitForTimeout(100);
+  assert.match(server.docs.get("src/lib/helper.js")!.text.toString(), /\/\/ Bo/, "edits after the rename land in the renamed file");
+
+  // Delete from the context menu: Bo's editor closes, and the file stays gone.
+  await ada.getByTestId("file-src/lib/helper.js").click({ button: "right" });
+  await ada.getByRole("menuitem", { name: "Delete" }).click();
+  await bo.getByTestId("tab-src/lib/helper.js").waitFor({ state: "detached" });
+  await bo.getByTestId("toast").filter({ hasText: "deleted src/lib/helper.js" }).waitFor();
+  await ada.waitForTimeout(500);
+  assert.equal(server.docs.get("src/lib/helper.js"), undefined);
+});
+
+test("viewers see file actions disabled with a reason", { skip }, async () => {
+  const v = await signIn("viewer");
+  await v.getByTestId("file-README.md").click({ button: "right" });
+  const del = v.getByRole("menuitem", { name: "Delete" });
+  assert.equal(await del.getAttribute("aria-disabled"), "true");
+  assert.match((await del.getAttribute("title")) ?? "", /Viewers can't change files/);
+});

@@ -41,66 +41,202 @@ interface Hit {
   text: string;
 }
 
-function highlight(text: string, q: string) {
-  const i = text.toLowerCase().indexOf(q.toLowerCase());
-  if (i < 0 || !q) return text;
+interface SearchOpts {
+  matchCase: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+}
+
+/** The client-side twin of the server's matcher, only for highlighting result lines. */
+function matcher(q: string, o: SearchOpts): RegExp | null {
+  if (!q) return null;
+  const body = o.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  try {
+    return new RegExp(o.wholeWord ? `(?<![A-Za-z0-9_])(?:${body})(?![A-Za-z0-9_])` : body, o.matchCase ? "g" : "gi");
+  } catch {
+    return null;
+  }
+}
+
+function highlight(text: string, re: RegExp | null, replacement: string | null, regex: boolean) {
+  if (!re) return text;
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (!m[0]) break;
+    out.push(text.slice(last, m.index));
+    out.push(
+      replacement === null ? (
+        <mark key={m.index} className="rounded-[3px] bg-attention-soft px-px text-ink ring-1 ring-attention/30">
+          {m[0]}
+        </mark>
+      ) : (
+        // Replace preview, as VS Code shows it: the old text struck through, the new text after it.
+        <span key={m.index}>
+          <del className="bg-danger-soft text-danger decoration-danger/60">{m[0]}</del>
+          <ins className="bg-ok-soft text-ok no-underline">{regex ? m[0].replace(new RegExp(re.source, re.flags.replace("g", "")), replacement) : replacement}</ins>
+        </span>
+      ),
+    );
+    last = m.index + m[0].length;
+  }
+  out.push(text.slice(last));
+  return out;
+}
+
+function Toggle({ on, set, label, children, testId }: { on: boolean; set: (v: boolean) => void; label: string; children: React.ReactNode; testId: string }) {
   return (
-    <>
-      {text.slice(0, i)}
-      <mark className="rounded-[3px] bg-attention-soft px-px text-ink ring-1 ring-attention/30">{text.slice(i, i + q.length)}</mark>
-      {text.slice(i + q.length)}
-    </>
+    <button type="button" aria-label={label} title={label} aria-pressed={on} data-testid={testId} onClick={() => set(!on)} className={`grid h-[20px] min-w-[22px] place-items-center rounded-sm px-0.5 font-mono text-[11px] ${on ? "bg-accent-soft text-accent-ink ring-1 ring-accent-line" : "text-muted hover:bg-hover hover:text-ink"}`}>
+      {children}
+    </button>
   );
 }
 
-export function SearchView({ onOpen, focusNonce }: { onOpen: (path: string, line?: number) => void; focusNonce: number }) {
+/** Find and Replace in Files, as VS Code's Search view: match case, whole word and regex toggles; replace per file or all. */
+export function SearchView({ onOpen, focusNonce, canEdit, notify, replaceNonce = 0 }: { onOpen: (path: string, line?: number) => void; focusNonce: number; canEdit: boolean; notify: (msg: string, tone?: "ok" | "danger" | "attention") => void; replaceNonce?: number }) {
   const [q, setQ] = useState("");
+  const [rep, setRep] = useState("");
+  const [showReplace, setShowReplace] = useState(false);
+  const [opts, setOpts] = useState<SearchOpts>({ matchCase: false, wholeWord: false, regex: false });
   const [res, setRes] = useState<{ hits: Hit[]; truncated: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const input = useRef<HTMLInputElement>(null);
+  const repInput = useRef<HTMLInputElement>(null);
   useEffect(() => input.current?.focus(), [focusNonce]);
   useEffect(() => {
-    if (!q.trim()) return setRes(null);
+    if (!replaceNonce) return;
+    setShowReplace(true);
+    requestAnimationFrame(() => repInput.current?.focus());
+  }, [replaceNonce]);
+  useEffect(() => {
+    setDismissed(new Set());
+    if (!q.trim()) return (setRes(null), setError(null));
     setBusy(true);
     const t = setTimeout(() => {
-      api<{ hits: Hit[]; truncated: boolean }>("GET", `/search?q=${encodeURIComponent(q)}`)
-        .then(setRes)
+      const flags = `${opts.matchCase ? "&case=1" : ""}${opts.wholeWord ? "&word=1" : ""}${opts.regex ? "&regex=1" : ""}`;
+      api<{ hits: Hit[]; truncated: boolean }>("GET", `/search?q=${encodeURIComponent(q)}${flags}`)
+        .then((r) => (setRes(r), setError(null)), (e) => (setRes(null), setError(e instanceof Error ? e.message : String(e))))
         .finally(() => setBusy(false));
     }, 180);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, opts, tick]);
   const groups = useMemo(() => {
     const m = new Map<string, Hit[]>();
-    for (const h of res?.hits ?? []) m.set(h.path, [...(m.get(h.path) ?? []), h]);
+    for (const h of res?.hits ?? []) if (!dismissed.has(h.path)) m.set(h.path, [...(m.get(h.path) ?? []), h]);
     return [...m.entries()];
-  }, [res]);
+  }, [res, dismissed]);
+  const re = useMemo(() => matcher(q, opts), [q, opts]);
+  const replaceReason = !canEdit ? "Viewers can't change files" : !groups.length ? "Nothing to replace" : res?.truncated ? "Too many results to replace at once; narrow the search" : null;
+
+  /** Replace in the given files: counted first, confirmed, then applied to the shared documents. */
+  const replaceIn = async (paths: string[]) => {
+    const body = { query: q, replacement: rep, paths, ...opts };
+    try {
+      const dry = await api<{ files: { path: string }[]; replacements: number }>("POST", "/replace", { ...body, dryRun: true });
+      if (!dry.replacements) return notify("Nothing left to replace: the files changed since the search.", "attention");
+      const n = dry.files.length;
+      if (!confirm(`Replace ${dry.replacements} ${dry.replacements === 1 ? "occurrence" : "occurrences"} across ${n} ${n === 1 ? "file" : "files"} with "${rep}"?\n\nOpen editors update for everyone, and the change is credited to you.`)) return;
+      const done = await api<{ replacements: number; files: { path: string }[] }>("POST", "/replace", body);
+      notify(`Replaced ${done.replacements} ${done.replacements === 1 ? "occurrence" : "occurrences"} in ${done.files.length} ${done.files.length === 1 ? "file" : "files"}.`);
+      setTick((t) => t + 1);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e), "danger");
+    }
+  };
+
+  const toggles = (
+    <span className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+      <Toggle on={opts.matchCase} set={(v) => setOpts((o) => ({ ...o, matchCase: v }))} label="Match Case" testId="search-case">
+        Aa
+      </Toggle>
+      <Toggle on={opts.wholeWord} set={(v) => setOpts((o) => ({ ...o, wholeWord: v }))} label="Match Whole Word" testId="search-word">
+        <span className="underline decoration-1 underline-offset-2">ab</span>
+      </Toggle>
+      <Toggle on={opts.regex} set={(v) => setOpts((o) => ({ ...o, regex: v }))} label="Use Regular Expression" testId="search-regex">
+        .*
+      </Toggle>
+    </span>
+  );
   return (
     <div className="flex h-full flex-col">
-      <ViewHeader title="Search" />
-      <div className="px-3 pb-2">
-        <input
-          ref={input}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search"
-          data-testid="search-input"
-          className="h-7.5 w-full rounded-md border border-rule bg-editor px-2.5 text-[13px] outline-none focus:border-accent focus-visible:outline-none"
-        />
-        <p className="mt-1.5 text-[11.5px] text-muted">{busy ? "Searching…" : res ? `${res.hits.length}${res.truncated ? "+" : ""} results in ${groups.length} files` : "Literal, case-insensitive, across shared files"}</p>
+      <ViewHeader
+        title="Search"
+        actions={
+          <button aria-label="Refresh results" title="Refresh results" onClick={() => setTick((t) => t + 1)} className="grid size-6 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink">
+            <RefreshCw size={13} />
+          </button>
+        }
+      />
+      <div className="flex gap-1 pb-2 pl-1 pr-3">
+        <button aria-label={showReplace ? "Hide replace" : "Toggle Replace"} title="Toggle Replace" aria-expanded={showReplace} data-testid="search-toggle-replace" onClick={() => setShowReplace((v) => !v)} className="grid w-5 shrink-0 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink">
+          <span className={`inline-block transition-transform ${showReplace ? "rotate-90" : ""}`}>›</span>
+        </button>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="relative">
+            <input
+              ref={input}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search"
+              data-testid="search-input"
+              className="h-7.5 w-full rounded-md border border-rule bg-editor pl-2.5 pr-[78px] text-[13px] outline-none focus:border-accent focus-visible:outline-none"
+            />
+            {toggles}
+          </div>
+          {showReplace && (
+            <div className="flex items-center gap-1">
+              <input
+                ref={repInput}
+                value={rep}
+                onChange={(e) => setRep(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && !replaceReason && void replaceIn(groups.map(([p]) => p))}
+                placeholder="Replace"
+                data-testid="replace-input"
+                className="h-7.5 min-w-0 flex-1 rounded-md border border-rule bg-editor px-2.5 text-[13px] outline-none focus:border-accent focus-visible:outline-none"
+              />
+              <button
+                aria-label="Replace All"
+                title={replaceReason ?? "Replace All (Ctrl+Enter)"}
+                disabled={!!replaceReason}
+                data-testid="replace-all"
+                onClick={() => void replaceIn(groups.map(([p]) => p))}
+                className="h-7.5 shrink-0 rounded-md px-2 text-[12px] font-medium text-ink-2 hover:bg-hover hover:text-ink disabled:text-faint disabled:hover:bg-transparent"
+              >
+                Replace All
+              </button>
+            </div>
+          )}
+          <p className={`text-[11.5px] ${error ? "text-danger" : "text-muted"}`}>
+            {error ?? (busy ? "Searching…" : res ? `${groups.reduce((n, [, h]) => n + h.length, 0)}${res.truncated ? "+" : ""} results in ${groups.length} files` : "Searches the shared files everyone sees")}
+          </p>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {groups.map(([path, hits]) => (
           <div key={path}>
-            <button onClick={() => onOpen(path)} className="flex h-6 w-full items-center gap-1.5 px-3 text-[13px] hover:bg-hover">
-              <FileCode2 size={13} className="text-faint" />
-              <span className="font-medium text-ink">{path.split("/").pop()}</span>
-              <span className="truncate text-[11.5px] text-faint">{path.split("/").slice(0, -1).join("/")}</span>
-              <span className="tnum ml-auto rounded-sm border border-rule px-1 text-[10px] text-muted">{hits.length}</span>
-            </button>
+            <div className="group flex h-6 items-center hover:bg-hover">
+              <button onClick={() => onOpen(path)} className="flex min-w-0 flex-1 items-center gap-1.5 pl-3 text-[13px]">
+                <FileCode2 size={13} className="shrink-0 text-faint" />
+                <span className="font-medium text-ink">{path.split("/").pop()}</span>
+                <span className="truncate text-[11.5px] text-faint">{path.split("/").slice(0, -1).join("/")}</span>
+              </button>
+              {showReplace && (
+                <button aria-label={`Replace in ${path}`} title={replaceReason ?? `Replace in ${path}`} disabled={!!replaceReason} onClick={() => void replaceIn([path])} className="hidden h-5 rounded-sm px-1 text-[11px] text-muted hover:bg-sunken hover:text-ink group-hover:block disabled:text-faint">
+                  Replace
+                </button>
+              )}
+              <button aria-label={`Dismiss ${path}`} title="Dismiss (leave this file out)" onClick={() => setDismissed((d) => new Set(d).add(path))} className="hidden size-5 place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink group-hover:grid">
+                <X size={12} />
+              </button>
+              <span className="tnum mx-2 rounded-sm border border-rule px-1 text-[10px] text-muted">{hits.length}</span>
+            </div>
             {hits.map((h) => (
               <button key={h.line} onClick={() => onOpen(h.path, h.line)} className="flex h-6 w-full items-center gap-2 pl-8 pr-3 text-left font-mono text-[12px] text-ink-2 hover:bg-hover">
                 <span className="w-7 shrink-0 text-right text-faint">{h.line}</span>
-                <span className="truncate">{highlight(h.text.trimStart(), q)}</span>
+                <span className="truncate">{highlight(h.text.trimStart(), re, showReplace && rep !== "" ? rep : showReplace ? "" : null, opts.regex)}</span>
               </button>
             ))}
           </div>

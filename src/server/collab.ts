@@ -21,6 +21,8 @@ interface Room {
   onUpdate: (update: Uint8Array, origin: unknown) => void;
   awareness: awarenessProtocol.Awareness;
   conns: Map<WebSocket, Conn>;
+  /** The file was renamed or deleted: the room is gone and must never write its document back. */
+  closed?: boolean;
 }
 
 /** One connection's identity and the awareness client IDs it is allowed to speak for. */
@@ -201,6 +203,7 @@ export class CollabService {
       room.conns.delete(ws);
       if (![...this.rooms.values()].some((r) => [...r.conns.values()].some((c) => c.member.id === member.id))) this.activity.delete(member.id);
       this.onPresence?.();
+      if (room.closed) return;
       awarenessProtocol.removeAwarenessStates(room.awareness, [...conn.clientIds], null);
       if (room.conns.size === 0) {
         this.store.flush(room.entry);
@@ -240,6 +243,20 @@ export class CollabService {
         ws.ping();
       }
     }
+  }
+
+  /**
+   * The file behind a document was renamed or deleted: close everyone's connection to it with code 4410 so clients stop
+   * reconnecting. The room is dropped first, so a closing socket can't flush the old document back to disk.
+   */
+  closeDocument(path: string, reason: string): void {
+    const room = this.rooms.get(path);
+    if (!room) return;
+    room.closed = true;
+    this.rooms.delete(path);
+    room.entry.doc.off("update", room.onUpdate);
+    room.awareness.destroy();
+    for (const ws of room.conns.keys()) ws.close(4410, reason.slice(0, 120));
   }
 
   /** Close every connection belonging to a member (on revocation). */

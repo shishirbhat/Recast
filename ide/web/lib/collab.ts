@@ -3,7 +3,8 @@ import { WebsocketProvider } from "y-websocket";
 import { restorePresenceOnReconnect } from "./presence";
 import type { Member } from "./types";
 
-export type SyncStatus = "connecting" | "synced" | "offline";
+/** "gone": the file was renamed or deleted; the session stops and never reconnects. */
+export type SyncStatus = "connecting" | "synced" | "offline" | "gone";
 
 /** One shared file: its Yjs document, the connection, and this user's presence in it. */
 export class DocSession {
@@ -31,7 +32,15 @@ export class DocSession {
     restorePresenceOnReconnect(this.provider);
     this.provider.awareness.setLocalStateField("user", { id: me.id, name: me.name, color: me.color, colorLight: me.color + "33" });
     this.provider.on("status", ({ status }: { status: string }) => {
-      if (status !== "connected") this.set("offline");
+      if (status !== "connected" && this.status !== "gone") this.set("offline");
+    });
+    // The server closes with 4410 when the file is renamed or deleted. Reconnecting would send this copy back and
+    // could recreate the file, so stop for good.
+    this.provider.on("connection-close", (e: CloseEvent | null) => {
+      if (e?.code !== 4410) return;
+      this.provider.shouldConnect = false;
+      this.provider.disconnect();
+      this.set("gone");
     });
     this.provider.on("sync", (synced: boolean) => {
       if (synced) this.pendingOffline = false;

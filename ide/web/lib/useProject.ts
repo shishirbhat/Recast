@@ -16,6 +16,8 @@ export interface TestRunView {
   command: string;
   runner: "node-test" | "npm-script";
   files: string[];
+  /** Empty folders, so New Folder shows up before its first file. */
+  folders: string[];
   revision: string;
   status: "running" | "passed" | "failed" | "stopped" | "error";
   exitCode: number | null;
@@ -37,6 +39,7 @@ export function useProject() {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [events, setEvents] = useState<RelayEvent[]>([]);
   const [files, setFiles] = useState<string[]>([]);
+  const [folders, setFolders] = useState<string[]>([]);
   const [live, setLive] = useState(false);
   const [presence, setPresence] = useState<Presence>({ online: [], participants: [] });
   const [testRun, setTestRun] = useState<TestRunView | null>(null);
@@ -54,7 +57,9 @@ export function useProject() {
 
   const refreshFiles = useCallback(async () => {
     try {
-      setFiles((await api<{ files: string[] }>("GET", "/files")).files);
+      const r = await api<{ files: string[]; folders?: string[] }>("GET", "/files");
+      setFiles(r.files);
+      setFolders(r.folders ?? []);
     } catch {}
   }, []);
 
@@ -82,7 +87,7 @@ export function useProject() {
         if (msg.type === "presence") return setPresence({ online: msg.online, participants: msg.participants });
         if (msg.type !== "events") return;
         setEvents((prev) => [...prev, ...msg.events].slice(-400));
-        if (msg.events.some((e) => e.type === "file.created")) void refreshFiles();
+        if (msg.events.some((e) => ["file.created", "file.renamed", "file.deleted", "folder.created"].includes(e.type))) void refreshFiles();
         soon();
       };
       ws.onclose = () => {
@@ -99,5 +104,5 @@ export function useProject() {
     };
   }, [refresh, refreshFiles, soon]);
 
-  return { load, events, files, live, presence, testRun, setTestRun, refresh, refreshFiles };
+  return { load, events, files, folders, live, presence, testRun, setTestRun, refresh, refreshFiles };
 }

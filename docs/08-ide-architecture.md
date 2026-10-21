@@ -93,6 +93,13 @@ Consequences:
 | `GET /api/state` | read | project, members, presence, tasks with agent runs, contracts, doc conflicts |
 | `GET /api/files`, `/search?q=`, `/git`, `/scripts`, `/output` | read | files (secrets excluded), search, git status, scripts, Relay-run evidence |
 | `GET /api/symbols?q=` | read | Go to Symbol in Workspace: JS/TS/Python declarations and Markdown headings whose name contains `q` (identifier characters only), via `git grep` over the shared files; secrets excluded |
+| `GET /api/files` also returns `folders` | read | empty folders (untracked, not ignored), so New Folder shows before its first file |
+| `GET /api/search?q=&case=1&word=1&regex=1` | read | Find in Files toggles: match case, whole word (`git grep -w`), extended regex (`-E`) |
+| `POST /api/replace` `{query, replacement, paths, matchCase, wholeWord, regex, dryRun}` | edit | Replace in Files on the shared documents: one change per file, only the replaced ranges credited to the member (`member:<id>` origin). JS regex (multiline) with `$1`/`$<name>`/`$&`; runs in a `vm` context with a 1 s limit per file. `dryRun` only counts. Event `files.replaced` |
+| `POST /api/files/rename` `{from, to}` | edit | File or folder. Each shared file is flushed, its live connections closed with **4410**, its document unloaded and its history (updates, snapshots, authorship, sessions) moved to the new name. Event `file.renamed` `{from, to, files: [{from, to}]}` |
+| `POST /api/files/delete` `{path}` | edit | File or folder. Connections closed with 4410; history moved aside to `deleted:<ts>:file:<path>` so a new file at that path starts empty. Event `file.deleted` |
+| `POST /api/folders` `{path}` | edit | New folder. Event `folder.created` |
+| WebSocket `/collab/file:<path>` close **4410** | — | The file was renamed or deleted (or never existed and isn't loaded). Clients stop reconnecting: reconnecting would send the stale copy back and recreate the file |
 | `GET /api/capabilities` | read | terminal policy, agent provider and its declared capabilities, extension host status |
 | `POST /api/tasks` · `/tasks/:id/transition` · `/check` · `/run` · `/cancel-run` · `/apply` | edit (consequential transitions and apply: approve) | task lifecycle through the engine's state machine and gates |
 | `GET /api/tasks/:id` · `/why` · `/change` | read | task, evidence, events; completion gaps; the change record (six stages) |
