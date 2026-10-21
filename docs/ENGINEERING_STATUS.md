@@ -91,7 +91,10 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
-## Latest full run (2026-10-21, after a page + a date → Google Tasks)
+## Latest full run (2026-10-21, after the time-zone fix, head 4fa65a0)
+`pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 877 tests, 0 failures** (interaction 121, extension 31, others as below). Re-run before publishing the try-it page.
+
+## Previous full run (2026-10-21, after a page + a date → Google Tasks)
 `pnpm gen` leaves no diff; `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 873 tests, 0 failures, twice in a row** (core 114, interaction 118, bridges 40, overlay 11, extract-web 74, harness 52, extension 30, calendar-link 21, api-core 88, agent-runtime 102, …). Before: 862.
 - **Fixed a test-environment race found by this run:** under a full parallel run, the extension's link test sometimes saw "UTC" instead of Asia/Kolkata (2 of 3 runs). Playwright's `timezoneId` reaches pages but not reliably the extension's service worker, which reads dates. The test browsers now also set `TZ`, which every browser process respects. The repository defines no lint script; typecheck is the static check.
 
@@ -108,7 +111,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Deployments (Supabase, Vercel, runtime host) | the founders' accounts (#21) |
 | Real OAuth bridges | the founders' Google/Notion apps (#22) |
 | Native Windows shell | a Windows machine (#23) |
-| User testing | people (#24) |
+| User testing | people (#24). Ready to start: try-it link published (private until shared) and protocol written, `docs/23-user-validation.md`. No session has happened |
 | Model-provider stages | a key (#25) |
 | Billing | an account (#26) |
 
