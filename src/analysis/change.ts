@@ -156,7 +156,9 @@ export function changeRecord(relay: Relay, root: string, dbPath: string, taskId:
   // The gate that applies: tasks sharing a contract complete together through the integration gate; others alone.
   const blockers: string[] = [];
   if (task.state !== "completed") {
-    if (!partners.length) blockers.push(...relay.completionGaps(task, root));
+    // The same workspace the completion gate will check: an unapplied agent run is completed from its worktree
+    // (runs.apply), a person's work from the shared workspace.
+    if (!partners.length) blockers.push(...relay.completionGaps(task, pending ? pending.worktree : root));
     else if (!lastInteg) blockers.push(`check together with ${partners.map((p) => p.id).join(", ")} (relay integrate check)`);
     else if (lastInteg.status !== "passed") blockers.push(...lastInteg.gaps);
     else if (!integFresh) blockers.push(`the changes moved on since integration ${lastInteg.id.slice(0, 8)} passed; check again`);

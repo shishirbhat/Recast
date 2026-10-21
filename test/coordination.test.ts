@@ -3,11 +3,12 @@
  * "finished" never reads as "verified" and "verified" never reads as "safe to integrate".
  */
 import { test } from "node:test";
+import { resolve } from "node:path";
 import assert from "node:assert/strict";
 import { statusOf } from "../src/analysis/coordination.ts";
 import type { Task } from "../src/core/types.ts";
 import type { AgentRun } from "../src/server/runs.ts";
-import { api, join as joinAs, testServer } from "./collab-helpers.ts";
+import { api, join as joinAs, testServer, until } from "./collab-helpers.ts";
 import { SHOP_FILES, seed } from "./e2e/fixture.ts";
 import { HUMAN } from "./helpers.ts";
 
@@ -52,6 +53,26 @@ test("GET /api/coordination: dependencies, contract partners and answers from th
     assert.deepEqual(r.body.answers.safeNext, [], "nothing is reported safe without a passing record");
     assert.equal((await api(server, null, "GET", "/api/coordination")).status, 401);
   } finally {
+    await server.close();
+  }
+});
+
+test("a verified agent change with no partners is ready: the completion gate is judged in its worktree, as apply does", { timeout: 60_000 }, async () => {
+  process.env.RELAY_SIM_EDITS = JSON.stringify({ "T-readme": { "README.md": [["A tiny shop", "A tiny corner shop"]] } });
+  process.env.RELAY_SIM_DELAY_MS = "50";
+  const { server } = await testServer(SHOP_FILES, { claudeBin: resolve(import.meta.dirname, "fixtures/simulated-agent") });
+  try {
+    server.relay.createTask({ id: "T-readme", objective: "Describe the shop", scope: ["README.md"], verify: ["node --test"] }, HUMAN);
+    server.relay.transition("T-readme", "queued", HUMAN);
+    await server.runs.start("T-readme", server.members.invite("Olu", "owner").member);
+    await until(() => server.runs.forTask("T-readme").at(-1)?.status === "finished", 30_000, "the simulated run to finish");
+    const ada = await joinAs(server, "Ada", "owner");
+    const t = (await api(server, ada.cookie, "GET", "/api/coordination")).body.tasks.find((x: { id: string }) => x.id === "T-readme");
+    assert.deepEqual(t.blockers, [], "the shared workspace's state doesn't block work that lives in the worktree");
+    assert.equal(t.status, "ready");
+    assert.deepEqual((await api(server, ada.cookie, "GET", "/api/coordination")).body.answers.safeNext, ["T-readme"]);
+  } finally {
+    for (const k of ["RELAY_SIM_EDITS", "RELAY_SIM_DELAY_MS"]) delete process.env[k];
     await server.close();
   }
 });

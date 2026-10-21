@@ -25,12 +25,15 @@ let browser: Browser;
 before(async () => {
   if (skip) return;
   // The agent changes the greeting the test checks, so verification fails for real.
-  process.env.RELAY_SIM_EDITS = JSON.stringify({ "T-ui": { "src/ui.js": [["Welcome back", "Welcome home"]] } });
+  process.env.RELAY_SIM_EDITS = JSON.stringify({ "T-ui": { "src/ui.js": [["Welcome back", "Welcome home"]] }, "T-readme": { "README.md": [["A tiny shop", "A tiny corner shop"]] } });
   process.env.RELAY_SIM_DELAY_MS = "200";
   server = (await testServer(SHOP_FILES, { staticDir: STATIC, claudeBin: SIM })).server;
   seed(server);
   server.relay.createTask({ id: "T-release", objective: "Release notes", scope: ["CHANGELOG.md"], prerequisites: ["T-api", "T-ui"] }, HUMAN);
   server.relay.transition("T-release", "queued", HUMAN);
+  // A task with no contract partners whose checks pass: it can become ready and be applied from the row.
+  server.relay.createTask({ id: "T-readme", objective: "Describe the shop in the README", scope: ["README.md"], verify: ["node --test"] }, HUMAN);
+  server.relay.transition("T-readme", "queued", HUMAN);
   browser = await chromium.launch({ executablePath: CHROME });
 });
 after(async () => {
@@ -88,4 +91,23 @@ test("coordination: viewers see it, and can't create or start", { skip }, async 
   await v.getByTestId("activity-coordination").click();
   await v.getByTestId("coord-answers").waitFor();
   assert.equal(await v.getByRole("button", { name: "New task" }).isDisabled(), true);
+});
+
+test("coordination: a verified agent change becomes ready, is applied after confirmation, and the engine confirms it", { skip }, async () => {
+  const p = await signIn("owner");
+  await p.keyboard.press("Control+Alt+C");
+  await p.getByTestId("coord-task-T-readme").getByRole("button", { name: "Start agent" }).click();
+  await until(() => server.runs.forTask("T-readme").at(-1)?.status === "finished", 30000, "the agent run to finish");
+  await p.waitForFunction(() => document.querySelector("[data-testid='coord-task-T-readme'] [data-status]")?.getAttribute("data-status") === "ready", undefined, { timeout: 15000 });
+  assert.match(await p.getByTestId("coord-answers").innerText(), /Safe to integrate next\?\s*T-readme/);
+  // Nothing is in the shared project before a person applies it.
+  assert.doesNotMatch(server.docs.open("README.md").text.toString(), /corner shop/);
+  await p.getByTestId("coord-task-T-readme").getByRole("button", { name: "Apply to project" }).click();
+  await p.getByTestId("integrate-confirm").getByRole("button", { name: "Confirm" }).click();
+  await p.getByTestId("toast").filter({ hasText: "Applied 1 file from T-readme" }).waitFor();
+  await p.waitForFunction(() => document.querySelector("[data-testid='coord-task-T-readme'] [data-status]")?.getAttribute("data-status") === "done", undefined, { timeout: 10000 });
+  assert.equal(server.relay.requireTask("T-readme").state, "completed");
+  assert.match(server.docs.open("README.md").text.toString(), /A tiny corner shop/);
+  // Applying twice is refused by the engine, not just hidden in the UI.
+  await assert.rejects(async () => server.runs.apply("T-readme", server.members.invite("x", "owner").member));
 });

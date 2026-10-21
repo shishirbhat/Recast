@@ -139,6 +139,26 @@ export function CoordinationView({ tick, members, role, onOpenTask, onOpenFile, 
     }
   };
 
+  /** Integrate a ready task through the engine, then report what the engine says happened, not what was clicked. */
+  const integrate = async (t: CoordTask) => {
+    setBusy(`int:${t.id}`);
+    try {
+      if (t.run && t.run.status === "finished") {
+        const r = await api<{ applied: string[]; conflicts: { path: string }[] }>("POST", `/tasks/${encodeURIComponent(t.id)}/apply`);
+        if (r.conflicts.length) notify(`Not applied: ${r.conflicts.map((c) => c.path).join(", ")} changed in the shared project in a way that conflicts. Nothing was merged; review the diff and rerun the agent or resolve by hand.`, "danger");
+        else notify(`Applied ${r.applied.length} ${r.applied.length === 1 ? "file" : "files"} from ${t.id}. The task is completed.`);
+      } else {
+        await api("POST", `/tasks/${encodeURIComponent(t.id)}/transition`, { to: "completed" });
+        notify(`${t.id} is completed.`);
+      }
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : String(e), "danger");
+    } finally {
+      setBusy(null);
+      load();
+    }
+  };
+
   if (error && !data)
     return (
       <div className="flex-1 overflow-y-auto p-8" data-testid="coordination">
@@ -242,7 +262,7 @@ export function CoordinationView({ tick, members, role, onOpenTask, onOpenFile, 
                   </h2>
                   <div className="mt-2 divide-y divide-rule overflow-hidden rounded-md border border-rule">
                     {rows.map((t) => (
-                      <TaskRow key={t.id} t={t} canEdit={canEdit} busy={busy} owner={name(t.owner)} onOpenTask={onOpenTask} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} chip={chip} act={act} />
+                      <TaskRow key={t.id} t={t} canEdit={canEdit} isOwner={role === "owner"} busy={busy} owner={name(t.owner)} onOpenTask={onOpenTask} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} chip={chip} act={act} integrate={integrate} />
                     ))}
                   </div>
                 </section>
@@ -255,7 +275,8 @@ export function CoordinationView({ tick, members, role, onOpenTask, onOpenFile, 
   );
 }
 
-function TaskRow({ t, canEdit, busy, owner, onOpenTask, onOpenFile, onOpenDiff, chip, act }: { t: CoordTask; canEdit: boolean; busy: string | null; owner: string | null; onOpenTask: (id: string) => void; onOpenFile: (p: string) => void; onOpenDiff: (task: string, path: string) => void; chip: (id: string) => React.ReactNode; act: (key: string, method: "POST", path: string, ok: string) => Promise<void> }) {
+function TaskRow({ t, canEdit, isOwner, busy, owner, onOpenTask, onOpenFile, onOpenDiff, chip, act, integrate }: { t: CoordTask; canEdit: boolean; isOwner: boolean; busy: string | null; owner: string | null; onOpenTask: (id: string) => void; onOpenFile: (p: string) => void; onOpenDiff: (task: string, path: string) => void; chip: (id: string) => React.ReactNode; act: (key: string, method: "POST", path: string, ok: string) => Promise<void>; integrate: (t: CoordTask) => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
   const pendingRun = t.run && t.run.status !== "applied" ? t.run : null;
   const live = t.run && (t.run.status === "running" || t.run.status === "starting");
   const btn = "inline-flex h-[24px] items-center gap-1.5 rounded-sm px-2 text-[12px] text-ink-2 hover:bg-hover hover:text-ink disabled:text-faint disabled:hover:bg-transparent";
@@ -272,6 +293,30 @@ function TaskRow({ t, canEdit, busy, owner, onOpenTask, onOpenFile, onOpenDiff, 
           {t.objective}
         </button>
         <span className="flex shrink-0 items-center gap-0.5">
+          {t.status === "ready" &&
+            (() => {
+              // What integrating means for this task, and who may do it. The engine enforces the same rules again.
+              const agentWork = !!pendingRun && pendingRun.status === "finished";
+              const why = !isOwner ? "Only project owners can integrate" : t.partners.length ? `Integrates together with ${t.partners.join(", ")}: use the integration gate in the task review` : null;
+              const label = agentWork ? "Apply to project" : "Approve and complete";
+              if (confirming && !why)
+                return (
+                  <span className="flex items-center gap-1" data-testid="integrate-confirm">
+                    <span className="text-[12px] text-muted">{agentWork ? `Merge ${t.files.length} ${t.files.length === 1 ? "file" : "files"} into the shared project?` : "Mark it completed?"}</span>
+                    <button className="h-[24px] rounded-sm bg-accent px-2 text-[12px] font-medium text-accent-fg hover:brightness-110 disabled:opacity-50" disabled={busy === `int:${t.id}`} onClick={() => void integrate(t).finally(() => setConfirming(false))}>
+                      {busy === `int:${t.id}` ? "Working…" : "Confirm"}
+                    </button>
+                    <button className={btn} onClick={() => setConfirming(false)}>
+                      Cancel
+                    </button>
+                  </span>
+                );
+              return (
+                <button className="inline-flex h-[24px] items-center gap-1.5 rounded-sm bg-accent px-2 text-[12px] font-medium text-accent-fg hover:brightness-110 disabled:bg-sunken disabled:text-faint" disabled={!!why} title={why ?? (agentWork ? "Merge the agent's changes into the shared project (3-way merge; refused on conflict) and complete the task" : "Complete the task; Relay's completion gate checks it again")} onClick={() => setConfirming(true)}>
+                  {label}
+                </button>
+              );
+            })()}
           {t.state === "queued" && (
             <button className={btn} disabled={!!startWhy || busy === `run:${t.id}`} title={startWhy ?? "Start an agent on this task in its own worktree"} onClick={() => void act(`run:${t.id}`, "POST", `/tasks/${encodeURIComponent(t.id)}/run`, `Agent started on ${t.id}.`)}>
               <Play size={12} /> Start agent
