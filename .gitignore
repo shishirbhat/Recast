@@ -9,3 +9,8 @@ apps/extension/dist-test/
 packages/overlay/src/css.generated.ts
 packages/overlay/dist/
 apps/harness/dist/
+# Local secrets: OAuth client settings and tokens never leave the machine
+.env
+.env.*
+!.env.example
+apps/calendar-link/.secrets/
