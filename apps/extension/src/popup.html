@@ -9,6 +9,9 @@
 </head>
 <body>
 <header><h1>Recast</h1><button type="button" id="clump" class="clump" aria-keyshortcuts="Alt+Shift+R">Clump things on this page <kbd>Ctrl Ctrl</kbd></button><p id="status" role="status" aria-live="polite">Reading this page…</p></header>
+<section class="ask" aria-labelledby="ask-h"><h2 id="ask-h">How much should Recast ask?</h2><p id="ask-first" hidden>Choose once; you can change it here any time.</p>
+<label><input type="radio" name="ask" value="high"> <span><b>Every time.</b> Show a review before anything is placed.</span></label>
+<label><input type="radio" name="ask" value="none"> <span><b>Only when it matters.</b> Place right away when it can be undone and tells no one. Still asks before inviting people, anything that can't be undone, or when something is missing.</span></label></section>
 <section class="link" aria-labelledby="link-h"><h2 id="link-h">Google Calendar</h2><p id="link-text">Calendar placements go to a local stand-in.</p><button type="button" id="link-btn">Connect the real Google Calendar</button></section>
 <main id="root" aria-live="polite"></main>
 <script src="popup.js"></script>

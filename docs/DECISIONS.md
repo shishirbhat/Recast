@@ -135,7 +135,11 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Open questions to settle before building:**
   - Does "None" also cover actions that reach other people or cannot be undone (sending an email, inviting attendees), or do those keep one confirmation?
   - What happens when something required is missing, such as a time or a recipient? Recast cannot place without it, so it must still ask for that.
-- **Status:** not implemented. Today every placement asks (confirm, or hold for high risk).
+- **Answers taken (2026-10-21, without asking again, per the founder's "keep working"):**
+  - "None" does **not** cover actions that reach other people, cannot be undone, need a hold, or are driven by fragile UI automation. Those keep their review.
+  - Anything missing is still asked for. Recast cannot place without it.
+  - See D28 for what "None" does with readings Recast is unsure of.
+- **Status:** built in the interaction engine (`confirm` on the state, `setConfirm`, `straightThrough` in `clump-machine.ts`) and the extension (asked the first time the popup opens, changeable there; kept in `chrome.storage.local` as one key). Two levels: "Every time" (high, the default) and "Only when it matters" (none). Not yet in the web control center: it has no link to the extension today.
 
 ### D25. The trigger is Control: twice to turn on, once to turn off (founder's call, 2026-10-20)
 - **Decision:** one key everywhere: Control twice turns Recast on, and Control once turns it off again (Ctrl on Windows and Linux, Control, not ⌘, on a Mac). After a tap turns it off, the detector starts afresh, so a habitual double tap while on leaves it off. Detected by a pure function (`createDoubleTap`) that accepts only two quick, clean taps. Chords, Ctrl+click, holds and auto-repeat never count.
@@ -164,3 +168,14 @@ Consequential architecture and product decisions, so that separate workstreams d
   - Deferring Control until safe (a delayed "off" is more surprising than an immediate, explained refusal).
 - **Why:** the brief's invariants ("a failed undo is never reported as done", "unknown is neither", "no duplicate on retry") hold only if they live in the one reducer both hosts share.
 - **Change if:** a destination offers a reliable status lookup by client id for every write. Then a lost answer could be resolved automatically, instead of the person pressing Check.
+
+### D28. Under "None", choosing in the module confirms a reading Recast is unsure of (2026-10-21)
+- **Problem:** pieces read from a page are capped at 0.5–0.7 confidence on purpose. The trust model asks for a confirmation below 0.75. Taken literally, "None" would almost never skip the review.
+- **Decision:** with confirmation "None", choosing the destination **in the glass module** counts as that confirmation, because the module has just shown every value. This applies only when doubt is the sole reason:
+  - the relation's base risk is low;
+  - there are no effect flags;
+  - it is reversible;
+  - it is not UI automation;
+  - it is not below the 0.5 deliberate-choice line.
+- **Not covered:** a blind drop onto a page still opens the review, because the person has not seen the values in the module.
+- **Unchanged:** the core consent check (`checkConsent`) runs on that confirmation and again in `commit()`. Receipts, Undo and unknown-outcome handling are unchanged.

@@ -167,6 +167,46 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(drafts.size).toBe(0);
   });
 
+  it("how much Recast asks: chosen once in the popup; 'Only when it matters' places a complete event right away, with Undo", async () => {
+    const extId = new URL(sw.url()).host;
+    const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${extId}/popup.html?tabId=1`);
+    await until(async () => (await popup.locator(".ask").getAttribute("class"))?.includes("first") ?? false);   // never chosen yet: asked
+    expect(await popup.locator("#ask-first").isVisible()).toBe(true);
+    await popup.getByLabel(/Only when it matters/).check();
+    await until(async () => (await stored()).confirm === "none");
+    expect(await sw.evaluate(async () => (await chrome.storage.local.get(null)))).toEqual({ confirmLevel: "none" });   // the only thing kept
+    await popup.reload(); await until(async () => popup.getByLabel(/Only when it matters/).isChecked());
+    expect(await popup.locator("#ask-first").isVisible()).toBe(false);
+    await popup.close();
+
+    const restaurant = await openTab("restaurant.html");
+    const before = live().length;
+    const dinnerId = Object.entries((await stored()).objects).find(([, o]: any) => o.ingredients.length === 3)![0];
+    const openWith = async (id: string) => { await sw.evaluate((id) => (globalThis as any).recastClay.dispatch({ type: "openModule", id }), id); await until(async () => { const v = await stored(); return v.phase === "composed" && v.focus === id; }); };
+    const toCalendar = async () => {
+      await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+      await until(async () => (await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")) === "false");
+      await restaurant.locator("recast-clay >> button[data-act=open]").click();
+    };
+    // Chosen in the module, which showed every value: with "Only when it matters" that choice is the confirmation,
+    // even though Maya's name was read at 60%. Placed at once; Undo is kept.
+    await openWith(dinnerId); await toCalendar();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(live().length).toBe(before + 1);
+    await restaurant.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(live().length).toBe(before);
+    const eventId = dinnerId;
+
+    // Back to "Every time": the same composition gets a review again.
+    const p2 = await ctx.newPage(); await p2.goto(`chrome-extension://${extId}/popup.html?tabId=1`);
+    await p2.getByLabel(/Every time/).check(); await until(async () => (await stored()).confirm === "high"); await p2.close();
+    await openWith(eventId); await toCalendar();
+    await until(async () => (await stored()).phase === "previewing");
+    expect(live().length).toBe(before);
+    await restaurant.locator("recast-clay >> button", { hasText: "Cancel" }).click();
+  });
+
   it("a web page cannot use the program: wrong Origin is refused, an unpaired extension origin only gets a pending code", async () => {
     const r = await fetch("http://localhost:8787/ext/commit", { method: "POST", headers: { origin: "https://evil.example", "content-type": "application/json" }, body: "{}" });
     expect(r.status).toBe(403);

@@ -45,10 +45,14 @@ describe("built code: no dynamic execution, no network, no storage, no unsafe HT
     // One fetch, to http://localhost:8787/ext/…, which only works after the person granted localhost and allowed the extension there.
     expect(read("src/background.ts").match(/\bfetch\s*\([^,]*/g)).toEqual(["fetch(`${LINK}/ext/${route}`"]);
     expect(read("src/background.ts")).toContain('LINK = "http://localhost:8787"');
-    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(local|sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.create/, /chrome\.downloads/]) {
+    for (const pat of [/\bnew Function\s*\(/, /\beval\s*\(/, /XMLHttpRequest/, /WebSocket/, /sendBeacon/, /importScripts/, /chrome\.storage\.(sync|managed)/, /chrome\.cookies/, /chrome\.tabs\.create/, /chrome\.downloads/]) {
       expect(src, String(pat)).not.toMatch(pat);
     }
     expect(src).toContain("chrome.storage.session");
+    // chrome.storage.local holds exactly one key, the confirmation setting: never objects or page content.
+    const src2 = read("src/background.ts");
+    expect(src2.match(/chrome\.storage\.local\.(get|set)\([^)]*\)/g)).toEqual(["chrome.storage.local.get(CONFIRM)", "chrome.storage.local.set({ [CONFIRM]: level })"]);
+    expect(src2).toContain('const CONFIRM = "confirmLevel"');
     // The only tab change it makes: bringing a destination's tab to the front when the person chose it in the module.
     expect(read("src/background.ts").match(/chrome\.(tabs|windows)\.update\([^)]*\)/g)).toEqual(["chrome.tabs.update(tabId, { active: true })", "chrome.windows.update(t.windowId, { focused: true })"]);
   });
@@ -67,9 +71,10 @@ describe("built code: no dynamic execution, no network, no storage, no unsafe HT
       }
     });
   }
-  it("the page script sends nothing; the popup sends two messages: the Recast command for its tab, and the calendar link check", () => {
+  it("the page script sends nothing; the popup sends: the Recast command for its tab, the confirmation setting, and the calendar link check", () => {
     expect(read("dist/page.js")).not.toMatch(/chrome\.runtime\.sendMessage/);
-    expect(read("src/popup.ts").match(/chrome\.runtime\.sendMessage\([^)]*\)/g)).toEqual(['chrome.runtime.sendMessage({ type: "invoke", tabId })', 'chrome.runtime.sendMessage({ type: "link" })']);
+    expect(read("src/popup.ts").match(/chrome\.runtime\.sendMessage\([^)]*\)/g)).toEqual(['chrome.runtime.sendMessage({ type: "invoke", tabId })', 'chrome.runtime.sendMessage({ type: "confirm" })', 'chrome.runtime.sendMessage({ type: "confirm", level: r.value as "none" | "high" })', 'chrome.runtime.sendMessage({ type: "link" })']);
+    expect(read("src/background.ts")).toMatch(/msg\.type === "confirm" && fromExtensionPage\(sender\)/);
     expect(read("src/background.ts")).toMatch(/msg\.type === "link" && fromExtensionPage\(sender\)/);
   });
   it("the worker accepts the command and activation only from the extension's own pages, never from a content script", () => {

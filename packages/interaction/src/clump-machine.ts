@@ -65,7 +65,15 @@ export interface ClumpState {
   /** One short sentence about the last thing that happened, for a live region and a toast. */
   last: { kind: "captured" | "merged" | "put-down" | "refused" | "cancelled" | "removed" | "placed" | "failed" | "unknown" | "undone" | "on" | "off" | "closed"; text: string; at: number } | null;
   now: number; timezone: string; seq: number;
+  /**
+   * How much Recast asks (D24), the person's choice. "high": every placement opens a review first. "none": a complete,
+   * low-risk, reversible placement goes straight to the destination once chosen. Anything that notifies someone,
+   * cannot be undone, needs a hold, needs a deliberate choice, or is missing something still opens the review.
+   * Absent means "high".
+   */
+  confirm?: ConfirmLevel;
 }
+export type ConfirmLevel = "high" | "none";
 
 export type ClumpEvent =
   | { type: "arm"; now: number }
@@ -85,6 +93,7 @@ export type ClumpEvent =
   | { type: "answer"; objectId: string; field: AnswerField; value: string | boolean; now: number }
   | { type: "choose"; objectId: string; field: EventField; ingredientId: string; now: number }
   | { type: "place"; consent: Consent; now: number }
+  | { type: "setConfirm"; level: ConfirmLevel; now: number }
   // Results of effects. Each names the operation it answers (opId), so a late answer for an earlier operation is ignored.
   | { type: "committed"; receipt: Receipt; undoable: boolean; now: number }
   | { type: "commitFailed"; opId: string; message: string; now: number }
@@ -108,8 +117,8 @@ export type ClumpEffect =
 
 export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true }
 
-export function initialClumpState(o: { now: number; timezone: string; destinations?: DestinationSpec[]; armed?: boolean }): ClumpState {
-  return { phase: "idle", armed: o.armed ?? false, focus: null, choice: null, uncertain: {}, objects: {}, desk: [], carried: null, target: null, verdict: null, pendingMerge: null, merging: null, inspecting: null, placement: null, destinations: o.destinations ?? [], last: null, now: o.now, timezone: o.timezone, seq: 0 };
+export function initialClumpState(o: { now: number; timezone: string; destinations?: DestinationSpec[]; armed?: boolean; confirm?: ConfirmLevel }): ClumpState {
+  return { ...(o.confirm ? { confirm: o.confirm } : {}), phase: "idle", armed: o.armed ?? false, focus: null, choice: null, uncertain: {}, objects: {}, desk: [], carried: null, target: null, verdict: null, pendingMerge: null, merging: null, inspecting: null, placement: null, destinations: o.destinations ?? [], last: null, now: o.now, timezone: o.timezone, seq: 0 };
 }
 
 /** Which events each phase accepts. Anything else is refused with a reason and changes nothing. */
@@ -159,6 +168,25 @@ export function unfit(label: string, contract: CapabilityContract, type: ClumpTy
 /** "a message", "an event", "a single piece". */
 export const aThing = (type: ClumpType) => (type === "Fragment" ? "a single piece" : `${/^[aeiou]/i.test(type) ? "an" : "a"} ${type.toLowerCase()}`);
 
+/**
+ * With confirmation "none" (D24, D28), a chosen placement goes straight to the destination when the trust model asks
+ * for no more than a confirmation, and only for doubt about the reading: low risk otherwise (no one notified,
+ * reversible, no hold), never below the deliberate-choice line, and complete. Choosing the destination in the module
+ * (which has shown every value) is then the confirmation; a blind drop on a page still opens the review. The core's
+ * consent check runs here and again in commit().
+ */
+function straightThrough(s: ClumpState, n: ClumpState): ClumpResult | null {
+  const p = n.placement; const op = p?.op;
+  if (s.confirm !== "none" || !p || !op || op.risk.requiresDeliberateChoice || !op.proposal.reversible) return null;
+  const pr = op.proposal;
+  // Asked to confirm for doubt alone: nothing about the effect itself raised it.
+  const onlyDoubt = op.risk.consent === "confirm" && pr.effectFlags.length === 0 && pr.reliability !== "ui-automation" && !op.risk.reasons.some((r) => r.startsWith("relation base risk:") && !r.endsWith(": low"));
+  const consent: Consent | null = op.risk.consent === "release" ? { kind: "release" } : onlyDoubt && p.via === "module" ? { kind: "confirm" } : null;
+  if (!consent) return null;
+  try { checkConsent(op, consent); } catch { return null; }
+  return { state: { ...n, phase: "executing" }, effects: [{ type: "commit", op, consent, destinationId: p.destinationId }] };
+}
+
 /** A slot fills the start when the object has none: dropping on "Fri 7 PM" is the person choosing that time. */
 function applySlot(s: ClumpState, objectId: string, destinationId: string, slot?: string): ClumpState {
   const sl = s.destinations.find((d) => d.id === destinationId)?.slots?.find((x) => x.id === slot);
@@ -200,6 +228,8 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
   // A late or duplicate answer for an operation that is not the current one changes nothing.
   const answers = RESULT_OF[ev.type];
   if (answers && answers(ev) !== state.placement?.op?.opId) return { state, effects: [], error: "ignored: an answer for an earlier action", stale: true };
+  // A setting, not a step: allowed in any phase, and it never changes what is in flight.
+  if (ev.type === "setConfirm") return { state: { ...s0, confirm: ev.level }, effects: [] };
   if (!LEGAL[s0.phase].includes(ev.type)) return { state, effects: [], error: BUSY.includes(s0.phase) ? busyReason(s0) : `cannot ${ev.type} while ${s0.phase}` };
   const ok = (state: ClumpState, effects: ClumpEffect[] = []): ClumpResult => ({ state, effects });
   const refuse = (error: string): ClumpResult => ({ state, effects: [], error });
@@ -233,7 +263,8 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       const r = route(s, id, d.id, s.now);
       // Choosing is never execution, and an unfit choice changes nothing: the selector stays open with the reason.
       if (!r.op && r.reason) return refuse(r.reason);
-      return ok({ ...s, phase: "previewing", placement: { objectId: id, destinationId: d.id, via: "module", ...(r.op ? { op: r.op } : {}) } });
+      const n: ClumpState = { ...s, phase: "previewing", placement: { objectId: id, destinationId: d.id, via: "module", ...(r.op ? { op: r.op } : {}) } };
+      return straightThrough(s, n) ?? ok(n);
     }
     case "capture": {
       const id = `obj-${s.seq + 1}`;
@@ -275,7 +306,9 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       const r = route(withSlot, carried, t.id, s.now);
       if (!r.op && r.reason) return ok(say({ ...rest(putDown(s, carried)), phase: "idle" }, "refused", `Not placed: ${r.reason}`));
       // Dropping on a destination is never execution: it opens a preview. The object stays on the desk while you review it.
-      return ok({ ...rest(putDown(withSlot, carried)), phase: "previewing", placement: { objectId: carried, destinationId: t.id, via: "drop", ...(t.slot ? { slot: t.slot } : {}), ...(r.op ? { op: r.op } : {}) } });
+      // (With confirmation "none", a complete low-risk placement goes straight through: see straightThrough.)
+      const n: ClumpState = { ...rest(putDown(withSlot, carried)), phase: "previewing", placement: { objectId: carried, destinationId: t.id, via: "drop", ...(t.slot ? { slot: t.slot } : {}), ...(r.op ? { op: r.op } : {}) } };
+      return straightThrough(s, n) ?? ok(n);
     }
     case "confirmMerge": {
       const p = s.pendingMerge!;

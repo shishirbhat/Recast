@@ -55,3 +55,15 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | C4 | **Choose where it goes** → Mail → **Open**. If asked, type the address, then click **Save as draft** | "Saved"/receipt. In Gmail → **Drafts**, a draft to that address with that sentence. **Sent** has nothing new | real draft, not sent |
 | C5 | **Undo** | The draft disappears from Gmail Drafts | real undo |
 | C6 | Sign in again with only the calendar box ticked | The popup says Gmail drafts are not allowed. Mail shows as unavailable | permission is optional |
+
+## D. How much Recast asks (no provider needed)
+**Checks:** the first-run question, the setting, and that it still asks when it matters.
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| D1 | Open the Recast popup for the first time after installing | "How much should Recast ask?", highlighted, with "Choose once; you can change it here any time." | asked once |
+| D2 | Choose **Only when it matters**, then close and reopen the popup | The choice is kept and the highlight is gone | stored |
+| D3 | Compose an event, then **Choose where it goes** → Calendar → **Open** | Placed straight away, with Undo. No review | none |
+| D4 | Compose a message with no email address on the page → Mail | The review opens and asks for the address | missing info still asked |
+| D5 | Switch back to **Every time** and repeat D3 | The review opens first | high |
+| D6 | Quit and restart Chrome, then open the popup | Your last choice is still selected | survives restarts |

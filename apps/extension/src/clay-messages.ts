@@ -14,7 +14,9 @@ export type ToBackground =
   /** Control pressed twice in a tab Recast is already in: the Recast command for that tab. */
   | { type: "command" }
   /** From the popup only: look at (and, once allowed, use) the Recast program on this computer for the real Google Calendar. */
-  | { type: "link" };
+  | { type: "link" }
+  /** From the popup only: read (no level) or set how much Recast asks before placing. */
+  | { type: "confirm"; level?: "none" | "high" };
 
 export type ToTab =
   | { type: "state"; state: ClumpState }

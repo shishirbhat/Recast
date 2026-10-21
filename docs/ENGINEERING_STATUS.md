@@ -77,6 +77,8 @@ The previously reported harness failures (two capitalisation assertions in Layer
 
 | Extension → real Google Calendar **and Gmail drafts** (optional `gmail.compose`, separate tick; drafts only, never sent; a lost Gmail answer cannot be checked and says so) through the local program: optional `localhost` permission asked on Connect; pairing by a code the person allows on the program's page; Calendar in the wheel only while paired and signed in (no stand-in label); place, undo, lost answer → Check → receipt, never resent; the Google token never reaches the extension | `apps/extension/src/{background,popup}.ts`, `apps/calendar-link/src/extension-api.ts`; `docs/REAL_TEST_PLAN.md` B | extension link 4 (real Chromium, program over real HTTP, **Google stand-in**), calendar-link door 4; manifest audit narrowed to the one host | H, F | **R not yet run**: `docs/REAL_TEST_PLAN.md` B1–B12, C1–C6 |
 
+| How much Recast asks (D24, D28): "Every time" (default) or "Only when it matters"; asked the first time the popup opens, changeable there; anything that notifies someone, can't be undone, needs a hold, is missing something, or was dropped blind still opens the review | `packages/interaction/src/clump-machine.ts` (`straightThrough`), `apps/extension/src/{background,popup}.ts` | interaction 6, extension 1 (real Chromium: first-run question, setting kept, straight placement with Undo, back to review); manifest audit allows exactly one `storage.local` key | U, H, F | not in the web control center; nobody has used it (**P**) |
+
 ## 2. Implemented but not fully verified
 | Requirement | Implementation | What exists | Missing to verify |
 |---|---|---|---|

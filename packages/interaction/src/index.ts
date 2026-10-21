@@ -6,5 +6,5 @@ export type * from "./types.js";
 export { initialClumpState, reduceClump, viewOf, ctxOf, commandEvents, escapeEvent, unfit } from "./clump-machine.js";
 export { WHEEL_SLOTS, wheelEntries, firstAvailable, moduleModel, doubtNote } from "./wheel.js";
 export type { WheelKey, WheelEntry, WheelOption, ModuleModel, ModuleObject } from "./wheel.js";
-export type { ClumpPhase, ClumpState, ClumpEvent, ClumpInput, ClumpEffect, ClumpResult, DestinationSpec, Target, Placement } from "./clump-machine.js";
+export type { ClumpPhase, ClumpState, ClumpEvent, ClumpInput, ClumpEffect, ClumpResult, DestinationSpec, Target, Placement, ConfirmLevel } from "./clump-machine.js";
 export { createControlTrigger, createDoubleTap, createTaps, DOUBLE_TAP, type TapInput } from "./double-tap.js";

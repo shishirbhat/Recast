@@ -92,6 +92,16 @@ async function main() {
     $("root").appendChild(el("p", { cls: "empty", text: "Browser pages, the extension store and some protected pages can't be read. Try an ordinary web page." }));
   }
 }
+// How much Recast asks (D24). Asked once, the first time the popup opens; changeable here.
+void (chrome.runtime.sendMessage({ type: "confirm" }) as Promise<{ level?: "none" | "high" }>).then(({ level }) => {
+  const box = document.querySelector<HTMLElement>(".ask")!;
+  if (!level) { box.classList.add("first"); $("ask-first").hidden = false; }
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name="ask"]')) {
+    r.checked = r.value === level;
+    r.addEventListener("change", () => { void chrome.runtime.sendMessage({ type: "confirm", level: r.value as "none" | "high" }).then(() => { box.classList.remove("first"); $("ask-first").hidden = true; }); });
+  }
+});
+
 // The real Google Calendar, through the Recast program on this computer. Access to http://localhost is asked for only
 // when the person presses Connect; the program then shows the same code and asks them to Allow this extension.
 type LinkState = { state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean };

@@ -2,15 +2,19 @@
 // The state machine is pure (packages/interaction), so the worker only loads it, applies an event, saves it and tells every
 // tab that has the clay layer. State lives in chrome.storage.session: it survives the worker being stopped and restarted,
 // is kept in memory by the browser (never written to disk), and is gone when the browser closes.
-import { commandEvents, initialClumpState, reduceClump, type ClumpEffect, type ClumpState, type DestinationSpec } from "@recast/interaction";
+import { commandEvents, initialClumpState, reduceClump, type ClumpEffect, type ClumpState, type ConfirmLevel, type DestinationSpec } from "@recast/interaction";
 import type { ToBackground, ToTab } from "./clay-messages.js";
 import { CONTRACTS } from "@recast/bridges/src/contracts";
 
 const KEY = "clay", TABS = "clayTabs";
+/** The one thing kept across browser restarts: how much Recast asks (D24). A setting, never page content. */
+const CONFIRM = "confirmLevel";
+async function confirmLevel(): Promise<ConfirmLevel | undefined> { const v = (await chrome.storage.local.get(CONFIRM))[CONFIRM]; return v === "none" || v === "high" ? v : undefined; }
 
 async function load(): Promise<ClumpState> {
   const r = await chrome.storage.session.get(KEY);
-  return (r[KEY] as ClumpState | undefined) ?? initialClumpState({ now: Date.now(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  const level = await confirmLevel();
+  return (r[KEY] as ClumpState | undefined) ?? initialClumpState({ now: Date.now(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(level ? { confirm: level } : {}) });
 }
 const save = (s: ClumpState) => chrome.storage.session.set({ [KEY]: s });
 async function tabs(): Promise<number[]> { return ((await chrome.storage.session.get(TABS))[TABS] as number[] | undefined) ?? []; }
@@ -143,6 +147,13 @@ chrome.runtime.onMessage.addListener((msg: ToBackground, sender, reply) => {
   // A content script can only run the command for its own tab (sender.tab), never name another one.
   if (msg.type === "command" && tabId !== undefined) { void invoke(tabId).then(() => reply({ ok: true })); return true; }
   if (msg.type === "invoke" && fromExtensionPage(sender)) { void invoke(msg.tabId).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) })); return true; }
+  if (msg.type === "confirm" && fromExtensionPage(sender)) {
+    if (msg.level === undefined) { void confirmLevel().then((level) => reply({ level })); return true; }
+    if (msg.level !== "none" && msg.level !== "high") return false;
+    const level = msg.level;
+    void chrome.storage.local.set({ [CONFIRM]: level }).then(() => apply((s) => reduceClump(s, { type: "setConfirm", level, now: Date.now() }))).then(() => reply({ level }));
+    return true;
+  }
   if (msg.type === "link" && fromExtensionPage(sender)) { void syncLink().then(reply, () => reply({ state: "unreachable" })); return true; }
   if (msg.type === "activate" && fromExtensionPage(sender)) { void activate(msg.tabId).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) })); return true; }
   return false;
@@ -176,4 +187,4 @@ chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.status === "loadin
 void syncLink();
 
 // For tests and for debugging from the worker's console.
-(globalThis as unknown as { recastClay: unknown }).recastClay = { load, activate, invoke, tabs, syncLink };
+(globalThis as unknown as { recastClay: unknown }).recastClay = { load, activate, invoke, tabs, syncLink, dispatch: (e: Record<string, unknown>) => apply((s) => reduceClump(s, { ...e, now: Date.now() } as never)) };

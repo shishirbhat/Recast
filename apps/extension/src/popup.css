@@ -31,3 +31,9 @@ summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); 
 .link h2 { margin: 0; font-size: var(--fs-sm); }
 .link p { margin: var(--sp-1) 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
 .link .code { font: 600 var(--fs-lg)/1 var(--font-mono); letter-spacing: .1em; color: var(--text); }
+.ask { margin: 0 var(--sp-4) var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line-soft); border-radius: var(--r-input); }
+.ask.first { border-color: var(--accent); }
+.ask h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-sm); }
+.ask p { margin: 0 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
+.ask label { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-xs); margin-top: var(--sp-2); cursor: pointer; }
+.ask input { margin-top: 2px; }
