@@ -79,5 +79,10 @@ describe("test event against a stand-in Google Calendar", () => {
   it("another site cannot press the buttons", async () => {
     expect((await press("place", "https://evil.example")).status).toBe(403);
     expect(live()).toHaveLength(0);
+    const r = await fetch(`${base}/test/place`, { method: "POST", redirect: "manual", headers: { origin: base, "sec-fetch-site": "cross-site" } });
+    expect(r.status).toBe(403);
+  });
+  it("the page sends its own origin on form posts (no-referrer would make browsers send Origin: null)", async () => {
+    expect((await fetch(base)).headers.get("referrer-policy")).toBe("same-origin");
   });
 });

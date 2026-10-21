@@ -50,7 +50,8 @@ export function createLinkServer(c: LinkConfig): Server {
   const send = (res: ServerResponse, status: number, html: string, extra: Record<string, string> = {}) => {
     res.writeHead(status, {
       "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff",
-      "referrer-policy": "no-referrer", "x-frame-options": "DENY",
+      // same-origin, not no-referrer: with no-referrer, browsers send "Origin: null" on this page's own form posts.
+      "referrer-policy": "same-origin", "x-frame-options": "DENY",
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
       ...extra,
     });
@@ -129,7 +130,8 @@ ${shown ? `<p class="${shown.ok ? "ok" : ""}" role="status">${esc(shown.text)}</
 
     // Forms on this page only (Origin checked), so another site cannot press these buttons for you.
     const origin = req.headers.origin;
-    const foreign = !!origin && origin !== `http://localhost:${c.port}` && origin !== `http://127.0.0.1:${c.port}`;
+    const site = req.headers["sec-fetch-site"];
+    const foreign = (!!origin && origin !== `http://localhost:${c.port}` && origin !== `http://127.0.0.1:${c.port}`) || (!!site && site !== "same-origin" && site !== "none");
     const action = /^\/test\/(place|lost|check|undo)$/.exec(url.pathname)?.[1];
     if (req.method === "POST" && action) {
       if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
