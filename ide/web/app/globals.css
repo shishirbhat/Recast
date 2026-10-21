@@ -196,21 +196,10 @@ body {
 }
 
 /* Floating surfaces: translucent with blur where supported and wanted; solid otherwise. */
+/* Menus, quick input, notifications: solid surfaces, as in VS Code, so nothing behind them competes with the text. */
 .glass {
   background: var(--panel-2);
   box-shadow: var(--shadow-pop);
-}
-@supports (backdrop-filter: blur(1px)) {
-  .glass {
-    background: var(--overlay);
-    backdrop-filter: blur(18px) saturate(1.2);
-  }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .glass {
-    background: var(--panel-2);
-    backdrop-filter: none;
-  }
 }
 
 /* Blueprint field for empty surfaces: a dot grid, no colour. */

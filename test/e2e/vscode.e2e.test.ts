@@ -24,7 +24,7 @@ const contexts: BrowserContext[] = [];
 
 before(async () => {
   if (skip) return;
-  server = (await testServer({ ...SHOP_FILES, "src/messy.js": "const a = {b:1,\n      c:'two'}\nexport default a\n" }, { staticDir: STATIC })).server;
+  server = (await testServer({ ...SHOP_FILES, "src/messy.js": "const a = {b:1,\n      c:'two'}\nexport default a\n", "src/hello.js": "console.log('hello from ' + 'relay');\n" }, { staticDir: STATIC })).server;
   seed(server);
   browser = await chromium.launch({ executablePath: CHROME });
 });
@@ -104,6 +104,8 @@ test("editor chords run once: Alt+Down moves a line by one, Ctrl+L selects the l
   await p.locator(".cm-line").nth(1).click();
   await p.keyboard.press("Control+/");
   assert.equal((await docText(p)).split("\n")[1], `// ${before[1]}`, "commented once, not toggled twice");
+  await p.keyboard.press("Control+Z");
+  await p.waitForFunction((l) => [...document.querySelectorAll(".cm-line")][1]?.textContent === l, before[1]);
 });
 
 test("language and indentation quick picks from the status bar", { skip }, async () => {
@@ -128,4 +130,79 @@ test("viewers see editing commands disabled with a reason", { skip }, async () =
   const row = p.getByRole("option").filter({ hasText: "Format Document" });
   assert.equal(await row.getAttribute("aria-disabled"), "true");
   assert.match((await row.textContent()) ?? "", /Viewers can't change the project/);
+});
+
+const termHas = (p: Page, text: string) => p.waitForFunction((t) => document.querySelector("[data-testid=terminal]:not(.hidden)")?.textContent?.includes(t) ?? false, text, { timeout: 8000 });
+
+test("menus: every item either works or says why not; toggles show their state", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/ui.js");
+  const names = ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"];
+  for (const name of names) {
+    await p.getByRole("menubar").getByRole("menuitem", { name, exact: true }).click();
+    const menu = p.getByRole("menu", { name });
+    const rows = menu.locator("[role=menuitem], [role=menuitemcheckbox]");
+    const n = await rows.count();
+    assert.ok(n >= 3, `${name} has items`);
+    for (let i = 0; i < n; i++) {
+      const row = rows.nth(i);
+      if ((await row.getAttribute("aria-disabled")) === "true") assert.ok(((await row.getAttribute("title")) ?? "").length > 8, `disabled "${await row.textContent()}" in ${name} explains why`);
+    }
+    await p.keyboard.press("Escape");
+  }
+  await p.getByRole("menubar").getByRole("menuitem", { name: "View", exact: true }).click();
+  const minimap = p.getByRole("menuitemcheckbox", { name: /Toggle Minimap/ });
+  assert.equal(await minimap.getAttribute("aria-checked"), "true");
+  await minimap.click();
+  await p.locator(".cm-minimap-gutter").waitFor({ state: "detached" });
+  await p.getByRole("menubar").getByRole("menuitem", { name: "View", exact: true }).click();
+  assert.equal(await p.getByRole("menuitemcheckbox", { name: /Toggle Minimap/ }).getAttribute("aria-checked"), "false");
+  await p.keyboard.press("Escape");
+  await p.getByRole("menubar").getByRole("menuitem", { name: "Run", exact: true }).click();
+  assert.match((await p.getByRole("menuitem", { name: /Toggle Breakpoint/ }).getAttribute("title")) ?? "", /debug adapter/);
+});
+
+test("palette prefixes: line, symbol in file, symbol in workspace, help; Back returns", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/ui.js");
+  await p.keyboard.press("Control+Shift+P");
+  await p.getByTestId("palette-input").fill(":5");
+  await p.keyboard.press("Enter");
+  await p.waitForFunction(() => /Ln 5,/.test(document.querySelector("footer")?.textContent ?? ""));
+
+  await p.keyboard.press("Control+Shift+O");
+  await p.getByRole("option").filter({ hasText: "greet" }).waitFor();
+  await p.keyboard.type("badge");
+  await p.keyboard.press("Enter");
+  await p.waitForFunction(() => /Ln 9,/.test(document.querySelector("footer")?.textContent ?? ""));
+
+  await p.keyboard.press("Control+T");
+  await p.keyboard.type("getUser");
+  await p.getByRole("option").filter({ hasText: "src/server.js:2" }).waitFor();
+  await p.keyboard.press("Enter");
+  await p.getByTestId("tab-src/server.js").waitFor();
+  await p.waitForFunction(() => /Ln 2,/.test(document.querySelector("footer")?.textContent ?? ""));
+
+  await p.keyboard.press("Control+Alt+-");
+  await p.waitForFunction(() => document.querySelector("[aria-label='Breadcrumbs']")?.textContent?.includes("ui.js"));
+  await p.waitForFunction(() => /Ln 9,/.test(document.querySelector("footer")?.textContent ?? ""));
+  await p.keyboard.press("Control+Shift+-");
+  await p.waitForFunction(() => document.querySelector("[aria-label='Breadcrumbs']")?.textContent?.includes("server.js"));
+
+  await p.keyboard.press("Control+P");
+  await p.keyboard.type("?");
+  assert.ok((await p.getByRole("option").count()) >= 5, "help lists the prefixes");
+  await p.getByRole("option").filter({ hasText: "Go to Symbol in Workspace" }).click();
+  assert.equal(await p.getByTestId("palette-input").inputValue(), "#");
+  await p.keyboard.press("Escape");
+});
+
+test("Run Active File and Run Task use the real terminal", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/hello.js");
+  await runCommand(p, "Run Active File");
+  await termHas(p, "hello from relay");
+  await runCommand(p, "Run Task");
+  await p.getByRole("option").filter({ hasText: "npm run test" }).waitFor();
+  await p.keyboard.press("Escape");
 });

@@ -216,20 +216,6 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
     v.dispatch(setDiagnostics(v.state, diags));
   }, [problems]);
 
-  // Jump to a line (from search results, problems, quick open) once the document has synced.
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view || !reveal) return;
-    const go = () => {
-      const n = Math.min(Math.max(1, reveal.line), view.state.doc.lines);
-      const line = view.state.doc.line(n);
-      view.dispatch({ selection: { anchor: line.from, head: line.to }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
-      view.focus();
-    };
-    if (session.status === "synced") go();
-    else return session.subscribe(() => session.status === "synced" && go());
-  }, [reveal, session]);
-
   useEffect(() => {
     if (!host.current) return;
     const view = new EditorView({
@@ -279,6 +265,21 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
       view.destroy();
     };
   }, [session, readOnly, onCursor, viewHandle]);
+
+  // Jump to a line (from search results, problems, quick open) once the document has synced. Declared after the
+  // effect that creates the view, so a file opened at a line has its view by the time this runs.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !reveal) return;
+    const go = () => {
+      const n = Math.min(Math.max(1, reveal.line), view.state.doc.lines);
+      const line = view.state.doc.line(n);
+      view.dispatch({ selection: { anchor: line.from, head: line.to }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+      view.focus();
+    };
+    if (session.status === "synced") go();
+    else return session.subscribe(() => session.status === "synced" && go());
+  }, [reveal, session]);
 
   return <div ref={host} className="h-full min-h-0" data-testid="editor" />;
 }

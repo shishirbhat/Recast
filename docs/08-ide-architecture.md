@@ -92,6 +92,7 @@ Consequences:
 |---|---|---|
 | `GET /api/state` | read | project, members, presence, tasks with agent runs, contracts, doc conflicts |
 | `GET /api/files`, `/search?q=`, `/git`, `/scripts`, `/output` | read | files (secrets excluded), search, git status, scripts, Relay-run evidence |
+| `GET /api/symbols?q=` | read | Go to Symbol in Workspace: JS/TS/Python declarations and Markdown headings whose name contains `q` (identifier characters only), via `git grep` over the shared files; secrets excluded |
 | `GET /api/capabilities` | read | terminal policy, agent provider and its declared capabilities, extension host status |
 | `POST /api/tasks` · `/tasks/:id/transition` · `/check` · `/run` · `/cancel-run` · `/apply` | edit (consequential transitions and apply: approve) | task lifecycle through the engine's state machine and gates |
 | `GET /api/tasks/:id` · `/why` · `/change` | read | task, evidence, events; completion gaps; the change record (six stages) |

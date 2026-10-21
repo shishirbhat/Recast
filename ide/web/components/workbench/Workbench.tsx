@@ -5,11 +5,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { Bell, Blocks, Bot, CircleAlert, CircleUserRound, Files, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
 import { EditorView } from "@codemirror/view";
 import { selectAll, selectLine, cursorDocStart, cursorDocEnd, moveLineUp, moveLineDown, copyLineUp, copyLineDown, deleteLine, insertBlankLine, toggleComment, toggleBlockComment, indentMore, indentLess, indentSelection, addCursorAbove, addCursorBelow, cursorMatchingBracket, transposeChars, deleteTrailingWhitespace } from "@codemirror/commands";
-import { openSearchPanel, gotoLine, selectNextOccurrence, selectSelectionMatches, findNext, findPrevious } from "@codemirror/search";
+import { openSearchPanel, selectNextOccurrence, selectSelectionMatches, findNext, findPrevious } from "@codemirror/search";
 import { foldCode, unfoldCode, foldAll, unfoldAll } from "@codemirror/language";
 import { LANGUAGES, languageById, languageIdFor } from "@/lib/languages";
 import { applyMinimalEdits, formatText, formatUnavailable } from "@/lib/format";
 import * as ec from "@/lib/editorCommands";
+import { fileSymbols } from "@/lib/symbols";
+import { nextDiagnostic, previousDiagnostic } from "@codemirror/lint";
 import { api, ApiError } from "@/lib/api";
 import { DocSession } from "@/lib/collab";
 import { availability, chordOf, execute, isMac, keyLabel, matches } from "@/lib/commands";
@@ -196,16 +198,50 @@ interface Note {
    Menu bar (driven by the command registry)
    =================================================================================================== */
 
+const NO_DEBUG = "Debugging needs a debug adapter, which Relay doesn't have yet";
+
+/** How Run Active File runs a file, by extension. */
+function runnerFor(path: string): string | null {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (["js", "mjs", "cjs", "ts", "mts", "cts"].includes(ext)) return "node";
+  if (ext === "py") return "python3";
+  if (ext === "sh") return "bash";
+  return null;
+}
+
+/** View: Open View… lists these (group, label, command). */
+const OPEN_VIEWS: [string, string, string][] = [
+  ["Side Bar", "Explorer", "view.explorer"],
+  ["Side Bar", "Search", "view.search"],
+  ["Side Bar", "Source Control", "view.scm"],
+  ["Side Bar", "Run", "view.run"],
+  ["Side Bar", "Extensions", "view.extensions"],
+  ["Side Bar", "People", "view.community"],
+  ["Side Bar", "Settings", "view.settings"],
+  ["Side Bar", "Accounts", "view.account"],
+  ["Panel", "Terminal", "terminal.toggle"],
+  ["Panel", "Problems", "panel.problems"],
+  ["Panel", "Output", "panel.output"],
+  ["Panel", "Tests", "tests.show"],
+  ["Panel", "Change Impact", "panel.impact"],
+  ["Panel", "Activity", "panel.activity"],
+  ["Relay", "Agents", "panel.agents"],
+  ["Relay", "Tasks", "relay.tasks"],
+  ["Relay", "Contracts", "relay.contracts"],
+  ["Relay", "Investigations and Decisions", "relay.records"],
+];
+
 type MenuEntry = string | "-";
+/** VS Code's menu bar, item for item where Relay has the feature; Relay's own items sit at the end of their menu. */
 const MENUS: [string, MenuEntry[]][] = [
-  ["File", ["file.newFile", "file.save", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
-  ["Edit", ["edit.undo", "edit.redo", "-", "edit.find", "search.inFiles"]],
-  ["Selection", ["selection.all", "selection.line", "selection.expand", "selection.nextOccurrence"]],
-  ["View", ["palette.commands", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.extensions", "view.community", "view.relay", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "panel.problems", "panel.impact", "panel.output", "panel.agents", "attention.show", "-", "theme.toggle"]],
-  ["Go", ["palette.files", "go.line", "-", "go.nextEditor", "go.previousEditor"]],
-  ["Run", ["view.run", "run.debug", "-", "relay.runActiveTask"]],
-  ["Terminal", ["terminal.new", "terminal.toggle", "-", "view.run"]],
-  ["Help", ["palette.commands", "view.settings", "help.about"]],
+  ["File", ["file.newFile", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
+  ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
+  ["Selection", ["selection.all", "selection.expand", "selection.shrink", "-", "edit.copyLineUp", "edit.copyLineDown", "edit.moveLineUp", "edit.moveLineDown", "edit.duplicateSelection", "-", "selection.cursorAbove", "selection.cursorBelow", "selection.cursorsLineEnds", "selection.nextOccurrence", "selection.allOccurrences", "-", "selection.line"]],
+  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
+  ["Go", ["go.back", "go.forward", "-", "go.switchEditor", "go.nextEditor", "go.previousEditor", "-", "palette.files", "go.symbol", "go.workspaceSymbol", "-", "go.line", "go.bracket", "-", "go.nextProblem", "go.previousProblem"]],
+  ["Run", ["run.debug", "run.withoutDebugging", "-", "run.toggleBreakpoint", "run.addConfiguration", "-", "tests.runAll", "tests.rerunFailed", "tests.stop", "-", "relay.runActiveTask"]],
+  ["Terminal", ["terminal.new", "terminal.toggle", "-", "terminal.runTask", "terminal.runActiveFile", "terminal.runSelection"]],
+  ["Help", ["palette.commands", "help.shortcuts", "-", "help.about"]],
 ];
 
 function MenuBar({ commands, compact }: { commands: Command[]; compact: boolean }) {
@@ -283,7 +319,7 @@ function MenuBar({ commands, compact }: { commands: Command[]; compact: boolean 
             {name}
           </button>
           {open === i && (
-            <div role="menu" aria-label={name} className="glass absolute left-0 top-full z-50 mt-1 min-w-64 rounded-md border border-rule-strong p-1">
+            <div role="menu" aria-label={name} className="glass absolute left-0 top-full z-50 mt-1 max-h-[calc(100vh-48px)] min-w-64 overflow-y-auto rounded-md border border-rule-strong p-1">
               {entries(i).map((e, k) =>
                 e === "-" ? (
                   <div key={`sep${k}`} role="separator" className="mx-1.5 my-1 h-px bg-rule" />
@@ -303,15 +339,19 @@ function MenuItem({ c, focused, onRun, onHover }: { c: Command; focused?: boolea
   const reason = availability(c);
   return (
     <button
-      role="menuitem"
+      role={c.checked ? "menuitemcheckbox" : "menuitem"}
+      aria-checked={c.checked ? c.checked() : undefined}
       aria-disabled={!!reason}
       title={reason ?? undefined}
       onClick={onRun}
       onMouseEnter={onHover}
-      className={`flex h-[26px] w-full items-center gap-6 rounded-sm px-2.5 text-left text-[12.5px] ${reason ? "cursor-default text-faint" : focused ? "bg-hover text-ink shadow-[inset_2px_0_0_var(--accent)]" : "text-ink-2 hover:bg-hover hover:text-ink hover:shadow-[inset_2px_0_0_var(--accent)]"}`}
+      className={`flex h-[26px] w-full items-center gap-1.5 rounded-sm pl-1.5 pr-2.5 text-left text-[12.5px] ${reason ? "cursor-default text-faint" : focused ? "bg-hover text-ink shadow-[inset_2px_0_0_var(--accent)]" : "text-ink-2 hover:bg-hover hover:text-ink hover:shadow-[inset_2px_0_0_var(--accent)]"}`}
     >
+      <span className="w-3.5 shrink-0 text-center text-[11px]" aria-hidden>
+        {c.checked?.() ? "✓" : ""}
+      </span>
       <span className="truncate">{c.title}</span>
-      {c.keybinding && <span className={`ml-auto shrink-0 font-mono text-[11px] ${focused && !reason ? "text-muted" : "text-faint"}`}>{keyLabel(c.keybinding)}</span>}
+      {c.keybinding && <span className={`ml-auto shrink-0 pl-8 font-mono text-[11px] ${focused && !reason ? "text-muted" : "text-faint"}`}>{keyLabel(c.keybinding)}</span>}
     </button>
   );
 }
@@ -331,8 +371,10 @@ export function Workbench() {
   const [recent, setRecent] = useState<string[]>([]);
   const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(null);
   const [cursor, setCursor] = useState<[number, number]>([1, 1]);
-  const [palette, setPalette] = useState<{ open: boolean; mode: "files" | "commands" | "pick" }>({ open: false, mode: "files" });
-  const [pick, setPick] = useState<QuickPick | null>(null);
+  const [palette, setPalette] = useState<{ open: boolean; prefix: string; pick: QuickPick | null }>({ open: false, prefix: "", pick: null });
+  const quickOpen = useCallback((prefix: string) => setPalette({ open: true, prefix, pick: null }), []);
+  /** Back / Forward: places you left by opening a file or jumping to a line, newest last. */
+  const nav = useRef<{ back: { path: string; line: number }[]; forward: { path: string; line: number }[] }>({ back: [], forward: [] });
   /** Language mode chosen for a file with Change Language Mode; otherwise the extension decides. */
   const [langs, setLangs] = useState<Record<string, string>>({});
   const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
@@ -413,7 +455,13 @@ export function Workbench() {
     return s;
   }, []);
 
-  const open = useCallback((path: string, line?: number) => {
+  const here = useRef<{ path: string | null; line: number }>({ path: null, line: 1 });
+  const open = useCallback((path: string, line?: number, fromHistory = false) => {
+    const from = here.current;
+    if (!fromHistory && from.path && (from.path !== path || (line && Math.abs(line - from.line) > 1))) {
+      nav.current.back = [...nav.current.back, { path: from.path, line: from.line }].slice(-50);
+      nav.current.forward = [];
+    }
     setTabs((t) => (t.includes(path) ? t : [...t, path]));
     setActive(path);
     setRecent((r) => [path, ...r.filter((x) => x !== path)].slice(0, 12));
@@ -451,6 +499,18 @@ export function Workbench() {
   }, []);
   const { status, pending, peers } = useSessionState(session);
   const onCursor = useCallback((l: number, c: number) => setCursor([l, c]), []);
+  here.current = { path: activePath, line: cursor[0] };
+  const symbolsNow = useCallback(() => (editorView.current && activePath ? fileSymbols(editorView.current.state.doc.toString(), langs[activePath] ?? languageIdFor(activePath)) : []), [activePath, langs]);
+  const goHistory = useCallback(
+    (dir: "back" | "forward") => {
+      const from = nav.current[dir];
+      const to = from.pop();
+      if (!to) return;
+      if (here.current.path) nav.current[dir === "back" ? "forward" : "back"].push({ path: here.current.path, line: here.current.line });
+      open(to.path, to.line, true);
+    },
+    [open],
+  );
 
   // Syntax diagnostics and line authorship follow the shared document: refetched shortly after it changes.
   const memberColors = useMemo(() => new Map((load.kind === "ready" ? load.state.members : []).map((m) => [m.id, m])), [load]);
@@ -593,7 +653,14 @@ export function Workbench() {
   };
   const activeTask: Task | undefined = state?.tasks.find((t) => t.id === selectedTask);
   const activeLang = activePath ? (langs[activePath] ?? languageIdFor(activePath)) : null;
-  const showPick = useCallback((p: QuickPick) => (setPick(p), setPalette({ open: true, mode: "pick" })), []);
+  const runInTerminal = (text: string) => (openPanel("terminal"), setTermRun({ text, nonce: Date.now() }));
+  const runActiveFile = async () => {
+    if (!activePath) return;
+    // The terminal runs what's on disk, so write the shared copy out first.
+    if (me?.role !== "viewer") await api("POST", "/save", { path: activePath }).catch(() => {});
+    runInTerminal(`${runnerFor(activePath)} '${activePath.replace(/'/g, "'\\''")}'`);
+  };
+  const showPick = useCallback((p: QuickPick) => setPalette({ open: true, prefix: "", pick: p }), []);
   const format = async (selection: boolean) => {
     const v = editorView.current;
     if (!v || !activePath || !activeLang) return;
@@ -675,8 +742,8 @@ export function Workbench() {
     const term = () => (termCaps?.available ? null : (termCaps?.reason ?? "Checking terminal availability…"));
     const needWrite = () => needEditor() ?? viewOnly;
     const list: Command[] = [
-      { id: "palette.files", category: "Go", title: "Go to File…", keywords: ["open", "quick open"], keybinding: "Mod+P", run: () => setPalette({ open: true, mode: "files" }) },
-      { id: "palette.commands", category: "View", title: "Command Palette…", keywords: ["commands"], keybinding: "Mod+Shift+P", run: () => setPalette({ open: true, mode: "commands" }) },
+      { id: "palette.files", category: "Go", title: "Go to File…", keywords: ["open", "quick open"], keybinding: "Mod+P", run: () => quickOpen("") },
+      { id: "palette.commands", category: "View", title: "Command Palette…", keywords: ["commands"], keybinding: "Mod+Shift+P", run: () => quickOpen(">") },
       { id: "file.newFile", category: "File", title: "New File…", when: () => viewOnly, run: () => (set({ sidebar: true, view: "explorer" }), document.querySelector<HTMLButtonElement>("[aria-label='New file']")?.click()) },
       { id: "file.save", category: "File", title: "Save", keywords: ["write", "flush"], keybinding: "Mod+S", when: () => (!activePath ? "Open a file first" : viewOnly), run: () => activePath && void api("POST", "/save", { path: activePath }).then(() => notify(`Saved ${activePath} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")) },
       { id: "view.closeEditor", category: "View", title: "Close Editor", keybinding: "Mod+Alt+W", when: () => (active ? null : "No editor is open"), run: () => active && closeTab(active) },
@@ -723,7 +790,79 @@ export function Workbench() {
       { id: "selection.cursorsLineEnds", editorKey: true, category: "Selection", title: "Add Cursors to Line Ends", keybinding: "Shift+Alt+I", when: () => needEditor() ?? (editorView.current?.state.selection.ranges.some((r) => !r.empty) ? null : "Select several lines first"), run: onEditor(ec.cursorsAtLineEnds) },
       { id: "selection.nextOccurrence", category: "Selection", title: "Add Next Occurrence", keybinding: "Mod+D", native: true, when: needEditor, run: onEditor((v) => selectNextOccurrence(v)) },
       { id: "selection.allOccurrences", category: "Selection", title: "Select All Occurrences", keybinding: "Mod+Shift+L", native: true, when: needEditor, run: onEditor((v) => selectSelectionMatches(v)) },
-      { id: "go.line", category: "Go", title: "Go to Line…", keybinding: "Ctrl+G", when: needEditor, run: onEditor((v) => gotoLine(v)) },
+      { id: "go.line", category: "Go", title: "Go to Line/Column…", keybinding: "Ctrl+G", when: () => (activePath ? null : "Open a file first"), run: () => quickOpen(":") },
+      { id: "go.symbol", category: "Go", title: "Go to Symbol in Editor…", keybinding: "Mod+Shift+O", when: () => (activePath ? null : "Open a file first"), run: () => quickOpen("@") },
+      { id: "go.workspaceSymbol", category: "Go", title: "Go to Symbol in Workspace…", keybinding: "Mod+T", run: () => quickOpen("#") },
+      { id: "go.back", category: "Go", title: "Back", keybinding: "Ctrl+Alt+-", when: () => (nav.current.back.length ? null : "No earlier location"), run: () => goHistory("back") },
+      { id: "go.forward", category: "Go", title: "Forward", keybinding: "Ctrl+Shift+-", when: () => (nav.current.forward.length ? null : "No later location"), run: () => goHistory("forward") },
+      { id: "go.nextProblem", category: "Go", title: "Next Problem", keybinding: "F8", when: () => needEditor() ?? (syntax?.length ? null : "No problems in this file"), run: onEditor((v) => nextDiagnostic(v)) },
+      { id: "go.previousProblem", category: "Go", title: "Previous Problem", keybinding: "Shift+F8", when: () => needEditor() ?? (syntax?.length ? null : "No problems in this file"), run: onEditor((v) => previousDiagnostic(v)) },
+      {
+        id: "go.switchEditor",
+        category: "Go",
+        title: "Switch Editor…",
+        keywords: ["tabs", "open editors", "recent"],
+        when: () => (tabs.length ? null : "No editors are open"),
+        run: () => {
+          const order = [...new Set([...recent.filter((r) => tabs.includes(r)), ...tabs])];
+          showPick({ placeholder: "Select an open editor", items: order.map((t) => ({ id: t, label: parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!, description: t.startsWith("diff:") ? "diff" : t.split("/").slice(0, -1).join("/"), picked: t === active, run: () => setActive(t) })) });
+        },
+      },
+      {
+        id: "file.openRecent",
+        category: "File",
+        title: "Open Recent…",
+        keybinding: "Mod+R",
+        when: () => (recent.length ? null : "You haven't opened any files yet"),
+        run: () => showPick({ placeholder: "Select a recently opened file", items: recent.map((r) => ({ id: r, label: r.split("/").pop()!, description: r.split("/").slice(0, -1).join("/"), run: () => open(r) })) }),
+      },
+      {
+        id: "file.saveAll",
+        category: "File",
+        title: "Save All",
+        when: () => viewOnly ?? (tabs.some((t) => !t.startsWith("diff:")) ? null : "No files are open"),
+        run: () => {
+          const paths = tabs.filter((t) => !t.startsWith("diff:"));
+          void Promise.all(paths.map((p) => api("POST", "/save", { path: p }))).then(() => notify(`Saved ${paths.length} ${paths.length === 1 ? "file" : "files"} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"));
+        },
+      },
+      { id: "file.autoSave", category: "File", title: "Auto Save", checked: () => true, when: () => "Always on: every edit reaches the shared copy as you type; Save writes it to disk", run: () => {} },
+      { id: "file.copyRelativePath", category: "File", title: "Copy Relative Path of Active File", when: () => (activePath ? null : "Open a file first"), run: () => activePath && void navigator.clipboard?.writeText(activePath).then(() => notify(`Copied ${activePath}`)) },
+      { id: "file.revealInExplorer", category: "File", title: "Reveal Active File in Explorer", when: () => (activePath ? null : "Open a file first"), run: () => (set({ view: "explorer", sidebar: true }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector(`[data-testid="file-${CSS.escape(activePath!)}"]`)?.scrollIntoView({ block: "center" }))) },
+      { id: "preferences.colorTheme", category: "Preferences", title: "Color Theme…", run: () => showPick({ placeholder: "Select a color theme", items: (["dark", "light"] as Theme[]).map((t) => ({ id: t, label: t === "dark" ? "Relay Dark" : "Relay Light", picked: t === theme, run: () => setTheme(t) })) }) },
+      { id: "preferences.keyboardShortcuts", category: "Preferences", title: "Keyboard Shortcuts", keywords: ["keybindings"], run: () => (set({ view: "settings", sidebar: true }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector("[data-testid=shortcuts]")?.scrollIntoView())) },
+      {
+        id: "view.openView",
+        category: "View",
+        title: "Open View…",
+        keywords: ["views", "panels"],
+        run: () =>
+          showPick({
+            placeholder: "Select a view to open",
+            items: OPEN_VIEWS.map(([group, label, id]) => ({ id, label, description: group, run: () => execute(commandsRef.current.find((c) => c.id === id)!) })),
+          }),
+      },
+      {
+        id: "terminal.runTask",
+        category: "Terminal",
+        title: "Run Task…",
+        keywords: ["npm", "scripts", "build"],
+        when: term,
+        run: () =>
+          void api<{ scripts: { name: string; command: string }[] }>("GET", "/scripts").then(
+            (r) =>
+              r.scripts.length
+                ? showPick({ placeholder: "Select the task to run (package.json scripts)", items: r.scripts.map((x) => ({ id: x.name, label: `npm run ${x.name}`, description: x.command, run: () => runInTerminal(`npm run ${x.name}`) })) })
+                : notify("This project has no package.json scripts to run.", "attention"),
+            (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"),
+          ),
+      },
+      { id: "terminal.runActiveFile", category: "Terminal", title: "Run Active File", when: () => term() ?? (!activePath ? "Open a file first" : runnerFor(activePath) ? null : `Relay doesn't know how to run .${activePath.split(".").pop()} files`), run: () => void runActiveFile() },
+      { id: "terminal.runSelection", category: "Terminal", title: "Run Selected Text", when: () => term() ?? needEditor() ?? (editorView.current?.state.selection.main.empty ? "Select some text first" : null), run: () => runInTerminal(editorView.current!.state.sliceDoc(editorView.current!.state.selection.main.from, editorView.current!.state.selection.main.to)) },
+      { id: "run.withoutDebugging", category: "Run", title: "Run Without Debugging", keybinding: "Ctrl+F5", when: () => term() ?? (!activePath ? "Open a file first" : runnerFor(activePath) ? null : `Relay doesn't know how to run .${activePath.split(".").pop()} files`), run: () => void runActiveFile() },
+      { id: "run.toggleBreakpoint", category: "Run", title: "Toggle Breakpoint", keybinding: "F9", when: () => NO_DEBUG, run: () => {} },
+      { id: "run.addConfiguration", category: "Run", title: "Add Configuration…", when: () => NO_DEBUG, run: () => {} },
+      { id: "help.shortcuts", category: "Help", title: "Keyboard Shortcuts Reference", run: () => (set({ view: "settings", sidebar: true }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector("[data-testid=shortcuts]")?.scrollIntoView())) },
       { id: "go.top", category: "Go", title: "Go to Top of File", when: needEditor, run: onEditor((v) => cursorDocStart(v)) },
       { id: "go.bottom", category: "Go", title: "Go to End of File", when: needEditor, run: onEditor((v) => cursorDocEnd(v)) },
       { id: "go.bracket", category: "Go", title: "Go to Bracket", keybinding: "Mod+Shift+\\", native: true, when: needEditor, run: onEditor((v) => cursorMatchingBracket(v)) },
@@ -788,7 +927,7 @@ export function Workbench() {
       { id: "panel.activity", category: "View", title: "Project Activity", run: () => openPanel("activity") },
       { id: "terminal.toggle", category: "Terminal", title: "Toggle Terminal", keybinding: "Ctrl+`", run: () => (layout.panel && panelTab === "terminal" ? set({ panel: false }) : openPanel("terminal")) },
       { id: "terminal.new", category: "Terminal", title: "New Terminal", keybinding: "Ctrl+Shift+`", when: term, run: () => (openPanel("terminal"), setTermNew((n) => n + 1)) },
-      { id: "run.debug", category: "Run", title: "Start Debugging", when: () => "Breakpoint debugging isn't available yet (no debug adapter)", run: () => {} },
+      { id: "run.debug", category: "Run", title: "Start Debugging", keybinding: "F5", when: () => NO_DEBUG, run: () => {} },
       { id: "editor.zoomIn", category: "Editor", title: "Increase Font Size", keywords: ["zoom"], keybinding: "Mod+=", run: () => setPrefs((p) => ({ ...p, fontSize: Math.min(24, p.fontSize + 1) })) },
       { id: "editor.zoomOut", category: "Editor", title: "Decrease Font Size", keywords: ["zoom"], keybinding: "Mod+-", run: () => setPrefs((p) => ({ ...p, fontSize: Math.max(10, p.fontSize - 1) })) },
       { id: "editor.zoomReset", category: "Editor", title: "Reset Font Size", keywords: ["zoom"], keybinding: "Mod+0", run: () => setPrefs((p) => ({ ...p, fontSize: DEFAULT_PREFS.fontSize })) },
@@ -826,7 +965,9 @@ export function Workbench() {
     ];
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs, showAuthors, following, feed, jumpTo, testRun, notify, activeLang, showPick]);
+  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs, showAuthors, following, feed, jumpTo, testRun, notify, activeLang, showPick, recent, syntax, cursor]);
+  const commandsRef = useRef(commands);
+  commandsRef.current = commands;
 
   /*
     Keyboard. Bound chords dispatch through the registry in the capture phase, so workbench shortcuts work even when
@@ -890,7 +1031,7 @@ export function Workbench() {
         </span>
         <MenuBar commands={commands} compact={fit.compactMenu} />
         <div className="absolute left-1/2 top-1/2 w-[min(38vw,520px)] -translate-x-1/2 -translate-y-1/2">
-          <button onClick={() => setPalette({ open: true, mode: "files" })} data-testid="command-center" aria-label={`Search files and commands (${keyLabel("Mod+P")})`} className="group flex h-[24px] w-full items-center gap-2 rounded-sm border border-rule bg-sidebar px-2 text-[12px] text-muted transition-colors hover:border-rule-strong hover:text-ink-2">
+          <button onClick={() => quickOpen("")} data-testid="command-center" aria-label={`Search files and commands (${keyLabel("Mod+P")})`} className="group flex h-[24px] w-full items-center gap-2 rounded-sm border border-rule bg-sidebar px-2 text-[12px] text-muted transition-colors hover:border-rule-strong hover:text-ink-2">
             <Search size={12} strokeWidth={1.75} className="shrink-0 text-faint group-hover:text-accent" />
             <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 truncate">
               <span className="truncate text-ink-2">{s.project.name}</span>
@@ -1216,7 +1357,19 @@ export function Workbench() {
         </div>
       </footer>
 
-      <CommandPalette open={palette.open} mode={palette.mode} files={files} openEditors={[...new Set([...(active ? [active] : []), ...recent.filter((r) => tabs.includes(r))])]} commands={commands} pick={palette.mode === "pick" ? pick : null} onClose={() => setPalette((p) => ({ ...p, open: false }))} onOpenFile={(p) => open(p)} />
+      <CommandPalette
+        open={palette.open}
+        prefix={palette.prefix}
+        pick={palette.pick}
+        files={files}
+        openEditors={[...new Set([...(active ? [active] : []), ...recent.filter((r) => tabs.includes(r))])]}
+        commands={commands}
+        activeFile={activePath}
+        lineCount={editorView.current?.state.doc.lines ?? 0}
+        fileSymbols={symbolsNow}
+        onClose={() => setPalette((p) => ({ ...p, open: false, pick: null }))}
+        onOpenFile={(p, line) => open(p, line)}
+      />
 
       <div className="pointer-events-none fixed bottom-9 right-4 z-50 flex flex-col items-end gap-2" aria-live="polite">
         <AnimatePresence>

@@ -156,6 +156,45 @@ export function searchProject(root: string, query: string, limit = 300): { hits:
   return { hits, truncated: false };
 }
 
+export interface SymbolHit {
+  name: string;
+  kind: string;
+  path: string;
+  line: number;
+}
+
+/** Declarations the workspace-symbol search recognises: JS/TS, Python, and Markdown headings. */
+const DECLARATION = /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(function\*?|class|interface|type|enum|const|let|var|def)\s+([A-Za-z_$][\w$]*)|^(#{1,6})\s+(.+)$/;
+
+/**
+ * Go to Symbol in Workspace without a language server: declarations whose name contains `query`, found with git grep
+ * over the shared files (the same set Find in Files searches). Exact and prefix matches first.
+ */
+export function workspaceSymbols(root: string, query: string, limit = 200): { symbols: SymbolHit[] } {
+  if (!/^[\w$]{1,80}$/.test(query)) return { symbols: [] };
+  const pattern = `^\\s*(export\\s+)?(default\\s+)?(async\\s+)?(function\\*?|class|interface|type|enum|const|let|var|def)\\s+[A-Za-z_$]*${query.replace(/\$/g, "\\$")}|^#{1,6}\\s+.*${query.replace(/\$/g, "\\$")}`;
+  let out = "";
+  try {
+    out = execFileSync("git", ["grep", "-n", "-I", "-i", "-E", "--untracked", "--full-name", "-e", pattern, "--", ":/"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  } catch (e) {
+    if ((e as { status?: number }).status === 1) return { symbols: [] };
+    throw e;
+  }
+  const q = query.toLowerCase();
+  const symbols: SymbolHit[] = [];
+  for (const row of out.split("\n")) {
+    const m = /^(.*?):(\d+):(.*)$/.exec(row);
+    if (!m || isSecretPath(m[1]!)) continue;
+    const d = DECLARATION.exec(m[3]!);
+    if (!d) continue;
+    const name = (d[2] ?? d[4]!).trim();
+    if (!name.toLowerCase().includes(q)) continue;
+    symbols.push({ name, kind: d[1] ?? "heading", path: m[1]!, line: Number(m[2]) });
+  }
+  const rank = (s: SymbolHit) => (s.name.toLowerCase() === q ? 0 : s.name.toLowerCase().startsWith(q) ? 1 : 2);
+  return { symbols: symbols.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, limit) };
+}
+
 export interface GitStatus {
   branch: string | null;
   head: string | null;

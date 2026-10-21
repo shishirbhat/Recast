@@ -23,7 +23,7 @@ import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
 import type { EntryKind, Source } from "../knowledge/records.ts";
 import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
-import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject } from "./files.ts";
+import { gitStatus, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
 import { AgentRuns } from "./runs.ts";
 import { TerminalService } from "./terminal.ts";
 
@@ -320,6 +320,11 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       requireMember(req, "read");
       docs.flushAll(); // search what collaborators see, not a stale disk
       return json(res, 200, searchProject(root, url.searchParams.get("q") ?? ""));
+    }
+    if (method === "GET" && parts[0] === "symbols") {
+      requireMember(req, "read");
+      docs.flushAll();
+      return json(res, 200, workspaceSymbols(root, url.searchParams.get("q") ?? ""));
     }
     if (method === "GET" && parts[0] === "git" && parts.length === 1) {
       requireMember(req, "read");

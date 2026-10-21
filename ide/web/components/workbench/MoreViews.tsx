@@ -286,7 +286,7 @@ export function SettingsView({ theme, setTheme, commands, terminal, onResetLayou
           </p>
         </Section>
         <Section title="Keyboard shortcuts" count={bound.length}>
-          <div className="px-3 pb-1.5">
+          <div className="px-3 pb-1.5" data-testid="shortcuts">
             <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter shortcuts" className="h-[24px] w-full rounded-sm border border-rule bg-editor px-2 text-[12.5px] outline-none focus:border-accent" />
           </div>
           {bound.map((c) => (
