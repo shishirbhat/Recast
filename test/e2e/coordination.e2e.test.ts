@@ -107,6 +107,8 @@ test("coordination: a verified agent change becomes ready, is applied after conf
   await p.getByTestId("toast").filter({ hasText: "Applied 1 file from T-readme" }).waitFor();
   await p.waitForFunction(() => document.querySelector("[data-testid='coord-task-T-readme'] [data-status]")?.getAttribute("data-status") === "done", undefined, { timeout: 10000 });
   assert.equal(server.relay.requireTask("T-readme").state, "completed");
+  // The workbench's own project state catches up too: the "ready for review" notice leaves once it's resolved.
+  await p.getByTestId("toast").filter({ hasText: "T-readme is ready for review" }).waitFor({ state: "detached", timeout: 10000 });
   assert.match(server.docs.open("README.md").text.toString(), /A tiny corner shop/);
   // Applying twice is refused by the engine, not just hidden in the UI.
   await assert.rejects(async () => server.runs.apply("T-readme", server.members.invite("x", "owner").member));

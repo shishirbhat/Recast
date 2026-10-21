@@ -21,7 +21,7 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 | Cross-task integration gate (`relay integrate`) | **Implemented and tested** (replays real run 3). Exercised against the real provider only through the per-task block |
 | Benchmark vs. baseline workflow | **Not started** |
 | Collaborative IDE (server, Yjs sync, presence, auth, IDE workbench UI) | **Implemented and tested** (real clients, two-browser E2E). Not yet tested by independent users |
-| Agent runs from the IDE (worktrees, stale input, 3-way apply, combined gate) | **Tested with a simulated agent only.** No real Claude Code run from the IDE yet |
+| Agent runs from the IDE (worktrees, stale input, 3-way apply, combined gate) | **Tested against the real provider from the browser** (Claude Code 2.1.307, 2026-10-21: started from Coordination, verified by Relay in its worktree, applied by a person; evidence in `docs/evidence/claude-code-ide-2026-10-21`). Stale input and the combined gate are tested with the simulated agent only |
 | IDE workbench at VS Code / Cursor structure (menus, palette prefixes, split editors, minimap, Prettier, Replace in Files, file operations, Testing view, Welcome) | **Implemented and tested** (browser E2E). See `RELAY_HANDOFF.md` |
 | Coordination workspace (`GET /api/coordination`: engine-derived statuses, dependencies, overlaps, "safe to integrate next") | **Implemented and tested** (unit, API and browser E2E with the simulated agent) |
 | VS Code extension | **Not started** |

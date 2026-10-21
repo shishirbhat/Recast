@@ -244,7 +244,6 @@ export function CoordinationView({ tick, members, role, onOpenTask, onOpenFile, 
                 <div key={a.q} className="flex min-w-0 flex-col gap-1.5 bg-editor px-3.5 py-2.5">
                   <span className="text-[12px] text-muted">{a.q}</span>
                   {a.extra ?? (a.ids.length ? <span className="flex flex-wrap gap-1">{a.ids.map(chip)}</span> : <span className="text-[12.5px] text-faint">{a.none}</span>)}
-                  {a.extra === null && <span className="text-[12.5px] text-faint">{a.none}</span>}
                 </div>
               ))}
             </section>
