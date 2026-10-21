@@ -179,6 +179,87 @@ export function lineDiff(before: string, after: string, context = 3): DiffLine[]
 }
 
 /** One session's exact change, and whether anyone else edited the same file at the same time. */
+export interface LineOrigin {
+  author: string;
+  kind: AuthorKind;
+  /** The text this author contributed to the line, as it stands now. */
+  text: string;
+  /** When it was written, from the update log. For baseline text, when Relay first loaded the file. */
+  at: string | null;
+  seq: number | null;
+  /** The author's edit session that contains it, when there is one. */
+  session: string | null;
+}
+
+/**
+ * Who wrote each part of one line, and when: for every run of characters on the line, the update that inserted it
+ * (found in the document's update log by its Yjs id) and the edit session that update belongs to. This is what lets
+ * someone trace a line that broke something back to the change that introduced it.
+ */
+export function lineOrigin(db: DatabaseSync, docs: DocStore, path: string, line: number): LineOrigin[] {
+  const entry = docs.open(path);
+  const owners = docs.clientAuthors(path);
+  // Runs of characters on the requested line, each with the id of its first character.
+  const runs: { client: number; clock: number; text: string }[] = [];
+  let n = 1;
+  let item = (entry.text as unknown as { _start: Y.Item | null })._start;
+  while (item && n <= line) {
+    if (!item.deleted && item.content instanceof Y.ContentString) {
+      const str = item.content.str;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === "\n") {
+          n++;
+          continue;
+        }
+        if (n !== line) continue;
+        const last = runs.at(-1);
+        const clock = item.id.clock + i;
+        if (last && last.client === item.id.client && last.clock + last.text.length === clock) last.text += str[i];
+        else runs.push({ client: item.id.client, clock, text: str[i]! });
+      }
+    }
+    item = item.right as Y.Item | null;
+  }
+  if (!runs.length) return [];
+  // Find the update that inserted each run (one pass over the log, newest first so recent edits resolve fast).
+  const name = `file:${path}`;
+  const found = new Map<string, { seq: number; at: string }>();
+  const wanted = new Set(runs.map((r) => `${r.client}:${r.clock}`));
+  const rows = db.prepare("SELECT seq, data, created_at FROM doc_updates WHERE doc = ? ORDER BY seq DESC").iterate(name) as Iterable<{ seq: number; data: Uint8Array; created_at: string }>;
+  for (const row of rows) {
+    if (found.size === wanted.size) break;
+    for (const st of Y.decodeUpdate(row.data).structs) {
+      for (const r of runs) {
+        const key = `${r.client}:${r.clock}`;
+        if (found.has(key) || st.id.client !== r.client) continue;
+        if (r.clock >= st.id.clock && r.clock < st.id.clock + st.length) found.set(key, { seq: row.seq, at: row.created_at });
+      }
+    }
+  }
+  const out: LineOrigin[] = [];
+  for (const r of runs) {
+    const author = owners.get(r.client) ?? "unknown";
+    const f = found.get(`${r.client}:${r.clock}`);
+    const session = f ? ((db.prepare("SELECT id FROM doc_sessions WHERE doc = ? AND author = ? AND first_seq <= ? AND last_seq >= ? ORDER BY started_at DESC LIMIT 1").get(name, author, f.seq, f.seq) as { id: string } | undefined)?.id ?? null) : null;
+    const prev = out.at(-1);
+    // Adjacent runs from the same author and change read as one piece.
+    if (prev && prev.author === author && prev.seq === (f?.seq ?? null)) prev.text += r.text;
+    else out.push({ author, kind: authorKind(author), text: r.text, at: f?.at ?? null, seq: f?.seq ?? null, session });
+  }
+  return out.filter((o) => o.text.trim());
+}
+
+/** The file before and after one edit session, for showing it as a diff. */
+export function sessionSides(db: DatabaseSync, docs: DocStore, id: string): { path: string; before: string; after: string; author: string; startedAt: string } | null {
+  const r = db.prepare("SELECT * FROM doc_sessions WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!r) return null;
+  const s = toSession(r);
+  const before = docs.textAt(s.path, s.baseSeq);
+  const after = docs.textAt(s.path, s.lastSeq);
+  if (before === null || after === null) return null;
+  return { path: s.path, before, after, author: s.author, startedAt: s.startedAt };
+}
+
 export function sessionDiff(db: DatabaseSync, docs: DocStore, id: string): { session: Session; diff: DiffLine[]; concurrent: string[]; available: boolean } | null {
   const r = db.prepare("SELECT * FROM doc_sessions WHERE id = ?").get(id) as Record<string, unknown> | undefined;
   if (!r) return null;

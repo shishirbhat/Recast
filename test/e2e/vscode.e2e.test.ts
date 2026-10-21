@@ -247,7 +247,10 @@ test("explorer: new file and folder, rename and delete from the context menu; a 
   // Bo opens it; Ada renames it with F2. Bo's editor moves to the new name, with a notice.
   await bo.getByTestId("folder-src/lib").click();
   await openFile(bo, "src/lib/tool.js");
-  await bo.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("tool = 1"));
+  await bo.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("tool = 1"), undefined, { timeout: 15000 }).catch(async (e) => {
+    console.log("DIAG server:", JSON.stringify(server.docs.get("src/lib/tool.js")?.text.toString()), "ada:", JSON.stringify(await ada.locator(".cm-content").first().textContent()), "ada focus:", await ada.evaluate(() => document.activeElement?.className + "|" + document.activeElement?.tagName), "bo:", JSON.stringify(await bo.locator(".cm-content").first().textContent()), "bo status:", await bo.getByTestId("sync-status").textContent().catch(() => "?"));
+    throw e;
+  });
   await ada.getByTestId("file-src/lib/tool.js").focus();
   await ada.keyboard.press("F2");
   await ada.getByTestId("tree-name-input").fill("helper.js");

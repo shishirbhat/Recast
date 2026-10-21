@@ -39,6 +39,7 @@ import type { TerminalAvailability } from "./Terminal";
 import { AttentionButton, attentionOf } from "./Attention";
 import { TestingView, TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { WelcomePage } from "./Welcome";
+import { LineHistory, PresenceBar } from "./Presence";
 import { CoordinationView } from "./CoordinationView";
 import { BottomPanel, Section, SearchView, SourceControlView, ViewHeader, problemsOf } from "./Views";
 import type { PanelTab } from "./Views";
@@ -422,6 +423,7 @@ export function Workbench() {
   const [prefs, setPrefs] = useState<EditorPrefs>(DEFAULT_PREFS);
   const [showAuthors, setShowAuthors] = useState(false);
   const [welcomeOnStartup, setWelcomeOnStartup] = useState(true);
+  const [lineHistory, setLineHistory] = useState<{ path: string; line: number } | null>(null);
   const [authors, setAuthors] = useState<Map<number, LineMark> | null>(null);
   const [syntax, setSyntax] = useState<SyntaxProblem[] | null>(null);
   const sessions = useRef(new Map<string, DocSession>());
@@ -441,7 +443,8 @@ export function Workbench() {
     setLayout(loadLayout());
     try {
       setPrefs({ ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem("relay.editor.v1") ?? "{}") });
-      setShowAuthors(localStorage.getItem("relay.authors") === "1");
+      // Line authorship is on unless someone turned it off: who wrote what is part of working together here.
+      setShowAuthors(localStorage.getItem("relay.authors") !== "0");
       const welcome = localStorage.getItem("relay.welcome") !== "0";
       setWelcomeOnStartup(welcome);
       // VS Code opens on its Welcome page; so does Relay, unless it was turned off.
@@ -598,6 +601,7 @@ export function Workbench() {
   const { status, pending, peers } = useSessionState(session);
   const onCursor = useCallback((l: number, c: number) => setCursor([l, c]), []);
   here.current = { path: activePath, line: cursor[0] };
+  const onAuthorClick = useCallback((line: number) => activePath && setLineHistory({ path: activePath, line }), [activePath]);
   const symbolsNow = useCallback(() => (editorView.current && activePath ? fileSymbols(editorView.current.state.doc.toString(), langs[activePath] ?? languageIdFor(activePath)) : []), [activePath, langs]);
   const goHistory = useCallback(
     (dir: "back" | "forward") => {
@@ -1070,6 +1074,7 @@ export function Workbench() {
       { id: "editor.zoomReset", category: "Editor", title: "Reset Font Size", keywords: ["zoom"], keybinding: "Mod+0", run: () => setPrefs((p) => ({ ...p, fontSize: DEFAULT_PREFS.fontSize })) },
       { id: "editor.wrap", category: "View", title: "Toggle Word Wrap", keybinding: "Alt+Z", checked: () => prefs.wrap, run: () => setPrefs((p) => ({ ...p, wrap: !p.wrap })) },
       { id: "editor.authors", category: "Collaboration", title: "Toggle Line Authorship", keywords: ["blame", "who wrote", "attribution"], checked: () => showAuthors, run: () => setShowAuthors((x) => !x) },
+      { id: "people.lineHistory", category: "Collaboration", title: "Who Wrote This Line?", keywords: ["blame", "history", "author", "who"], when: () => (activePath ? null : "Open a file first"), run: () => activePath && setLineHistory({ path: activePath, line: cursor[0] }) },
       { id: "people.show", category: "Collaboration", title: "Show People and Contributions", keywords: ["contributions", "history", "who"], run: () => (set({ view: "community", sidebar: true }), setLastOpened("sidebar")) },
       { id: "people.stopFollowing", category: "Collaboration", title: "Stop Following", when: () => (following ? null : "You aren't following anyone"), run: () => setFollowing(null) },
       ...feed.participants
@@ -1264,6 +1269,7 @@ export function Workbench() {
                 authors={focused && showAuthors ? authors : null}
                 problems={focused ? syntax : null}
                 language={langs[gPath!] ?? undefined}
+                onAuthorClick={onAuthorClick}
               />
             </div>
           </>
@@ -1293,16 +1299,7 @@ export function Workbench() {
           </button>
         </div>
         <div className="ml-auto flex items-center gap-0.5">
-          <div className="mr-1.5 hidden items-center gap-0.5 sm:flex" aria-label="People here">
-            <AnimatePresence>
-              {s.members
-                .filter((m) => online.has(m.id) && m.id !== me!.id)
-                .slice(0, 5)
-                .map((m) => (
-                  <Avatar key={m.id} name={m.name} color={m.color} size={20} title={`${m.name}${where(m.id) ? ` · ${where(m.id)}` : ""}`} />
-                ))}
-            </AnimatePresence>
-          </div>
+          <PresenceBar me={me!} members={s.members} online={feed.online} participants={feed.participants} following={following} onJump={jumpTo} onFollow={setFollowing} onOpen={(p) => open(p)} onInvite={invite} canInvite={me!.role === "owner"} />
           {[
             { on: fit.sidebar, label: tip("Toggle Primary Side Bar", "layout.toggleSidebar"), icon: <PanelLeft size={15} />, cmd: "layout.toggleSidebar" },
             { on: layout.panel, label: tip("Toggle Panel", "layout.togglePanel"), icon: <PanelBottom size={15} />, cmd: "layout.togglePanel" },
@@ -1540,6 +1537,12 @@ export function Workbench() {
             <StatusItem title="Collaboration sync" testId="sync-status">
               {status === "gone" ? "File moved or deleted" : pending ? "Offline edits pending" : status === "synced" ? "Synced" : status === "connecting" ? "Connecting…" : "Offline"}
             </StatusItem>
+            {showAuthors && authors?.get(cursor[0]) && (
+              <StatusItem title="Who wrote this line, from Relay's edit history. Click for when and in which change." onClick={() => activePath && setLineHistory({ path: activePath, line: cursor[0] })} testId="status-line-author">
+                <span className="size-2 rounded-full" style={{ background: authors.get(cursor[0])!.color }} />
+                {authors.get(cursor[0])!.label}
+              </StatusItem>
+            )}
             <StatusItem title="Go to Line" onClick={() => execute(commands.find((c) => c.id === "go.line")!)}>
               Ln {cursor[0]}, Col {cursor[1]}
             </StatusItem>
@@ -1590,6 +1593,7 @@ export function Workbench() {
         </div>
       </footer>
 
+      {lineHistory && <LineHistory path={lineHistory.path} line={lineHistory.line} members={s.members} onClose={() => setLineHistory(null)} onShowSession={(id) => (openDiff({ kind: "session", id, path: lineHistory.path }), setLineHistory(null))} />}
       <CommandPalette
         open={palette.open}
         prefix={palette.prefix}

@@ -11,18 +11,18 @@ import { api, ApiError } from "@/lib/api";
 import { languageFor } from "../Editor";
 
 /** What a diff tab shows. Encoded in the tab id so tabs survive like any other editor. */
-export type DiffSpec = { kind: "working" | "staged"; path: string } | { kind: "task"; task: string; path: string } | { kind: "conflict"; id: string; path: string };
+export type DiffSpec = { kind: "working" | "staged"; path: string } | { kind: "task"; task: string; path: string } | { kind: "conflict" | "session"; id: string; path: string };
 
-export const diffTabId = (d: DiffSpec) => (d.kind === "task" ? `diff:task:${d.task}:${d.path}` : d.kind === "conflict" ? `diff:conflict:${d.id}:${d.path}` : `diff:${d.kind}:${d.path}`);
+export const diffTabId = (d: DiffSpec) => (d.kind === "task" ? `diff:task:${d.task}:${d.path}` : d.kind === "conflict" || d.kind === "session" ? `diff:${d.kind}:${d.id}:${d.path}` : `diff:${d.kind}:${d.path}`);
 export function parseDiffTab(id: string): DiffSpec | null {
   if (!id.startsWith("diff:")) return null;
   const [, kind, ...rest] = id.split(":");
   if (kind === "task") return { kind: "task", task: rest[0]!, path: rest.slice(1).join(":") };
-  if (kind === "conflict") return { kind: "conflict", id: rest[0]!, path: rest.slice(1).join(":") };
+  if (kind === "conflict" || kind === "session") return { kind, id: rest[0]!, path: rest.slice(1).join(":") };
   if (kind === "working" || kind === "staged") return { kind, path: rest.join(":") };
   return null;
 }
-export const diffTabLabel = (d: DiffSpec) => `${d.path.split("/").pop()} (${d.kind === "task" ? d.task : d.kind === "conflict" ? "Conflict" : d.kind === "staged" ? "Staged" : "Working Tree"})`;
+export const diffTabLabel = (d: DiffSpec) => `${d.path.split("/").pop()} (${d.kind === "task" ? d.task : d.kind === "conflict" ? "Conflict" : d.kind === "session" ? "Edit session" : d.kind === "staged" ? "Staged" : "Working Tree"})`;
 
 const highlight = HighlightStyle.define([
   { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.definitionKeyword], color: "var(--syn-keyword)" },
@@ -102,7 +102,7 @@ export function DiffView({ spec, canEdit, onOpenFile, onStage, onResolved, notif
       );
       return;
     }
-    const url = spec.kind === "task" ? `/tasks/${encodeURIComponent(spec.task)}/diff?path=${encodeURIComponent(spec.path)}` : `/git/diff?path=${encodeURIComponent(spec.path)}${spec.kind === "staged" ? "&staged=1" : ""}`;
+    const url = spec.kind === "session" ? `/sessions/${encodeURIComponent(spec.id)}/sides` : spec.kind === "task" ? `/tasks/${encodeURIComponent(spec.task)}/diff?path=${encodeURIComponent(spec.path)}` : `/git/diff?path=${encodeURIComponent(spec.path)}${spec.kind === "staged" ? "&staged=1" : ""}`;
     void api<{ before: string; after: string; beforeLabel?: string; afterLabel?: string }>("GET", url).then(
       (r) => setSides({ before: r.before, after: r.after, beforeLabel: r.beforeLabel ?? (spec.kind === "staged" ? "HEAD" : "Index"), afterLabel: r.afterLabel ?? (spec.kind === "staged" ? "Index (staged)" : "Working tree") }),
       (e) => setError(e instanceof ApiError ? e.message : String(e)),
@@ -111,7 +111,7 @@ export function DiffView({ spec, canEdit, onOpenFile, onStage, onResolved, notif
       void api<{ comments: Comment[] }>("GET", `/reviews?task=${encodeURIComponent(spec.task)}&path=${encodeURIComponent(spec.path)}`).then((r) => setComments(r.comments), () => {});
       void api<NonNullable<typeof record>>("GET", `/tasks/${encodeURIComponent(spec.task)}/change`).then(setRecord, () => setRecord(null));
     }
-  }, [spec.kind, spec.path, spec.kind === "task" ? spec.task : spec.kind === "conflict" ? spec.id : "", nonce]);
+  }, [spec.kind, spec.path, spec.kind === "task" ? spec.task : spec.kind === "conflict" || spec.kind === "session" ? spec.id : "", nonce]);
   const [resolved, setResolved] = useState(false);
   const resolve = (take: "shared" | "outside") =>
     spec.kind === "conflict" &&

@@ -65,7 +65,8 @@ const relayTheme = EditorView.theme({
   ".cm-ySelection": { borderRadius: "2px" },
   ".relay-author-gutter": { width: "4px", marginRight: "2px" },
   ".relay-author-gutter .cm-gutterElement": { padding: "0" },
-  ".relay-author": { display: "block", width: "3px", height: "100%", borderRadius: "1px" },
+  ".relay-author": { display: "block", width: "3px", height: "100%", borderRadius: "1px", cursor: "pointer" },
+  ".relay-author-gutter .cm-gutterElement:hover .relay-author": { width: "4px" },
   ".cm-lintRange-error": { backgroundImage: "none", textDecoration: "underline wavy var(--danger)", textUnderlineOffset: "3px" },
   ".cm-tooltip-lint": { fontFamily: "var(--font-sans)", fontSize: "12px" },
   ".cm-trailingSpace": { backgroundColor: "color-mix(in oklab, var(--danger) 18%, transparent)" },
@@ -144,10 +145,28 @@ const authorsField = StateField.define<Map<number, LineMark> | null>({
     return v;
   },
 });
+/** Set by the Editor: what clicking a line's authorship bar does (opens that line's history). */
+const authorClick = StateEffect.define<((line: number) => void) | null>();
+const authorClickField = StateField.define<((line: number) => void) | null>({
+  create: () => null,
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(authorClick)) return e.value;
+    return v;
+  },
+});
 const authorGutter = [
   authorsField,
+  authorClickField,
   gutter({
     class: "relay-author-gutter",
+    domEventHandlers: {
+      mousedown: (view, block) => {
+        const fn = view.state.field(authorClickField);
+        if (!fn) return false;
+        fn(view.state.doc.lineAt(block.from).number);
+        return true;
+      },
+    },
     markers: (view) => {
       const marks = view.state.field(authorsField);
       if (!marks) return RangeSet.empty;
@@ -180,7 +199,7 @@ function prefsExtension(p: EditorPrefs): Extension {
   ];
 }
 
-export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null, language }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null; /** Language mode id; defaults to the file extension's. */ language?: string }) {
+export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null, language, onAuthorClick }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null; /** Language mode id; defaults to the file extension's. */ language?: string; /** Clicking a line's authorship bar. */ onAuthorClick?: (line: number) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const prefsC = useRef(new Compartment());
@@ -199,8 +218,8 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
   useEffect(() => {
     const v = viewRef.current;
     if (!v) return;
-    v.dispatch({ effects: [authorC.current.reconfigure(authors ? authorGutter : []), ...(authors ? [setAuthors.of(authors)] : [])] });
-  }, [authors]);
+    v.dispatch({ effects: [authorC.current.reconfigure(authors ? authorGutter : []), ...(authors ? [setAuthors.of(authors), authorClick.of(onAuthorClick ?? null)] : [])] });
+  }, [authors, onAuthorClick]);
   useEffect(() => {
     const v = viewRef.current;
     if (!v) return;
@@ -277,8 +296,10 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
       view.dispatch({ selection: { anchor: line.from, head: line.to }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
       view.focus();
     };
-    if (session.status === "synced") go();
-    else return session.subscribe(() => session.status === "synced" && go());
+    if (session.status === "synced") return go();
+    // Take focus now so keys typed while the document syncs aren't lost (Yjs merges them); place the line on sync.
+    view.focus();
+    return session.subscribe(() => session.status === "synced" && go());
   }, [reveal, session]);
 
   return <div ref={host} className="h-full min-h-0" data-testid="editor" />;

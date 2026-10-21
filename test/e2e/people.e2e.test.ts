@@ -90,11 +90,8 @@ test("two people: live typing, cursors, presence, go to, follow, contributions, 
   await detail.getByRole("button", { name: /\+\d+ −\d+/ }).first().click();
   await detail.getByTestId("session-diff").getByText("export const fromBo = 'live';").waitFor();
 
-  // Line authorship in the editor: Bo's line carries his marker.
+  // Line authorship in the editor is on by default: Bo's line carries his marker.
   await openFile(ada, "src/ui.js");
-  await ada.keyboard.press("Control+Shift+P");
-  await ada.getByTestId("palette-input").fill(">toggle line authorship");
-  await ada.keyboard.press("Enter");
   await ada.locator(".relay-author[title='Bo']").first().waitFor({ timeout: 5000 });
 
   // Syntax diagnostics from the shared text, visible to both people.

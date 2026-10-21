@@ -18,7 +18,7 @@ import { changeRecord } from "../analysis/change.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
 import * as gitops from "./gitops.ts";
 import { TestRunner } from "./testrunner.ts";
-import { authorKind, authorTotals, lineAuthors, sessionDiff, sessions as editSessions } from "./attribution.ts";
+import { authorKind, authorTotals, lineAuthors, lineOrigin, sessionDiff, sessionSides, sessions as editSessions } from "./attribution.ts";
 import { ImpactService } from "../analysis/impact.ts";
 import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
 import type { EntryKind, Source } from "../knowledge/records.ts";
@@ -587,6 +587,19 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
       const text = docs.get(path)?.text.toString() ?? readText(root, path) ?? "";
       return json(res, 200, { path, problems: syntaxProblems(path, text) });
+    }
+    if (method === "GET" && parts[0] === "attribution" && parts[1] === "line") {
+      requireMember(req, "read");
+      const path = resolveProjectPath(root, str(url.searchParams.get("path"), "path", 512));
+      const line = Number(url.searchParams.get("line"));
+      if (!Number.isInteger(line) || line < 1) throw new HttpError(400, "invalid", "line must be a positive integer");
+      return json(res, 200, { path, line, origins: lineOrigin(relay.db, docs, path, line) });
+    }
+    if (method === "GET" && parts[0] === "sessions" && parts[1] && parts[2] === "sides") {
+      requireMember(req, "read");
+      const sides = sessionSides(relay.db, docs, parts[1]);
+      if (!sides) throw new HttpError(404, "not_found", "That edit session is older than the retained history");
+      return json(res, 200, { ...sides, beforeLabel: "before the session", afterLabel: `after ${sides.author}'s edits` });
     }
     if (method === "GET" && parts[0] === "attribution") {
       requireMember(req, "read");
