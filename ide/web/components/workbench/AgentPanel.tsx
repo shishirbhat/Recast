@@ -36,11 +36,12 @@ function agentState(t: Task): AgentState {
   const run = t.runs.at(-1);
   if (t.state === "blocked") return { label: "Blocked", tone: "text-danger", dot: "bg-danger", rank: 0 };
   if (t.state === "failed" || run?.status === "failed") return { label: "Failed", tone: "text-danger", dot: "bg-danger", rank: 0 };
-  if (t.state === "review_required") return { label: "Needs review", tone: "text-warn", dot: "bg-warn", rank: 1 };
-  if (run?.status === "running") return { label: "Working", tone: "text-ink-2", dot: "bg-accent", rank: 2 };
+  if (t.state === "review_required") return { label: "In review", tone: "text-warn", dot: "bg-warn", rank: 1 };
+  if (run?.status === "running") return { label: "Running", tone: "text-ink-2", dot: "bg-accent", rank: 2 };
   if (t.state === "completed") return { label: "Done", tone: "text-muted", dot: "bg-ok", rank: 4 };
-  if (t.state === "cancelled" || run?.status === "cancelled") return { label: "Stopped", tone: "text-muted", dot: "bg-faint", rank: 4 };
-  return { label: "Waiting", tone: "text-muted", dot: "bg-faint", rank: 3 };
+  if (t.state === "cancelled") return { label: "Cancelled", tone: "text-muted", dot: "bg-faint", rank: 4 };
+  if (run?.status === "cancelled") return { label: "Stopped", tone: "text-muted", dot: "bg-faint", rank: 4 };
+  return { label: t.state === "proposed" ? "Awaiting approval" : "Queued", tone: "text-muted", dot: "bg-faint", rank: 3 };
 }
 
 /** Every task an agent has worked on, most urgent first, with the tasks it shares a contract with. */

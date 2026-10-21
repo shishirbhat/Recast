@@ -14,7 +14,7 @@ export function WelcomePage({ state, commands, recent, attention, showOnStartup,
     if (!c) return null;
     const reason = availability(c);
     return (
-      <button key={id} onClick={() => execute(c)} disabled={!!reason} title={reason ?? undefined} className="flex h-7 w-full items-center gap-3 rounded-sm px-2 -mx-2 text-left text-[13px] text-accent-ink hover:bg-hover disabled:text-faint disabled:hover:bg-transparent">
+      <button key={id} onClick={() => execute(c)} disabled={!!reason} title={reason ?? undefined} className="-mx-2 flex h-7 w-full items-center gap-3 rounded-sm px-2 text-left text-[13px] text-ink-2 hover:bg-hover hover:text-ink disabled:text-faint disabled:hover:bg-transparent">
         {label ?? c.title}
         {c.keybinding && <kbd className="ml-auto font-mono text-[11px] text-faint">{keyLabel(c.keybinding)}</kbd>}
       </button>
@@ -49,7 +49,7 @@ export function WelcomePage({ state, commands, recent, attention, showOnStartup,
             {recent.length === 0 && <p className="text-[13px] text-muted">Files you open appear here.</p>}
             {recent.slice(0, 8).map((p) => (
               <button key={p} onClick={() => onOpen(p)} className="-mx-2 flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-[13px] hover:bg-hover">
-                <span className="text-accent-ink">{p.split("/").pop()}</span>
+                <span className="text-ink-2">{p.split("/").pop()}</span>
                 <span className="truncate text-[12px] text-faint">{p.split("/").slice(0, -1).join("/")}</span>
               </button>
             ))}

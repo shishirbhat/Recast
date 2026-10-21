@@ -44,14 +44,14 @@ export function IconButton({ label, children, className = "", ...rest }: Compone
 
 /* Ordinary states are quiet text with a dot; only states that need a person carry a tint. */
 const STATE_STYLE: Record<TaskState, { label: string; cls: string; dot: string }> = {
-  proposed: { label: "Proposed", cls: "text-muted", dot: "bg-faint" },
-  queued: { label: "Ready", cls: "text-ink-2", dot: "bg-muted" },
-  running: { label: "Working", cls: "text-ink-2", dot: "bg-accent" },
+  proposed: { label: "Awaiting approval", cls: "text-muted", dot: "bg-faint" },
+  queued: { label: "Queued", cls: "text-ink-2", dot: "bg-muted" },
+  running: { label: "Running", cls: "text-ink-2", dot: "bg-accent" },
   blocked: { label: "Blocked", cls: "bg-danger-soft text-danger", dot: "bg-danger" },
-  review_required: { label: "Needs review", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
+  review_required: { label: "In review", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
   failed: { label: "Failed", cls: "bg-danger-soft text-danger", dot: "bg-danger" },
   cancelled: { label: "Cancelled", cls: "text-faint line-through", dot: "bg-faint" },
-  completed: { label: "Approved", cls: "text-ok", dot: "bg-ok" },
+  completed: { label: "Done", cls: "text-ok", dot: "bg-ok" },
 };
 
 export const stateLabel = (s: TaskState) => STATE_STYLE[s].label;

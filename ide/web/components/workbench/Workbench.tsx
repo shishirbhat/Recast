@@ -1224,7 +1224,7 @@ export function Workbench() {
         ) : gActive === WELCOME ? (
           <WelcomePage state={s} commands={commands} recent={recent} attention={attention} showOnStartup={welcomeOnStartup} setShowOnStartup={setWelcomeOnStartup} onOpen={open} onTask={showTask} />
         ) : gDiff ? (
-          <DiffView spec={gDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onResolved={() => (closeTab(gActive!, gi), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
+          <DiffView spec={gDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onOpenDiff={openDiff} onOpenTask={showTask} onResolved={() => (closeTab(gActive!, gi), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
         ) : gSession ? (
           <>
             <div className="flex h-[28px] shrink-0 items-center justify-between gap-4 px-4 text-[12.5px] text-muted">

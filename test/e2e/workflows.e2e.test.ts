@@ -100,8 +100,8 @@ test("3-4 · agents run while editing: panels open and close, focus stays in the
   await p.locator(".cm-content").click();
   await p.keyboard.press("Control+End");
   const overview = p.getByTestId("agent-overview");
-  await overview.getByTestId("agent-row-T-greet").filter({ hasText: "Working" }).waitFor();
-  await overview.getByTestId("agent-row-T-build").filter({ hasText: "Working" }).waitFor();
+  await overview.getByTestId("agent-row-T-greet").filter({ hasText: "Running" }).waitFor();
+  await overview.getByTestId("agent-row-T-build").filter({ hasText: "Running" }).waitFor();
   assert.deepEqual((await p.getByTestId("toast").allInnerTexts()).filter((t) => !/started in its own worktree/.test(t)), [], "agents working is routine: the only notice confirms the user's own click");
   for (let i = 0; i < 12; i++) await p.keyboard.type(`while agents work ${i}. `, { delay: 3 });
   assert.ok(await inEditor(), "agent activity never took focus from the editor");
@@ -113,7 +113,7 @@ test("3-4 · agents run while editing: panels open and close, focus stays in the
   assert.ok(await inEditor(), "notices don't steal focus");
   await shot("wf-agents-done");
   assert.equal(await overview.getByTestId("agent-row-T-build").locator("text=Failed").count(), 1);
-  assert.equal(await overview.getByTestId("agent-row-T-greet").locator("text=Needs review").count(), 1);
+  assert.equal(await overview.getByTestId("agent-row-T-greet").locator("text=In review").count(), 1);
   assert.deepEqual(p.errors, []);
 });
 

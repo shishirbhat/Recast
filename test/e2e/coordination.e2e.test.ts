@@ -75,6 +75,12 @@ test("coordination: engine statuses, dependencies, a real verification failure, 
   // The changed file opens the task's diff.
   await p.getByTestId("coord-task-T-ui").getByRole("button", { name: "ui.js" }).click();
   await p.getByRole("tab", { name: /ui\.js/ }).last().waitFor();
+  // The diff counts real changed lines and shows where the change stands, read-only.
+  await p.getByTestId("diff-counts").waitFor();
+  assert.equal((await p.getByTestId("diff-counts").innerText()).replace(/\s+/g, " "), "+1 −1");
+  await p.getByTestId("diff-review-bar").waitFor();
+  assert.match(await p.getByTestId("diff-review-bar").innerText(), /tested/);
+  assert.match(await p.getByTestId("diff-review-bar").innerText(), /before integration/);
 });
 
 test("coordination: viewers see it, and can't create or start", { skip }, async () => {
