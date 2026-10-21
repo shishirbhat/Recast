@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, Blocks, Bot, CircleAlert, CircleUserRound, Files, FlaskConical, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
+import { Bell, Blocks, Bot, CircleAlert, Columns2, CircleUserRound, Files, FlaskConical, GitBranch, Menu, PanelBottom, PanelLeft, PanelRight, Play, Search, Settings, TriangleAlert, Users, X } from "lucide-react";
 import { EditorView } from "@codemirror/view";
 import { selectAll, selectLine, cursorDocStart, cursorDocEnd, moveLineUp, moveLineDown, copyLineUp, copyLineDown, deleteLine, insertBlankLine, toggleComment, toggleBlockComment, indentMore, indentLess, indentSelection, addCursorAbove, addCursorBelow, cursorMatchingBracket, transposeChars, deleteTrailingWhitespace } from "@codemirror/commands";
 import { openSearchPanel, selectNextOccurrence, selectSelectionMatches, findNext, findPrevious } from "@codemirror/search";
@@ -238,13 +238,18 @@ const OPEN_VIEWS: [string, string, string][] = [
   ["Relay", "Investigations and Decisions", "relay.records"],
 ];
 
+interface EditorGroup {
+  tabs: string[];
+  active: string | null;
+}
+
 type MenuEntry = string | "-";
 /** VS Code's menu bar, item for item where Relay has the feature; Relay's own items sit at the end of their menu. */
 const MENUS: [string, MenuEntry[]][] = [
   ["File", ["file.newFile", "file.newFolder", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
   ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "search.replaceInFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
   ["Selection", ["selection.all", "selection.expand", "selection.shrink", "-", "edit.copyLineUp", "edit.copyLineDown", "edit.moveLineUp", "edit.moveLineDown", "edit.duplicateSelection", "-", "selection.cursorAbove", "selection.cursorBelow", "selection.cursorsLineEnds", "selection.nextOccurrence", "selection.allOccurrences", "-", "selection.line"]],
-  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
+  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "editor.split", "editor.moveToOtherGroup", "editor.focusGroup1", "editor.focusGroup2", "editor.closeGroup", "-", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
   ["Go", ["go.back", "go.forward", "-", "go.switchEditor", "go.nextEditor", "go.previousEditor", "-", "palette.files", "go.symbol", "go.workspaceSymbol", "-", "go.line", "go.bracket", "-", "go.nextProblem", "go.previousProblem"]],
   ["Run", ["run.debug", "run.withoutDebugging", "-", "run.toggleBreakpoint", "run.addConfiguration", "-", "tests.runAll", "tests.rerunFailed", "tests.stop", "-", "relay.runActiveTask"]],
   ["Terminal", ["terminal.new", "terminal.toggle", "-", "terminal.runTask", "terminal.runActiveFile", "terminal.runSelection"]],
@@ -373,12 +378,22 @@ export function Workbench() {
   const [theme, setTheme] = useState<Theme>("dark");
   const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
   const [lastOpened, setLastOpened] = useState<"sidebar" | "secondary">("sidebar");
-  const [tabs, setTabs] = useState<string[]>([]);
-  const tabsRef = useRef(tabs);
-  tabsRef.current = tabs;
-  const [active, setActive] = useState<string | null>(null);
+  // Editor groups (split editor): up to two, side by side. `tabs` / `active` and their setters are the focused group's,
+  // so everything that acts on "the active editor" acts where the person is working.
+  const [groups, setGroups] = useState<EditorGroup[]>([{ tabs: [], active: null }]);
+  const [focusRaw, setFocus] = useState(0);
+  const focusRef = useRef(0);
+  focusRef.current = Math.min(focusRaw, groups.length - 1);
+  const focus = focusRef.current;
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
+  const tabs = groups[focus]!.tabs;
+  const active = groups[focus]!.active;
+  const setTabs = useCallback((u: string[] | ((t: string[]) => string[])) => setGroups((gs) => gs.map((x, i) => (i === focusRef.current ? { ...x, tabs: typeof u === "function" ? u(x.tabs) : u } : x))), []);
+  const setActive = useCallback((u: string | null | ((a: string | null) => string | null)) => setGroups((gs) => gs.map((x, i) => (i === focusRef.current ? { ...x, active: typeof u === "function" ? u(x.active) : u } : x))), []);
   const [recent, setRecent] = useState<string[]>([]);
-  const [reveal, setReveal] = useState<{ line: number; nonce: number } | null>(null);
+  /** A line to jump to, in one editor group. */
+  const [reveal, setReveal] = useState<{ line: number; nonce: number; group?: number } | null>(null);
   const [cursor, setCursor] = useState<[number, number]>([1, 1]);
   const [palette, setPalette] = useState<{ open: boolean; prefix: string; pick: QuickPick | null }>({ open: false, prefix: "", pick: null });
   const quickOpen = useCallback((prefix: string) => setPalette({ open: true, prefix, pick: null }), []);
@@ -407,7 +422,16 @@ export function Workbench() {
   const [authors, setAuthors] = useState<Map<number, LineMark> | null>(null);
   const [syntax, setSyntax] = useState<SyntaxProblem[] | null>(null);
   const sessions = useRef(new Map<string, DocSession>());
-  const editorView = useRef<EditorView | null>(null);
+  const viewHandles = useRef([{ current: null as EditorView | null }, { current: null as EditorView | null }]).current;
+  /** The focused group's CodeMirror view: what editor commands act on. */
+  const editorView = useMemo(
+    () => ({
+      get current() {
+        return viewHandles[focusRef.current]?.current ?? null;
+      },
+    }),
+    [viewHandles],
+  );
 
   useEffect(() => {
     setTheme(initialTheme());
@@ -481,18 +505,39 @@ export function Workbench() {
     setTabs((t) => (t.includes(path) ? t : [...t, path]));
     setActive(path);
     setRecent((r) => [path, ...r.filter((x) => x !== path)].slice(0, 12));
-    if (line) setReveal({ line, nonce: Date.now() });
+    if (line) setReveal({ line, nonce: Date.now(), group: focusRef.current });
   }, []);
-  const closeTab = useCallback((path: string) => {
+  const closeTab = useCallback((path: string, gi = focusRef.current) => {
     const s = sessions.current.get(path);
-    if (s?.pendingOffline && !confirm(`${path} has edits made while offline that haven't reached the server yet. Close it and discard them from this browser?`)) return;
-    s?.destroy();
-    sessions.current.delete(path);
-    setTabs((t) => {
-      const next = t.filter((x) => x !== path);
-      setActive((a) => (a === path ? (next.at(-1) ?? null) : a));
-      return next;
+    // The shared session stays while another group still shows the file.
+    const elsewhere = groupsRef.current.some((x, i) => i !== gi && x.tabs.includes(path));
+    if (!elsewhere && s?.pendingOffline && !confirm(`${path} has edits made while offline that haven't reached the server yet. Close it and discard them from this browser?`)) return;
+    if (!elsewhere) {
+      s?.destroy();
+      sessions.current.delete(path);
+    }
+    setGroups((gs) => {
+      const next = gs.map((x, i) => {
+        if (i !== gi) return x;
+        const t = x.tabs.filter((p) => p !== path);
+        return { tabs: t, active: x.active === path ? (t.at(-1) ?? null) : x.active };
+      });
+      // An emptied second group closes, as in VS Code.
+      return next.length > 1 && next.some((x) => !x.tabs.length) ? next.filter((x) => x.tabs.length) : next;
     });
+  }, []);
+  /** Close a whole editor group; files it alone showed lose their session. */
+  const closeGroup = useCallback((gi: number) => {
+    const gs = groupsRef.current;
+    if (gs.length < 2) return;
+    const only = gs[gi]!.tabs.filter((t) => !gs.some((x, i) => i !== gi && x.tabs.includes(t)));
+    if (only.some((t) => sessions.current.get(t)?.pendingOffline) && !confirm("Some files in this group have edits made while offline that haven't reached the server yet. Close the group and discard them from this browser?")) return;
+    for (const t of only) {
+      sessions.current.get(t)?.destroy();
+      sessions.current.delete(t);
+    }
+    setGroups((x) => x.filter((_, i) => i !== gi));
+    setFocus(0);
   }, []);
   useEffect(() => () => sessions.current.forEach((s) => s.destroy()), []);
   // Someone renamed or deleted a file: open editors follow the rename, or close with a notice. Their session was
@@ -507,7 +552,7 @@ export function Workbench() {
     for (const e of fresh) {
       const moves = e.type === "file.renamed" ? ((e.data.files as { from: string; to: string }[]) ?? []) : [];
       const gone = e.type === "file.deleted" ? ((e.data.files as string[]) ?? []) : [];
-      const affected = [...moves.map((m) => m.from), ...gone].filter((p) => tabsRef.current.includes(p));
+      const affected = [...moves.map((m) => m.from), ...gone].filter((p) => groupsRef.current.some((x) => x.tabs.includes(p)));
       if (!affected.length) continue;
       for (const p of affected) {
         sessions.current.get(p)?.destroy();
@@ -515,8 +560,13 @@ export function Workbench() {
       }
       const map = new Map(moves.map((m) => [m.from, m.to]));
       const swap = (p: string) => map.get(p) ?? p;
-      setTabs((t) => t.filter((x) => !gone.includes(x)).map(swap));
-      setActive((a) => (a && gone.includes(a) ? null : a && swap(a)));
+      setGroups((gs) => {
+        const next = gs.map((x) => {
+          const t = x.tabs.filter((p) => !gone.includes(p)).map(swap);
+          return { tabs: t, active: x.active && gone.includes(x.active) ? (t.at(-1) ?? null) : x.active && swap(x.active) };
+        });
+        return next.length > 1 && next.some((x) => !x.tabs.length) ? next.filter((x) => x.tabs.length) : next;
+      });
       setRecent((r) => r.filter((x) => !gone.includes(x)).map(swap));
       setLangs((l) => Object.fromEntries(Object.entries(l).filter(([k]) => !gone.includes(k)).map(([k, v]) => [swap(k), v])));
       if (moves.length) notify(`${who(e.actor)} renamed ${String(e.data.from)} to ${String(e.data.to)}. Open editors moved with it.`);
@@ -605,7 +655,7 @@ export function Workbench() {
       let tries = 0;
       const tick = () => {
         const c = s?.cursorOf(memberId);
-        if (c) setReveal({ line: c.line, nonce: Date.now() });
+        if (c) setReveal({ line: c.line, nonce: Date.now(), group: focusRef.current });
         else if (tries++ < 20) setTimeout(tick, 100);
       };
       tick();
@@ -771,12 +821,16 @@ export function Workbench() {
     const live = new Set(attention.map((a) => a.key));
     setToasts((t) => (t.some((x) => x.key && !live.has(x.key)) ? t.filter((x) => !x.key || live.has(x.key)) : t));
   }, [attention, state, notify]);
-  const fileTask = useMemo(() => {
-    if (!state || !activePath) return null;
-    const live = state.tasks.filter((t) => t.state !== "completed" && t.state !== "cancelled" && t.scope.some((sc) => sc === activePath || (sc.endsWith("/") && activePath.startsWith(sc))));
-    const rank = (t: Task) => (t.owner === state.me.id ? 0 : 2) + (t.state === "running" || t.state === "review_required" ? 0 : 1);
-    return live.sort((a, b) => rank(a) - rank(b))[0] ?? null;
-  }, [state, activePath]);
+  /** The live task whose scope covers a file: mine first, then whatever is moving. */
+  const taskFor = useCallback(
+    (path: string | null) => {
+      if (!state || !path) return null;
+      const live = state.tasks.filter((t) => t.state !== "completed" && t.state !== "cancelled" && t.scope.some((sc) => sc === path || (sc.endsWith("/") && path.startsWith(sc))));
+      const rank = (t: Task) => (t.owner === state.me.id ? 0 : 2) + (t.state === "running" || t.state === "review_required" ? 0 : 1);
+      return live.sort((a, b) => rank(a) - rank(b))[0] ?? null;
+    },
+    [state],
+  );
 
   const commands: Command[] = useMemo(() => {
     if (!state || !me) return [];
@@ -793,6 +847,37 @@ export function Workbench() {
       { id: "file.newFolder", category: "File", title: "New Folder…", when: () => viewOnly, run: () => (set({ sidebar: true, view: "explorer" }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector<HTMLButtonElement>("[aria-label='New folder']")?.click())) },
       { id: "file.save", category: "File", title: "Save", keywords: ["write", "flush"], keybinding: "Mod+S", when: () => (!activePath ? "Open a file first" : viewOnly), run: () => activePath && void api("POST", "/save", { path: activePath }).then(() => notify(`Saved ${activePath} to disk.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")) },
       { id: "view.closeEditor", category: "View", title: "Close Editor", keybinding: "Mod+Alt+W", when: () => (active ? null : "No editor is open"), run: () => active && closeTab(active) },
+      {
+        id: "editor.split",
+        category: "View",
+        title: "Split Editor Right",
+        keywords: ["split", "side by side", "editor group"],
+        keybinding: "Mod+\\",
+        when: () => (!active ? "Open an editor first" : groups.length > 1 ? "Relay shows up to two editor groups; close one to split again" : null),
+        run: () => (setGroups((gs) => [...gs, { tabs: [active!], active }]), setFocus(1)),
+      },
+      { id: "editor.focusGroup1", category: "View", title: "Focus First Editor Group", keybinding: "Mod+1", run: () => (setFocus(0), requestAnimationFrame(() => viewHandles[0]?.current?.focus())) },
+      { id: "editor.focusGroup2", category: "View", title: "Focus Second Editor Group", keybinding: "Mod+2", when: () => (groups.length > 1 ? null : "There's only one editor group"), run: () => (setFocus(1), requestAnimationFrame(() => viewHandles[1]?.current?.focus())) },
+      {
+        id: "editor.moveToOtherGroup",
+        category: "View",
+        title: "Move Editor into Other Group",
+        when: () => (!active ? "Open an editor first" : groups.length === 1 && tabs.length < 2 ? "Open a second editor first, or use Split Editor" : null),
+        run: () => {
+          const t = active!;
+          const to = groups.length === 1 ? 1 : 1 - focus;
+          setGroups((gs) => {
+            const next = gs.length === 1 ? [...gs, { tabs: [], active: null }] : [...gs];
+            next[focus] = { tabs: next[focus]!.tabs.filter((x) => x !== t), active: next[focus]!.tabs.filter((x) => x !== t).at(-1) ?? null };
+            next[to] = { tabs: next[to]!.tabs.includes(t) ? next[to]!.tabs : [...next[to]!.tabs, t], active: t };
+            return next.filter((x) => x.tabs.length);
+          });
+          // Focus follows the editor; if the source group emptied (and so closed), indexes shift down by one.
+          const sourceEmptied = tabs.filter((x) => x !== t).length === 0;
+          setFocus(sourceEmptied && to > focus ? to - 1 : to);
+        },
+      },
+      { id: "editor.closeGroup", category: "View", title: "Close Editor Group", when: () => (groups.length > 1 ? null : "There's only one editor group"), run: () => closeGroup(focus) },
       { id: "view.closeAllEditors", category: "View", title: "Close All Editors", when: () => (tabs.length ? null : "No editors are open"), run: () => [...tabs].forEach(closeTab) },
       { id: "edit.undo", category: "Edit", title: "Undo (your edits)", keybinding: "Mod+Z", native: true, when: needEditor, run: onEditor(() => session?.undoManager.undo()) },
       { id: "edit.redo", category: "Edit", title: "Redo (your edits)", keybinding: "Mod+Shift+Z", native: true, when: needEditor, run: onEditor(() => session?.undoManager.redo()) },
@@ -1014,7 +1099,7 @@ export function Workbench() {
     ];
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs, showAuthors, following, feed, jumpTo, testRun, notify, activeLang, showPick, recent, syntax, cursor]);
+  }, [state, me, termCaps, active, tabs, theme, layout.panel, panelTab, activeTask, session, view, prefs, showAuthors, following, feed, jumpTo, testRun, notify, activeLang, showPick, recent, syntax, cursor, groups, focus, closeGroup]);
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
 
@@ -1071,6 +1156,117 @@ export function Workbench() {
   ];
   const kb = (id: string) => commands.find((c) => c.id === id)?.keybinding;
   const tip = (label: string, id: string) => (kb(id) ? `${label} (${keyLabel(kb(id)!)})` : label);
+
+  /** One editor group: its tab strip, breadcrumbs and editor. With a split, the focused group is the one commands act on. */
+  const renderGroup = (gi: number) => {
+    const grp = groups[gi]!;
+    const gActive = grp.active;
+    const gPath = gActive && isFileTab(gActive) ? gActive : null;
+    const gSession = me && gPath ? sessionFor(gPath, me) : null;
+    const gDiff = gActive ? parseDiffTab(gActive) : null;
+    const focused = gi === focus;
+    const split = groups.length > 1;
+    const pre = gi === 0 ? "" : "g1-";
+    const gTask = taskFor(gPath);
+    const select = (t: string) => setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, active: t } : x)));
+    const splitCmd = commands.find((c) => c.id === "editor.split");
+    const splitWhy = splitCmd ? availability(splitCmd) : "Unavailable";
+    return (
+      <section
+        key={gi}
+        aria-label={split ? `Editor group ${gi + 1}${focused ? " (focused)" : ""}` : undefined}
+        data-testid={`${pre}editor-pane`}
+        onMouseDownCapture={() => gi !== focusRef.current && setFocus(gi)}
+        onFocusCapture={() => gi !== focusRef.current && setFocus(gi)}
+        className={`flex min-w-0 flex-1 flex-col ${gi > 0 ? "border-l border-rule" : ""}`}
+      >
+        {grp.tabs.length > 0 && (
+          <div className="flex h-[35px] shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-sidebar" role="tablist" aria-label={split ? `Open editors, group ${gi + 1}` : "Open editors"}>
+            {grp.tabs.map((t) => {
+              const on = t === gActive;
+              const here = (presence.get(t) ?? []).filter((id) => id !== me!.id);
+              const offline = sessions.current.get(t)?.pendingOffline;
+              return (
+                <div key={t} role="tab" aria-selected={on} data-testid={`${pre}tab-${t}`} onMouseDown={(e) => e.button === 1 && (e.preventDefault(), closeTab(t, gi))} className={`group relative flex min-w-0 shrink-0 items-center gap-1.5 border-r border-rule pl-3 pr-1 text-[12.5px] transition-colors ${on ? "bg-editor text-ink" : "border-b text-muted hover:bg-hover/50 hover:text-ink"}`}>
+                  {on && <span className={`absolute inset-x-0 top-0 h-[2px] ${focused ? "bg-accent" : "bg-rule-strong"}`} />}
+                  <button onClick={() => select(t)} className="max-w-56 truncate" title={t}>
+                    {tabLabel(t)}
+                  </button>
+                  {here.slice(0, 3).map((id) => (
+                    <span key={id} title={`${membersById.get(id)?.name} is here`} className="size-1.5 shrink-0 rounded-full" style={{ background: membersById.get(id)?.color }} />
+                  ))}
+                  <button aria-label={offline ? `${t} has offline edits; close` : `Close ${t}`} title={offline ? "Edits made offline haven't reached the server yet" : "Close"} onClick={() => closeTab(t, gi)} className="grid size-5 shrink-0 place-items-center rounded-sm hover:bg-hover">
+                    {offline ? <span className="size-2 rounded-full bg-attention" /> : <X size={13} className={on ? "text-muted" : "text-transparent group-hover:text-muted"} />}
+                  </button>
+                </div>
+              );
+            })}
+            <div className="flex min-w-4 flex-1 items-center justify-end border-b border-rule pr-1">
+              {gi === groups.length - 1 && (
+                <button aria-label="Split Editor Right" title={splitWhy ?? `Split Editor Right (${keyLabel("Mod+\\")})`} disabled={!!splitWhy} onClick={() => splitCmd && execute(splitCmd)} data-testid="split-editor" className="grid size-6 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink disabled:text-faint disabled:hover:bg-transparent">
+                  <Columns2 size={14} />
+                </button>
+              )}
+              {split && (
+                <button aria-label={`Close editor group ${gi + 1}`} title="Close Editor Group" onClick={() => closeGroup(gi)} className="grid size-6 place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {gActive === WELCOME ? (
+          <WelcomePage state={s} commands={commands} recent={recent} attention={attention} showOnStartup={welcomeOnStartup} setShowOnStartup={setWelcomeOnStartup} onOpen={open} onTask={showTask} />
+        ) : gDiff ? (
+          <DiffView spec={gDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onResolved={() => (closeTab(gActive!, gi), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
+        ) : gSession ? (
+          <>
+            <div className="flex h-[28px] shrink-0 items-center justify-between gap-4 px-4 text-[12.5px] text-muted">
+              <nav aria-label="Breadcrumbs" className="min-w-0 truncate">
+                {gPath!.split("/").map((seg, i, all) => (
+                  <span key={i}>
+                    <span className={i === all.length - 1 ? "text-ink-2" : ""}>{seg}</span>
+                    {i < all.length - 1 && <span className="px-1.5 font-mono text-faint">/</span>}
+                  </span>
+                ))}
+              </nav>
+              <span className="flex shrink-0 items-center gap-3">
+                {gTask && (
+                  <button onClick={() => showTask(gTask.id)} title={`This file is in ${gTask.id}'s scope: ${gTask.objective}`} data-testid={focused ? "file-task" : undefined} className="flex max-w-[360px] items-center gap-1.5 rounded-sm px-1.5 py-px hover:bg-hover">
+                    <span className="font-mono text-[11.5px] text-muted">{gTask.id}</span>
+                    <span className="truncate text-ink-2">{gTask.objective}</span>
+                    <StatePill state={gTask.state} />
+                  </button>
+                )}
+                {focused &&
+                  peers.map((p) => (
+                    <span key={p.clientId} className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: p.color }}>
+                      <span className="size-1.5 rounded-full" style={{ background: p.color }} /> {p.name}
+                    </span>
+                  ))}
+              </span>
+            </div>
+            <div className="min-h-0 flex-1">
+              <Editor
+                key={gSession.path}
+                session={gSession}
+                readOnly={me!.role === "viewer"}
+                onCursor={focused ? onCursor : undefined}
+                reveal={reveal && (reveal.group ?? 0) === gi ? reveal : null}
+                viewHandle={viewHandles[gi]}
+                prefs={prefs}
+                authors={focused && showAuthors ? authors : null}
+                problems={focused ? syntax : null}
+                language={langs[gPath!] ?? undefined}
+              />
+            </div>
+          </>
+        ) : (
+          <EmptyEditor commands={commands} recent={recent} onOpen={open} />
+        )}
+      </section>
+    );
+  };
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-chrome text-ink">
@@ -1219,67 +1415,7 @@ export function Workbench() {
         {/* ===================== Editor group + panel ===================== */}
         <div className="flex min-w-0 flex-1 flex-col border-l border-rule bg-editor" data-testid="editor-group">
           <main className="flex min-h-0 flex-1 flex-col" aria-label="Editor">
-            {tabs.length > 0 && (
-              <div className="flex h-[35px] shrink-0 items-stretch overflow-x-auto overflow-y-hidden bg-sidebar " role="tablist" aria-label="Open editors">
-                {tabs.map((t) => {
-                  const on = t === active;
-                  const here = (presence.get(t) ?? []).filter((id) => id !== me!.id);
-                  const offline = sessions.current.get(t)?.pendingOffline;
-                  return (
-                    <div key={t} role="tab" aria-selected={on} data-testid={`tab-${t}`} onMouseDown={(e) => e.button === 1 && (e.preventDefault(), closeTab(t))} className={`group relative flex min-w-0 shrink-0 items-center gap-1.5 border-r border-rule pl-3 pr-1 text-[12.5px] transition-colors ${on ? "bg-editor text-ink" : "border-b text-muted hover:bg-hover/50 hover:text-ink"}`}>
-                      {on && <motion.span layoutId="tab-indicator" transition={{ type: "spring", stiffness: 520, damping: 42 }} className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
-                      <button onClick={() => setActive(t)} className="max-w-56 truncate" title={t}>
-                        {tabLabel(t)}
-                      </button>
-                      {here.slice(0, 3).map((id) => (
-                        <span key={id} title={`${membersById.get(id)?.name} is here`} className="size-1.5 shrink-0 rounded-full" style={{ background: membersById.get(id)?.color }} />
-                      ))}
-                      <button aria-label={offline ? `${t} has offline edits; close` : `Close ${t}`} title={offline ? "Edits made offline haven't reached the server yet" : "Close"} onClick={() => closeTab(t)} className="grid size-5 shrink-0 place-items-center rounded-sm hover:bg-hover">
-                        {offline ? <span className="size-2 rounded-full bg-attention" /> : <X size={13} className={on ? "text-muted" : "text-transparent group-hover:text-muted"} />}
-                      </button>
-                    </div>
-                  );
-                })}
-                <div className="min-w-4 flex-1 border-b border-rule" />
-              </div>
-            )}
-            {active === WELCOME ? (
-              <WelcomePage state={s} commands={commands} recent={recent} attention={attention} showOnStartup={welcomeOnStartup} setShowOnStartup={setWelcomeOnStartup} onOpen={open} onTask={showTask} />
-            ) : activeDiff ? (
-              <DiffView spec={activeDiff} canEdit={me!.role !== "viewer"} onOpenFile={open} notify={notify} onResolved={() => (closeTab(active!), void refresh())} onStage={(p) => void api("POST", "/git/stage", { paths: [p] }).then(() => notify(`Staged ${p}.`), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"))} />
-            ) : session ? (
-              <>
-                <div className="flex h-[28px] shrink-0 items-center justify-between gap-4 px-4 text-[12.5px] text-muted">
-                  <nav aria-label="Breadcrumbs" className="min-w-0 truncate">
-                    {active!.split("/").map((seg, i, all) => (
-                      <span key={i}>
-                        <span className={i === all.length - 1 ? "text-ink-2" : ""}>{seg}</span>
-                        {i < all.length - 1 && <span className="px-1.5 font-mono text-faint">/</span>}
-                      </span>
-                    ))}
-                  </nav>
-                  <span className="flex shrink-0 items-center gap-3">
-                    {fileTask && (
-                      <button onClick={() => showTask(fileTask.id)} title={`This file is in ${fileTask.id}'s scope: ${fileTask.objective}`} data-testid="file-task" className="flex max-w-[360px] items-center gap-1.5 rounded-sm px-1.5 py-px hover:bg-hover">
-                        <span className="font-mono text-[11.5px] text-muted">{fileTask.id}</span>
-                        <span className="truncate text-ink-2">{fileTask.objective}</span>
-                        <StatePill state={fileTask.state} />
-                      </button>
-                    )}
-                    {peers.map((p) => (
-                      <span key={p.clientId} className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: p.color }}>
-                        <span className="size-1.5 rounded-full" style={{ background: p.color }} /> {p.name}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-                <div className="min-h-0 flex-1">
-                  <Editor key={session.path} session={session} readOnly={me!.role === "viewer"} onCursor={onCursor} reveal={reveal} viewHandle={editorView} prefs={prefs} authors={showAuthors ? authors : null} problems={syntax} language={activeLang ?? undefined} />
-                </div>
-              </>
-            ) : (
-              <EmptyEditor commands={commands} recent={recent} onOpen={open} />
-            )}
+            <div className="flex min-h-0 flex-1">{groups.map((_, gi) => renderGroup(gi))}</div>
           </main>
           {/* The panel stays mounted when closed so terminal sessions and scrollback survive. */}
           <div className={layout.panel ? "contents" : "hidden"}>

@@ -13,6 +13,7 @@ import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts"
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
+import { coordination } from "../analysis/coordination.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
 import * as gitops from "./gitops.ts";
@@ -344,6 +345,11 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       }
       if (b.dryRun !== true && files.length) relay.record("files.replaced", actorFor(m), { files: files.map((f) => f.path), replacements: files.reduce((n, f) => n + f.count, 0) });
       return json(res, 200, { files, replacements: files.reduce((n, f) => n + f.count, 0) });
+    }
+    if (method === "GET" && parts[0] === "coordination") {
+      requireMember(req, "read");
+      docs.flushAll(); // changed files and verification are judged on what collaborators see
+      return json(res, 200, coordination(relay, root, resolve(opts.dbPath), (id) => runs.forTask(id), impact.compute({})));
     }
     if (method === "GET" && parts[0] === "symbols") {
       requireMember(req, "read");

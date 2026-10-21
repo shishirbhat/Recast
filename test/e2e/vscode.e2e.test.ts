@@ -276,3 +276,27 @@ test("viewers see file actions disabled with a reason", { skip }, async () => {
   assert.equal(await del.getAttribute("aria-disabled"), "true");
   assert.match((await del.getAttribute("title")) ?? "", /Viewers can't change files/);
 });
+
+test("split editor: two groups on one shared document, files open in the focused group, groups close", { skip }, async () => {
+  const p = await signIn("owner");
+  await openFile(p, "src/ui.js");
+  await p.keyboard.press("Control+Backslash");
+  await p.getByTestId("g1-editor-pane").waitFor();
+  assert.equal(await p.locator(".cm-editor").count(), 2, "the file shows in both groups");
+  // Typing in the right group reaches the left one: it's one shared document.
+  await p.getByTestId("g1-editor-pane").locator(".cm-line").first().click({ position: { x: 2, y: 5 } });
+  await p.keyboard.type("// both sides\n");
+  await p.waitForFunction(() => [...document.querySelectorAll(".cm-content")].every((c) => c.textContent?.includes("// both sides")));
+  // A file opened now goes to the focused (right) group; the left keeps ui.js.
+  await p.getByTestId("file-src/server.js").click();
+  await p.getByTestId("g1-tab-src/server.js").waitFor();
+  assert.equal(await p.getByTestId("tab-src/server.js").count(), 0);
+  assert.equal(await p.getByTestId("editor-pane").getByRole("tab", { selected: true }).getAttribute("data-testid"), "tab-src/ui.js");
+  // Splitting again is refused with a reason, not silently ignored.
+  assert.match((await p.getByTestId("split-editor").getAttribute("title")) ?? "", /up to two editor groups/);
+  await p.getByRole("button", { name: "Close editor group 2" }).click();
+  await p.getByTestId("g1-editor-pane").waitFor({ state: "detached" });
+  assert.equal(await p.locator(".cm-editor").count(), 1);
+  await p.locator(".cm-line").first().click({ position: { x: 2, y: 5 } });
+  await p.keyboard.press("Control+Z");
+});
