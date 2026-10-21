@@ -23,6 +23,9 @@ The repository's own records stay authoritative for what they cover; this file p
 - Earlier: local Google sign-in (`apps/calendar-link`); extension places in real Google Calendar and saves Gmail drafts through that local program (tested only against a Google stand-in); "How much Recast asks" setting (D24, D28).
 - Nothing is deployed (API, agent server, control center, database).
 
+## Status report page
+- **Recast Engineering Status** (claude.ai artifact, owner's account): https://claude.ai/artifact/D1J6XJs7ieV4a9crCUX4jc. Built from this repository's own figures. Update it by republishing from a session that has its source, or rebuild from `docs/ENGINEERING_STATUS.md`.
+
 ## Open threads
 1. **Uncommitted edits on another machine.** The owner was mid-edit in another session and saw 2 extension test failures there. On 2026-10-21 the committed code was re-run in a clean clone: `apps/extension` **28/28 pass**. So the failures come from those uncommitted edits. They exist only on that machine: commit and push them (or paste the diff) to have them looked at.
 2. **Investor deck** ("Recast — Investor Deck", 13 slides, a claude.ai artifact). Made in a session under a different account; it does not show in this account's artifact list, so the link must come from the owner. Contents and status:
@@ -43,7 +46,7 @@ The repository's own records stay authoritative for what they cover; this file p
 ## Build ideas queued (no owner input needed)
 - Files (PDF links) as documents, not only the page.
 - Keyboard path in the extension beyond Escape (the clay page has it).
-- The service worker keeps the time zone from when its session state was made; after a time-zone change mid-session (travel), dates would still be read in the old zone until the browser restarts. Small fix: read the zone fresh on each load (tried and reverted this session only because it was not the cause of the test race; it is still worth doing on its own, with a test).
+- (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
 - **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb:** reconstructed context; re-ran `apps/extension` on committed code (28/28 pass); created this file and `CLAUDE.md`; built a whole page → real Google Tasks ("This page", Document clumps, Tasks permission, REAL_TEST_PLAN E); full run 862/0. Then a page + a date → a task due that day (D29, new relation and contract); fixed the extension's stuck "Combine" merge; fixed a time-zone race in the extension tests; full run 873/0 twice.

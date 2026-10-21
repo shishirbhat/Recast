@@ -14,7 +14,11 @@ async function confirmLevel(): Promise<ConfirmLevel | undefined> { const v = (aw
 async function load(): Promise<ClumpState> {
   const r = await chrome.storage.session.get(KEY);
   const level = await confirmLevel();
-  return (r[KEY] as ClumpState | undefined) ?? initialClumpState({ now: Date.now(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(level ? { confirm: level } : {}) });
+  // Dates are read where the person is now: a session started before a flight or a system change follows the new zone.
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const kept = r[KEY] as ClumpState | undefined;
+  if (!kept) return initialClumpState({ now: Date.now(), timezone, ...(level ? { confirm: level } : {}) });
+  return kept.timezone === timezone ? kept : reduceClump(kept, { type: "setTimezone", timezone, now: Date.now() }).state;
 }
 const save = (s: ClumpState) => chrome.storage.session.set({ [KEY]: s });
 async function tabs(): Promise<number[]> { return ((await chrome.storage.session.get(TABS))[TABS] as number[] | undefined) ?? []; }

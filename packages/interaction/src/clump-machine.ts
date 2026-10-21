@@ -94,6 +94,8 @@ export type ClumpEvent =
   | { type: "choose"; objectId: string; field: EventField; ingredientId: string; now: number }
   | { type: "place"; consent: Consent; now: number }
   | { type: "setConfirm"; level: ConfirmLevel; now: number }
+  /** Where the person is now (travel, a system change). Later readings use it; a planned operation keeps its own. */
+  | { type: "setTimezone"; timezone: string; now: number }
   // Results of effects. Each names the operation it answers (opId), so a late answer for an earlier operation is ignored.
   | { type: "committed"; receipt: Receipt; undoable: boolean; now: number }
   | { type: "commitFailed"; opId: string; message: string; now: number }
@@ -230,6 +232,10 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
   if (answers && answers(ev) !== state.placement?.op?.opId) return { state, effects: [], error: "ignored: an answer for an earlier action", stale: true };
   // A setting, not a step: allowed in any phase, and it never changes what is in flight.
   if (ev.type === "setConfirm") return { state: { ...s0, confirm: ev.level }, effects: [] };
+  if (ev.type === "setTimezone") {
+    try { new Intl.DateTimeFormat("en", { timeZone: ev.timezone }); } catch { return { state, effects: [], error: `not a time zone: ${ev.timezone}` }; }
+    return { state: { ...s0, timezone: ev.timezone }, effects: [] };
+  }
   if (!LEGAL[s0.phase].includes(ev.type)) return { state, effects: [], error: BUSY.includes(s0.phase) ? busyReason(s0) : `cannot ${ev.type} while ${s0.phase}` };
   const ok = (state: ClumpState, effects: ClumpEffect[] = []): ClumpResult => ({ state, effects });
   const refuse = (error: string): ClumpResult => ({ state, effects: [], error });

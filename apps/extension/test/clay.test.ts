@@ -149,6 +149,20 @@ describe("cross-tab carry in the browser extension", () => {
     await restaurant.close(); await cal.close();
   }, 120_000);
 
+  it("the time zone is where the browser is now: a state kept from another zone reads dates in the current one", async () => {
+    const zone = await sw.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(zone).toMatch(/^Asia\/(Kolkata|Calcutta)$/);
+    // As if the session started elsewhere (before a flight, or before a system change).
+    // Through the worker's own queue, like every real event, so this never races the worker's other saves.
+    // What that event saved (any later event moves it back, which is the behaviour under test).
+    const saved = await sw.evaluate(() => (globalThis as any).recastClay.dispatch({ type: "setTimezone", timezone: "Europe/Lisbon" })) as any;
+    expect(saved.state.timezone).toBe("Europe/Lisbon");
+    const loaded = await sw.evaluate(() => (globalThis as any).recastClay.load()) as any;
+    expect(loaded.timezone).toBe(zone);
+    // Leave the session in the zone the browser is in, as the next event would.
+    await sw.evaluate((zone) => (globalThis as any).recastClay.dispatch({ type: "setTimezone", timezone: zone }), zone);
+  });
+
   it("the state is only in session storage, so a restarted worker carries on; a closed destination tab cancels its open review", async () => {
     // The tabs from the first test have closed; the worker forgets their destinations as it hears about it.
     await until(async () => (await stored())?.destinations.length === 0);
