@@ -35,10 +35,12 @@ async function openTab(fixture: string): Promise<Page> {
   await page.locator("recast-clay").waitFor({ state: "attached", timeout: 10000 });
   return page;
 }
+/** Destinations held by tabs or the local program; Google Maps (open and prefill) is always there and needs neither. */
+const held = (x: any) => (x?.destinations ?? []).filter((d: any) => d.id !== "open:google-maps");
 const stored = () => sw.evaluate(async () => (await chrome.storage.session.get("clay"))["clay"]) as Promise<any>;
 const centre = async (p: Page, sel: string) => { const b = (await p.locator(sel).first().boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 const item = (id: string) => `recast-clay >> .clay-item[data-id="${id}"]`;
-async function until(fn: () => Promise<boolean>, ms = 8000) { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return; await new Promise((r) => setTimeout(r, 100)); } throw new Error("timed out"); }
+async function until(fn: () => Promise<boolean>, ms = 8000) { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return; await new Promise((r) => setTimeout(r, 100)); } const x = await stored().catch(() => undefined); throw new Error(`timed out (phase ${x?.phase}, armed ${x?.armed}, carried ${x?.carried}, last ${JSON.stringify(x?.last?.text)})`); }
 async function atRest(p: Page, sel: string) { let prev = ""; for (let i = 0; i < 40; i++) { const k = JSON.stringify(await p.locator(sel).first().boundingBox()); if (k === prev) return; prev = k; await p.waitForTimeout(60); } }
 async function drag(p: Page, from: string, to: string) {
   await atRest(p, from); const a = await centre(p, from); await p.mouse.move(a.x, a.y); await p.mouse.down(); await p.mouse.move(a.x + 10, a.y + 10, { steps: 3 });
@@ -97,7 +99,7 @@ describe("cross-tab carry in the browser extension", () => {
   }, 120_000);
 
   it("the module's selector: Calendar is unavailable until a calendar is open; chosen, Recast brings its tab to the front; then off, the page is just a page", async () => {
-    await until(async () => (await stored()).destinations.length === 0);
+    await until(async () => held(await stored()).length === 0);
     const restaurant = await openTab("restaurant.html");
     const id = (await stored()).focus as string;
     expect((await stored()).phase).toBe("idle");                       // brought along: on, with the composition ready
@@ -165,7 +167,7 @@ describe("cross-tab carry in the browser extension", () => {
 
   it("the state is only in session storage, so a restarted worker carries on; a closed destination tab cancels its open review", async () => {
     // The tabs from the first test have closed; the worker forgets their destinations as it hears about it.
-    await until(async () => (await stored())?.destinations.length === 0);
+    await until(async () => held(await stored()).length === 0);
     const s = await stored(); expect(s).toBeTruthy();
     // The worker keeps nothing in memory between events: every event loads from storage.session and saves back.
     const fresh = await sw.evaluate(async () => (globalThis as any).recastClay.load()); expect(fresh).toEqual(s);
@@ -174,7 +176,7 @@ describe("cross-tab carry in the browser extension", () => {
     await drag(cal, item(id), "#slot-sat");
     await until(async () => (await stored()).phase === "previewing");
     await cal.close();
-    await until(async () => { const x = await stored(); return x.phase === "idle" && !x.destinations.length; });
+    await until(async () => { const x = await stored(); return x.phase === "idle" && !held(x).length; });
     expect((await stored()).desk).toEqual([id]);
   }, 60_000);
 
@@ -256,3 +258,46 @@ describe("cross-tab carry in the browser extension", () => {
   }, 120_000);
 });
 
+describe("a place on a real page → Google Maps (open and prefill)", () => {
+  it("Alt-press the restaurant, put it down, look inside, choose Google Maps under More: the review is a link to directions; done says opened, no Undo", async () => {
+    const opened: string[] = [];
+    await ctx.route("https://www.google.com/**", (r) => { opened.push(r.request().url()); return r.fulfill({ status: 200, contentType: "text/html", body: "<title>Maps</title>" }); });
+    const restaurant = await openTab("restaurant.html");
+    // Objects left by the tests above (bringing Recast here reopens one) would catch the drop; clear the desk first.
+    await until(async () => (await stored()).armed);
+    await new Promise((r) => setTimeout(r, 300));
+    for (const old of (await stored()).desk as string[]) await sw.evaluate((id) => (globalThis as any).recastClay.dispatch({ type: "discard", id }), old);
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle" && !x.focus; });
+    const a = await centre(restaurant, "#dakshin");
+    await restaurant.mouse.move(a.x, a.y); await restaurant.keyboard.down("Alt"); await restaurant.mouse.down(); await restaurant.keyboard.up("Alt");
+    await until(async () => !!(await stored()).carried);
+    const id = (await stored()).carried as string;
+    expect((await stored()).objects[id].ingredients[0]).toMatchObject({ kind: "place", value: { name: "Dakshin", address: "12 MG Road, Bengaluru 560001" } });
+    await restaurant.mouse.move(1100, 600, { steps: 5 }); await restaurant.mouse.up();   // empty page, away from the time and the module
+    await until(async () => { const x = await stored(); return !x.carried && x.desk.includes(id); });
+    await atRest(restaurant, item(id)); await restaurant.locator(item(id)).click();
+    await until(async () => (await stored()).phase === "inspecting");
+    await restaurant.locator("recast-clay >> .rg-actions [data-act=placeIt]").click();
+    await until(async () => (await stored()).phase === "composed");
+    await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await stored()).phase === "choosing");
+    expect(await restaurant.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-more");
+    await restaurant.locator("recast-clay >> button", { hasText: "Open" }).click();
+    const maps = restaurant.locator("recast-clay >> .rg-opt", { hasText: "Google Maps" });
+    await maps.click(); await restaurant.waitForTimeout(150); await maps.click();
+    await until(async () => (await stored()).phase === "previewing");
+    const href = "https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru%20560001";
+    const link = restaurant.locator("recast-clay >> .rg-actions a[data-act=place]");
+    expect(await link.getAttribute("href")).toBe(href);
+    const [tab] = await Promise.all([ctx.waitForEvent("page"), link.click()]);
+    await tab.waitForLoadState();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(opened).toEqual([href]);
+    expect((await stored()).placement).toMatchObject({ undoable: false, receipt: { destination: "google-maps.directions", bridgeRef: href } });
+    expect(await restaurant.locator("recast-clay >> .rg-title").innerText()).toBe("Opened Google Maps");
+    expect(await restaurant.locator("recast-clay >> button", { hasText: "Undo" }).count()).toBe(0);
+    await restaurant.locator("recast-clay >> button", { hasText: "Done" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    await tab.close(); await restaurant.close(); await ctx.unroute("https://www.google.com/**");
+  }, 60_000);
+});

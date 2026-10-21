@@ -101,7 +101,7 @@ describe("the destination selector", () => {
     ]);
     expect(e[0]!.standIn).toBe(true);
     // "More" holds the rest of the registry, each with its own reason; nothing outside the registry appears.
-    expect(e[4]!.options.map((o) => o.destination).sort()).toEqual(["gmail.compose-draft", "google-calendar.event-editor", "google-sheets.range"]);
+    expect(e[4]!.options.map((o) => o.destination).sort()).toEqual(["apple-maps.directions", "gmail.compose-draft", "google-calendar.event-editor", "google-maps.directions", "google-sheets.range"]);
     expect(e.flatMap((x) => x.options).length).toBe(REGISTRY.length);
   });
   it("a fitting destination that is not connected is unavailable, with that reason", () => {
@@ -257,5 +257,33 @@ describe("a page and a date, pressed together", () => {
     expect(tasks.options.find((o) => o.destination === "google-tasks.list")).toMatchObject({ available: false, reason: "Google Tasks takes documents (a page or a file); this is a task" });
     const r = run([{ type: "openWheel" }, { type: "pickDestination", destinationId: "tasks-list" }], s);
     expect(r.s.placement!.op!.dataMoved).toEqual([{ path: "Task.title", value: "Q3 plan" }, { path: "Task.url", value: "https://example.com/q3" }, { path: "Task.due", value: "2026-10-23" }]);
+  });
+});
+
+describe("a place on its own → a map app (open and prefill)", () => {
+  const MAPS: DestinationSpec[] = [...DESTS, { id: "gmaps", label: "Google Maps", contract: CONTRACTS.googleMaps }];
+  it("the module opens on a single place; Maps is offered under More; the review places nothing; done says opened, with no Undo", () => {
+    const on = command(initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: MAPS })).s;
+    let r = run([
+      { type: "capture", fragment: frag("place", "Dakshin", { value: { name: "Dakshin", address: "12 MG Road, Bengaluru" } }) },
+      { type: "openModule", id: "obj-1" }, { type: "openWheel" },
+    ], on);
+    expect(r.errors).toEqual([]);
+    const more = wheelEntries(r.s, "obj-1", REGISTRY).find((e) => e.key === "more")!;
+    expect(more).toMatchObject({ available: true, destinationId: "gmaps" });
+    expect(more.options.find((o) => o.destination === "apple-maps.directions")).toMatchObject({ available: false, reason: "Apple Maps is not connected here" });
+    expect(wheelEntries(r.s, "obj-1", REGISTRY)[0]).toMatchObject({ key: "calendar", available: false, reason: "Google Calendar takes events; this is a single piece" });
+    r = run([{ type: "pickDestination", destinationId: "gmaps" }], r.s);
+    expect(r.s.phase).toBe("previewing");
+    expect(r.s.placement!.op!.dataMoved).toEqual([{ path: "Location.name", value: "Dakshin" }, { path: "Location.address", value: "12 MG Road, Bengaluru" }]);
+    expect(moduleModel(r.s, REGISTRY)).toMatchObject({ mode: "preview", destination: { app: "Google Maps", opensOnly: true, standIn: false } });
+    const opId = r.s.placement!.op!.opId;
+    r = run([{ type: "place", consent: { kind: "confirm" } }], r.s);
+    expect(r.effects).toMatchObject([{ type: "commit", destinationId: "gmaps" }]);
+    const receipt = { receiptId: "r1", opId, at: "2026-10-19T09:00:00Z", status: "done" as const, objectId: "x", destination: "google-maps.directions", relationId: "location-map-directions", effect: "Open directions", reversible: false };
+    r = run([{ type: "committed", receipt, undoable: true }], r.s);
+    expect(r.s).toMatchObject({ phase: "succeeded", placement: { undoable: false } });
+    expect(r.s.last!.text).toBe("Opened Google Maps");
+    expect(run([{ type: "undo" }], r.s).errors).toEqual(["this placement cannot be undone"]);
   });
 });

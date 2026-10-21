@@ -92,14 +92,14 @@ describe("the extension places in the real Google Calendar through the Recast pr
     // at once; in production that happens when the person presses "Connect the real Google Calendar".
     await popup.locator("#link-text .code").waitFor();
     const code = await popup.locator("#link-text .code").innerText(); expect(code).toMatch(/^\d{4}$/);
-    expect((await stored())?.destinations ?? []).toHaveLength(0);
+    expect(((await stored())?.destinations ?? []).filter((d: any) => d.id !== "open:google-maps")).toHaveLength(0);
     // The program's page shows the same code; the person allows it there.
     const home = await ctx.newPage(); await home.goto("http://localhost:8787/");
     await expect(home.locator("body").innerText()).resolves.toContain(code);
     await home.getByRole("button", { name: "Allow" }).click();
     await popup.getByRole("button", { name: "I allowed it" }).click();
     await until(async () => /Connected\. Placing in Calendar adds a real event/.test(await popup.locator("#link-text").innerText()));
-    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false], ["link:google-tasks-due", "Google Tasks", false]]);
+    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false], ["link:google-tasks-due", "Google Tasks", false], ["open:google-maps", "Google Maps", false]]);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Mail saves a real Gmail draft \(never sent\)/);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Tasks adds a page to Google Tasks/);
     await popup.close(); await home.close();

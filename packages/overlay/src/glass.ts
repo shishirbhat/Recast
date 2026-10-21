@@ -6,11 +6,11 @@
 // things have been pressed together; the capsule opens into a drum wheel of destinations beside the object; the wheel
 // contracts into the review; the review closes into a receipt. The clay object is not drawn here: the module leaves a well
 // at its centre and the host places the real blob in it (`well()`), so the composition stays one tangible object throughout.
-import type { AnswerField, EventField } from "@recast/core";
+import type { AnswerField, EventField, Operation } from "@recast/core";
 import { escapeEvent, reduceClump, type ClumpInput, type ClumpState, type ModuleModel, type WheelEntry, type WheelKey } from "@recast/interaction";
 
 export type GlassIntent =
-  | { type: "turnOff" } | { type: "reopen" } | { type: "close" } | { type: "back" }
+  | { type: "turnOff" } | { type: "reopen" } | { type: "close" } | { type: "back" } | { type: "placeIt" }
   | { type: "openWheel" } | { type: "select"; choice: WheelKey } | { type: "pick"; destinationId: string }
   | { type: "inspect" } | { type: "remove"; ingredientId: string }
   | { type: "answer"; field: AnswerField; value: string } | { type: "choose"; field: EventField; ingredientId: string }
@@ -24,6 +24,8 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
   switch (i.type) {
     case "turnOff": return [{ type: "disarm" }];
     case "reopen": return [{ type: "openModule" }];
+    // From "Inside this object": open the module on that object (a single place can already go to a map).
+    case "placeIt": return s.inspecting ? [{ type: "openModule", id: s.inspecting }] : [];
     case "back": { const e = escapeEvent(s); return e && e.type !== "disarm" ? [e] : []; }
     case "close": {
       // Back to the pill, one step at a time as Escape would go, but never past "on": closing is not turning off.
@@ -102,7 +104,10 @@ type Row = { key: string; label: string; sub: string; available: boolean; reason
 
 export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i: GlassIntent) => void; onLayout?: () => void; reducedMotion?: () => boolean; shortcut?: string; theme?: () => "light" | "dark" | undefined;
   /** The label of a pill button that takes the whole page as one object ("This page"). Absent: no such button. */
-  takePage?: string }): Glass {
+  takePage?: string;
+  /** For open-and-prefill destinations: the address the reviewed operation opens. The confirm button is then a real link,
+   *  so the browser opens it from the person's own click. Absent, or undefined for an operation: that destination is not offered here. */
+  linkFor?: (op: Operation) => string | undefined }): Glass {
   const reduced = opts.reducedMotion ?? (() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const el = document.createElement("div"); el.className = "rg"; el.dataset["mode"] = "off"; el.hidden = true;
   el.setAttribute("role", "region"); el.setAttribute("aria-label", "Recast");
@@ -292,18 +297,27 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button><button type="button" class="rg-btn ghost" data-act="back">Back</button>` };
       case "inspecting": return { title: "Inside this object", head: close, facts: "",
         body: `${err}<ul class="rg-ingredients">${m.object.ingredients.map((f) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${m.object.ingredients.length > 1 ? `<button type="button" class="rg-link" data-remove="${esc(f.id)}" aria-label="Take ${esc(f.text)} out">Take out</button>` : ""}</li>`).join("")}</ul>${detail(m)}`,
-        actions: `<button type="button" class="rg-btn" data-act="back">Done</button>` };
+        actions: `${m.object.view.placeableAs.length ? `<button type="button" class="rg-btn" data-act="placeIt">Choose where it goes</button>` : ""}<button type="button" class="rg-btn${m.object.view.placeableAs.length ? " ghost" : ""}" data-act="back">Done</button>` };
       case "confirm": return { title: "Combine them?", head: "", facts: "", body: `<p>${esc(m.confirm ?? "")}</p>`,
         actions: `<button type="button" class="rg-btn" data-act="mergeYes">Combine</button><button type="button" class="rg-btn ghost" data-act="mergeNo">Keep apart</button>` };
       case "preview": {
         const op = m.placement?.op;
         const risk = op ? `<p class="rg-risk">${op.risk.tier === "low" ? "Low risk: adds an entry only you see, and it can be undone." : esc(op.risk.reasons.join("; "))}</p>` : "";
+        const link = op && d?.opensOnly ? opts.linkFor?.(op) : undefined;
+        if (op && d?.opensOnly) {
+          // Open and prefill: nothing is written by Recast, so the review says so instead of a risk line.
+          const open = link ? `<a class="rg-btn primary" data-act="place" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(op.proposal.effect)} in ${esc(d.app)}</a>` : `<button type="button" class="rg-btn primary" disabled>${esc(d.app)} cannot be opened from here</button>`;
+          return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}<p class="rg-risk">Opens ${esc(d.app)} in a new tab with this filled in. Recast saves nothing; you finish there.</p>`, actions: `${open}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
+        }
         const go = op ? (op.risk.consent === "hold" ? `<button type="button" class="rg-btn primary hold" data-act="hold">Hold to confirm: ${esc(op.proposal.effect.toLowerCase())}</button>` : `<button type="button" class="rg-btn primary" data-act="place">Confirm: ${esc(op.proposal.effect)}</button>`) : `<button type="button" class="rg-btn primary" disabled>Answer what is still needed</button>`;
         return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${standIn}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
       }
-      case "executing": return { title: `${dIcon}Adding to ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
+      case "executing": return { title: `${dIcon}${d?.opensOnly ? "Opening" : "Adding to"} ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
       case "undoing": return { title: `${dIcon}Undoing in ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm it is removed.</p>${err}`, actions: "" };
-      case "succeeded": return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
+      case "succeeded": if (d?.opensOnly) return { title: `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>Opened ${esc(where)}`, head: "", facts: "",
+          body: `<p class="rg-hint">${esc(where)} opened in a new tab with this filled in. Recast cannot see what you do there, so it does not say it was added.</p>`,
+          actions: `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
+        return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
         body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>`,
         actions: `${m.placement?.undoable ? `<button type="button" class="rg-btn ghost" data-act="undo">Undo</button>` : ""}<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
       case "unknown": return { title: `${dIcon}No answer from ${esc(where)}`, head: "", facts: "",
@@ -354,7 +368,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   // ---- clicks and holds --------------------------------------------------------------------------------------------------
   el.addEventListener("click", (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button"); if (!b || b.disabled) return;
+    // A link (an open-and-prefill destination) is followed by the browser as usual; its click also records the placement.
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button, a[data-act]"); if (!b || b.disabled) return;
     if (b.dataset["answer"]) return emit({ type: "answer", field: b.dataset["answer"] as AnswerField, value: b.dataset["value"]! });
     if (b.dataset["submit"]) return submit(b.dataset["submit"]);
     if (b.dataset["choose"]) return emit({ type: "choose", field: b.dataset["choose"] as EventField, ingredientId: b.dataset["ingredient"]! });
@@ -362,6 +377,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     switch (b.dataset["act"]) {
       case "turnOff": return emit({ type: "turnOff" });
       case "reopen": return emit({ type: "reopen" });
+      case "placeIt": return emit({ type: "placeIt" });
       case "takePage": return emit({ type: "takePage" });
       case "close": return emit({ type: "close" });
       case "back": if (drill) { drill = null; update(model); return; } return emit({ type: "back" });
@@ -389,7 +405,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     well: () => { if (el.hidden || model.mode === "pill" || model.mode === "off" || model.mode === "confirm") return null; const r = q(".rg-well").getBoundingClientRect(); return r.height ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; },
     // Focus goes where the next decision is: the wheel; else what is still needed; else the primary action. Never to
     // Cancel first, so a stray Enter cannot throw away a review.
-    focus: () => { const t = el.querySelector<HTMLElement>(".rg-drum") ?? el.querySelector<HTMLElement>(".rg-needs button, .rg-needs input") ?? el.querySelector<HTMLElement>(".rg-actions button:not([disabled]):not(.ghost)") ?? el.querySelector<HTMLElement>(".rg-actions button:not([disabled])") ?? el.querySelector<HTMLElement>("button"); t?.focus(); },
+    focus: () => { const t = el.querySelector<HTMLElement>(".rg-drum") ?? el.querySelector<HTMLElement>(".rg-needs button, .rg-needs input") ?? el.querySelector<HTMLElement>(".rg-actions button:not([disabled]):not(.ghost), .rg-actions a.rg-btn") ?? el.querySelector<HTMLElement>(".rg-actions button:not([disabled])") ?? el.querySelector<HTMLElement>("button"); t?.focus(); },
     destroy: () => { cancelAnimationFrame(wRaf); el.remove(); },
   };
 }
@@ -472,7 +488,7 @@ export const GLASS_CSS = `
 .rg-body p { margin: 0; }
 .rg-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px 14px; }
 .rg-actions:empty { display: none; }
-.rg-btn { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 9px 16px; background: var(--g-ink); color: var(--g-solid); font-family: inherit; font-weight: 600; font-size: 13px; line-height: 1.1; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.2); }
+.rg-btn { display: inline-flex; align-items: center; gap: 8px; border: 0; text-decoration: none; border-radius: 999px; padding: 9px 16px; background: var(--g-ink); color: var(--g-solid); font-family: inherit; font-weight: 600; font-size: 13px; line-height: 1.1; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.2); }
 .rg-btn.primary { box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 0 1.5px var(--g-accent), 0 2px 8px color-mix(in srgb, var(--g-accent) 30%, transparent); }
 .rg-btn.ghost { background: transparent; color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); }
 .rg-btn.small { padding: 6px 12px; }

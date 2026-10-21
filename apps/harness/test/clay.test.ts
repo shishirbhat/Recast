@@ -357,7 +357,7 @@ describe("the glass module and the destination selector", () => {
     await page.keyboard.press("Enter");
     expect(await page.locator(".rg-title").innerText()).toBe("More places");
     const opts = await page.locator(".rg-opt").evaluateAll((els) => els.map((e) => [e.querySelector(".rg-label")!.textContent, e.getAttribute("aria-disabled")]));
-    expect(opts).toEqual([["Google Calendar", "true"], ["Gmail", "true"], ["Google Sheets", "true"], ["Back", "false"]]);
+    expect(opts).toEqual([["Google Calendar", "true"], ["Gmail", "true"], ["Google Sheets", "true"], ["Google Maps", "true"], ["Apple Maps", "true"], ["Back", "false"]]);
     expect(await page.locator(".rg-reason").innerText()).toBe("Google Calendar takes people or places; this is an event");
     await ctx.close();
   });
@@ -410,6 +410,44 @@ describe("the glass module and the destination selector", () => {
     expect(await page.locator("#desk-empty").isVisible()).toBe(true);
     expect(await page.locator("[data-placed='event']").count()).toBe(1);        // the event itself is in the calendar
     await ctx.close();
+  });
+});
+
+describe("a place on its own → Google Maps (open and prefill, the real Google Maps)", () => {
+  it("pick up Dakshin, look inside, choose where it goes, Google Maps under More; the review is a real link; done says opened, never added", async () => {
+    const { page, ctx, errors } = await open();
+    const opened: string[] = [];
+    // The test never reaches Google: the new tab's request is answered here, and its address is what is checked.
+    await ctx.route("https://www.google.com/**", (r) => { opened.push(r.request().url()); return r.fulfill({ status: 200, contentType: "text/html", body: "<title>Maps</title>" }); });
+    await page.locator("#tab-restaurant").click();
+    await page.locator("#dakshin").click();
+    let s = await st(page); expect(s.desk).toHaveLength(1); const id = s.desk[0];
+    await atRest(page, objectSel(id)); await page.locator(objectSel(id)).click();
+    expect((await st(page)).phase).toBe("inspecting");
+    await page.locator(".rg-actions [data-act=placeIt]").click();
+    expect((await st(page)).phase).toBe("composed");
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    s = await st(page); expect(s.phase).toBe("choosing"); expect(await page.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-more");
+    expect(await page.locator("#rg-opt-calendar").getAttribute("aria-disabled")).toBe("true");
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    await page.getByRole("button", { name: "Open" }).click();                         // into More
+    const maps = page.locator(".rg-opt", { hasText: "Google Maps" });
+    await maps.click(); await page.waitForTimeout(150); await maps.click();
+    s = await st(page); expect(s.phase).toBe("previewing");
+    expect(await page.locator(".rg-title").innerText()).toBe("Google Maps: review");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/Opens Google Maps in a new tab with this filled in\. Recast saves nothing; you finish there\./);
+    expect(await page.locator(".rg-body").innerText()).not.toMatch(/Stand-in/);
+    const link = page.locator(".rg-actions a[data-act=place]");
+    expect(await link.getAttribute("href")).toBe("https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru");
+    expect(await link.getAttribute("rel")).toBe("noopener noreferrer");
+    const [tab] = await Promise.all([ctx.waitForEvent("page"), link.click()]);
+    await tab.waitForLoadState();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    expect(opened).toEqual(["https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru"]);
+    expect(await page.locator(".rg-title").innerText()).toBe("Opened Google Maps");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/Recast cannot see what you do there/);
+    expect(await page.getByRole("button", { name: "Undo" }).count()).toBe(0);
+    expect(errors).toEqual([]); await ctx.close();
   });
 });
 

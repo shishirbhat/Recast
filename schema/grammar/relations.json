@@ -182,6 +182,20 @@
         ]
       ],
       "reversible": true
+    },
+    {
+      "id": "location-map-directions",
+      "from": "Location",
+      "to": "Map",
+      "relation": "directions",
+      "risk": "low",
+      "requires": [
+        [
+          "name",
+          "address"
+        ]
+      ],
+      "reversible": false
     }
   ]
 }

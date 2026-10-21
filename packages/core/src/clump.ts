@@ -50,7 +50,7 @@ export interface ClumpView {
   conflicts: Conflict[];
   assumptions: string[];
   /** Where this kind of object can be placed. Empty when it cannot be placed as it is. */
-  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList")[];
+  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList" | "Map")[];
   /** A complete object ready for the normal propose → plan → consent → commit path. Null until nothing is missing. */
   candidate: Candidate | null;
 }
@@ -140,6 +140,8 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   const base = { conflicts: [] as Conflict[], assumptions: [] as string[], placeableAs: [] as ClumpView["placeableAs"], candidate: null };
   if (t === "Fragment") {
     const f = fs[0]!;
+    // A place on its own can already go somewhere: a map app, with directions to it. Other single pieces need company.
+    if (f.kind === "place") return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [], placeableAs: ["Map"], candidate: locationCandidate(f, ctx) };
     return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [] };
   }
   if (typeof t !== "string") return { ...base, type: "Fragment", label: fs.map(nameOf).join(" + "), proposed: false, summary: [], missing: [{ field: "title", reason: t.incompatible }] };
@@ -222,6 +224,16 @@ function documentCandidate(c: Clump, d: DocumentView, ctx: ComposeContext): Cand
     meta[name] = { confidence: v!.origin === "user" ? 1 : f.confidence, evidence: ev.length ? ev : [{ locator: { kind: "user", value: `user:${name}` }, origin: v!.origin }] };
   }
   return { type: "Document", properties, fields: meta, provenance: { source: { app: ctx.app ?? f.source?.app ?? "recast", ...(f.source?.url ? { url: f.source.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
+}
+
+/** A captured place as a Location: the name and address the page gave (or its text as the name), with their evidence. */
+function locationCandidate(f: Fragment, ctx: ComposeContext): Candidate {
+  const clean = (v: string | undefined) => v?.replace(/\s+/g, " ").trim() || undefined;
+  const name = clean(f.value?.name) ?? clean(f.value?.address ? undefined : f.text), address = clean(f.value?.address);
+  const properties: Record<string, unknown> = {}; const meta: Record<string, FieldMeta> = {};
+  const ev: Evidence[] = f.evidence.map((e): Evidence => ({ ...e, origin: "extracted", ...(f.source ? { source: f.source } : {}) }));
+  for (const [k, v] of [["name", name], ["address", address]] as const) if (v) { properties[k] = v; meta[k] = { confidence: f.confidence, evidence: ev.length ? ev : [{ locator: { kind: "composition", value: `extracted:${k}` }, origin: "extracted" }] }; }
+  return { type: "Location", properties, fields: meta, provenance: { source: { app: ctx.app ?? f.source?.app ?? "recast", ...(f.source?.url ? { url: f.source.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
 }
 
 function message(c: Clump): MessageView {

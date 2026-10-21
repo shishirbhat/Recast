@@ -132,7 +132,7 @@ const LEGAL: Record<ClumpPhase, ClumpEvent["type"][]> = {
   merging: ["settled"],
   composed: ["openWheel", "inspect", "capture", "pickUp", "remove", "answer", "choose", "cancel", "dismiss", "discard", "openModule", "arm", "disarm"],
   choosing: ["select", "pickDestination", "cancel", "capture", "pickUp", "openModule", "arm", "disarm"],
-  inspecting: ["inspect", "remove", "answer", "choose", "pickUp", "cancel", "discard", "arm", "disarm"],
+  inspecting: ["inspect", "remove", "answer", "choose", "pickUp", "cancel", "discard", "openModule", "arm", "disarm"],
   previewing: ["answer", "choose", "remove", "place", "cancel", "arm", "disarm"],
   executing: ["committed", "commitFailed", "outcomeUnknown"],
   undoing: ["undone", "undoFailed"],
@@ -355,7 +355,11 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       try { checkConsent(p.op, ev.consent); } catch { return refuse(p.op.risk.consent === "hold" ? "press and hold to confirm this one" : "confirm this one first"); }
       return ok({ ...s, phase: "executing" }, [{ type: "commit", op: p.op, consent: ev.consent, destinationId: p.destinationId }]);
     }
-    case "committed": return ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, receipt: ev.receipt, undoable: ev.undoable } }, "placed", `Placed in ${destLabel(s)}`));
+    case "committed": {
+      // An open-and-prefill destination only opened: the person finishes there, so it is never called "placed".
+      const opened = s.destinations.find((d) => d.id === s.placement!.destinationId)?.contract.reliability === "deep-link";
+      return ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, receipt: ev.receipt, undoable: ev.undoable && !opened } }, "placed", opened ? `Opened ${destLabel(s)}` : `Placed in ${destLabel(s)}`));
+    }
     case "commitFailed": return ok(say({ ...s, phase: "failed", placement: { ...s.placement!, message: ev.message } }, "failed", `Not placed: ${ev.message}`));
     case "outcomeUnknown": return ok(say({ ...s, phase: "unknown", placement: { ...s.placement!, message: ev.message } }, "unknown", `${destLabel(s)} did not answer. It may or may not have been added; check before trying again.`));
     case "reconcile": {

@@ -48,7 +48,7 @@ export type ModuleModel =
   | { mode: "pill"; text: string; reopen?: string; carrying?: string }
   | { mode: "composed" | "choosing" | "inspecting" | "confirm" | "preview" | "executing" | "undoing" | "succeeded" | "failed" | "unknown";
       object: ModuleObject; entries: WheelEntry[]; choice: WheelKey;
-      placement?: Placement; destination?: { key: WheelKey; label: string; app: string; effect: string; standIn: boolean };
+      placement?: Placement; destination?: { key: WheelKey; label: string; app: string; effect: string; standIn: boolean; opensOnly?: boolean };
       confirm?: string; text?: string };
 
 /** What the action module shows for this state. One model, one module: there is never a second panel. */
@@ -58,7 +58,7 @@ export function moduleModel(s: ClumpState, registry: readonly CapabilityContract
   const around = (id: string) => { const entries = wheelEntries(s, id, registry); return { object: obj(id), entries, choice: (entries.some((e) => e.key === s.choice) ? s.choice : firstAvailable(entries)) as WheelKey }; };
   const place = () => {
     const p = s.placement!; const d = s.destinations.find((x) => x.id === p.destinationId);
-    return { ...around(p.objectId), placement: p, ...(d ? { destination: { key: WHEEL_SLOTS.find((w) => w.kinds.includes(d.contract.targetKind))?.key ?? "more", label: d.label, app: d.contract.app, effect: p.op?.proposal.effect ?? d.contract.accepts[0]?.effect ?? "", standIn: !!d.standIn } } : {}), ...(s.last ? { text: s.last.text } : {}) };
+    return { ...around(p.objectId), placement: p, ...(d ? { destination: { key: WHEEL_SLOTS.find((w) => w.kinds.includes(d.contract.targetKind))?.key ?? "more", label: d.label, app: d.contract.app, effect: p.op?.proposal.effect ?? d.contract.accepts[0]?.effect ?? "", standIn: !!d.standIn, ...(d.contract.reliability === "deep-link" ? { opensOnly: true } : {}) } } : {}), ...(s.last ? { text: s.last.text } : {}) };
   };
   switch (s.phase) {
     case "composed": return { mode: "composed", ...around(s.focus!) };

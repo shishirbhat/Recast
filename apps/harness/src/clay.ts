@@ -7,6 +7,7 @@
 import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
+import { googleMapsDirections, LinkBridge, linkFor } from "@recast/bridges/src/links";
 import { commandEvents, createControlTrigger, doubtNote, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents, type GlassIntent } from "@recast/overlay/src/glass";
@@ -34,7 +35,10 @@ function slots(): NonNullable<DestinationSpec["slots"]> {
   }
   return out;
 }
-const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: calendarContract, slots: slots(), standIn: true }, { id: "mail", label: "Mail", contract: draftsContract, standIn: true }];
+// Google Maps is not a stand-in: it opens the real Google Maps with directions (open and prefill; nothing is written).
+const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: calendarContract, slots: slots(), standIn: true }, { id: "mail", label: "Mail", contract: draftsContract, standIn: true }, { id: "gmaps", label: "Google Maps", contract: CONTRACTS.googleMaps }];
+// The review's link opens the map from the person's own click; this bridge only records what was opened.
+const maps = new LinkBridge(googleMapsDirections);
 
 class StandIn implements Bridge {
   readonly entries = new Map<string, Record<string, string>>();
@@ -87,7 +91,7 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const SHORTCUT = MAC ? "⌃ ⌃" : "Ctrl Ctrl";            // to turn on
 const OFF_KEY = MAC ? "⌃" : "Ctrl";                     // once, to turn off
 const SHORTCUT_WORDS = MAC ? "press Control twice" : "press Ctrl twice";
-const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: OFF_KEY, theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
+const glass = createGlass($("#glass"), { onIntent: (i) => onIntent(i), onLayout: () => requestAnimationFrame(() => { renderPass(); }), reducedMotion, shortcut: OFF_KEY, linkFor: (op) => linkFor(op.proposal.destination.destination)?.url(op), theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined) });
 
 function dispatch(e: ClumpInput) {
   const r = reduceClump(state, { ...e, now: NOW() } as ClumpEvent);
@@ -114,11 +118,18 @@ function closeModule() { for (const e of intentEvents({ type: "close" }, state))
 function onIntent(i: GlassIntent) {
   for (const e of intentEvents(i, state)) dispatch(e);
   // Keep the keyboard in the module as it changes shape.
-  if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0);
+  if (["reopen", "openWheel", "pick", "inspect", "placeIt"].includes(i.type)) setTimeout(() => glass.focus(), 0);
 }
 
 async function perform(eff: ClumpEffect) {
-  const bridge = bridges[eff.destinationId]!; const now = () => new Date(NOW()).toISOString();
+  const now = () => new Date(NOW()).toISOString();
+  if (eff.destinationId === "gmaps") {
+    if (eff.type !== "commit") return;   // nothing to check or undo: it was only opened
+    try { const receipt = await commit(eff.op, eff.consent, { bridge: maps, log, now }); dispatch({ type: "committed", receipt, undoable: false }); }
+    catch (e) { dispatch({ type: "commitFailed", opId: eff.op.opId, message: e instanceof Error ? e.message : String(e) }); }
+    return;
+  }
+  const bridge = bridges[eff.destinationId]!;
   if (eff.type === "commit") {
     const opId = eff.op.opId;
     try { const receipt = await commit(eff.op, eff.consent, { bridge, log, now }); dispatch({ type: "committed", receipt, undoable: receipt.reversible }); }

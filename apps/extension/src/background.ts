@@ -5,6 +5,8 @@
 import { commandEvents, initialClumpState, reduceClump, type ClumpEffect, type ClumpState, type ConfirmLevel, type DestinationSpec } from "@recast/interaction";
 import type { ToBackground, ToTab } from "./clay-messages.js";
 import { CONTRACTS } from "@recast/bridges/src/contracts";
+import { googleMapsDirections, LinkBridge } from "@recast/bridges/src/links";
+import { commit, InMemoryEventLog } from "@recast/core";
 
 const KEY = "clay", TABS = "clayTabs";
 /** The one thing kept across browser restarts: how much Recast asks (D24). A setting, never page content. */
@@ -17,7 +19,7 @@ async function load(): Promise<ClumpState> {
   // Dates are read where the person is now: a session started before a flight or a system change follows the new zone.
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const kept = r[KEY] as ClumpState | undefined;
-  if (!kept) return initialClumpState({ now: Date.now(), timezone, ...(level ? { confirm: level } : {}) });
+  if (!kept) return initialClumpState({ now: Date.now(), timezone, destinations: [mapsDest], ...(level ? { confirm: level } : {}) });
   return kept.timezone === timezone ? kept : reduceClump(kept, { type: "setTimezone", timezone, now: Date.now() }).state;
 }
 const save = (s: ClumpState) => chrome.storage.session.set({ [KEY]: s });
@@ -38,11 +40,12 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
     // since the answer comes back through this same queue).
     for (const e of r.effects ?? []) {
       if (isLink(e.destinationId)) { void viaLink(e); continue; }
+      if (e.destinationId === MAPS) { void opened(e); continue; }
       const [tabId] = e.destinationId.split(":"); await tell(Number(tabId), { type: "effect", effect: e });
     }
     // Chosen in the module while looking at another tab: bring the destination's tab to the front, so the review and the
     // write happen where the person can see them.
-    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && !isLink(r.state.placement.destinationId)) {
+    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && !isLink(r.state.placement.destinationId) && r.state.placement.destinationId !== MAPS) {
       const tabId = Number(r.state.placement.destinationId.split(":")[0]);
       try { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); } catch { /* the tab is gone; the review still shows */ }
     }
@@ -116,6 +119,19 @@ async function viaLink(e: ClumpEffect) {
       await apply((s) => reduceClump(s, r.body["outcome"] === "undone" ? { type: "undone", opId, now: at() } : { type: "undoFailed", opId, message: String(r.body["message"] ?? r.body["error"] ?? `answered ${r.status}`), now: at() }));
     } catch { await apply((s) => reduceClump(s, { type: "undoFailed", opId, message: "The Recast program on this computer did not answer; it may still be there", now: at() })); }
   }
+}
+
+// ---- Google Maps: open and prefill. Always available, needs no account: the review's link opens Google Maps with
+// directions from the person's own click (so the browser allows the tab). Nothing is written, so nothing is checked or undone.
+export const MAPS = "open:google-maps";
+const mapsDest: DestinationSpec = { id: MAPS, label: "Google Maps", contract: CONTRACTS.googleMaps };
+async function opened(e: ClumpEffect) {
+  if (e.type !== "commit") return;
+  const now = () => new Date().toISOString();
+  try {
+    const receipt = await commit(e.op, e.consent, { bridge: new LinkBridge(googleMapsDirections), log: new InMemoryEventLog(), now });
+    await apply((s) => reduceClump(s, { type: "committed", receipt, undoable: false, now: Date.now() }));
+  } catch (err) { await apply((s) => reduceClump(s, { type: "commitFailed", opId: e.op.opId, message: err instanceof Error ? err.message : String(err), now: Date.now() })); }
 }
 
 /**

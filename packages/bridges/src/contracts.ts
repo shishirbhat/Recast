@@ -4,40 +4,49 @@ import type { CapabilityContract } from "@recast/core";
 
 export const CONTRACTS = {
   googleCalendar: {
-    destination: "google-calendar.event-editor", app: "Google Calendar", targetKind: "Event", reliability: "official-api",
+    destination: "google-calendar.event-editor", app: "Google Calendar", targetKind: "Event", reliability: "official-api", abilities: ["read", "update", "verify", "undo"],
     accepts: [
       { relationId: "person-event-attendee", effect: "Add attendee", effectFlags: ["notifies-third-party"], dataMoved: ["Person.name", "Person.email"] },
       { relationId: "location-event-location", effect: "Set location", dataMoved: ["Location.name", "Location.address"] },
     ],
   },
   googleCalendarEvent: {
-    destination: "google-calendar.calendar", app: "Google Calendar", targetKind: "Calendar", reliability: "official-api",
+    destination: "google-calendar.calendar", app: "Google Calendar", targetKind: "Calendar", reliability: "official-api", abilities: ["create", "read", "delete", "verify", "undo"],
     accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
   },
   gmailDraft: {
-    destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api",
+    destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api", abilities: ["create", "delete", "undo"],
     accepts: [{ relationId: "person-message-recipient", effect: "Create a draft to this person", dataMoved: ["Person.email"] }],
   },
   gmailMessageDraft: {
-    destination: "gmail.drafts", app: "Gmail", targetKind: "Drafts", reliability: "official-api",
+    destination: "gmail.drafts", app: "Gmail", targetKind: "Drafts", reliability: "official-api", abilities: ["create", "delete", "undo"],
     accepts: [{ relationId: "message-draft-entry", effect: "Save as draft", dataMoved: ["Message.to", "Message.snippet"] }],
   },
   googleSheets: {
-    destination: "google-sheets.range", app: "Google Sheets", targetKind: "Product", reliability: "official-api",
+    destination: "google-sheets.range", app: "Google Sheets", targetKind: "Product", reliability: "official-api", abilities: ["create", "undo"],
     accepts: [{ relationId: "product-product-compare", effect: "Add a row", dataMoved: ["Product.name", "Product.url"] }],
   },
   googleTasks: {
-    destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api",
+    destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api", abilities: ["create", "delete", "undo"],
     accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
   },
   /** A whole task (a page with a due date) placed on the default list; `googleTasks` adds a document as a task. */
   googleTasksEntry: {
-    destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api",
+    destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo"],
     accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
   },
   notion: {
-    destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api",
+    destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api", abilities: ["create", "undo"],
     accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],
+  },
+  // Open-and-prefill: the map app opens with directions to the place. Nothing is written, so there is nothing to confirm or undo.
+  googleMaps: {
+    destination: "google-maps.directions", app: "Google Maps", targetKind: "Map", reliability: "deep-link", abilities: ["open"],
+    accepts: [{ relationId: "location-map-directions", effect: "Open directions", dataMoved: ["Location.name", "Location.address"] }],
+  },
+  appleMaps: {
+    destination: "apple-maps.directions", app: "Apple Maps", targetKind: "Map", reliability: "deep-link", abilities: ["open"],
+    accepts: [{ relationId: "location-map-directions", effect: "Open directions", dataMoved: ["Location.name", "Location.address"] }],
   },
 } satisfies Record<string, CapabilityContract>;
 

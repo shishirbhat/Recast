@@ -11,6 +11,7 @@ import { createControlTrigger, doubtNote, escapeEvent, moduleModel, viewOf, type
 import { classifyElement, classifyPiece } from "@recast/extract-web";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents } from "@recast/overlay/src/glass";
+import { linkFor } from "@recast/bridges/src/links";
 import type { EventInput, ToBackground, ToTab } from "./clay-messages.js";
 
 declare global { interface Window { __recastClay?: boolean } }
@@ -62,10 +63,11 @@ async function main() {
       if (i.type === "takePage") { await takePage(); return; }
       // Combine, pressed here, starts the fusion here: this tab plays it and settles the merge (as a drop here would).
       if (i.type === "confirmMerge" && i.yes) iDropped = true;
-      for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
+      for (const e of intentEvents(i, state)) { const r = await dispatch(e); state = r.state; } render(); if (["reopen", "openWheel", "pick", "inspect", "placeIt"].includes(i.type)) setTimeout(() => glass.focus(), 0); },
     onLayout: () => requestAnimationFrame(() => render()),
     shortcut: /Mac/.test(navigator.platform) ? "⌃" : "Ctrl",   // shown while on: once turns it off
     takePage: "This page",
+    linkFor: (op) => linkFor(op.proposal.destination.destination)?.url(op),
   });
 
   async function dispatch(event: EventInput) {
@@ -216,7 +218,9 @@ async function main() {
       const under = document.elementsFromPoint(pointer.x, pointer.y).filter((el) => el !== host);
       const dest = under.map((el) => el.closest<HTMLElement>("[data-recast-dest]")).find(Boolean);
       if (dest) { const slot = under.map((el) => el.closest<HTMLElement>("[data-recast-slot]")).find(Boolean); target = { kind: "destination", id: `${myTab}:${dest.dataset["recastDest"]}`, ...(slot ? { slot: slot.dataset["recastSlot"]! } : {}) }; }
-      else if (under[0]) { const f = fragmentAt(under[0]); if (f) pageTarget = { el: under[0], fragment: f }; }
+      // Empty page (the body or the document itself) is not a piece: classifying it would read the whole page and press the
+      // object into whatever date or place the page holds. Letting go there puts the object down.
+      else if (under[0] && under[0] !== document.body && under[0] !== document.documentElement) { const f = fragmentAt(under[0]); if (f) pageTarget = { el: under[0], fragment: f }; }
     }
     const key = JSON.stringify(target);
     if (key !== lastTargetKey) { lastTargetKey = key; const r = await dispatch({ type: "approach", target }); state = r.state; }

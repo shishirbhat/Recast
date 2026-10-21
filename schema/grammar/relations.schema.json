@@ -17,7 +17,7 @@
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z]+(-[a-z]+)+$" },
           "from": { "$ref": "../common/envelope.schema.json#/properties/type" },
-          "to": { "enum": ["Event", "Task", "Project", "Message", "Claim", "ResearchPaper", "Product", "Calendar", "Drafts", "TaskList"] },
+          "to": { "enum": ["Event", "Task", "Project", "Message", "Claim", "ResearchPaper", "Product", "Calendar", "Drafts", "TaskList", "Map"] },
           "relation": { "type": "string" },
           "risk": { "enum": ["low", "medium", "high"] },
           "requires": { "type": "array", "items": { "type": "array", "minItems": 1, "items": { "type": "string" } } },

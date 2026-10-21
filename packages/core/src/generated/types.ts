@@ -157,8 +157,13 @@ export interface CapabilityContract {
     | "Product"
     | "Calendar"
     | "Drafts"
-    | "TaskList";
+    | "TaskList"
+    | "Map";
   reliability: "native" | "official-api" | "structured-interface" | "deep-link" | "ui-automation" | "unsupported";
+  /**
+   * What this destination can do, beyond accepting the rows below. open = opens the app with the details filled in; the person finishes there and Recast cannot see the result. create, read, update, search, delete = calls of the provider's own API. verify = the result can be read back after a write (to confirm, or to check after an unknown outcome). undo = what Recast created or changed can be reversed. Nothing absent from this list is offered.
+   */
+  abilities?: ("open" | "create" | "read" | "update" | "search" | "delete" | "verify" | "undo")[];
   accepts: {
     relationId: string;
     effect: string;

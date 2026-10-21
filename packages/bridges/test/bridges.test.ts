@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryEventLog, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleCalendarEvent, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,9 +26,29 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
+});
+
+// The abilities a contract declares are what the picker and the review promise. They must match what the bridge's
+// operations declare about themselves, so a destination never offers an Undo or a check it cannot perform.
+describe("declared abilities match what each bridge actually does", () => {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion })) {
+    it(name, () => {
+      const caps = spec.contract.accepts.map((row) => spec.capabilities[row.relationId]);
+      expect(caps.every(Boolean), "every accepted row declares its operation").toBe(true);
+      const has = (a: string) => spec.contract.abilities!.includes(a as never);
+      expect(has("undo")).toBe(caps.some((c) => c!.reversal !== "none"));
+      expect(has("verify")).toBe(caps.some((c) => c!.verifiable));
+      expect(has("create")).toBe(caps.some((c) => c!.reversal === "delete-created" || c!.reversal === "archive"));
+      expect(has("update")).toBe(caps.some((c) => c!.reversal === "restore-previous"));
+      expect(has("open")).toBe(false);
+    });
+  }
+  it("every destination in the registry declares its abilities", () => {
+    for (const c of REGISTRY) expect(c.abilities?.length, c.destination).toBeGreaterThan(0);
+  });
 });
 
 describe("Google Calendar", () => {
@@ -190,9 +210,45 @@ describe("shared behaviour", () => {
 
 describe("the registry", () => {
   it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
-    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
     expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
     expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
     expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);
+  });
+});
+
+describe("open-and-prefill links (Google Maps, Apple Maps)", () => {
+  const place = (props: Record<string, unknown>) => obj("Location", props);
+  async function open(spec: LinkSpec, location: SemanticObject) {
+    const opened: string[] = [];
+    const bridge = new LinkBridge(spec, (u) => opened.push(u)); const log = new InMemoryEventLog();
+    const p = propose(location, bridge.describe())[0]!;
+    const op = plan(p, { now: NOW });
+    const receipt = await commit(op, { kind: "release" }, { bridge, log, now: NOW });
+    return { p, op, receipt, opened, bridge, log };
+  }
+  it("opens Google Maps with directions to the name and address the review showed, and nothing else", async () => {
+    const { p, receipt, opened } = await open(googleMapsDirections, place({ name: "Dakshin", address: "12 MG Road, Bengaluru" }));
+    expect(p).toMatchObject({ status: "ready", reversible: false, risk: { tier: "low", consent: "release" } });
+    expect(opened).toEqual(["https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru"]);
+    expect(receipt).toMatchObject({ reversible: false, bridgeRef: opened[0] });
+  });
+  it("Apple Maps takes the same place", async () => {
+    const { opened } = await open(appleMapsDirections, place({ name: "Dakshin" }));
+    expect(opened).toEqual(["https://maps.apple.com/?daddr=Dakshin"]);
+  });
+  it("a place's text can never change the host or add parameters", async () => {
+    const { opened } = await open(googleMapsDirections, place({ name: "x&api=0#@evil.example/?q=1" }));
+    const u = new URL(opened[0]!);
+    expect(u.host).toBe("www.google.com");
+    expect([...u.searchParams.keys()]).toEqual(["api", "destination"]);
+    expect(u.searchParams.get("destination")).toBe("x&api=0#@evil.example/?q=1");
+  });
+  it("declares it writes nothing and offers no Undo", async () => {
+    const { receipt, bridge, log } = await open(googleMapsDirections, place({ name: "Dakshin" }));
+    expect(bridge.capabilities()).toMatchObject({ writes: false, reversal: "none", verifiable: false });
+    await expect(undo(receipt, { bridge, log, now: NOW })).rejects.toThrow(/cannot be undone/);
+    expect(linkFor("google-maps.directions")).toBe(googleMapsDirections);
+    expect(linkFor("google-calendar.calendar")).toBeUndefined();
   });
 });
