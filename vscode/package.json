@@ -1,0 +1,198 @@
+{
+  "name": "relay-vscode",
+  "displayName": "Relay",
+  "description": "Work on a Relay project from VS Code: live shared editing with people and agents, presence, line history and coordination.",
+  "version": "0.1.0",
+  "publisher": "relay",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "relay.join",
+        "title": "Join Project…",
+        "category": "Relay"
+      },
+      {
+        "command": "relay.leave",
+        "title": "Leave Project",
+        "category": "Relay",
+        "enablement": "relay.connected"
+      },
+      {
+        "command": "relay.status",
+        "title": "Show Status",
+        "category": "Relay"
+      },
+      {
+        "command": "relay.lineHistory",
+        "title": "Who Wrote This Line?",
+        "category": "Relay",
+        "enablement": "relay.fileShared"
+      },
+      {
+        "command": "relay.undo",
+        "title": "Undo My Last Edit",
+        "category": "Relay",
+        "enablement": "relay.fileShared"
+      },
+      {
+        "command": "relay.redo",
+        "title": "Redo My Last Edit",
+        "category": "Relay",
+        "enablement": "relay.fileShared"
+      },
+      {
+        "command": "relay.coordination.refresh",
+        "title": "Refresh",
+        "category": "Relay",
+        "icon": "$(refresh)",
+        "enablement": "relay.connected"
+      },
+      {
+        "command": "relay.apply",
+        "title": "Apply to Project",
+        "category": "Relay",
+        "icon": "$(check)"
+      },
+      {
+        "command": "relay.applyDenied",
+        "title": "Apply to Project (owners only)",
+        "category": "Relay",
+        "icon": "$(lock)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "relay",
+          "title": "Relay",
+          "icon": "media/relay.svg"
+        }
+      ]
+    },
+    "views": {
+      "relay": [
+        {
+          "id": "relay.coordination",
+          "name": "Coordination"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "relay.coordination",
+        "contents": "Work on a Relay project with your team and its agents: shared files, live cursors, line history and agent work to review.\n[Join Project…](command:relay.join)\nPaste the invite link the project owner sent you. Open your own checkout of the repository first.",
+        "when": "!relay.connected"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "relay.coordination.refresh",
+          "when": "view == relay.coordination && relay.connected",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "relay.apply",
+          "when": "view == relay.coordination && viewItem == task-apply",
+          "group": "inline"
+        },
+        {
+          "command": "relay.applyDenied",
+          "when": "view == relay.coordination && viewItem == task-apply-denied",
+          "group": "inline"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "relay.lineHistory",
+          "when": "relay.fileShared",
+          "group": "relay@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "relay.apply",
+          "when": "false"
+        },
+        {
+          "command": "relay.applyDenied",
+          "when": "false"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "relay.undo",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "editorTextFocus && relay.fileShared && !editorReadonly"
+      },
+      {
+        "command": "relay.redo",
+        "key": "ctrl+shift+z",
+        "mac": "cmd+shift+z",
+        "when": "editorTextFocus && relay.fileShared && !editorReadonly"
+      },
+      {
+        "command": "relay.redo",
+        "key": "ctrl+y",
+        "when": "editorTextFocus && relay.fileShared && !editorReadonly"
+      }
+    ],
+    "configuration": {
+      "title": "Relay",
+      "properties": {
+        "relay.whenFilesDiffer": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "useShared",
+            "shareMine"
+          ],
+          "enumDescriptions": [
+            "Ask each time a file you open differs from the shared copy",
+            "Always replace your open copy with the shared one",
+            "Always share your copy (replaces the shared text, credited to you)"
+          ],
+          "default": "ask",
+          "description": "What to do when a file you open differs from its shared copy in Relay."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "lib0": "^0.2.119",
+    "ws": "^8.22.0",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^3.1.0",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/vscode": "~1.90.0",
+    "@types/ws": "^8.18.2",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js --sourcemap",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && npm run build:test && node test/run.mts",
+    "build:test": "esbuild test/suite.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist-test/suite.js --log-level=warning"
+  }
+}

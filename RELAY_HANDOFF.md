@@ -14,6 +14,15 @@ Read this first. Every session working on Relay keeps it current: update "State"
 
 Make shared development trustworthy before adding features. Phases: R0 baseline + lifecycle trace (done), R1 remote rename keeps the editor (done), R2 collaboration reliability matrix (done), R3 line-history correctness (done), R4 agents and integrations safe alongside people (done), R5 full regression + evidence + report (done). Rules from the brief: never replace real integrations with mocks; never weaken assertions or skip tests to get green; never silently swallow sync failures; never fabricate collaborators, history or success; never log secrets, tokens or private code; keep persisted data backward compatible; no new dependency without a reason; push only to `relay`, never force-push. Every defect fixed gets a test that failed before the fix.
 
+## VS Code extension (owner's decision, 2026-10-22)
+
+Developers shouldn't have to leave VS Code (its extensions, PlatformIO, debuggers) to use Relay, so Relay comes to them: `vscode/` is a VS Code extension that joins a local checkout to a Relay server. The browser IDE stays the zero-setup client (review, approvals, guests). Run its tests with `cd vscode && npm install && npm test`: a real VS Code (downloaded by `@vscode/test-electron`, run under `xvfb-run` when there's no display) against a real Relay server and a separate local clone.
+
+- Binding (`vscode/src/fileSync.ts`): two Yjs docs per file, `doc` (shared) and `view` (exactly the editor). Keystrokes go into `view` at the editor's offsets and merge into `doc` as Yjs updates; collaborators' updates queue until a version-checked `WorkspaceEdit` writes them (VS Code refuses an edit computed on an older version: "has changed in the meantime"). Don't replace this with offset arithmetic: a one-region approximation scattered characters under concurrent edits (the "heavy interleaving" test).
+- Ctrl+Z / Ctrl+Shift+Z in a shared file run `relay.undo` / `relay.redo` (Yjs undo of your own edits only), not VS Code's undo, which would revert collaborators' edits.
+- A file that differs from the shared copy is never overwritten silently: setting `relay.whenFilesDiffer` (ask / useShared / shareMine).
+- Presence uses the browser IDE's awareness format (user + Yjs relative-position cursor), so both clients see each other.
+
 ## How to run and check
 
 ```sh
