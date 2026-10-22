@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-latest, target: --mac, files: "apps/desktop/release/*.dmg" }
+          - { os: macos-latest, target: --mac, files: "apps/desktop/release/*.dmg\napps/desktop/release/*.zip" }
           - { os: windows-latest, target: --win, files: "apps/desktop/release/*.exe" }
           - { os: ubuntu-latest, target: --linux, files: "apps/desktop/release/*.rpm\napps/desktop/release/*.deb\napps/desktop/release/*.AppImage" }
     runs-on: ${{ matrix.os }}
@@ -46,7 +46,10 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          dmg=$(ls apps/desktop/release/*.dmg | head -1)
+          # Every image passes the check Finder runs when it opens one ("the disk image is corrupted" otherwise).
+          for d in apps/desktop/release/*.dmg; do hdiutil verify "$d"; done
+          shasum -a 256 apps/desktop/release/*.dmg apps/desktop/release/*.zip
+          dmg=$(ls apps/desktop/release/*-$( [ "$(uname -m)" = arm64 ] && echo arm64 || echo x64 ).dmg)
           hdiutil attach "$dmg" -nobrowse -mountpoint /tmp/recast-dmg
           ditto /tmp/recast-dmg/Recast.app /tmp/Recast.app && hdiutil detach /tmp/recast-dmg
           codesign -dv --verbose=2 /tmp/Recast.app 2>&1 | grep -E "^(Executable|Signature|TeamIdentifier|CodeDirectory)" || true
