@@ -56,6 +56,8 @@ The repository's own records stay authoritative for what they cover; this file p
 - Recast should grow well beyond Calendar and Mail: anything on screen, put to work in any app. Aim for 10 to 15 excellent connectors first, not 100 logos. See `docs/24-integration-universe.md`: it maps the owner's proposal onto the existing contracts and grammar and lists the gaps (declared abilities per connector, deep-link bridges, code and file references, multi-destination plans). The owner's order starts with Google Drive and Docs, then Microsoft 365, Notion and Todoist, Slack, Linear and GitHub, Maps handoff, meeting links, webhooks.
 
 ## Build ideas queued (no owner input needed)
+- Next in the owner's order, buildable against provider stand-ins (real runs need the owner's accounts): an error on a page → a GitHub or Linear issue (needs a `CodeReference` piece and object); Todoist tasks; Microsoft 365 through Graph (Outlook calendar and mail, To Do); a generic webhook or custom URL destination with declared abilities; one capture → several destinations previewed together.
+- Show a destination's declared abilities in the wheel (for example "can undo", "opens only").
 - Files (PDF links) as documents, not only the page.
 - Keyboard path in the extension beyond Escape (the clay page has it).
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
