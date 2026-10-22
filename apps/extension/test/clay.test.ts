@@ -301,3 +301,58 @@ describe("a place on a real page → Google Maps (open and prefill)", () => {
     await tab.close(); await restaurant.close(); await ctx.unroute("https://www.google.com/**");
   }, 60_000);
 });
+
+describe("phase two in the extension: select any text on a real page, move it as a blob", () => {
+  async function mouseSelect(p: Page, sel: string, part: string) {
+    const r = await p.evaluate(([sel, part]) => {
+      const el = document.querySelector(sel)!; const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.textContent!.indexOf(part); if (i < 0) continue;
+        const range = document.createRange(); range.setStart(n, i); range.setEnd(n, i + part.length);
+        const rects = [...range.getClientRects()]; const a = rects[0]!, b = rects.at(-1)!;
+        return { x1: a.left + 1, y1: a.top + a.height / 2, x2: b.right - 1, y2: b.top + b.height / 2 };
+      }
+      throw new Error(`no "${part}" in ${sel}`);
+    }, [sel, part] as const);
+    await p.mouse.move(r.x1, r.y1); await p.mouse.down(); await p.mouse.move(r.x2, r.y2, { steps: 8 }); await p.mouse.up();
+  }
+  it("no Alt needed: a selection shows a blob; tapping puts it on the desk; dragging a second blob onto it makes one note", async () => {
+    const page = await openTab("empty.html");
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    await until(async () => (await stored()).armed);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle"; });
+    const blob = page.locator("recast-clay >> .sel-blob");
+    await mouseSelect(page, "p", "No structured data.");
+    await until(async () => await blob.isVisible());
+    expect(await blob.locator(".k").innerText()).toBe("Text");
+    await blob.click();
+    await until(async () => (await stored()).desk.length === 1);
+    const first = (await stored()).desk[0] as string;
+    expect((await stored()).objects[first].ingredients[0]).toMatchObject({ kind: "text", text: "No structured data.", source: { title: "Nothing here" } });
+    expect(await blob.isHidden()).toBe(true);
+    await mouseSelect(page, "h1", "Just a page");
+    await until(async () => await blob.isVisible());
+    await atRest(page, item(first));
+    const b = await centre(page, "recast-clay >> .sel-blob"), t = await centre(page, item(first));
+    await page.mouse.move(b.x, b.y); await page.mouse.down(); await page.mouse.move(b.x + 20, b.y + 20, { steps: 4 });
+    await until(async () => !!(await stored()).carried);
+    await page.mouse.move(t.x, t.y, { steps: 10 }); await page.mouse.move(t.x + 1, t.y + 1); await page.waitForTimeout(150); await page.mouse.up();
+    await until(async () => { const x = await stored(); return x.objects[first]?.ingredients.length === 2; });
+    expect((await stored()).objects[first].ingredients.map((f: any) => f.text)).toEqual(["No structured data.", "Just a page"]);
+    await page.close();
+  }, 60_000);
+  it("a selected date reads as a time; text being typed in a field never shows a blob", async () => {
+    const page = await openTab("restaurant.html");
+    const blob = page.locator("recast-clay >> .sel-blob");
+    await mouseSelect(page, "#table-time", "Friday 23 October, 7:30 PM");
+    await until(async () => await blob.isVisible());
+    expect(await blob.locator(".k").innerText()).toBe("Time");
+    await page.evaluate(() => { const i = document.createElement("input"); i.id = "field"; i.value = "Friday 7 PM"; document.body.appendChild(i); i.focus(); i.select(); });
+    await page.waitForTimeout(250);
+    expect(await blob.isHidden()).toBe(true);
+    await page.close();
+  });
+});
+

@@ -84,6 +84,8 @@ The previously reported harness failures (two capitalisation assertions in Layer
 ## 2. Implemented but not fully verified
 | Requirement | Implementation | What exists | Missing to verify |
 |---|---|---|---|
+| **Phase two:** any selected text → a movable blob | `packages/core/src/clump.ts` (`pieceOfSelection`), `apps/harness/src/clay.ts`, `apps/extension/src/clay-content.ts` | real mouse selection in real Chromium: blob, drag into an object (note), tap to desk, keyboard lift (try-it page), email → person, date → time, none while off, in fields or with the module open (D34) | **P**: whether people find the blob without being told; touch selection on real phones |
+| Linear issues | `packages/bridges/src/specs.ts` (`linearIssue`), `apps/calendar-link/src/linear.ts` | GraphQL with variables only; errors in a 200 answer fail; Undo deletes; "Tasks: which one?" when GitHub is also connected (D33) | **R**: `docs/REAL_TEST_PLAN.md` I |
 | An error (with notes) → a GitHub issue | `packages/core/src/clump.ts` (error piece, Issue), `packages/bridges/src/specs.ts` (`githubIssue`), `apps/calendar-link/src/github.ts`, extension | everything captured quoted literally; confirm first (watchers notified); Undo closes as not planned; token for one repository checked before saving, 0600; F through the local program and the extension (GitHub stand-in), stand-in issues on the try-it page (D32) | **R**: `docs/REAL_TEST_PLAN.md` H (needs a fine-grained token for one test repository) |
 | Declared connector abilities (open, create, read, update, search, delete, verify, undo) | `schema/contracts/capability.schema.json`, `packages/core/src/{rules,propose}.ts`, `packages/bridges/src/contracts.ts` | every registry contract declares them; a test checks them against each bridge's own operation declarations; a deep link may only `open`; no declared `undo`, no Undo (D30) | U only. Nothing shows the abilities to the person yet beyond Undo and "opened" |
 | A place → Google Maps or Apple Maps directions (open and prefill) | `packages/bridges/src/links.ts`; try-it page; extension | the review is a real link on a fixed host, built only from the reviewed name and address; "Opened", no Undo; real Chromium on the try-it page and in the extension, with the Google request intercepted (H) | **R**: a person clicking it against the real Google Maps (`docs/REAL_TEST_PLAN.md` G); Apple Maps is in the registry but not offered anywhere yet |
@@ -95,7 +97,11 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
-## Latest full run (2026-10-22, after an error → a GitHub issue)
+## Latest full run (2026-10-22, after Linear and phase two)
+`pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 944 tests, 0 failures** (core 133, bridges 67, calendar-link 27, extension 37, harness 60). Before: 922.
+- Try-it page errors found and fixed: on phones the tab strip ran off screen with no visible way to reach Mail, Docs and Build (now the open tab scrolls into view and a fade marks more tabs); axe flagged every page panel (`aria-allowed-role`: an `article` cannot be a tab panel), now `section`. axe: 0 violations on every tab, light and dark, desktop and phone.
+
+## Earlier full run (2026-10-22, after an error → a GitHub issue)
 `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 922 tests, 0 failures** (core 124, bridges 63, calendar-link 25, extension 34, harness 56). Before: 911.
 
 ## Earlier full run (2026-10-22, after the Google Maps fix)

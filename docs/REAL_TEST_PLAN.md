@@ -150,3 +150,14 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | I4 | **Confirm: Create an issue** | In Linear, a new issue on that team, with the quoted body | real issue |
 | I5 | **Undo** | The issue is deleted (in Linear's trash) | real undo |
 
+## J. Phase two: select any text (no account)
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| J1 | On any article, turn Recast on. Select a sentence with the mouse | A blob beside the selection: a quote mark, the start of the text, "Text" | blob appears |
+| J2 | Drag the blob onto empty page space | It is on your desk | carry and put down |
+| J3 | Select another sentence (any tab) and drag its blob onto that object | One note of both, each with its page | combine |
+| J4 | Select a date like "Friday 23 October, 7:30 PM" | The blob says "Time" | reading |
+| J5 | Select an email address | The blob says "Person" | reading |
+| J6 | Turn Recast off and select text | No blob: selecting is just selecting | off means off |
+| J7 | Type in a search box and select what you typed | No blob | fields left alone |
+

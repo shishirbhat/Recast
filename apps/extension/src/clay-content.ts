@@ -5,7 +5,7 @@
 // in any tab you bring Recast into it is "in hand" on the shelf, ready to be dragged onto something there.
 // A tab cannot follow the pointer while another tab is in front, so carrying across tabs is: switch tabs, then pick the
 // object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
-import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
+import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, pieceOfSelection, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { createControlTrigger, doubtNote, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
@@ -32,6 +32,15 @@ const SHELF_CSS = `
 .tray .hint { margin: 4px 0 0; min-height: 1em; }
 .tray .slots { position: relative; }
 .clay-host { position: fixed; inset: 0; pointer-events: none; }
+/* Phase two: the blob beside any selection while Recast is on. Shaped like a clay object: something to pick up. */
+.sel-blob { position: fixed; display: inline-flex; align-items: center; gap: 8px; max-width: min(320px, calc(100vw - 16px)); padding: 7px 12px; border: 0; border-radius: 999px; pointer-events: auto;
+  background: #fff7f2; color: #1a1a1a; font: 500 13px/1.2 "Figtree", ui-sans-serif, system-ui, sans-serif; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 0 0 1.5px #c2410c, 0 8px 22px rgba(26,26,26,.16); }
+.sel-blob[hidden] { display: none; }
+.sel-blob .g { color: #c2410c; } .sel-blob .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-blob .k { flex: none; font-size: 11px; color: #6b6b6b; padding-left: 6px; border-left: 1px solid #e3ddd3; }
+.sel-blob:focus-visible { outline: 2px solid #c2410c; outline-offset: 2px; }
+@media (prefers-color-scheme: dark) { .sel-blob { background: #2b2420; color: #f3f1ec; box-shadow: 0 0 0 1.5px #ff8a5c, 0 8px 22px rgba(0,0,0,.5); } .sel-blob .g { color: #ff8a5c; } .sel-blob .k { color: #b5b0a8; border-color: #46413a; } }
 @media (max-width: 900px) { .tray { top: 16px; bottom: auto; width: 240px; } }
 @media (prefers-color-scheme: dark) { .tray { background: rgba(28, 28, 30, 0.8); color: rgb(245, 245, 247); border-color: rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 10px 30px rgba(0,0,0,.5); } .tray h2 { color: rgb(199, 199, 204); } }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .tray { background: rgb(242, 242, 245); } }
@@ -44,7 +53,7 @@ async function main() {
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = `<style>${CLAY_CSS}${GLASS_CSS}${SHELF_CSS}</style>
     <section class="tray" aria-label="Your Recast objects" hidden><h2>Your objects</h2><p class="hint" role="status" aria-live="polite"></p><div class="slots"></div></section>
-    <div class="glass"></div><div class="clay"></div>`;
+    <div class="glass"></div><div class="clay"></div><button type="button" class="sel-blob" hidden></button>`;
   document.documentElement.appendChild(host);
   const $ = <T extends HTMLElement = HTMLElement>(s: string) => shadow.querySelector<T>(s)!;
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -76,6 +85,61 @@ async function main() {
     return r;
   }
   function hint(t: string) { $(".hint").textContent = t; }
+
+  // ---- phase two: any selected text is a piece --------------------------------------------------------------------
+  // While Recast is on, selecting text shows a blob beside it: the selection, read as a time, a person (an email address),
+  // an error or text. Drag the blob to carry it; tap it (or press Enter on it) to put it on your desk.
+  const blob = $<HTMLButtonElement>(".sel-blob");
+  const KIND_WORD: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text" };
+  const KIND_GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝" };
+  let selPress: { x: number; y: number; started: boolean; fragment: Fragment; pending?: Promise<void> } | null = null;
+  function selectedText(): { text: string; range: Range } | null {
+    const sel = getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0); const node = range.commonAncestorContainer;
+    const el = node instanceof Element ? node : node.parentElement;
+    if (!el || host.contains(el) || el.closest("input, textarea, [contenteditable='true']")) return null;   // typing is not picking up
+    const text = sel.toString().replace(/\s+/g, " ").trim();
+    return text && text.length <= 1000 ? { text, range } : null;
+  }
+  function selectionFragment(text: string): Fragment {
+    const { kind, value } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: tz });
+    const source = { app: location.hostname || "page", url: location.href, ...(document.title ? { title: document.title.slice(0, 200) } : {}) };
+    return { id: `s${++seq}-${Date.now()}`, kind, text, confidence: 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: text.slice(0, 200) }], source };
+  }
+  function updateBlob() {
+    if (selPress) return;
+    // Not while the module is open: the person is busy there, and the blob must never cover its buttons.
+    const moduleOpen = !["off", "pill"].includes(glass.el.dataset["mode"] ?? "off");
+    const sel = state?.armed && !state.carried && !moduleOpen ? selectedText() : null;
+    if (!sel) { blob.hidden = true; return; }
+    const kind = pieceOfSelection(sel.text, { now: new Date().toISOString(), timezone: tz }).kind;
+    if (blob.dataset["text"] !== sel.text) {
+      blob.dataset["text"] = sel.text; blob.dataset["kind"] = kind;
+      const short = sel.text.length > 42 ? `${sel.text.slice(0, 40)}…` : sel.text;
+      blob.replaceChildren(Object.assign(document.createElement("span"), { className: "g", textContent: KIND_GLYPH[kind] ?? "❝" }), Object.assign(document.createElement("span"), { className: "t", textContent: short }), Object.assign(document.createElement("span"), { className: "k", textContent: KIND_WORD[kind] ?? "Text" }));
+      blob.setAttribute("aria-label", `Selected text: ${sel.text.slice(0, 120)}, ${(KIND_WORD[kind] ?? "text").toLowerCase()}. Enter to put it on your desk`);
+    }
+    blob.hidden = false;
+    const end = [...sel.range.getClientRects()].at(-1) ?? sel.range.getBoundingClientRect();
+    blob.style.left = `${Math.max(8, Math.min(innerWidth - (blob.offsetWidth || 160) - 8, end.right + 6))}px`;
+    blob.style.top = `${Math.max(8, Math.min(innerHeight - 48, end.bottom + 6))}px`;
+  }
+  async function takeSelection(carry: boolean, fragment: Fragment) {
+    blob.hidden = true; getSelection()?.removeAllRanges();
+    const r = await dispatch({ type: "capture", fragment, carry }); state = r.state;
+    if (carry && !r.error) localCarry = true;
+    render();
+  }
+  blob.addEventListener("pointerdown", (e) => {
+    // Pressing the blob must not clear the selection it stands for.
+    e.preventDefault(); e.stopPropagation();
+    const t = blob.dataset["text"]; if (!t || !state.armed || state.carried) return;
+    pointer = { x: e.clientX, y: e.clientY }; selPress = { x: e.clientX, y: e.clientY, started: false, fragment: selectionFragment(t) };
+  });
+  blob.addEventListener("click", (e) => { if (e.detail === 0 && blob.dataset["text"]) void takeSelection(false, selectionFragment(blob.dataset["text"])); });   // keyboard
+  let selFrame = 0;
+  document.addEventListener("selectionchange", () => { if (!selFrame) selFrame = requestAnimationFrame(() => { selFrame = 0; updateBlob(); }); });
+  addEventListener("scroll", () => updateBlob(), { passive: true, capture: true });
 
   // ---- what is on this page --------------------------------------------------------------------------------------
   let seq = 0;
@@ -146,6 +210,7 @@ async function main() {
     for (const it of items) { const l = clay.label(it.id); if (l) { l.tabIndex = 0; l.setAttribute("role", "button"); } }
     if (state.carried && !localCarry) hint(`In hand: ${viewOf(state, state.carried).label}. Drag it onto something on this page.`);
     else if (!error && state.last) hint(state.last.text);
+    updateBlob();
   }
   const targetMode = (id: string): ClayItem["mode"] => (state.target?.kind === "object" && state.target.id === id ? (state.verdict?.ok ? "accepts" : "refuses") : "rest");
   function item(id: string, x: number, y: number, mode: ClayItem["mode"], inWell = false): ClayItem {
@@ -176,10 +241,13 @@ async function main() {
   }, true);
   addEventListener("pointermove", (e) => {
     pointer = { x: e.clientX, y: e.clientY };
+    if (selPress && !selPress.started && Math.hypot(e.clientX - selPress.x, e.clientY - selPress.y) > 6) { const p = selPress; p.started = true; p.pending = takeSelection(true, p.fragment).then(() => { if (selPress === p) selPress = null; }); }
     if (press && !press.started && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) void begin();
     if (localCarry && state.carried) { void hitTest(); render(); }
   }, true);
   addEventListener("pointerup", async () => {
+    if (selPress && !selPress.started) { const f = selPress.fragment; selPress = null; await takeSelection(false, f); return; }
+    if (selPress?.pending) await selPress.pending;   // lifted a moment ago: let the capture land before the drop
     if (press && !press.started) { const id = press.id; press = null; if (state.carried === id) return; await dispatch({ type: "inspect", id }); return; }
     press = null;
     if (!localCarry || !state.carried) return;

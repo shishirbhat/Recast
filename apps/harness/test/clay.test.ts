@@ -497,6 +497,71 @@ describe("Google Maps when the page is embedded without permission to open tabs 
   });
 });
 
+describe("phase two: select any text, and move it as a blob", () => {
+  /** Select `part` of the text inside `sel` with a real mouse drag (press at its first letter, release after its last). */
+  async function mouseSelect(p: Page, sel: string, part: string) {
+    const r = await p.evaluate(([sel, part]) => {
+      const el = document.querySelector(sel)!; const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.textContent!.indexOf(part); if (i < 0) continue;
+        const range = document.createRange(); range.setStart(n, i); range.setEnd(n, i + part.length);
+        const rects = [...range.getClientRects()]; const a = rects[0]!, b = rects.at(-1)!;
+        return { x1: a.left + 1, y1: a.top + a.height / 2, x2: b.right - 1, y2: b.top + b.height / 2 };
+      }
+      throw new Error(`no "${part}" in ${sel}`);
+    }, [sel, part] as const);
+    await p.mouse.move(r.x1, r.y1); await p.mouse.down(); await p.mouse.move(r.x2, r.y2, { steps: 8 }); await p.mouse.up();
+  }
+  it("a selected sentence shows a blob; dragging the blob onto Maya's line makes a note of both", async () => {
+    const { page, ctx, errors } = await open();
+    await mouseSelect(page, "#page-profile p:nth-of-type(3)", "She is in town all week and likes South Indian food.");
+    const blob = page.locator(".sel-blob");
+    await blob.waitFor();
+    expect(await blob.locator(".sel-kind").innerText()).toBe("Text");
+    expect(await page.evaluate(() => getSelection()!.toString())).toBe("She is in town all week and likes South Indian food.");
+    await drag(page, ".sel-blob", "#maya-line");
+    const s = await st(page);
+    expect(s.phase).toBe("composed");
+    expect(s.objects[s.focus].ingredients.map((f: any) => [f.kind, f.text])).toEqual([["text", "Free for dinner this week?"], ["text", "She is in town all week and likes South Indian food."]]);
+    expect(s.objects[s.focus].ingredients[1].source).toMatchObject({ url: "people.example/maya-rao", title: "Maya Rao · Profile" });
+    expect(await page.locator(".sel-blob").count()).toBe(0);
+    expect(await page.evaluate(() => getSelection()!.toString())).toBe("");
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("an email address reads as a person; tapping the blob puts it on the desk", async () => {
+    const { page, ctx, errors } = await open();
+    await mouseSelect(page, "#page-profile .mono", "maya.rao@example.com");
+    await page.locator(".sel-blob").waitFor();
+    expect(await page.locator(".sel-blob .sel-kind").innerText()).toBe("Person");
+    await page.locator(".sel-blob").click();
+    const s = await st(page);
+    expect(s.desk).toHaveLength(1);
+    expect(s.objects[s.desk[0]].ingredients[0]).toMatchObject({ kind: "person", text: "maya.rao@example.com", value: { email: "maya.rao@example.com" } });
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("a date in plain text reads as a time and joins an object like a highlighted one; keyboard: Tab to the blob, Enter lifts it", async () => {
+    const { page, ctx, errors } = await open();
+    await page.evaluate(() => { const p = document.createElement("p"); p.id = "free-time"; p.textContent = "Back in Bengaluru on Saturday at 8:30 PM, if you are around."; document.querySelector("#page-profile")!.appendChild(p); });
+    await mouseSelect(page, "#free-time", "Saturday at 8:30 PM");
+    await page.locator(".sel-blob").waitFor();
+    expect(await page.locator(".sel-blob .sel-kind").innerText()).toBe("Time");
+    await page.locator(".sel-blob").focus(); await page.keyboard.press("Enter");
+    let s = await st(page); expect(s.carried).toBeTruthy();
+    expect(s.objects[s.carried].ingredients[0]).toMatchObject({ kind: "time", text: "Saturday at 8:30 PM" });
+    await page.keyboard.press("Escape");
+    s = await st(page); expect(s.carried).toBeNull(); expect(s.desk).toHaveLength(1);
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("with Recast off, selecting text is just selecting text: no blob", async () => {
+    const { page, ctx } = await open({ off: true });
+    await mouseSelect(page, "#page-profile p:nth-of-type(3)", "She is in town all week");
+    await page.waitForTimeout(200);
+    expect(await page.locator(".sel-blob").count()).toBe(0);
+    expect(await page.evaluate(() => getSelection()!.toString())).toBe("She is in town all week");
+    await ctx.close();
+  });
+});
+
 describe("an error → an issue (stand-in for GitHub issues)", () => {
   it("the note is pressed into the error; Tasks opens an issue after a confirm; everything captured is quoted; Undo closes it", async () => {
     const { page, ctx, errors } = await open();

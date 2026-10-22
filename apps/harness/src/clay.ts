@@ -4,7 +4,7 @@
 // contracts, the clay renderer and the glass module.
 // The "browser" (tabs and pages) and the destinations are stand-ins inside this page; the browser extension does the same
 // across real tabs (apps/extension).
-import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, undo as coreUndo } from "@recast/core";
+import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, pieceOfSelection, undo as coreUndo } from "@recast/core";
 import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { googleMapsDirections, LinkBridge, linkFor } from "@recast/bridges/src/links";
@@ -172,10 +172,57 @@ function capture(el: HTMLElement, carry: boolean) {
   const r = dispatch({ type: "capture", fragment: fragmentOf(el), carry });
   const id = `obj-${state.seq}`; const c = centreOf(el);
   anchors.set(id, { ...c, until: performance.now() + (carry ? 0 : 60) });
-  flash(el);
+  // A selection blob is used up: the selection becomes the object, and the blob goes.
+  if (el === selBlob) { selBlob.remove(); selBlob = null; getSelection()?.removeAllRanges(); }
+  else flash(el);
   render();
   return r;
 }
+
+// ---- phase two: any selected text is a piece -------------------------------------------------------------------------
+// With Recast on, selecting text on a page shows a blob beside it: the selection, read as a time, a person (an email
+// address), an error or text. The blob is a piece like the highlighted ones, so it is dragged, tapped onto the desk or
+// picked up with the keyboard in exactly the same way.
+let selBlob: HTMLElement | null = null; let selSeq = 0;
+const SEL_MAX = 1000;
+const SEL_GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝" };
+const SEL_KIND: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text" };
+function selectionInPage(): { range: Range; text: string; tab: HTMLElement } | null {
+  const sel = getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const range = sel.getRangeAt(0); const node = range.commonAncestorContainer;
+  const host = node instanceof Element ? node : node.parentElement;
+  const tab = host?.closest<HTMLElement>("[data-tab]");
+  if (!tab || tab.hidden || host!.closest(".sel-blob")) return null;
+  const text = sel.toString().replace(/\s+/g, " ").trim();
+  return text && text.length <= SEL_MAX ? { range, text, tab } : null;
+}
+function updateSelectionBlob() {
+  if (selBlob && press?.el === selBlob) return;                       // being pressed: keep it where it is
+  // Not while the module is open: the person is busy there, and the blob must never cover its buttons.
+  const sel = state.armed && !state.carried && moduleClosed() ? selectionInPage() : null;
+  if (!sel) { if (selBlob) { selBlob.remove(); selBlob = null; } return; }
+  if (!selBlob || selBlob.dataset["text"] !== sel.text || !sel.tab.contains(selBlob)) {
+    selBlob?.remove();
+    const { kind, value } = pieceOfSelection(sel.text, { now: new Date(NOW()).toISOString(), timezone: TZ });
+    const b = document.createElement("span");
+    b.className = "grab sel-blob"; b.id = `sel-${++selSeq}`; b.tabIndex = 0; b.setAttribute("role", "button");
+    b.dataset["kind"] = kind; b.dataset["text"] = sel.text; if (value?.email) b.dataset["email"] = value.email;
+    const short = sel.text.length > 42 ? `${sel.text.slice(0, 40)}…` : sel.text;
+    b.innerHTML = `<span class="sel-glyph" aria-hidden="true">${SEL_GLYPH[kind] ?? "❝"}</span><span class="sel-text">${esc(short)}</span><span class="sel-kind">${SEL_KIND[kind] ?? "Text"}</span>`;
+    b.setAttribute("aria-label", `Selected text: ${sel.text.slice(0, 120)}, ${(SEL_KIND[kind] ?? "text").toLowerCase()}. Enter to pick up`);
+    // Pressing the blob must not clear the selection it stands for.
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); startPiecePress(b, e); });
+    b.addEventListener("contextmenu", (e) => e.preventDefault());
+    sel.tab.appendChild(b); selBlob = b;
+  }
+  // Beside the end of the selection, kept on screen.
+  const rects = [...sel.range.getClientRects()]; const end = rects.at(-1) ?? sel.range.getBoundingClientRect();
+  const w = selBlob.offsetWidth || 160;
+  selBlob.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, end.right + 6))}px`;
+  selBlob.style.top = `${Math.max(8, Math.min(innerHeight - 48, end.bottom + 6))}px`;
+}
+let selFrame = 0;
+document.addEventListener("selectionchange", () => { if (!selFrame) selFrame = requestAnimationFrame(() => { selFrame = 0; updateSelectionBlob(); }); });
 function flash(el: HTMLElement) { el.classList.remove("lifted"); void el.offsetWidth; el.classList.add("lifted"); }
 
 // ---- layout: where each object rests -----------------------------------------------------------------------------
@@ -199,7 +246,7 @@ function kindOf(id: string): ClayItem["kind"] {
 }
 
 let inWell: string | null = null;
-function render() { renderModule(); renderPass(); renderPass(); }   // the module first (it decides the well), then labels, then positions
+function render() { renderModule(); renderPass(); renderPass(); updateSelectionBlob(); }   // the module first (it decides the well), then labels, then positions
 function renderModule() {
   glass.update(moduleModel(state, REGISTRY), lastError && !state.carried ? { error: lastError } : {});
   const deskH = $("#desk").offsetHeight;
@@ -214,7 +261,7 @@ function renderModule() {
   trig.setAttribute("aria-description", state.armed ? "Or press Control once to turn it off" : "Or press Control twice");
   for (const el of $$(".grab")) { el.tabIndex = state.armed ? 0 : -1; if (state.armed) el.setAttribute("role", "button"); else el.removeAttribute("role"); }
   $("#desk-empty").textContent = state.armed
-    ? `Press ${OFF_KEY === "⌃" ? "Control" : "Ctrl"} once to turn Recast off. Drag a highlighted name, place or time onto another to press them into one object. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up.`
+    ? `Press ${OFF_KEY === "⌃" ? "Control" : "Ctrl"} once to turn Recast off. Drag a highlighted name, place or time onto another to press them into one object, or select any text and drag the blob that appears. On a phone, press and hold first. Hold an object over a tab to switch tabs. Keyboard: Tab to a piece, Enter to pick it up.`
     : `Recast is off, so pages behave normally. Press Recast in the address bar, or ${SHORTCUT_WORDS}, to start picking things up.`;
 }
 function renderPass() {
@@ -306,7 +353,7 @@ function renderDestinations() {
 
 // ---- tabs ----------------------------------------------------------------------------------------------------------
 function showTab(name: string) {
-  for (const b of $$("[role=tab]")) { const on = b.dataset["for"] === name; b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; }
+  for (const b of $$("[role=tab]")) { const on = b.dataset["for"] === name; b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; if (on) b.scrollIntoView({ block: "nearest", inline: "nearest" }); }
   for (const p of $$("[data-tab]")) p.hidden = p.dataset["tab"] !== name;
   $("#address").textContent = $(`[data-tab='${name}']`).dataset["url"]!;
   pageTarget = null; render();
@@ -453,6 +500,11 @@ function moveTab(el: HTMLElement, dir: number, select = false) {
 }
 
 // ---- wiring --------------------------------------------------------------------------------------------------------
+if (!document.documentElement.lang) document.documentElement.lang = "en";   // when hosted inside a page skeleton without one
+// The tab strip scrolls sideways when the tabs do not fit (phones); fades mark the side with more tabs.
+const tabStrip = $(".tabs");
+const tabEdges = () => { tabStrip.classList.toggle("more-left", tabStrip.scrollLeft > 2); tabStrip.classList.toggle("more-right", tabStrip.scrollLeft + tabStrip.clientWidth < tabStrip.scrollWidth - 2); };
+tabStrip.addEventListener("scroll", tabEdges, { passive: true }); addEventListener("resize", tabEdges); tabEdges();
 for (const el of $$(".grab")) {
   el.tabIndex = 0; el.setAttribute("role", "button");
   el.setAttribute("aria-label", `${el.textContent!.trim()}, ${el.dataset["kind"]}. Enter to pick up`);

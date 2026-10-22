@@ -15,13 +15,16 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-22)
-- Last full run: **922 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+- Last full run: **944 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
   - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
   - **Passages → a Note → Google Docs** (D31): select sentences on pages, press them together; each keeps its page. A new optional `drive.file` permission in `apps/calendar-link` (only files Recast creates). Try-it page has a stand-in Docs tab.
   - Fixed: in the extension, letting go over empty page space pressed the object into a date on the page.
   - **An error → a GitHub issue** (D32): select an error message, optionally press notes into it; Tasks opens an issue (confirm first; everything quoted literally; Undo closes it). GitHub is its own connection in `apps/calendar-link` (fine-grained token for one repository). Try-it page has a Build tab with stand-in issues.
+  - **Linear** issues (D33); a wheel place with two connected choices asks "which one?".
+  - **Phase two started (owner's request): any selected text becomes a movable blob** (D34), on the try-it page and in the extension. Next for phase two: places from free text (needs confirmation), touch selection on real phones, and a person's name from free text.
+  - Try-it page fixes: phone tab strip, tab panels' accessibility (axe clean).
   - Google Maps on the hosted try-it page: owner reported it did not work; fixed (tab opened from code, refusal reported with the address to copy). **Owner to re-check.**
 - **Newest: outside-person readiness** (`docs/23-user-validation.md`). Audit found no outsider could try Recast (everything needs the repo, a build and developer mode; real Google also needs the tester's own OAuth app). The try-it page is now published: **https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN** (private until the owner shares it). Stand-in Calendar and Mail, said so on every review. A moderated protocol for 3 to 5 testers is in section 4 of that doc. **No tester session has happened yet** (nothing at P).
 - **One capability at R (real provider):** Google Calendar event creation from `apps/calendar-link`, run by hand by the owner on a throwaway Google account. Nothing else has touched real Google, Notion, Supabase or Vercel. No users yet (nothing at P).
@@ -46,7 +49,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
-0a. **Owner's real-Google runs:** `docs/REAL_TEST_PLAN.md` B, C, E, plus new **F** (Google Docs: enable Docs API and Drive API, sign in again ticking Drive), **G** (Google Maps: no setup) and **H** (GitHub: a fine-grained token for one test repository).
+0a. **Owner's real-Google runs:** `docs/REAL_TEST_PLAN.md` B, C, E, plus new **F** (Google Docs: enable Docs API and Drive API, sign in again ticking Drive), **G** (Google Maps: no setup) and **H** (GitHub: a fine-grained token for one test repository) and **I** (Linear: an API key).
 0. **Run the tester protocol** (`docs/23-user-validation.md` section 4): owner shares the try-it link with 3 to 5 outsiders, one moderated session each; results in `docs/user-validation/`. Then the next milestone (section 5): a real-Google tester kit.
 1. Recover the uncommitted edits (thread 1) and fix whatever breaks the two extension tests.
 2. Owner runs `docs/REAL_TEST_PLAN.md` B1–B12 (extension → real Calendar), C1–C6 (Gmail drafts), D (confirmation setting), E1–E9 (page → Google Tasks). Record results in `docs/ENGINEERING_STATUS.md`; passing B and C moves those rows to R and strengthens the deck.
@@ -58,13 +61,14 @@ The repository's own records stay authoritative for what they cover; this file p
 - Recast should grow well beyond Calendar and Mail: anything on screen, put to work in any app. Aim for 10 to 15 excellent connectors first, not 100 logos. See `docs/24-integration-universe.md`: it maps the owner's proposal onto the existing contracts and grammar and lists the gaps (declared abilities per connector, deep-link bridges, code and file references, multi-destination plans). The owner's order starts with Google Drive and Docs, then Microsoft 365, Notion and Todoist, Slack, Linear and GitHub, Maps handoff, meeting links, webhooks.
 
 ## Build ideas queued (no owner input needed)
-- Next in the owner's order, buildable against provider stand-ins (real runs need the owner's accounts): Linear issues (same relation as GitHub, D32); Todoist tasks; Microsoft 365 through Graph (Outlook calendar and mail, To Do); a generic webhook or custom URL destination with declared abilities; one capture → several destinations previewed together.
+- Next in the owner's order, buildable against provider stand-ins (real runs need the owner's accounts): Todoist tasks; Microsoft 365 through Graph (Outlook calendar and mail, To Do); a generic webhook or custom URL destination with declared abilities; one capture → several destinations previewed together.
 - Show a destination's declared abilities in the wheel (for example "can undo", "opens only").
 - Files (PDF links) as documents, not only the page.
 - Keyboard path in the extension beyond Escape (the clay page has it).
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-22 (cont.):** Linear (D33); phase two: selection blobs (D34); try-it page phone tabs and axe fixes; 944/0.
 - **2026-10-22 (cont.):** error → GitHub issue (D32): error piece, Issue object, GitHub bridge, local GitHub connection, extension and try-it page; 922/0.
 - **2026-10-22 (cont.):** owner said Google Maps did not work on the try-it page; fixed (open the tab from code, report a refused tab with the address to copy; land on Maps in More); 911/0; republished.
 - **2026-10-22, session_01Bdx3pBhgmXK4WtvwEoTnHb (cont.):** owner's integration direction: declared abilities (D30), Google/Apple Maps open-and-prefill, passages → Note → Google Docs (D31), extension drop-on-empty-page fix; full run 910/0; try-it page republished (Maps live, Docs stand-in).

@@ -49,7 +49,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 /* Pages */
 .viewport { flex: 1; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px calc(var(--desk-h, 180px) + 32px); }
-article { max-width: 640px; margin-inline: auto; display: flex; flex-direction: column; gap: 12px; }
+.page { max-width: 640px; margin-inline: auto; display: flex; flex-direction: column; gap: 12px; }
 .eyebrow { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 h1 { margin: 0; font: 400 46px/1.05 var(--font-display); letter-spacing: -.01em; text-wrap: balance; }
 h1.plain { font-size: 34px; }
@@ -123,3 +123,17 @@ body.carrying { cursor: grabbing; }
 blockquote.review { font-size: 20px; margin: 4px 0 12px; }
 blockquote.review cite { display: block; font: 13px/1.4 var(--font-ui, system-ui); font-style: normal; color: var(--muted); margin-top: 4px; }
 pre.log { font: 13px/1.6 var(--font-mono, ui-monospace, monospace); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Phase two: the blob beside a selection. Shaped like a clay object, so it reads as something you can pick up. */
+body.recast-on .grab.sel-blob, body.recast-on .grab.sel-blob:hover { margin: 0; position: fixed; z-index: 2147482900; display: inline-flex; align-items: center; gap: 8px; max-width: min(320px, calc(100vw - 16px)); padding: 7px 12px; border-radius: 999px;
+  background: var(--surface, #fff7f2); color: var(--ink, #1a1a1a); font: 500 13px/1.2 var(--font-ui, system-ui, sans-serif); cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none;
+  box-shadow: 0 0 0 1.5px var(--accent, #c2410c), 0 8px 22px rgba(26,26,26,.16); }
+body.recast-on .grab.sel-blob.accepts { box-shadow: 0 0 0 2.5px var(--accent, #c2410c), 0 8px 22px rgba(26,26,26,.16); }
+.sel-blob .sel-glyph { color: var(--accent, #c2410c); }
+.sel-blob .sel-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-blob .sel-kind { flex: none; font-size: 11px; color: var(--muted, #6b6b6b); padding-left: 6px; border-left: 1px solid var(--line, #e3ddd3); }
+.sel-blob:focus-visible { outline: 2px solid var(--accent, #c2410c); outline-offset: 2px; }
+/* More tabs than fit (phones): the strip scrolls sideways; a fade at the edge says there is more. */
+.tabs.more-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+.tabs.more-left.more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.tabs.more-left:not(.more-right) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+@media (max-width: 520px) { [role=tab] { padding: 8px 8px; gap: 6px; font-size: 14px; } }

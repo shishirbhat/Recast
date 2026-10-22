@@ -2,7 +2,7 @@
 // ingredient as it was captured, so it can be inspected, pulled apart and recombined. What it *is* (an event, a message,
 // a group of people) is recalculated from its ingredients by the rules below, never stored, so it can never drift.
 // Pure: no I/O, no clock, no randomness of its own (ids and time come in). Composing never performs an action.
-import { compose, type ComposeContext, type Composition, type Conflict, type EventField, type Fragment, type Missing, type Origin } from "./compose.js";
+import { compose, readTime, type ComposeContext, type Composition, type Conflict, type EventField, type Fragment, type Missing, type Origin } from "./compose.js";
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
 export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document" | "Task" | "Note" | "Issue";
@@ -270,6 +270,19 @@ function noteView(c: Clump): NoteView {
   const sources = [...new Set(texts.map((f) => f.source?.url).filter((u): u is string => !!u))];
   const missing: NoteView["missing"] = fields.title ? [] : [{ field: "title", reason: "a note needs a title", ...(suggestion ? { suggestions: [suggestion] } : {}) }];
   return { status: missing.length ? "incomplete" : "ready", fields, sources, missing };
+}
+
+/**
+ * What a piece of selected text is, read from the text alone (phase two: any selection can be picked up, not only what a
+ * page marks). An error message, then a short date or time, then a lone email address (a person); anything else is text.
+ * Places are not guessed from free text: an address-shaped string is too often something else.
+ */
+export function pieceOfSelection(text: string, ctx: Pick<ComposeContext, "now" | "timezone">): { kind: Fragment["kind"]; value?: Fragment["value"] } {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (looksLikeError(text)) return { kind: "error" };
+  if (/^(mailto:)?[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(t)) return { kind: "person", value: { email: t.replace(/^mailto:/i, "").toLowerCase() } };
+  if (t.length <= 60 && t.split(" ").length <= 8 && readTime(t, ctx)) return { kind: "time" };
+  return { kind: "text" };
 }
 
 /** Selected text that reads as an error message (an exception, a failed step, a stack trace). Used where text is captured. */

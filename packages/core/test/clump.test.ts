@@ -1,6 +1,6 @@
 // Clumps: pieces pressed together into one object, recursively, without losing any ingredient.
 import { describe, expect, it } from "vitest";
-import { answerClump, canMerge, looksLikeError, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
+import { answerClump, canMerge, looksLikeError, pieceOfSelection, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
 import { relationById } from "../src/rules.js";
 
 const CTX = { now: "2026-10-19T09:00:00Z", timezone: "Asia/Kolkata" };   // Monday 19 Oct 2026, 14:30 in Bengaluru
@@ -230,5 +230,17 @@ describe("an error → an issue (D32)", () => {
   it("what reads as an error", () => {
     for (const t of ["TypeError: x is undefined", "Traceback (most recent call last):", "panic: runtime error", "npm ERR! code ERR_SOCKET_TIMEOUT", "Process completed with exit code 1", "Uncaught ReferenceError: y"]) expect(looksLikeError(t), t).toBe(true);
     for (const t of ["Free for dinner this week?", "The filter coffee alone is worth the trip.", "exit code 0"]) expect(looksLikeError(t), t).toBe(false);
+  });
+});
+
+describe("phase two: what a selection is, from its text alone", () => {
+  it.each([
+    ["Friday 23 October, 5:00 PM", "time"], ["tomorrow at 7pm", "time"], ["7:30 PM", "time"],
+    ["maya.rao@example.com", "person"], ["TypeError: x is undefined", "error"],
+    ["The filter coffee alone is worth the trip.", "text"], ["Q3 planning notes", "text"],
+    ["We met on Friday and talked for hours about the roadmap and the hiring plan for next year", "text"],
+  ])("%s → %s", (text, kind) => { expect(pieceOfSelection(text, CTX).kind).toBe(kind); });
+  it("an email address carries its address as the person's email", () => {
+    expect(pieceOfSelection("mailto:Maya.Rao@Example.com", CTX)).toEqual({ kind: "person", value: { email: "maya.rao@example.com" } });
   });
 });
