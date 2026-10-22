@@ -6,6 +6,7 @@ import {
   RELATIONS, answerClump, canMerge, checkConsent, chooseClump, mergeClumps, newClump, plan, propose, rankProposals, removeIngredient, resolve, viewClump,
   type AnswerField, type CapabilityContract, type Clump, type ClumpType, type ClumpView, type Consent, type EventField, type Fragment, type Operation, type Receipt,
 } from "@recast/core";
+import { reduceRun, type RecipeRun, type RunEvent } from "./recipe-run.js";
 
 export type ClumpPhase =
   | "idle"             // objects rest on the desk; nothing in hand. With `armed` false, Recast is off and picks nothing up
@@ -19,7 +20,8 @@ export type ClumpPhase =
   | "previewing"       // dropped on a destination: what placing would do, what is still missing; nothing written yet
   | "executing"        // the destination is being written to; cannot be cancelled
   | "undoing"          // the destination is reversing a placement; cannot be cancelled or interrupted
-  | "succeeded" | "failed" | "unknown";   // after executing; `unknown` is reconciled, never retried blindly
+  | "succeeded" | "failed" | "unknown"    // after executing; `unknown` is reconciled, never retried blindly
+  | "planning" | "running" | "ran";       // a recipe: its steps reviewed together, running one by one, then each step's outcome
 
 export interface DestinationSpec {
   id: string; label: string; contract: CapabilityContract; slots?: { id: string; label: string; start?: string }[];
@@ -72,6 +74,10 @@ export interface ClumpState {
    * Absent means "high".
    */
   confirm?: ConfirmLevel;
+  /** A recipe being reviewed, run or reported (recipe-run.ts). */
+  run?: RecipeRun | null;
+  /** The approval the person gave for the run; each step is checked against it before it is sent. */
+  runConsent?: Consent | undefined;
 }
 export type ConfirmLevel = "high" | "none";
 
@@ -107,7 +113,8 @@ export type ClumpEvent =
   | { type: "undoFailed"; opId: string; message: string; now: number }
   | { type: "cancel"; now: number }
   | { type: "dismiss"; now: number }
-  | { type: "discard"; id: string; now: number };
+  | { type: "discard"; id: string; now: number }
+  | RunEvent;
 
 /** An event as a host sends it: the clock reading is added where the state lives. */
 export type ClumpInput = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
@@ -117,7 +124,9 @@ export type ClumpEffect =
   | { type: "reconcile"; op: Operation; destinationId: string }
   | { type: "undo"; receipt: Receipt; destinationId: string };
 
-export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true }
+export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true;
+  /** After a capture: the object it is now (new, or the one already on the desk when it was the same piece). */
+  captured?: string }
 
 export function initialClumpState(o: { now: number; timezone: string; destinations?: DestinationSpec[]; armed?: boolean; confirm?: ConfirmLevel }): ClumpState {
   return { ...(o.confirm ? { confirm: o.confirm } : {}), phase: "idle", armed: o.armed ?? false, focus: null, choice: null, uncertain: {}, objects: {}, desk: [], carried: null, target: null, verdict: null, pendingMerge: null, merging: null, inspecting: null, placement: null, destinations: o.destinations ?? [], last: null, now: o.now, timezone: o.timezone, seq: 0 };
@@ -140,6 +149,8 @@ const LEGAL: Record<ClumpPhase, ClumpEvent["type"][]> = {
   failed: ["dismiss", "cancel", "capture", "pickUp", "openModule", "arm", "disarm"],
   // An unknown outcome is checked before anything else: Recast cannot be turned off over it.
   unknown: ["reconcile", "reconciled", "dismiss"],
+  // Recipes: handled by reduceRun (recipe-run.ts) before these lists are consulted.
+  planning: [], running: [], ran: [],
 };
 
 export const ctxOf = (s: ClumpState) => ({ now: new Date(s.now).toISOString(), timezone: s.timezone });
@@ -189,6 +200,16 @@ function straightThrough(s: ClumpState, n: ClumpState): ClumpResult | null {
   return { state: { ...n, phase: "executing" }, effects: [{ type: "commit", op, consent, destinationId: p.destinationId }] };
 }
 
+/** A single piece on the desk that is this fragment: same kind, same words, same page (and same address for a person). */
+function sameAs(s: ClumpState, f: Fragment): string | undefined {
+  const norm = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
+  return s.desk.find((id) => {
+    const c = s.objects[id]; if (!c || c.ingredients.length !== 1) return false;
+    const g = c.ingredients[0]!;
+    return g.kind === f.kind && norm(g.text) === norm(f.text) && (g.source?.url ?? "") === (f.source?.url ?? "") && (g.value?.email ?? "") === (f.value?.email ?? "");
+  });
+}
+
 /** A slot fills the start when the object has none: dropping on "Fri 7 PM" is the person choosing that time. */
 function applySlot(s: ClumpState, objectId: string, destinationId: string, slot?: string): ClumpState {
   const sl = s.destinations.find((d) => d.id === destinationId)?.slots?.find((x) => x.id === slot);
@@ -198,6 +219,7 @@ function applySlot(s: ClumpState, objectId: string, destinationId: string, slot?
 }
 
 export function reduceClump(state: ClumpState, ev: ClumpEvent): ClumpResult {
+  const run = reduceRun(state, ev); if (run) return run;
   const r = step(state, ev);
   // A placed object is done: once the receipt is left (Done, or anything else that moves on) it leaves the desk, so the
   // desk only holds what still needs a place. Undo is the exception: an undone placement keeps its object.
@@ -274,12 +296,18 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       return straightThrough(s, n) ?? ok(n);
     }
     case "capture": {
+      // The same piece from the same page again (a double tap, a second drag) is the object already on the desk, not a copy.
+      const same = sameAs(s, ev.fragment);
+      if (same) {
+        if (ev.carry && ["idle", "succeeded", "failed", "composed", "choosing"].includes(s.phase)) return { ...ok(say({ ...s, phase: "carrying", carried: same, desk: without(s.desk, same), inspecting: null, placement: null, target: null, verdict: null }, "captured", `${viewOf(s, same).label} is already on your desk: picked that up`)), captured: same };
+        return { ...ok(say(s, "captured", `${viewOf(s, same).label} is already on your desk`)), captured: same };
+      }
       const id = `obj-${s.seq + 1}`;
       let n: ClumpState = { ...s, seq: s.seq + 1, objects: { ...s.objects, [id]: newClump(id, ev.fragment) } };
       // Capturing while carrying puts the new piece down beside you; it never silently merges.
       if (ev.carry && ["idle", "succeeded", "failed", "composed", "choosing"].includes(s.phase)) n = { ...n, phase: "carrying", carried: id, placement: null };
       else n = putDown(n, id);
-      return ok(say(n, "captured", `Picked up ${viewOf(n, id).label}`));
+      return { ...ok(say(n, "captured", `Picked up ${viewOf(n, id).label}`)), captured: id };
     }
     case "pickUp": {
       if (!s.objects[ev.id] || !s.desk.includes(ev.id)) return refuse("no such object on the desk");
@@ -402,6 +430,7 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       if (!s.desk.includes(ev.id)) return refuse("no such object on the desk");
       return ok({ ...s, phase: "idle", inspecting: null, desk: without(s.desk, ev.id), objects: omit(s.objects, ev.id), uncertain: omit(s.uncertain ?? {}, ev.id), ...(s.focus === ev.id ? { focus: null } : {}) });
     }
+    default: return refuse(`cannot ${ev.type} while ${s.phase}`);   // recipe events outside a run
   }
 }
 
@@ -423,8 +452,8 @@ export function escapeEvent(s: ClumpState): { type: "cancel" } | { type: "disarm
     case "idle": return s.armed ? { type: "disarm" } : null;
     case "confirmingMerge": return { type: "confirmMerge", yes: false };
     case "inspecting": return { type: "inspect", id: null };
-    case "succeeded": case "failed": return { type: "dismiss" };
-    case "merging": case "executing": case "undoing": case "unknown": return null;
+    case "succeeded": case "failed": case "ran": return { type: "dismiss" };
+    case "merging": case "executing": case "undoing": case "unknown": case "running": return null;
     default: return { type: "cancel" };
   }
 }

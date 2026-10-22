@@ -15,7 +15,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-22)
-- Last full run: **944 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+- Last full run: **960 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
   - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
@@ -68,6 +68,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-22 (cont.):** owner's mission brief: recipes / multi-destination runs with per-step outcomes (D35), capture-stack dedupe; tested on the try-it page and through the real local program (Google stand-in); 960/0. Next: Electron desktop app.
 - **2026-10-22 (cont.):** Linear (D33); phase two: selection blobs (D34); try-it page phone tabs and axe fixes; 944/0.
 - **2026-10-22 (cont.):** error → GitHub issue (D32): error piece, Issue object, GitHub bridge, local GitHub connection, extension and try-it page; 922/0.
 - **2026-10-22 (cont.):** owner said Google Maps did not work on the try-it page; fixed (open the tab from code, report a refused tab with the address to copy; land on Maps in More); 911/0; republished.

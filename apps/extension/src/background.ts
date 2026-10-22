@@ -31,7 +31,7 @@ async function broadcast(s: ClumpState) { for (const t of await tabs()) await te
 
 /** Events are applied one at a time, in order, even when several tabs send at once. */
 let queue: Promise<unknown> = Promise.resolve();
-function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEffect[]; error?: string; stale?: true }): Promise<{ state: ClumpState; error?: string; stale?: true }> {
+function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEffect[]; error?: string; stale?: true; captured?: string }): Promise<{ state: ClumpState; error?: string; stale?: true; captured?: string }> {
   const run = queue.then(async () => {
     const before = await load(); const r = mutate(before);
     await save(r.state); await broadcast(r.state);
@@ -49,7 +49,7 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
       const tabId = Number(r.state.placement.destinationId.split(":")[0]);
       try { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); } catch { /* the tab is gone; the review still shows */ }
     }
-    return { state: r.state, ...(r.error ? { error: r.error } : {}), ...(r.stale ? { stale: true as const } : {}) };
+    return { state: r.state, ...(r.error ? { error: r.error } : {}), ...(r.stale ? { stale: true as const } : {}), ...("captured" in r && r.captured ? { captured: r.captured as string } : {}) };
   });
   queue = run.catch(() => undefined);
   return run;

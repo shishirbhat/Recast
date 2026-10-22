@@ -8,3 +8,4 @@ export { WHEEL_SLOTS, wheelEntries, firstAvailable, moduleModel, doubtNote } fro
 export type { WheelKey, WheelEntry, WheelOption, ModuleModel, ModuleObject } from "./wheel.js";
 export type { ClumpPhase, ClumpState, ClumpEvent, ClumpInput, ClumpEffect, ClumpResult, DestinationSpec, Target, Placement, ConfirmLevel } from "./clump-machine.js";
 export { createControlTrigger, createDoubleTap, createTaps, DOUBLE_TAP, type TapInput } from "./double-tap.js";
+export { recipeOffers, reduceRun, type RecipeOffer, type RecipeRun, type RunStep, type StepStatus } from "./recipe-run.js";

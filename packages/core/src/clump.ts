@@ -99,6 +99,10 @@ export function typeOf(fs: Fragment[]): ClumpType | { incompatible: string } {
 
 export function canMerge(target: Clump, incoming: Clump): MergeCheck {
   if (target.id === incoming.id) return { ok: false, code: "same_object", reason: "that is the same object" };
+  // The same piece again (same kind, words and page) adds nothing: refused, so an object never holds a piece twice.
+  const key = (f: Fragment) => `${f.kind}|${f.text.replace(/\s+/g, " ").trim().toLowerCase()}|${f.source?.url ?? ""}`;
+  const held = new Set(target.ingredients.map(key));
+  if (incoming.ingredients.every((f) => held.has(key(f)))) return { ok: false, code: "same_object", reason: "that is already in it" };
   const before = typeOf(target.ingredients);
   const after = typeOf(union(target.ingredients, incoming.ingredients));
   if (typeof after !== "string") return { ok: false, code: "incompatible", reason: after.incompatible };

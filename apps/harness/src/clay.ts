@@ -170,7 +170,7 @@ const centreOf = (el: Element) => { const r = el.getBoundingClientRect(); return
 
 function capture(el: HTMLElement, carry: boolean) {
   const r = dispatch({ type: "capture", fragment: fragmentOf(el), carry });
-  const id = `obj-${state.seq}`; const c = centreOf(el);
+  const id = r.captured ?? `obj-${state.seq}`; const c = centreOf(el);
   anchors.set(id, { ...c, until: performance.now() + (carry ? 0 : 60) });
   // A selection blob is used up: the selection becomes the object, and the blob goes.
   if (el === selBlob) { selBlob.remove(); selBlob = null; getSelection()?.removeAllRanges(); }
@@ -438,7 +438,7 @@ function drop() {
     const carried = state.carried!;
     // Capture the page piece onto the desk under the pointer, then press the carried object into it.
     const r = reduceClump(state, { type: "capture", fragment: fragmentOf(el), carry: false, now: NOW() }); state = r.state;
-    const id = `obj-${state.seq}`; anchors.set(id, { ...centreOf(el), until: performance.now() + 900 });
+    const id = r.captured ?? `obj-${state.seq}`; anchors.set(id, { ...centreOf(el), until: performance.now() + 900 });
     flash(el); render();
     dispatch({ type: "approach", target: { kind: "object", id } }); dispatch({ type: "drop" });
     void carried; return;

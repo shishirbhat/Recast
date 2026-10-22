@@ -16,7 +16,7 @@ import type { EventInput, ToBackground, ToTab } from "./clay-messages.js";
 
 declare global { interface Window { __recastClay?: boolean } }
 
-const send = <T = { state: ClumpState; error?: string; stale?: true }>(m: ToBackground) => chrome.runtime.sendMessage(m) as Promise<T>;
+const send = <T = { state: ClumpState; error?: string; stale?: true; captured?: string }>(m: ToBackground) => chrome.runtime.sendMessage(m) as Promise<T>;
 
 /** A page declares a destination with data-recast-kind; it performs the registry's contract for that kind, as a stand-in. */
 const KINDS: Record<string, CapabilityContract> = { calendar: CONTRACTS.googleCalendarEvent, drafts: CONTRACTS.gmailMessageDraft, tasks: CONTRACTS.googleTasks };
@@ -175,7 +175,7 @@ async function main() {
   }
   async function takePage() {
     const cap = await dispatch({ type: "capture", fragment: pageFragment(), carry: false }); if (cap.error) { state = cap.state; render(); return; }
-    const r = await dispatch({ type: "openModule", id: `obj-${cap.state.seq}` }); state = r.state; render();
+    const r = await dispatch({ type: "openModule", id: (cap.captured ?? `obj-${cap.state.seq}`) }); state = r.state; render();
     setTimeout(() => glass.focus(), 0);
   }
 
@@ -257,7 +257,7 @@ async function main() {
       const ok = canMerge(newClump("page", fragment), state.objects[state.carried]!);
       if (!ok.ok) { await dispatch({ type: "approach", target: null }); await dispatch({ type: "drop" }); hint(`Kept apart: ${ok.reason}`); return; }
       const cap = await dispatch({ type: "capture", fragment, carry: false });
-      const id = `obj-${cap.state.seq}`;
+      const id = (cap.captured ?? `obj-${cap.state.seq}`);
       await dispatch({ type: "approach", target: { kind: "object", id } });
     }
     iDropped = true; await dispatch({ type: "drop" });

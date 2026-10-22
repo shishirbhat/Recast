@@ -398,4 +398,40 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(linearIssues.size).toBe(0);
     await page.close();
   });
+
+  it("a recipe through the real program: Plan and prepare puts the event in Google Calendar and a task in Google Tasks, each with its own receipt", async () => {
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    const page = await openTab("restaurant.html");
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle" && x.armed; });
+    // The composition (the pieces are captured as the content script would; the recipe itself is driven through the module).
+    const src = { app: "127.0.0.1", url: `${base}/restaurant.html`, title: "Dakshin · Restaurant" };
+    const piece = (id: string, kind: string, text: string, value?: object) => ({ id, kind, text, confidence: 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "css", value: `#${id}` } }], source: src });
+    await send({ type: "capture", fragment: piece("p1", "place", "Dakshin", { name: "Dakshin", address: "12 MG Road" }) });
+    const id = (await stored()).desk[0];
+    await send({ type: "capture", fragment: piece("t1", "time", "Friday 23 October, 7:30 PM"), carry: true });
+    await send({ type: "approach", target: { kind: "object", id } }); await send({ type: "drop" }); await send({ type: "settled" });
+    await send({ type: "answer", objectId: id, field: "title", value: "Dinner at Dakshin" });
+    await send({ type: "openModule", id });
+    await until(async () => (await page.locator("recast-clay >> .rg-recipe[data-recipe='plan-and-prepare']").count()) === 1);
+    await page.locator("recast-clay >> .rg-recipe[data-recipe='plan-and-prepare']").click();
+    await until(async () => (await stored()).phase === "planning");
+    const before = { events: live().length, tasks: tasks.size };
+    await page.locator("recast-clay >> button", { hasText: "Run 2 steps" }).click();
+    await until(async () => (await stored()).phase === "ran", 15000);
+    const run = (await stored()).run;
+    expect(run.steps.map((x: any) => [x.id, x.status, x.app])).toEqual([["event", "done", "Google Calendar"], ["prepare", "done", "Google Tasks"]]);
+    expect(live().length).toBe(before.events + 1);
+    expect(tasks.size).toBe(before.tasks + 1);
+    expect([...tasks.values()].at(-1)).toMatchObject({ title: "Prepare: Dinner at Dakshin", due: "2026-10-23T00:00:00.000Z" });
+    expect(await page.locator("recast-clay >> .rg-title").innerText()).toBe("Plan and prepare: all 2 done");
+    await page.locator("recast-clay >> .rg-steps li[data-step-id='prepare'] [data-undo-step]").click();
+    await until(async () => (await stored()).run.steps[1].status === "undone");
+    expect(tasks.size).toBe(before.tasks);
+    await page.locator("recast-clay >> button", { hasText: "Done" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    await page.close();
+  });
 });
+

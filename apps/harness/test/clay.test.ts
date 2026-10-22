@@ -562,6 +562,56 @@ describe("phase two: select any text, and move it as a blob", () => {
   });
 });
 
+describe("a recipe: one composition, several places, each with its own result", () => {
+  it("Plan and invite: finish the title in the review, run both steps, see each result, undo just the draft", async () => {
+    const { page, ctx, errors } = await open();
+    const id = await makeDinner(page);
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    const chip = page.locator(".rg-recipe[data-recipe='plan-and-invite']");
+    expect(await chip.isDisabled()).toBe(false);
+    // Plan and prepare needs a task list: none is connected on this page, so its task step will say so.
+    await chip.click();
+    expect((await st(page)).phase).toBe("planning");
+    expect(await page.locator(".rg-title").innerText()).toBe("Recipe: Plan and invite");
+    expect(await page.locator("[data-placed='event'], [data-placed='draft']").count()).toBe(0);      // the review writes nothing
+    await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
+    const steps = page.locator(".rg-steps li");
+    await expect.poll(() => steps.evaluateAll((els) => els.map((e) => e.getAttribute("data-status")))).toEqual(["ready", "ready"]);
+    expect(await steps.nth(0).innerText()).toMatch(/Add the event to your calendar\s+Google Calendar · stand-in\s+Uses Maya Rao, Dakshin, Fri, 23 Oct, 7:30 PM/);
+    expect(await steps.nth(1).innerText()).toMatch(/Draft a message to the people in it\s+Gmail · stand-in\s+Uses Maya Rao, the event\s+Recast's wording; edit it in your drafts/);
+    await page.getByRole("button", { name: "Run 2 steps" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "ran");
+    expect(await page.locator(".rg-title").innerText()).toBe("Plan and invite: all 2 done");
+    expect(await steps.evaluateAll((els) => els.map((e) => e.getAttribute("data-status")))).toEqual(["done", "done"]);
+    expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Maya at Dakshin · Dakshin");
+    await page.locator("#tab-mail").click();
+    expect(await page.locator("[data-placed='draft']").innerText()).toMatch(/To maya\.rao@example\.com\s+Hi Maya, are you free for Meet Maya at Dakshin on Friday 23 October at 7:30 PM\?/);
+    await page.locator(".rg-steps li[data-step-id='invite'] [data-undo-step]").click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.run.steps[1].status === "undone");
+    expect(await page.locator("[data-placed='draft']").count()).toBe(0);
+    expect(await page.locator("[data-placed='event']").count()).toBe(1);
+    await page.getByRole("button", { name: "Done" }).click();
+    const s = await st(page);
+    expect(s.phase).toBe("idle"); expect(s.desk).toEqual([id]);   // not everything stands (the draft was undone): the object stays
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("a recipe whose places are not all connected says which step cannot run, and runs the rest", async () => {
+    const { page, ctx, errors } = await open();
+    await makeDinner(page);
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    await page.locator(".rg-recipe[data-recipe='plan-and-prepare']").click();
+    await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
+    const prep = page.locator(".rg-steps li[data-step-id='prepare']");
+    await expect.poll(() => prep.getAttribute("data-status")).toBe("blocked");
+    expect(await prep.innerText()).toMatch(/A task list is not connected here/);
+    expect(await prep.locator("input").isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "Run 1 step" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "ran");
+    expect(await page.locator(".rg-title").innerText()).toBe("Plan and prepare: all 1 done");
+    expect(errors).toEqual([]); await ctx.close();
+  });
+});
+
 describe("an error → an issue (stand-in for GitHub issues)", () => {
   it("the note is pressed into the error; Tasks opens an issue after a confirm; everything captured is quoted; Undo closes it", async () => {
     const { page, ctx, errors } = await open();

@@ -15,6 +15,7 @@ export type GlassIntent =
   | { type: "inspect" } | { type: "remove"; ingredientId: string }
   | { type: "answer"; field: AnswerField; value: string } | { type: "choose"; field: EventField; ingredientId: string }
   | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean }
+  | { type: "openRecipe"; recipeId: string } | { type: "toggleStep"; stepId: string } | { type: "runRecipe"; heldMs?: number } | { type: "undoStep"; stepId: string }
   /** Only where the host offers it (`takePage`): the host captures the page itself, then opens the module on it. */
   | { type: "takePage" };
 
@@ -48,6 +49,10 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
     case "dismiss": return [{ type: "dismiss" }];
     case "reconcile": return [{ type: "reconcile" }];
     case "confirmMerge": return [{ type: "confirmMerge", yes: i.yes }];
+    case "openRecipe": return [{ type: "openRecipe", recipeId: i.recipeId, ...(s.focus ? { id: s.focus } : {}) }];
+    case "toggleStep": return [{ type: "toggleStep", stepId: i.stepId }];
+    case "runRecipe": return [{ type: "runRecipe", consent: i.heldMs !== undefined ? { kind: "hold", heldMs: i.heldMs } : { kind: "confirm" } }];
+    case "undoStep": return [{ type: "undoStep", stepId: i.stepId }];
     case "takePage": return [];
   }
 }
@@ -270,6 +275,42 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   }
 
   // ---- everything else: rebuilt only when its text changes, keeping focus where it was ---------------------------------
+  /** Recipes for this object, under the one main action: small, and only the ones that fit its kind. */
+  function recipeChips(m: Extract<ModuleModel, { object: unknown }>): string {
+    const offers = m.recipes ?? []; if (!offers.length) return "";
+    return `<div class="rg-recipes" role="group" aria-label="Recipes"><span class="rg-recipes-label">Or run a recipe</span>${offers.map((o) =>
+      `<button type="button" class="rg-chip rg-recipe" data-recipe="${esc(o.id)}"${o.available ? "" : ` disabled aria-describedby="rg-why-${esc(o.id)}"`} title="${esc(o.available ? o.description : o.reason ?? "")}">${esc(o.name)}</button>${o.available ? "" : `<span class="rg-why-line" id="rg-why-${esc(o.id)}">${esc(o.name)}: ${esc(o.reason ?? "")}</span>`}`).join("")}</div>`;
+  }
+  const STATUS: Record<string, string> = { ready: "", blocked: "Can't run", skipped: "Left out", waiting: "Waiting", running: "Sending…", done: "Done", failed: "Not added", unknown: "No answer", undoing: "Undoing…", undone: "Removed" };
+  /** A recipe: each step, where it goes and what it uses; then each step's own outcome. */
+  function runView(m: Extract<ModuleModel, { object: unknown }>, err: string, close: string) {
+    const run = m.run!; const planning = m.mode === "plan";
+    const items = run.steps.map((x) => {
+      const where = x.app ? `${esc(x.app)}${x.standIn ? " · stand-in" : ""}` : "not connected";
+      const tick = planning ? `<input type="checkbox" data-step="${esc(x.id)}" ${x.include ? "checked" : ""} ${x.status === "ready" ? "" : "disabled"} aria-label="${esc(x.label)}">` : `<span class="rg-step-status" data-status="${x.status}">${STATUS[x.status] ?? x.status}</span>`;
+      const lines = [
+        `<span class="rg-step-where">${where}</span>`,
+        x.uses.length ? `<span class="rg-step-uses">Uses ${esc(x.uses.join(", "))}</span>` : "",
+        x.note && planning ? `<span class="rg-step-note">${esc(x.note)}</span>` : "",
+        x.reason && x.status === "blocked" ? `<span class="rg-step-why">${esc(x.reason.charAt(0).toUpperCase() + x.reason.slice(1))}</span>` : "",
+        x.message ? `<span class="rg-step-why">${esc(x.message)}</span>` : "",
+        x.status === "unknown" ? `<span class="rg-step-why">Check ${esc(x.app ?? "it")} before placing it there again. Recast will not send it again.</span>` : "",
+      ].join("");
+      const undo = m.mode === "ran" && x.status === "done" && x.undoable ? `<button type="button" class="rg-link" data-undo-step="${esc(x.id)}">Undo</button>` : "";
+      return `<li data-step-id="${esc(x.id)}" data-status="${x.status}"><label class="rg-step">${tick}<span class="rg-step-text"><span class="rg-step-label">${esc(x.label)}</span>${lines}</span></label>${undo}</li>`;
+    }).join("");
+    const chosen = run.steps.filter((x) => x.include && x.status === "ready");
+    const hold = chosen.some((x) => x.op?.risk.consent === "hold");
+    const title = planning ? `Recipe: ${esc(run.name)}` : m.mode === "running" ? `Running ${esc(run.name)}…` : esc(m.text ?? run.name);
+    const actions = planning
+      ? `${hold ? `<button type="button" class="rg-btn primary hold" data-act="holdRecipe" ${chosen.length ? "" : "disabled"}>Hold to run ${chosen.length} ${chosen.length === 1 ? "step" : "steps"}</button>` : `<button type="button" class="rg-btn primary" data-act="runRecipe" ${chosen.length ? "" : "disabled"}>Run ${chosen.length} ${chosen.length === 1 ? "step" : "steps"}</button>`}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>`
+      : m.mode === "ran" ? `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` : "";
+    const intro = planning ? `<p class="rg-hint">Nothing is written until you run it. Each step goes to its own place and gets its own result.</p>` : "";
+    // The event itself still needs something (a title, a date): asked here, as in a review, then the steps are worked out again.
+    const finish = planning && run.steps.some((x) => x.reason?.startsWith("the event is not complete")) ? detail(m) : "";
+    return { title, head: planning ? close : "", facts: "", body: `${err}${intro}${finish}<ul class="rg-steps">${items}</ul>`, actions };
+  }
+
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
     const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? v.issue?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
     const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
@@ -299,7 +340,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "composed": return m.text
         ? { title: "Add to it?", head: "", facts: "", body: `<p class="rg-hint">${esc(m.text)}</p>`, actions: "" }
         : { title: "Ready to place", head: `${iconBtn("inspect", "Look inside", LAYERS)}${close}`, facts: "", body: err,
-            actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>` };
+            actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>${recipeChips(m)}` };
+      case "plan": case "running": case "ran": return runView(m, err, close);
       case "choosing": return { title: drill === "more" ? "More places" : drill ? `${esc(m.entries.find((e) => e.key === drill)?.label ?? "")}: which one?` : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
         actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button><button type="button" class="rg-btn ghost" data-act="back">Back</button>` };
       case "inspecting": return { title: "Inside this object", head: close, facts: "",
@@ -403,6 +445,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (b.dataset["submit"]) return submit(b.dataset["submit"]);
     if (b.dataset["choose"]) return emit({ type: "choose", field: b.dataset["choose"] as EventField, ingredientId: b.dataset["ingredient"]! });
     if (b.dataset["remove"]) return emit({ type: "remove", ingredientId: b.dataset["remove"] });
+    if (b.dataset["recipe"]) return emit({ type: "openRecipe", recipeId: b.dataset["recipe"] });
+    if (b.dataset["undoStep"]) return emit({ type: "undoStep", stepId: b.dataset["undoStep"] });
     switch (b.dataset["act"]) {
       case "turnOff": return emit({ type: "turnOff" });
       case "reopen": return emit({ type: "reopen" });
@@ -419,15 +463,23 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "reconcile": return emit({ type: "reconcile" });
       case "mergeYes": return emit({ type: "confirmMerge", yes: true });
       case "mergeNo": return emit({ type: "confirmMerge", yes: false });
+      case "runRecipe": return emit({ type: "runRecipe" });
     }
+  });
+  el.addEventListener("change", (e) => {
+    const t = e.target as HTMLInputElement; if (t.matches("input[data-step]")) emit({ type: "toggleStep", stepId: t.dataset["step"]! });
   });
   el.addEventListener("keydown", (e) => {
     const t = e.target as HTMLElement;
     if (e.key === "Enter" && t.matches("input[data-field]")) { e.preventDefault(); submit(t.dataset["field"]!); }
   });
   function submit(field: string) { const i = el.querySelector<HTMLInputElement>(`input[data-field="${CSS.escape(field)}"]`); const v = i?.value.trim(); if (v) emit({ type: "answer", field: field as AnswerField, value: v }); }
-  el.addEventListener("pointerdown", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold]")) holdStart = performance.now(); });
-  el.addEventListener("pointerup", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold]")) emit({ type: "place", heldMs: performance.now() - holdStart }); });
+  el.addEventListener("pointerdown", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold], [data-act=holdRecipe]")) holdStart = performance.now(); });
+  el.addEventListener("pointerup", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("[data-act=hold]")) emit({ type: "place", heldMs: performance.now() - holdStart });
+    else if (t.closest("[data-act=holdRecipe]")) emit({ type: "runRecipe", heldMs: performance.now() - holdStart });
+  });
 
   return {
     el, update,
@@ -480,6 +532,24 @@ export const GLASS_CSS = `
 .rg[data-mode="choosing"] { --rg-w: 470px; }
 .rg[data-mode="preview"], .rg[data-mode="inspecting"] { --rg-w: 390px; }
 .rg[data-mode="executing"], .rg[data-mode="undoing"], .rg[data-mode="succeeded"], .rg[data-mode="unknown"], .rg[data-mode="failed"] { --rg-w: 340px; }
+.rg[data-mode="plan"], .rg[data-mode="running"], .rg[data-mode="ran"] { --rg-w: 400px; }
+/* Recipes: under the one main action, quiet until wanted. */
+.rg-recipes { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.rg-recipes-label { font-size: 11px; color: var(--g-muted); margin-right: 2px; }
+.rg-recipe[disabled] { opacity: .55; cursor: not-allowed; }
+.rg-why-line { flex-basis: 100%; font-size: 11px; color: var(--g-muted); }
+.rg-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rg-steps li { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--g-sel); box-shadow: inset 0 0 0 0.5px var(--g-line); }
+.rg-steps li[data-status="blocked"], .rg-steps li[data-status="skipped"] { opacity: .7; }
+.rg-step { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.rg-step input { margin-top: 3px; accent-color: var(--g-accent); }
+.rg-step-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rg-step-label { font-weight: 600; font-size: 13px; }
+.rg-step-where, .rg-step-uses, .rg-step-note { font-size: 11.5px; color: var(--g-muted); overflow-wrap: anywhere; }
+.rg-step-why { font-size: 12px; color: var(--g-ink); }
+.rg-step-status { flex: none; min-width: 64px; font-size: 11px; font-weight: 600; color: var(--g-muted); padding-top: 2px; }
+.rg-step-status[data-status="done"] { color: var(--g-accent); }
+.rg-step-status[data-status="failed"], .rg-step-status[data-status="unknown"] { color: var(--g-ink); }
 
 .rg-head { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 8px 0 16px; }
 .rg[data-mode="pill"] .rg-head { min-height: 40px; padding: 4px 6px 4px 14px; }
@@ -504,7 +574,7 @@ export const GLASS_CSS = `
 .rg-facts span + span::before { content: "·"; margin: 0 6px; }
 .rg-side { flex: none; }
 .rg-side:empty { display: none; }
-.rg:is([data-mode="composed"], [data-mode="choosing"], [data-mode="preview"], [data-mode="executing"], [data-mode="undoing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"], [data-mode="inspecting"]) .rg-stage { display: flex; }
+.rg:is([data-mode="composed"], [data-mode="choosing"], [data-mode="preview"], [data-mode="executing"], [data-mode="undoing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"], [data-mode="inspecting"], [data-mode="plan"], [data-mode="running"], [data-mode="ran"]) .rg-stage { display: flex; }
 .rg:is([data-mode="preview"], [data-mode="inspecting"], [data-mode="executing"], [data-mode="undoing"], [data-mode="succeeded"], [data-mode="unknown"], [data-mode="failed"]) .rg-well { height: 60px; }
 .rg[data-mode="choosing"] .rg-facts { display: flex; }
 .rg[data-mode="choosing"] .rg-left { align-self: center; }

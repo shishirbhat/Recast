@@ -69,6 +69,8 @@ describe("what does not merge silently", () => {
     const kettle = one("thing", "Stagg EKG Kettle");
     expect(mergeClumps(plan, kettle)).toMatchObject({ ok: false, code: "incompatible", reason: expect.stringMatching(/cannot be combined/) });
     expect(mergeClumps(plan, plan)).toMatchObject({ ok: false, code: "same_object" });
+    const t = one("time", "Friday 7 PM"); const withTime = merged(plan, t, true);
+    expect(mergeClumps(withTime, one("time", "Friday 7 PM"))).toMatchObject({ ok: false, code: "same_object", reason: "that is already in it" });
   });
   it("a message that gains a time would become an event: the person has to confirm that", () => {
     const msg = merged(one("person", "Maya Rao"), one("text", "Dinner?"));
