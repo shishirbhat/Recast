@@ -356,6 +356,27 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<RelayApi> 
     vscode.commands.registerCommand("relay.apply", run((node: { task: CoordTask }) => relay.apply(node.task))),
     vscode.commands.registerCommand("relay.applyDenied", () => vscode.window.showInformationMessage("Only project owners can apply agent work to the shared project.")),
   );
+  // "Open in VS Code" links from Relay's invite dialog. Any web page can open a vscode:// link, so joining always asks
+  // first, naming the server that open files would be shared with.
+  ctx.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri: (uri) =>
+        run(async () => {
+          if (uri.path !== "/join") return;
+          const invite = new URLSearchParams(uri.query).get("invite");
+          if (!invite) throw new Error("That Relay link has no invite in it.");
+          const { server } = parseInvite(invite);
+          if (!vscode.workspace.workspaceFolders?.length) throw new Error("Open your checkout of the project in VS Code first, then open the invite link again.");
+          const go = "Join";
+          const pick = await vscode.window.showWarningMessage(
+            `Join the Relay project at ${server}?`,
+            { modal: true, detail: `Files you open in ${vscode.workspace.workspaceFolders[0]!.name} that are part of the project will be shared live with everyone in it. Only join servers you trust.` },
+            go,
+          );
+          if (pick === go) await relay.join(invite);
+        })(),
+    }),
+  );
   void relay.resume();
   return {
     get connection() {

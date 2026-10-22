@@ -36,6 +36,7 @@ import type { QuickPick } from "./CommandPalette";
 import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from "./MoreViews";
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
+import { InviteDialog } from "./InviteDialog";
 import { AttentionButton, attentionOf } from "./Attention";
 import { TestingView, TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { WelcomePage } from "./Welcome";
@@ -779,19 +780,8 @@ export function Workbench() {
     },
     [set],
   );
-  const invite = useCallback(() => {
-    const name = prompt("Collaborator's name");
-    if (!name) return;
-    const role = (prompt("Role: editor, viewer or owner", "editor") ?? "editor").trim();
-    void api<{ joinPath: string }>("POST", "/members", { name, role }).then(
-      (r) => {
-        const link = `${location.origin}${r.joinPath}`;
-        void navigator.clipboard?.writeText(link).catch(() => {});
-        notify(`One-time invite for ${name} copied (valid 72 hours): ${link}`);
-      },
-      (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"),
-    );
-  }, [notify]);
+  const [inviting, setInviting] = useState(false);
+  const invite = useCallback(() => setInviting(true), []);
   const signOut = useCallback(() => {
     void api("POST", "/logout").then(() => location.reload());
   }, []);
@@ -1651,6 +1641,7 @@ export function Workbench() {
       </footer>
 
       {lineHistory && <LineHistory path={lineHistory.path} line={lineHistory.line} members={s.members} onClose={() => setLineHistory(null)} onShowSession={(id) => (openDiff({ kind: "session", id, path: lineHistory.path }), setLineHistory(null))} />}
+      {inviting && <InviteDialog onClose={() => setInviting(false)} />}
       <CommandPalette
         open={palette.open}
         prefix={palette.prefix}

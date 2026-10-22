@@ -14,7 +14,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onUri"
   ],
   "contributes": {
     "commands": [
@@ -193,6 +194,12 @@
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.js --sourcemap",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && npm run build:test && node test/run.mts",
-    "build:test": "esbuild test/suite.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist-test/suite.js --log-level=warning"
+    "build:test": "esbuild test/suite.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist-test/suite.js --log-level=warning",
+    "package": "npm run build && npx --yes @vscode/vsce@3 package --no-dependencies --allow-missing-repository --skip-license"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shishirbhat/Recast.git",
+    "directory": "vscode"
   }
 }

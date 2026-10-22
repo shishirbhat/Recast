@@ -62,6 +62,8 @@ const relayTheme = EditorView.theme({
     padding: "3px 7px 4px", borderRadius: "7px 7px 7px 2px", color: "#fff", backgroundColor: "inherit", whiteSpace: "nowrap",
     userSelect: "none", pointerEvents: "none", opacity: "1", zIndex: "5",
   },
+  // On the first line there's no room above the caret (the flag would be clipped): show it below instead.
+  ".cm-line:first-child .cm-ySelectionInfo": { top: "1.35em", borderRadius: "2px 7px 7px 7px" },
   ".cm-ySelection": { borderRadius: "2px" },
   ".relay-author-gutter": { width: "4px", marginRight: "2px" },
   ".relay-author-gutter .cm-gutterElement": { padding: "0" },

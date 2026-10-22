@@ -4,7 +4,7 @@
  */
 import * as vscode from "vscode";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
@@ -16,6 +16,7 @@ const SERVER = env("RELAY_TEST_SERVER");
 const BO_COOKIE = env("RELAY_TEST_BO_COOKIE");
 const BO_ID = env("RELAY_TEST_BO_ID");
 const CHECKOUT = env("RELAY_TEST_CHECKOUT");
+const SIGNALS = env("RELAY_TEST_SIGNALS");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(fn: () => boolean, ms = 5000, what = "condition"): Promise<void> {
@@ -209,6 +210,20 @@ test("a file that differs from the shared copy is never overwritten without a ch
   } finally {
     await cfg.update("whenFilesDiffer", undefined, vscode.ConfigurationTarget.Workspace);
   }
+});
+
+test("the browser IDE and VS Code see each other: text and carets both ways", async () => {
+  const ed = await openShared("src/interop.js");
+  const sync = relay.syncFor(ed.document.uri)!;
+  caretAt(ed, ed.document.lineAt(0).text.length);
+  await type(" — hello from VS Code");
+  // Bea, in a real browser (run.mts), sees it, then types on line 2.
+  await until(() => ed.document.getText().includes("hello from the browser"), 120_000, "Bea's typing from the browser");
+  await until(() => sync.peers().some((p) => p.member.name === "Bea" && p.head !== null), 5000, "Bea's caret in VS Code");
+  caretAt(ed, ed.document.lineAt(0).text.length);
+  await sleep(500);
+  writeFileSync(join(SIGNALS, "vscode-shot"), "");
+  await until(() => existsSync(join(SIGNALS, "vscode-shot-done")), 30_000, "the VS Code screenshot");
 });
 
 test("line history: an edit session opens as a read-only diff from Relay", async () => {

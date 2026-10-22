@@ -100,7 +100,8 @@ Consequences:
 | `POST /api/files/delete` `{path}` | edit | File or folder. Connections closed with 4410; history moved aside to `deleted:<ts>:file:<path>` so a new file at that path starts empty. Event `file.deleted` |
 | `POST /api/folders` `{path}` | edit | New folder. Event `folder.created` |
 | WebSocket `/collab/file:<path>` close **4410** | — | The file was renamed or deleted (or never existed and isn't loaded). Clients stop reconnecting: reconnecting would send the stale copy back and recreate the file |
-| `GET /api/capabilities` | read | terminal policy, agent provider and its declared capabilities, extension host status |
+| `GET /api/capabilities` | read | terminal policy, agent provider and its declared capabilities, extension host status, whether the VS Code extension can be downloaded here |
+| `GET /downloads/relay-vscode.vsix` | none (invitees aren't signed in yet) | the packaged VS Code extension (`vscode/`, `npm run package`); 404 with the reason if it hasn't been packaged |
 | `POST /api/tasks` · `/tasks/:id/transition` · `/check` · `/run` · `/cancel-run` · `/apply` | edit (consequential transitions and apply: approve) | task lifecycle through the engine's state machine and gates. Verification runs without blocking the server. `/apply` re-checks the agent's change merged into the project as it is now when the project changed since the agent's snapshot, and refuses while Relay is still checking, during another apply, or when a changed file was renamed or deleted |
 | `GET /api/tasks/:id` · `/why` · `/change` | read | task, evidence, events; completion gaps; the change record (six stages) |
 | `POST /api/agent` | edit | agent composer: a prompt becomes a scoped task (owners run it, editors propose) |

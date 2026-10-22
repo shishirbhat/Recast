@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import { Relay } from "../core/engine.ts";
@@ -73,6 +74,18 @@ const MIME: Record<string, string> = {
   ".woff": "font/woff",
   ".txt": "text/plain; charset=utf-8",
 };
+
+const VSIX_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../vscode");
+const VSIX_MISSING = "The VS Code extension hasn't been packaged on this server (cd vscode && npm install && npm run package).";
+/** The newest packaged VS Code extension next to this Relay install, or null. */
+function vsixPath(): string | null {
+  try {
+    const files = readdirSync(VSIX_DIR).filter((f) => /^relay-vscode-.*\.vsix$/.test(f)).sort();
+    return files.length ? join(VSIX_DIR, files.at(-1)!) : null;
+  } catch {
+    return null;
+  }
+}
 
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
@@ -286,7 +299,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (method === "GET" && parts[0] === "capabilities") {
       const m = requireMember(req, "read");
       const p = runs.provider;
-      return json(res, 200, { terminal: await terminals.availability(m), agent: { provider: p.id, displayName: p.displayName, capabilities: p.capabilities, ...(await p.available()) }, extensions: { available: false, reason: "Relay has no extension host yet. Language support is built in." } });
+      return json(res, 200, { terminal: await terminals.availability(m), agent: { provider: p.id, displayName: p.displayName, capabilities: p.capabilities, ...(await p.available()) }, extensions: { available: false, reason: "Relay has no extension host yet. Language support is built in." }, vscodeExtension: vsixPath() ? { available: true, url: "/downloads/relay-vscode.vsix" } : { available: false, reason: VSIX_MISSING } });
     }
     if (parts[0] === "terminals") {
       const m = requireMember(req, "read");
@@ -924,6 +937,18 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     throw new HttpError(404, "not_found", "No such endpoint");
   }
 
+  /** The VS Code extension, if it has been packaged (`cd vscode && npm run package`). Public: invitees aren't signed in yet. */
+  function serveVsix(res: ServerResponse): void {
+    const file = vsixPath();
+    if (!file) {
+      res.writeHead(404, { "content-type": "text/plain", ...SECURITY_HEADERS });
+      res.end(VSIX_MISSING);
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${basename(file)}"`, "cache-control": "no-cache", ...SECURITY_HEADERS });
+    res.end(readFileSync(file));
+  }
+
   const staticRoot = opts.staticDir ? resolve(opts.staticDir) : undefined;
   function serveStatic(res: ServerResponse, pathname: string): void {
     const dir = staticRoot;
@@ -946,6 +971,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://relay.local");
+    if (url.pathname === "/downloads/relay-vscode.vsix") return serveVsix(res);
     if (!url.pathname.startsWith("/api/")) return serveStatic(res, url.pathname);
     api(req, res, url).catch((err: unknown) => {
       if (err instanceof HttpError) return json(res, err.status, { error: err.code, message: err.message });
