@@ -75,6 +75,12 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+/**
+ * The client protocol: collaboration messages (Yjs sync + awareness + Relay's save acknowledgement), the event feed and
+ * the HTTP API the VS Code extension uses. Bump when a change would break an older client; clients refuse a mismatch.
+ */
+export const PROTOCOL = 1;
+const RELAY_VERSION = (JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8")) as { version: string }).version;
 const VSIX_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../vscode");
 const VSIX_MISSING = "The VS Code extension hasn't been packaged on this server (cd vscode && npm install && npm run package).";
 /** The newest packaged VS Code extension next to this Relay install, or null. */
@@ -238,6 +244,17 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (req.headers["x-relay"] !== "1") throw new HttpError(403, "forbidden", "Missing x-relay header");
   }
 
+  /** A file's shared text: the live document if one is loaded (it may be ahead of the disk by the flush delay), else disk. Null if missing or not text. */
+  function sharedText(path: string): string | null {
+    const live = docs.get(path);
+    if (live) return live.text.toString();
+    try {
+      return readText(root, path);
+    } catch {
+      return null;
+    }
+  }
+
   function snapshot(m: Member) {
     const tasks = relay.listTasks();
     const contracts = [...new Set(tasks.flatMap((t) => Object.keys(t.contracts)))].concat([...relay.currentContracts().keys()]);
@@ -284,7 +301,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       if (!allow(`ip:${req.socket.remoteAddress}`)) throw new HttpError(429, "rate_limited", "Too many attempts");
       const body = await readBody(req);
       const { member, session } = members.redeem(str(body.token, "token", 200));
-      relay.record("member.joined", `human:${member.id}`, { member: member.id });
+      // Which client joined (e.g. "vscode/0.2.0"): useful when diagnosing version problems. Never secret, kept short.
+      const client = String(req.headers["x-relay-client"] ?? "browser").replace(/[^\w./-]/g, "").slice(0, 40);
+      relay.record("member.joined", `human:${member.id}`, { member: member.id, client });
       return json(res, 200, { member }, { "set-cookie": `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${7 * 86400}` });
     }
     if (method === "POST" && parts[0] === "logout") {
@@ -292,9 +311,31 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       return json(res, 200, {}, { "set-cookie": `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` });
     }
     if (method === "GET" && parts[0] === "state") return json(res, 200, snapshot(requireMember(req, "read")));
+    if (method === "GET" && parts[0] === "version") {
+      // Public, so a client can tell an incompatible server apart before it redeems a one-time invite.
+      return json(res, 200, { protocol: PROTOCOL, version: RELAY_VERSION });
+    }
+    if (method === "GET" && parts[0] === "files" && parts[1] === "fingerprints") {
+      // The shared text of every file, as fingerprints (same FNV-1a as clients compute), so a client can tell which of
+      // its local copies differ without downloading the project. Live documents count over what's on disk.
+      requireMember(req, "read");
+      const out: Record<string, string> = {};
+      for (const p of listProjectFiles(root)) {
+        const text = sharedText(p);
+        if (text !== null) out[p] = textFingerprint(text);
+      }
+      return json(res, 200, { fingerprints: out });
+    }
     if (method === "GET" && parts[0] === "files") {
       requireMember(req, "read");
       return json(res, 200, { files: listProjectFiles(root), folders: listEmptyFolders(root) });
+    }
+    if (method === "GET" && parts[0] === "file") {
+      requireMember(req, "read");
+      const path = resolveProjectPath(root, url.searchParams.get("path") ?? "");
+      const text = sharedText(path);
+      if (text === null) throw new HttpError(404, "not_found", `${path} doesn't exist`);
+      return json(res, 200, { path, text, fingerprint: textFingerprint(text) });
     }
     if (method === "GET" && parts[0] === "capabilities") {
       const m = requireMember(req, "read");

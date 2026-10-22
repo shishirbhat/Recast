@@ -13,6 +13,8 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { api, client, join, sleep, testServer, until } from "./collab-helpers.ts";
 import { MESSAGE_ACK } from "../src/server/collab.ts";
+import { PROTOCOL } from "../src/server/server.ts";
+import { textFingerprint } from "../src/server/files.ts";
 
 /** A raw y-protocols connection, so the test sees every message the server sends. */
 async function rawConn(url: string, cookie: string, path: string, ack: boolean) {
@@ -166,6 +168,37 @@ test("rename and delete racing on one file: the result is one of the two, never 
     const code = await new Promise<number>((ok) => stale.on("close", (c) => ok(c)));
     assert.equal(code, 4410);
     assert.ok(!existsSync(pjoin(repo, "src/a.js")));
+  } finally {
+    await server.close();
+  }
+});
+
+test("file reads for clients: version is public, contents need a session, protected and ignored paths are refused", async () => {
+  const { server } = await testServer({ "src/a.js": "a\n", ".gitignore": "*.log\n", "debug.log": "x\n", ".env": "SECRET=1\n" });
+  try {
+    const v = await (await fetch(`${server.url}/api/version`)).json();
+    assert.equal(v.protocol, PROTOCOL);
+    assert.match(v.version, /^\d+\.\d+\.\d+/);
+    const vi = await join(server, "Vi", "viewer");
+    assert.equal((await api(server, null, "GET", "/api/file?path=src/a.js")).status, 401, "no session, no content");
+    assert.equal((await api(server, null, "GET", "/api/files/fingerprints")).status, 401);
+    const r = await api(server, vi.cookie, "GET", "/api/file?path=src/a.js");
+    assert.equal(r.status, 200);
+    assert.equal(r.body.text, "a\n");
+    assert.equal(r.body.fingerprint, textFingerprint("a\n"));
+    assert.equal((await api(server, vi.cookie, "GET", "/api/file?path=.env")).status, 403, "secrets are never served");
+    assert.equal((await api(server, vi.cookie, "GET", "/api/file?path=debug.log")).status, 403, "ignored files are never served");
+    assert.equal((await api(server, vi.cookie, "GET", "/api/file?path=../../etc/passwd")).status, 403);
+    assert.equal((await api(server, vi.cookie, "GET", "/api/file?path=src/missing.js")).status, 404);
+    // Live text wins over the disk (it can be ahead by the flush delay).
+    const ed = await join(server, "Ed", "editor");
+    const c = await client(server, ed.cookie, "src/a.js");
+    c.text.insert(0, "live ");
+    await until(() => server.docs.get("src/a.js")!.text.toString() === "live a\n");
+    const fps = (await api(server, vi.cookie, "GET", "/api/files/fingerprints")).body.fingerprints;
+    assert.equal(fps["src/a.js"], textFingerprint("live a\n"));
+    assert.ok(!(".env" in fps) && !("debug.log" in fps));
+    c.close();
   } finally {
     await server.close();
   }

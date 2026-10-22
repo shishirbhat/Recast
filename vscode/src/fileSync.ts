@@ -3,7 +3,16 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import * as decoding from "lib0/decoding";
 import type { Connection, Member } from "./connection.ts";
+import { readFileSync } from "node:fs";
 import { replacement } from "./text.ts";
+
+function readDisk(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
 
 /** Origin of edits typed in this VS Code window. Undo tracks only these, so it never reverts a collaborator's work. */
 export const LOCAL = Symbol("relay:local");
@@ -19,6 +28,19 @@ export type SyncState = "connecting" | "synced" | "offline" | "gone" | "paused";
 
 /** What to do when the local file and the shared one differ the first time they meet. */
 export type Divergence = "shared" | "local" | "skip";
+
+/** What to do when another program rewrote an open shared file on disk (git checkout, a generator, Revert File). */
+export type ExternalChoice = "share" | "keepShared";
+
+/** Decisions FileSync needs from the person, asked by the extension. */
+export interface SyncChoices {
+  divergence(path: string, local: string, shared: string): Promise<Divergence>;
+  externalChange(path: string): Promise<ExternalChoice>;
+  /** A short notice (e.g. "nothing of yours to undo"). */
+  notice(message: string): void;
+  /** Diagnostics for the Relay output channel: states and codes, never content. */
+  log(line: string): void;
+}
 
 export interface Peer {
   clientId: number;
@@ -66,13 +88,15 @@ export class FileSync {
   private lateTimer: NodeJS.Timeout | undefined;
   private listeners = new Set<() => void>();
   private readOnlyWarned = false;
+  /** Waiting on the person (an outside rewrite) or restoring after a native undo: nothing is written or forwarded. */
+  private held = false;
 
   constructor(
     readonly conn: Connection,
     public path: string,
     public document: vscode.TextDocument,
     readonly me: Member,
-    private readonly decide: (path: string, local: string, shared: string) => Promise<Divergence>,
+    private readonly choices: SyncChoices,
   ) {
     this.undoManager = new Y.UndoManager(this.text, { trackedOrigins: new Set([LOCAL]) });
     this.provider = new WebsocketProvider(`${conn.wsBase}/collab`, encodeURIComponent(`file:${path}`), this.doc, {
@@ -86,6 +110,7 @@ export class FileSync {
       if (status !== "connected" && this.state !== "gone" && this.state !== "paused") this.set("offline");
     });
     this.provider.on("connection-close", (e: { code?: number } | null) => {
+      if (e) this.choices.log(`${this.path}: connection closed (${e.code})`);
       // 4410: renamed or deleted in Relay. Reconnecting would send this copy back, so stop for good.
       if (e?.code !== 4410) return;
       this.provider.shouldConnect = false;
@@ -93,6 +118,7 @@ export class FileSync {
       this.set("gone");
     });
     this.provider.on("sync", (synced: boolean) => {
+      this.choices.log(`${this.path}: ${synced ? "synced" : "syncing"}`);
       if (!synced) return this.set("connecting");
       if (this.state === "paused" || this.state === "gone") return;
       if (!this.bound) void this.bind();
@@ -113,15 +139,14 @@ export class FileSync {
 
   // ---------- binding ----------
 
-  /** `recover`: re-binding after a problem; the shared text wins without asking. */
-  private async bind(recover = false): Promise<void> {
+  private async bind(): Promise<void> {
     if (this.binding || this.bound) return;
     this.binding = true;
     try {
       const local = this.document.getText();
       const shared = this.text.toString();
       let choice: Divergence = "shared";
-      if (local !== shared && !recover) choice = await this.decide(this.path, local, shared);
+      if (local !== shared) choice = await this.choices.divergence(this.path, local, shared);
       if (choice === "skip") {
         this.set("paused");
         this.provider.disconnect();
@@ -161,14 +186,38 @@ export class FileSync {
     if (!this.bound || !e.contentChanges.length) return;
     const after = e.document.getText();
     if (this.writing && after === this.writing.target) return this.shown();
+    if (this.held) return;
+    // VS Code's own undo/redo (Edit menu, Command Palette, toolbar, any key not bound to Relay's) works on its native
+    // history, which includes collaborators' edits. Put the text back and run Relay's undo, which only reverts yours.
+    if (e.reason === vscode.TextDocumentChangeReason.Undo || e.reason === vscode.TextDocumentChangeReason.Redo) {
+      void this.nativeUndo(e.reason === vscode.TextDocumentChangeReason.Redo);
+      return;
+    }
+    // Rewritten on disk by another program and reloaded by VS Code: the document is clean and its text is exactly the
+    // file on disk. (VS Code updates `isDirty` after the change event, so a first keystroke can look clean too; typing
+    // never makes the editor equal to the file on disk, which is why both are checked. The disk is only read on that
+    // clean-document case, not on every keystroke.) Don't share it, or overwrite it, without asking.
+    if (!e.document.isDirty && this.document.uri.scheme === "file" && readDisk(this.document.uri.fsPath) === after) {
+      void this.externalChange();
+      return;
+    }
     if (this.me.role === "viewer") {
       if (!this.readOnlyWarned) void vscode.window.showWarningMessage(`You're a viewer in this Relay project: changes to ${this.path} aren't shared, and are replaced by the shared text.`);
       this.readOnlyWarned = true;
       // Put the shared text back.
-      return this.resetView();
+      void this.hold(() => this.restoreEditor());
+      return;
     }
-    // Offsets are the editor's, and `view` is the editor: apply them as they are, last first.
+    // Offsets are the editor's, and `view` should be the editor as it was before this change. Check that before
+    // forwarding anything: if it isn't (e.g. VS Code reopened a renamed file from disk, then restored its unsaved
+    // text), these offsets would land in the wrong place for everyone.
     const changes = [...e.contentChanges].sort((a, b) => b.rangeOffset - a.rangeOffset);
+    let expected = this.viewText.toString();
+    for (const c of changes) expected = expected.slice(0, c.rangeOffset) + c.text + expected.slice(c.rangeOffset + c.rangeLength);
+    if (expected !== after) {
+      void this.outOfStep(after);
+      return;
+    }
     this.view.transact(() => {
       for (const c of changes) {
         if (c.rangeLength) this.viewText.delete(c.rangeOffset, c.rangeLength);
@@ -176,7 +225,6 @@ export class FileSync {
       }
     }, LOCAL);
     this.noteLocalEdit();
-    if (this.viewText.toString() !== after) this.diverged(`after your edit (editor ${after.length} chars, copy ${this.viewText.length})`);
     void this.flush();
   }
 
@@ -186,14 +234,16 @@ export class FileSync {
     w.landed = true;
     const covered = this.pending.splice(0, w.covers);
     if (covered.length) Y.applyUpdate(this.view, Y.mergeUpdates(covered), SHOWN);
-    if (this.viewText.toString() !== w.target) this.diverged("after showing collaborators' edits");
+    if (this.viewText.toString() !== w.target) void this.outOfStep(this.document.getText());
   }
 
   // ---------- shared edits (collaborators, undo) → the editor ----------
 
   /** Write pending shared updates into the editor. One write at a time; retried when VS Code refuses a stale one. */
   private async flush(): Promise<void> {
-    if (!this.bound || this.writing || !this.pending.length) return;
+    if (!this.bound || this.held || this.writing || !this.pending.length) return;
+    // Edits are computed in `view`'s offsets; they're only valid if the editor shows exactly `view`.
+    if (this.document.getText() !== this.viewText.toString()) return void this.outOfStep(this.document.getText());
     // What the editor would show with the pending updates: computed on a copy of `view`, as edits in its offsets.
     const covers = this.pending.length;
     const copy = new Y.Doc();
@@ -239,19 +289,109 @@ export class FileSync {
     if (this.pending.length) setImmediate(() => void this.flush());
   }
 
-  /**
-   * The editor and its Yjs copy disagree. That should never happen; if it does, say so (never hide it) and recover:
-   * rebuild the copy from the shared document and show the shared text.
-   */
-  private diverged(where: string): void {
-    void vscode.window.showWarningMessage(`Relay: ${this.path} got out of step ${where}; showing the shared text again. Nothing that reached Relay is lost.`);
-    this.resetView();
+  /** Make the editor show `view` again (after a native undo or an outside rewrite), retrying if VS Code refuses. */
+  private async restoreEditor(): Promise<void> {
+    for (let i = 0; i < 50 && this.document.getText() !== this.viewText.toString(); i++) {
+      const target = this.viewText.toString();
+      const r = replacement(this.document.getText(), target)!;
+      const we = new vscode.WorkspaceEdit();
+      we.replace(this.document.uri, new vscode.Range(this.document.positionAt(r.start), this.document.positionAt(r.end)), r.insert);
+      this.writing = { target, covers: 0, landed: false };
+      try {
+        await vscode.workspace.applyEdit(we);
+      } finally {
+        this.writing = null;
+      }
+    }
   }
 
-  private resetView(): void {
-    this.bound = false;
-    this.pending = [];
-    void this.bind(true);
+  private async nativeUndo(redo: boolean): Promise<void> {
+    this.held = true;
+    try {
+      await this.restoreEditor();
+      const stack = redo ? this.undoManager.redoStack : this.undoManager.undoStack;
+      if (!stack.length) this.choices.notice(redo ? "Nothing of yours to redo in this file." : "Nothing of yours to undo in this file. Relay's undo only reverts your own edits.");
+      else if (redo) this.undoManager.redo();
+      else this.undoManager.undo();
+    } finally {
+      this.held = false;
+    }
+    void this.flush();
+  }
+
+  private async externalChange(): Promise<void> {
+    this.held = true;
+    try {
+      const choice = await this.choices.externalChange(this.path);
+      if (choice === "share") {
+        if (this.me.role === "viewer") throw new Error("Viewers can't change shared files");
+        const r = replacement(this.viewText.toString(), this.document.getText());
+        if (r) this.view.transact(() => (this.viewText.delete(r.start, r.end - r.start), this.viewText.insert(r.start, r.insert)), LOCAL);
+        this.noteLocalEdit();
+      } else await this.restoreEditor();
+    } catch (e) {
+      this.choices.notice((e as Error).message);
+      await this.restoreEditor();
+    } finally {
+      this.held = false;
+    }
+    void this.flush();
+  }
+
+  /** Wait (up to `ms`) until the server has confirmed every edit from this window. True if it has. */
+  async confirmedWithin(ms: number): Promise<boolean> {
+    const end = Date.now() + ms;
+    while (this.unsent() && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
+    return !this.unsent();
+  }
+
+  /**
+   * The file was renamed (here or in Relay): keep this shared document, its undo history and anything not yet sent,
+   * and connect it under the new name. The server carried the history to the new name; syncing sends what it lacks.
+   */
+  retarget(path: string, document: vscode.TextDocument): void {
+    this.path = path;
+    this.document = document;
+    this.provider.disconnect();
+    this.provider.roomname = encodeURIComponent(`file:${path}`);
+    this.provider.shouldConnect = true;
+    this.provider.connect();
+    this.set("connecting");
+  }
+
+  /** Run `fn` with forwarding and writing paused, then catch up. */
+  private async hold(fn: () => Promise<void>): Promise<void> {
+    this.held = true;
+    try {
+      await fn();
+    } finally {
+      this.held = false;
+    }
+    void this.flush();
+  }
+
+  /**
+   * The editor no longer shows what this session believes it shows. If it now shows the shared text, nothing to do.
+   * Otherwise it holds something Relay doesn't (or lacks something it has): never guess, ask, exactly as when a file
+   * that differs is first opened. Nothing is forwarded or overwritten until then.
+   */
+  private async outOfStep(editorText: string): Promise<void> {
+    if (this.held) return;
+    if (editorText === this.viewText.toString()) return;
+    this.choices.log(`${this.path}: editor out of step with its shared copy (${editorText.length} vs ${this.viewText.length} chars); asking`);
+    await this.hold(async () => {
+      const choice = this.me.role === "viewer" ? "shared" : await this.choices.divergence(this.path, this.document.getText(), this.viewText.toString());
+      if (choice === "local") {
+        const r = replacement(this.viewText.toString(), this.document.getText());
+        if (r) this.view.transact(() => (this.viewText.delete(r.start, r.end - r.start), this.viewText.insert(r.start, r.insert)), LOCAL);
+        this.noteLocalEdit();
+      } else if (choice === "shared") await this.restoreEditor();
+      else {
+        this.bound = false;
+        this.set("paused");
+        this.provider.disconnect();
+      }
+    });
   }
 
   // ---------- saved / not saved ----------

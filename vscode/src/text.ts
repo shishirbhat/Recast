@@ -25,3 +25,26 @@ export function replacement(from: string, to: string): { start: number; end: num
   return { start: prefix, end: from.length - suffix, insert: to.slice(prefix, to.length - suffix) };
 }
 
+
+/** Fingerprint of a text: the same FNV-1a + length the Relay server computes (`textFingerprint` in src/server/files.ts). */
+export function fingerprint(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return `${text.length}:${h.toString(16)}`;
+}
+
+/** Where a kept copy goes when the original path is taken: next to it, marked as recovered, extension kept. */
+export function recoveredName(path: string): string {
+  const slash = path.lastIndexOf("/");
+  const dot = path.lastIndexOf(".");
+  return dot > slash + 1 ? `${path.slice(0, dot)}.recovered${path.slice(dot)}` : `${path}.recovered`;
+}
+
+/** Can this be a shared text document? (Relay shares UTF-8 text up to 2 MB; the server checks again.) */
+export function sharableText(bytes: Uint8Array): { ok: true; text: string } | { ok: false; reason: string } {
+  if (bytes.length > 2 * 1024 * 1024) return { ok: false, reason: "it's larger than 2 MB" };
+  if (bytes.includes(0)) return { ok: false, reason: "it looks binary" };
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  if (Buffer.byteLength(text, "utf8") !== bytes.length) return { ok: false, reason: "it isn't valid UTF-8" };
+  return { ok: true, text };
+}

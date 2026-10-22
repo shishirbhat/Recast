@@ -2,7 +2,7 @@
   "name": "relay-vscode",
   "displayName": "Relay",
   "description": "Work on a Relay project from VS Code: live shared editing with people and agents, presence, line history and coordination.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "relay",
   "private": true,
   "license": "UNLICENSED",
@@ -40,6 +40,12 @@
         "title": "Who Wrote This Line?",
         "category": "Relay",
         "enablement": "relay.fileShared"
+      },
+      {
+        "command": "relay.restoreShared",
+        "title": "Restore Shared Files Missing Here…",
+        "category": "Relay",
+        "enablement": "relay.connected"
       },
       {
         "command": "relay.undo",
@@ -171,6 +177,36 @@
           ],
           "default": "ask",
           "description": "What to do when a file you open differs from its shared copy in Relay."
+        },
+        "relay.shareDeletes": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "always",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Ask each time you delete a shared file in VS Code",
+            "Delete it for everyone in Relay too",
+            "Only delete it in your checkout"
+          ],
+          "default": "ask",
+          "description": "When you delete a shared file in VS Code (Explorer, refactoring), whether to delete it for everyone in Relay."
+        },
+        "relay.externalChanges": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "share",
+            "keepShared"
+          ],
+          "enumDescriptions": [
+            "Ask each time",
+            "Share the new content with everyone",
+            "Put the shared version back in your editor"
+          ],
+          "default": "ask",
+          "description": "When another program (git checkout, a generator, Revert File) rewrites a shared file you have open."
         }
       }
     }
@@ -195,7 +231,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && npm run build:test && node test/run.mts",
     "build:test": "esbuild test/suite.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist-test/suite.js --log-level=warning",
-    "package": "npm run build && npx --yes @vscode/vsce@3 package --no-dependencies --allow-missing-repository --skip-license"
+    "package": "npm run build && npx --yes @vscode/vsce@3 package --no-dependencies --allow-missing-repository --skip-license",
+    "test:install": "npm run package && node test/install.mts"
   },
   "repository": {
     "type": "git",

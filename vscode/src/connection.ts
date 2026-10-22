@@ -34,6 +34,9 @@ export class RelayError extends Error {
   }
 }
 
+/** The client protocol this extension speaks (see `PROTOCOL` in the Relay server). */
+export const PROTOCOL = 1;
+
 /** Parse an invite link (`http://host:port/join#<token>`) into the server's origin and the one-time token. */
 export function parseInvite(link: string): { server: string; token: string } {
   let url: URL;
@@ -52,6 +55,8 @@ export function parseInvite(link: string): { server: string; token: string } {
  * cookie, and the project's event feed. The cookie is a credential; it is never logged or shown.
  */
 export class Connection {
+  /** Who is calling, sent with every request (`x-relay-client`), e.g. "vscode/0.2.0". Set once by the extension. */
+  static client = "vscode/unknown";
   me: Member | null = null;
   members: Member[] = [];
   project: { name: string; head: string | null } = { name: "", head: null };
@@ -65,9 +70,28 @@ export class Connection {
     private readonly cookie: string,
   ) {}
 
+  /**
+   * Is `server` a Relay server speaking this extension's protocol? Throws a clear error otherwise (426 for a version
+   * mismatch). Checked before an invite is redeemed, so a one-time invite isn't spent on a server we can't use.
+   */
+  static async checkServer(server: string): Promise<void> {
+    let res: Response;
+    try {
+      res = await fetch(`${server}/api/version`, { headers: { "x-relay-client": Connection.client } });
+    } catch (e) {
+      throw new Error(`Can't reach ${server} (${(e as Error).message}).`);
+    }
+    if (res.status === 404) throw new RelayError(426, `${server} is a Relay server too old for this extension (it has no /api/version). Update the server, or install the extension version it offers.`);
+    if (!res.ok) throw new RelayError(res.status, `${server} answered ${res.status}; is it a Relay server?`);
+    const v = (await res.json().catch(() => null)) as { protocol?: number; version?: string } | null;
+    if (v?.protocol !== PROTOCOL) {
+      throw new RelayError(426, `This Relay server (version ${v?.version ?? "unknown"}) speaks protocol ${v?.protocol ?? "unknown"}; this extension speaks ${PROTOCOL}. ${(v?.protocol ?? 0) > PROTOCOL ? "Update the extension (the invite dialog offers the matching one)." : "Update the Relay server."}`);
+    }
+  }
+
   /** Redeem an invite token for a session. Returns the session cookie (`name=value`). */
   static async redeem(server: string, token: string): Promise<string> {
-    const res = await fetch(`${server}/api/join`, { method: "POST", headers: { "content-type": "application/json", "x-relay": "1" }, body: JSON.stringify({ token }) });
+    const res = await fetch(`${server}/api/join`, { method: "POST", headers: { "content-type": "application/json", "x-relay": "1", "x-relay-client": Connection.client }, body: JSON.stringify({ token }) });
     if (res.status !== 200) throw new RelayError(res.status, await errorText(res, "The invite was refused (it may have been used already or revoked)."));
     const set = res.headers.get("set-cookie");
     const cookie = set?.split(";")[0];
@@ -78,7 +102,7 @@ export class Connection {
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.server}/api${path}`, {
       method,
-      headers: { cookie: this.cookie, "x-relay": "1", ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+      headers: { cookie: this.cookie, "x-relay": "1", "x-relay-client": Connection.client, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) throw new RelayError(res.status, await errorText(res, `${method} ${path} failed (${res.status})`));
@@ -120,6 +144,7 @@ export class Connection {
     this.eventsWs = ws;
     ws.on("open", () => onState(true));
     ws.on("message", (raw) => {
+      if (this.closed) return; // left this project: late messages are not ours to act on
       let msg: { type?: string; seq?: number; events?: RelayEvent[]; online?: string[]; participants?: Participant[] };
       try {
         msg = JSON.parse(String(raw));
