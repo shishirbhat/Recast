@@ -10,11 +10,12 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import path from "node:path";
 import { createLink } from "../../calendar-link/src/server.js";
+import { canGrab, grabSelection } from "./grab.js";
 
 type Theme = "system" | "dark" | "light";
 interface Settings { theme: Theme; keepOnTop: boolean; shortcuts: { open: string; capture: string } }
 interface GoogleConfig { clientId: string; clientSecret: string }
-const DEFAULTS: Settings = { theme: "system", keepOnTop: true, shortcuts: { open: "CommandOrControl+Shift+Space", capture: "CommandOrControl+Alt+Space" } };
+const DEFAULTS: Settings = { theme: "system", keepOnTop: true, shortcuts: { capture: "CommandOrControl+Shift+Space", open: "CommandOrControl+Alt+Space" } };
 const PORT = 8787;
 const DARK_BG = "#141311", LIGHT_BG = "#faf9f6";
 
@@ -72,15 +73,28 @@ function harden(w: BrowserWindow) {
 }
 const webPreferences = { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false };
 
+// The capsule floats above other windows: a small pill while there is nothing to do, opening into the panel when there
+// is. It grows from its bottom-right corner, so it stays where the person put it.
+const SIZES = { compact: { width: 420, height: 64 }, open: { width: 440, height: 640 } } as const;
+let size: keyof typeof SIZES = "compact";
+function resizeTo(next: keyof typeof SIZES) {
+  if (!main || main.isDestroyed() || next === size) return;
+  const b = main.getBounds(); const s = SIZES[next];
+  const wa = screen.getDisplayMatching(b).workArea;
+  const x = Math.min(Math.max(wa.x + 8, b.x + b.width - s.width), wa.x + wa.width - s.width - 8);
+  const y = Math.min(Math.max(wa.y + 8, b.y + b.height - s.height), wa.y + wa.height - s.height - 8);
+  size = next; main.setBounds({ x, y, ...s }, process.platform === "darwin");
+}
 function createMain() {
   const { workArea } = screen.getPrimaryDisplay();
-  const w = 440, h = 640;
+  const { width: w, height: h } = SIZES[size];
   main = new BrowserWindow({
-    width: w, height: h, minWidth: 360, minHeight: 480, x: workArea.x + workArea.width - w - 24, y: workArea.y + workArea.height - h - 24,
-    show: false, frame: process.platform === "darwin", titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: bg(), alwaysOnTop: settings.keepOnTop, title: "Recast", webPreferences,
-    ...(process.platform === "darwin" ? { vibrancy: "under-window" as const, visualEffectState: "active" as const } : {}),
+    width: w, height: h, x: workArea.x + workArea.width - w - 24, y: workArea.y + workArea.height - h - 24,
+    show: false, frame: false, transparent: true, resizable: false, maximizable: false, fullscreenable: false, hasShadow: true, skipTaskbar: true,
+    backgroundColor: "#00000000", alwaysOnTop: settings.keepOnTop, title: "Recast", webPreferences,
   });
+  if (settings.keepOnTop) main.setAlwaysOnTop(true, "floating");
+  main.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   harden(main);
   void main.loadFile(page("index.html"));
   main.once("ready-to-show", () => { if (!test || process.env["RECAST_SHOW"] !== "0") main?.show(); });
@@ -88,6 +102,8 @@ function createMain() {
   main.on("close", (e) => { if (!quitting) { e.preventDefault(); main?.hide(); } });
 }
 function showMain() { if (!main || main.isDestroyed()) createMain(); main!.show(); main!.focus(); }
+/** Shown without taking the keyboard from the app the person is in. */
+function showQuietly() { if (!main || main.isDestroyed()) createMain(); if (!main!.isVisible()) main!.showInactive(); }
 function toggleMain() { if (main?.isVisible() && main.isFocused()) main.hide(); else showMain(); }
 
 function openConnections() {
@@ -106,12 +122,15 @@ function openPlayground() {
   playground.once("ready-to-show", () => playground?.show());
 }
 
-/** What is copied now, as a capture for the capsule (the app it came from is not knowable; it is said to be the clipboard). */
-async function captureClipboard() {
-  const text = (await clipboard.readText()).trim();
-  showMain();
-  main!.webContents.send("recast:capture", text ? { text: text.slice(0, 2000), from: "clipboard" } : { text: "", from: "clipboard" });
+/** Grab: what is selected in the app in front becomes an object in the capsule, with the app (and page) it came from. */
+async function grabNow() {
+  const r = await grabSelection();
+  showQuietly();
+  if (r.ok) main!.webContents.send("recast:capture", { ...r.grabbed, from: "selection" });
+  else main!.webContents.send("recast:grab-problem", { reason: r.reason, message: r.message });
+  return r;
 }
+if (test) (globalThis as unknown as { __recastGrab: () => Promise<unknown> }).__recastGrab = grabNow;
 
 function registerShortcuts() {
   globalShortcut.unregisterAll(); shortcutProblems.length = 0;
@@ -120,7 +139,7 @@ function registerShortcuts() {
     catch { shortcutProblems.push(`${accel} (${what}) is not a valid shortcut`); }
   };
   reg(settings.shortcuts.open, toggleMain, "open Recast");
-  reg(settings.shortcuts.capture, () => void captureClipboard(), "capture what you copied");
+  reg(settings.shortcuts.capture, () => void grabNow(), "grab what you selected");
 }
 
 function trayIcon() {
@@ -133,7 +152,7 @@ function buildTray() {
   const pretty = (a: string) => a.replace("CommandOrControl", process.platform === "darwin" ? "⌘" : "Ctrl").replace("Alt", process.platform === "darwin" ? "⌥" : "Alt").replace(/\+/g, process.platform === "darwin" ? "" : "+");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Open Recast    ${pretty(settings.shortcuts.open)}`, click: showMain },
-    { label: `Capture what you copied    ${pretty(settings.shortcuts.capture)}`, click: () => void captureClipboard() },
+    { label: `Grab what you selected    ${pretty(settings.shortcuts.capture)}`, click: () => void grabNow() },
     { type: "separator" },
     { label: "Try the playground (sample data)", click: openPlayground },
     { label: "Connections…", click: openConnections },
@@ -152,7 +171,7 @@ function setSettings(p: Partial<Settings>) {
   buildTray();
   main?.webContents.send("recast:settings", publicSettings());
 }
-const publicSettings = () => ({ ...settings, platform: process.platform, shortcutProblems: [...shortcutProblems], serverNote, version: app.getVersion() });
+const publicSettings = () => ({ ...settings, platform: process.platform, shortcutProblems: [...shortcutProblems], serverNote, version: app.getVersion(), grabReady: canGrab(false) });
 
 // ---- the page's few calls ---------------------------------------------------------------------------------------------
 const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear"]);
@@ -172,6 +191,13 @@ function ipc() {
     // Only the web, and the sign-in page on this computer: never a file, a custom scheme or a script.
     if (u.protocol !== "https:" && !(u.protocol === "http:" && u.host === `localhost:${PORT}`)) return false;
     void shell.openExternal(u.toString()); return true;
+  });
+  ipcMain.handle("recast:size", (_e, next: unknown) => { if (next === "compact" || next === "open") resizeTo(next); return size; });
+  // macOS: the Accessibility pane, where the person allows Recast to read selections. Nothing else opens this way.
+  ipcMain.handle("recast:permission", () => {
+    if (process.platform !== "darwin") return canGrab(false);
+    canGrab(true); void shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+    return canGrab(false);
   });
   ipcMain.handle("recast:save-inbox", (_e, state: unknown) => { if (state && typeof state === "object") writePrivate(inboxFile(), state); return true; });
   ipcMain.handle("recast:clipboard", async () => (await clipboard.readText()).slice(0, 2000));

@@ -12,9 +12,11 @@ contextBridge.exposeInMainWorld("recastDesktop", {
   settings: (p: unknown) => ipcRenderer.invoke("recast:settings", p),
   google: (g: unknown) => ipcRenderer.invoke("recast:google", g),
   googleStatus: () => ipcRenderer.invoke("recast:google-status"),
+  size: (mode: "compact" | "open") => ipcRenderer.invoke("recast:size", mode),
+  permission: () => ipcRenderer.invoke("recast:permission"),
   window: (what: "hide" | "minimize" | "connections" | "playground" | "signin") => ipcRenderer.invoke("recast:window", what),
-  on: (channel: "recast:capture" | "recast:theme" | "recast:settings", fn: (v: unknown) => void) => {
-    if (!["recast:capture", "recast:theme", "recast:settings"].includes(channel)) return;
+  on: (channel: "recast:capture" | "recast:theme" | "recast:settings" | "recast:grab-problem", fn: (v: unknown) => void) => {
+    if (!["recast:capture", "recast:theme", "recast:settings", "recast:grab-problem"].includes(channel)) return;
     ipcRenderer.on(channel, (_e, v) => fn(v));
   },
 });

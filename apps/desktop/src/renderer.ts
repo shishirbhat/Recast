@@ -17,9 +17,11 @@ interface DesktopApi {
   clipboard(): Promise<string>;
   settings(p: unknown): Promise<DesktopSettings>;
   window(what: "hide" | "minimize" | "connections" | "playground" | "signin"): Promise<boolean>;
-  on(channel: "recast:capture" | "recast:theme" | "recast:settings", fn: (v: any) => void): void;
+  size(mode: "compact" | "open"): Promise<string>;
+  permission(): Promise<boolean>;
+  on(channel: "recast:capture" | "recast:theme" | "recast:settings" | "recast:grab-problem", fn: (v: any) => void): void;
 }
-interface DesktopSettings { theme: "system" | "dark" | "light"; keepOnTop: boolean; shortcuts: { open: string; capture: string }; platform: string; shortcutProblems: string[]; serverNote: string; version: string }
+interface DesktopSettings { theme: "system" | "dark" | "light"; keepOnTop: boolean; shortcuts: { open: string; capture: string }; platform: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean }
 const api = (window as unknown as { recastDesktop: DesktopApi }).recastDesktop;
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
@@ -112,18 +114,40 @@ async function perform(eff: ClumpEffect) {
 // ---- capturing ---------------------------------------------------------------------------------------------------------
 let seq = 0;
 /** Typed, dictated or copied text as a piece: read as a time, a person (an email address), an error or text. */
-function capture(text: string, from: "typed" | "clipboard") {
+interface Origin { app?: string; title?: string; url?: string }
+/**
+ * A piece from what the person selected in another app (with the app, and the page for a browser), typed or dictated here,
+ * or copied: read as a time, a person (an email address), an error or text. Only what the system said is recorded.
+ */
+function capture(text: string, from: "typed" | "clipboard" | "selection", origin: Origin = {}) {
   const t = text.replace(/\s+/g, " ").trim(); if (!t) return;
   const { kind, value } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: TZ });
+  const source = from === "selection"
+    ? { app: origin.app ?? "Another app", ...(origin.url && /^https?:/.test(origin.url) ? { url: origin.url } : {}), ...(origin.title ? { title: origin.title.slice(0, 200) } : {}) }
+    : { app: "Recast", title: from === "typed" ? "Typed or dictated" : `Copied ${new Date().toLocaleString()}` };
   const f: Fragment = { id: `d${Date.now()}-${++seq}`, kind, text: t.slice(0, 1000), confidence: from === "typed" ? 1 : 0.9, ...(value ? { value } : {}),
-    evidence: [{ locator: { kind: "user", value: from }, excerpt: t.slice(0, 200) }],
-    source: { app: "Recast", title: from === "typed" ? "Typed or dictated" : `Copied ${new Date().toLocaleString()}` } };
+    evidence: [{ locator: { kind: "user", value: from }, excerpt: t.slice(0, 200) }], source };
   dispatch({ type: "capture", fragment: f });
+  if (from === "selection") status(`Grabbed from ${origin.app ?? "another app"}`);
 }
 const input = $<HTMLInputElement>("#say");
 $("#say-form").addEventListener("submit", (e) => { e.preventDefault(); capture(input.value, "typed"); input.value = ""; input.focus(); });
 $("#paste").addEventListener("click", async () => { const t = await api.clipboard(); if (t.trim()) capture(t, "clipboard"); else flash("Nothing is copied yet"); });
-api.on("recast:capture", (v: { text: string }) => { if (v.text.trim()) capture(v.text, "clipboard"); else flash("Copy something first, then press the shortcut"); });
+api.on("recast:capture", (v: { text: string; from?: string } & Origin) => {
+  if (!v.text.trim()) { status("Select some text first"); return; }
+  capture(v.text, v.from === "selection" ? "selection" : "clipboard", v);
+});
+api.on("recast:grab-problem", (v: { reason: string; message: string }) => {
+  if (v.reason === "permission") { needPermission = true; expanded = true; render(); }
+  status(v.message);
+});
+let needPermission = false, expanded = false;
+$("#btn-permission").addEventListener("click", async () => { if (await api.permission()) { needPermission = false; render(); } });
+$("#btn-expand").addEventListener("click", () => { expanded = true; render(); setTimeout(() => input.focus(), 50); });
+/** The pill's one line: what just happened, or how to start. */
+let statusTimer = 0;
+function status(t: string) { const el = $("#status"); el.textContent = t; clearTimeout(statusTimer); statusTimer = window.setTimeout(() => { el.textContent = idleHint(); }, 4000); }
+const idleHint = () => `Select text, then ${settings ? pretty(settings.shortcuts.capture) : "the shortcut"}`;
 
 // ---- the desk: objects rest in a flow; drag one onto another to press them together ---------------------------------------
 let inWell: string | null = null;
@@ -169,6 +193,14 @@ function kindOf(id: string): ClayItem["kind"] {
   const v = viewOf(state, id); const f = state.objects[id]!.ingredients[0]!;
   return v.type === "Event" ? "event" : v.type === "Message" ? "message" : v.type === "People" ? "people" : v.type === "Note" ? "note" : v.type === "Issue" ? "issue" : f.kind;
 }
+/** The capsule: a pill while there is nothing to do; the panel while there is (objects, the module, typing, settings). */
+let shownMode = "";
+function sizeFor() {
+  const busy = state.desk.length > 0 || !!state.carried || !["pill", "off"].includes(glass.el.dataset["mode"] ?? "off") || expanded || needPermission || !$("#settings").hidden;
+  const mode = busy ? "open" : "compact";
+  document.body.classList.toggle("compact", mode === "compact");
+  if (mode !== shownMode) { shownMode = mode; void api.size(mode); }
+}
 function render() {
   glass.update(moduleModel(state, REGISTRY), lastError && !state.carried ? { error: lastError } : {});
   glass.el.style.setProperty("--rg-bottom", `${$("#say-form").offsetHeight + 10}px`);
@@ -176,10 +208,16 @@ function render() {
   inWell = w && id && state.desk.includes(id) && state.carried !== id ? id : null;
   renderPass();
   $("#empty").hidden = state.desk.length > 0 || !!state.carried;
+  $("#permission").hidden = !needPermission;
+  // One quiet line about what to do next, while the module is closed.
+  const next = $("#next"); const closed = ["pill", "off"].includes(glass.el.dataset["mode"] ?? "off");
+  next.hidden = !closed || !state.desk.length || !!state.carried;
+  next.textContent = state.desk.length === 1 ? "Grab another piece, or drag them together. Click an object to see inside or place it." : "Drag one object onto another to press them together, then choose where it goes.";
+  sizeFor();
   // With the module closed, what just happened (or why something was refused) shows in the note.
   if (glass.el.dataset["mode"] === "pill" || glass.el.dataset["mode"] === "off") {
     if (lastError) flash(lastError.charAt(0).toUpperCase() + lastError.slice(1));
-    else if (state.last && state.last.at !== shownAt && ["refused", "cancelled", "removed", "placed", "undone", "failed", "captured"].includes(state.last.kind)) flash(state.last.text);
+    else if (state.last && state.last.at !== shownAt && ["refused", "cancelled", "removed", "placed", "undone", "failed"].includes(state.last.kind)) flash(state.last.text);
   }
   shownAt = state.last?.at ?? shownAt;
 }
@@ -216,8 +254,8 @@ addEventListener("keydown", (e) => {
 function setTheme(t: "dark" | "light") { document.documentElement.dataset["theme"] = t; render(); }
 api.on("recast:theme", (t: "dark" | "light") => setTheme(t));
 api.on("recast:settings", (s: DesktopSettings) => { settings = s; renderSettings(); });
-$("#btn-hide").addEventListener("click", () => void api.window("hide"));
-$("#btn-settings").addEventListener("click", () => { const p = $("#settings"); p.hidden = !p.hidden; if (!p.hidden) renderSettings(); });
+$("#btn-hide").addEventListener("click", () => { expanded = false; $("#settings").hidden = true; render(); void api.window("hide"); });
+$("#btn-settings").addEventListener("click", () => { const p = $("#settings"); p.hidden = !p.hidden; if (!p.hidden) renderSettings(); render(); });
 $("#btn-connections").addEventListener("click", () => void api.window("connections"));
 $("#btn-playground").addEventListener("click", () => void api.window("playground"));
 for (const r of document.querySelectorAll<HTMLInputElement>("input[name=theme]")) r.addEventListener("change", () => void api.settings({ theme: r.value }).then((s) => { settings = s; renderSettings(); }));
@@ -235,6 +273,8 @@ function renderSettings() {
   $("#server-note").textContent = settings.serverNote;
   $("#version").textContent = `Recast ${settings.version}`;
   $("#hint-capture").textContent = pretty(settings.shortcuts.capture);
+  if (!$("#status").textContent || $("#status").textContent!.startsWith("Select text anywhere")) $("#status").textContent = idleHint();
+  if (settings.platform === "darwin" && !settings.grabReady) needPermission = true;
   $("#hint-open").textContent = pretty(settings.shortcuts.open);
 }
 

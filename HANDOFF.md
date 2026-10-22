@@ -15,13 +15,14 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-22)
-- Last full run: **967 tests, 0 failures** (21 packages, desktop included) (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+- Last full run (after desktop grab): every package passes except one `apps/extension` link test (GitHub issue) that failed once under the full parallel run and passed on two reruns (file alone 11/11, package 38/38): watch it for flakiness. Before that: **967 tests, 0 failures** (21 packages, desktop included) (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
   - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
   - **Passages → a Note → Google Docs** (D31): select sentences on pages, press them together; each keeps its page. A new optional `drive.file` permission in `apps/calendar-link` (only files Recast creates). Try-it page has a stand-in Docs tab.
   - Fixed: in the extension, letting go over empty page space pressed the object into a date on the page.
   - **An error → a GitHub issue** (D32): select an error message, optionally press notes into it; Tasks opens an issue (confirm first; everything quoted literally; Undo closes it). GitHub is its own connection in `apps/calendar-link` (fine-grained token for one repository). Try-it page has a Build tab with stand-in issues.
+  - **Desktop grab** (D37, owner's correction: the app must work on their own screen): select text in any app + ⌘⇧Space / Ctrl+Shift+Space → an object with its source app (and page for browsers); the capsule is a floating pill that opens into the panel. Tested on Linux here with text selected in a separate browser window; the Mac path (Accessibility + ⌘C, clipboard restored) is built but has not run on a Mac yet.
   - **Desktop app** (`apps/desktop`, D36): Electron, tray, global shortcuts (open; capture what you copied), typed or dictated pieces (Fn on Mac / Win+H), the local program built in, recipes, dark/light, inbox kept across restarts. Linux `.rpm`/`.deb`/AppImage built and the packaged app launched here; `.dmg` and `.exe` are built by the `desktop` GitHub Actions workflow (unsigned until the owner adds certificates). Owner to run REAL_TEST_PLAN K on a Mac.
   - **Recipes** (D35) and capture-stack dedupe.
   - **Linear** issues (D33); a wheel place with two connected choices asks "which one?".
@@ -70,6 +71,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-22 (cont.):** owner said the first desktop app was just the try-it page in a wrapper; built system-wide grab (D37): select in any app + shortcut → object with its source; floating pill capsule; Mac Accessibility path (untested on a Mac). Desktop 8/8; Linux rpm/deb/AppImage rebuilt; `.dmg` from the `desktop` workflow.
 - **2026-10-22 (cont.):** Electron desktop app (D36) with 6 end-to-end tests on a virtual screen, Linux packages built and launched, CI workflow for .dmg/.exe; plain-language risk lines in the review; 967/0.
 - **2026-10-22 (cont.):** owner's mission brief: recipes / multi-destination runs with per-step outcomes (D35), capture-stack dedupe; tested on the try-it page and through the real local program (Google stand-in); 960/0. Next: Electron desktop app.
 - **2026-10-22 (cont.):** Linear (D33); phase two: selection blobs (D34); try-it page phone tabs and axe fixes; 944/0.

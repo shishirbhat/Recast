@@ -8,25 +8,31 @@
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="app.css">
 </head>
-<body>
+<body class="compact">
+  <div id="shell">
   <header id="top">
     <span class="mark" aria-hidden="true"></span><h1>Recast</h1>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
     <span class="grow"></span>
+    <button type="button" class="icon" id="btn-expand" aria-label="Open the panel to type or dictate" title="Type or dictate"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
     <button type="button" class="icon" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button>
     <button type="button" class="icon" id="btn-hide" aria-label="Hide Recast (it stays in the tray)" title="Hide (Esc)"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg></button>
   </header>
 
   <main id="desk" aria-label="Your objects">
     <div id="empty">
-      <p class="lead">Copy something anywhere, then press <kbd id="hint-capture">⌘⌥Space</kbd>.</p>
-      <p>Or type or dictate a piece below: a time, a place, a person's email, a sentence. Drag one object onto another to press them together, then choose where it goes.</p>
+      <p class="lead">Select text in any app, then press <kbd id="hint-capture">⌘⇧Space</kbd>.</p>
+      <p>It lifts off into Recast as an object: a time, a person's email, an error, a sentence, with the app it came from. Grab a few, drag one onto another to press them together, then choose where it goes.</p>
+      <div id="permission" class="card" hidden><p><b>Allow Recast to read what you select.</b> macOS asks once: System Settings → Privacy &amp; Security → Accessibility → turn on Recast.</p><button type="button" class="pill" id="btn-permission">Open System Settings</button></div>
+      <p class="quiet">Or type or dictate a piece below.</p>
       <p class="quiet"><button type="button" class="linkish" id="btn-playground">Try it with sample data first</button> · <button type="button" class="linkish" id="btn-connections">Connect your accounts</button></p>
-      <p class="quiet">Open or hide Recast from anywhere: <kbd id="hint-open">⌘⇧Space</kbd></p>
+      <p class="quiet">Open or hide Recast from anywhere: <kbd id="hint-open">⌘⌥Space</kbd></p>
     </div>
   </main>
   <div id="clay"></div>
   <div id="glass"></div>
   <p id="note" role="status" aria-live="polite" hidden></p>
+  <p id="next" class="quiet" hidden></p>
 
   <form id="say-form" autocomplete="off">
     <div id="bar">
@@ -37,6 +43,7 @@
     <p id="dictate" class="quiet"></p>
   </form>
 
+  </div>
   <section id="settings" hidden aria-label="Settings">
     <h2>Settings</h2>
     <fieldset><legend>Appearance</legend>
@@ -48,7 +55,7 @@
     <form id="shortcuts-form">
       <fieldset><legend>Shortcuts (work from any app)</legend>
         <label>Open or hide Recast<input id="sc-open" spellcheck="false"></label>
-        <label>Capture what you copied<input id="sc-capture" spellcheck="false"></label>
+        <label>Grab what you selected<input id="sc-capture" spellcheck="false"></label>
         <p class="quiet">Written like CommandOrControl+Shift+Space. The Fn key cannot be a shortcut: the keyboard keeps it to itself.</p>
         <p id="sc-problems" class="warn"></p>
         <button type="submit" class="pill">Save shortcuts</button>

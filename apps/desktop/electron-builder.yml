@@ -20,6 +20,11 @@ mac:
   # .dmg is unsigned and macOS asks the person to confirm the first launch.
   hardenedRuntime: true
   notarize: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    LSUIElement: true
+    NSAppleEventsUsageDescription: "Recast asks the app you are in to copy what you selected, and a browser for the address of the page, so a grabbed piece keeps where it came from."
 dmg:
   title: Recast
   background: null

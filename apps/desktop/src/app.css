@@ -12,9 +12,18 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 400 14px/1.45 var(--font-ui); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+body { margin: 0; background: transparent; color: var(--ink); font: 400 14px/1.45 var(--font-ui); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+/* The capsule: the window is transparent; this is the object. Rounded as a pill when idle, as a panel when open. */
+#shell { position: fixed; inset: 0; border-radius: 22px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 color-mix(in srgb, white 8%, transparent); overflow: hidden; }
+body.compact #shell { border-radius: 999px; }
+body.compact #desk, body.compact #say-form, body.compact #clay, body.compact #glass, body.compact #note, body.compact #next { display: none; }
+#next { position: absolute; left: 0; right: 0; bottom: 92px; margin: 0; padding: 0 20px; text-align: center; }
+body.compact #top { height: 64px; border-bottom: 0; padding: 0 12px 0 22px; }
 #top { -webkit-app-region: drag; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); }
-body.mac #top { padding-left: 80px; }
+.status { margin: 0 0 0 4px; min-width: 0; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body:not(.compact) #btn-expand { display: none; }
+.card { margin: 12px 0; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); color: var(--ink); }
+.card p { margin: 0 0 10px; }
 #top button { -webkit-app-region: no-drag; }
 .mark { width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 60%, white), var(--accent) 70%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 h1 { margin: 0; font: 400 21px/1 var(--font-display); letter-spacing: .01em; }
@@ -38,7 +47,7 @@ kbd { font: 500 11.5px/1 var(--font-ui); padding: 3px 6px; border-radius: 6px; b
 .pill:focus-visible, .icon:focus-visible, .linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #dictate { margin: 6px 4px 0; }
 #note { position: absolute; left: 50%; translate: -50% 0; top: 54px; margin: 0; padding: 7px 12px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 12.5px; z-index: 5; }
-#settings { position: absolute; inset: 44px 0 0 0; overflow: auto; padding: 16px 20px 24px; background: var(--bg); z-index: 2147483100; user-select: text; }
+#settings { position: absolute; inset: 44px 0 0 0; border-radius: 0 0 22px 22px; overflow: auto; padding: 16px 20px 24px; background: var(--bg); z-index: 2147483100; user-select: text; }
 #settings h2 { margin: 0 0 12px; font: 400 22px var(--font-display); }
 #settings fieldset { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px 12px; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
 #settings legend { padding: 0 6px; color: var(--muted); font-size: 12px; }

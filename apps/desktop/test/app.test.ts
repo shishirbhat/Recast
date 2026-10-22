@@ -1,11 +1,14 @@
 // The desktop app, launched for real (Electron, its main process, its local program), on a virtual screen. Google is a
 // stand-in inside the main process (test/fake-google.mjs); the real Google run is by hand (docs/REAL_TEST_PLAN.md, K).
-import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chromium, _electron as electron, type ElectronApplication, type Page } from "playwright-core";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+
+// The "other app" for the grab test: a Chromium build the machine already has (the CI image's, or RECAST_CHROMIUM).
+const otherBrowser = process.env["RECAST_CHROMIUM"] ?? (existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const electronBin = path.join(root, "node_modules/electron/dist", process.platform === "darwin" ? "Electron.app/Contents/MacOS/Electron" : process.platform === "win32" ? "electron.exe" : "electron");
@@ -26,11 +29,15 @@ async function launch(dir: string): Promise<{ app: ElectronApplication; win: Pag
     env: { ...process.env, RECAST_TEST: "1", RECAST_USER_DATA: dir, RECAST_TEST_FETCH: path.join(root, "test/fake-google.mjs") } });
   const win = await app.firstWindow(); const errors: string[] = [];
   win.on("pageerror", (e) => errors.push(e.message)); win.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-  await win.waitForSelector("#say"); await win.waitForFunction(() => !!document.documentElement.dataset["theme"]);
+  await win.waitForSelector("#top"); await win.waitForFunction(() => !!document.documentElement.dataset["theme"]);
   return { app, win, errors };
 }
 const fake = () => app!.evaluate(() => (globalThis as any).__recastFake ?? { events: {}, tasks: {} });
-const add = async (win: Page, text: string) => { await win.locator("#say").fill(text); await win.locator("#say").press("Enter"); };
+/** Type a piece (opening the panel first when the capsule is a pill). */
+const add = async (win: Page, text: string) => {
+  if (await win.evaluate(() => document.body.classList.contains("compact"))) await win.locator("#btn-expand").click();
+  await win.locator("#say").fill(text); await win.locator("#say").press("Enter");
+};
 const objects = (win: Page) => win.locator(".clay-item");
 async function dragOnto(win: Page, from: string, to: string) {
   const box = async (t: string) => { const b = (await win.locator(".clay-item", { hasText: t }).first().boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
@@ -49,12 +56,13 @@ describe("Recast desktop", () => {
   it("opens dark when dark is chosen (no white anywhere), and light when light is", async () => {
     let { win, errors } = await launch(profile("dark"));
     expect(await win.evaluate(() => document.documentElement.dataset["theme"])).toBe("dark");
-    expect(await win.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(20, 19, 17)");
+    expect(await win.evaluate(() => getComputedStyle(document.querySelector("#shell")!).backgroundColor)).toBe("rgb(20, 19, 17)");
     expect(await win.evaluate(() => getComputedStyle(document.querySelector("#say")!).backgroundColor)).toBe("rgb(29, 27, 25)");
-    await shot(win, "empty-dark"); expect(errors).toEqual([]);
+    await shot(win, "pill-dark");
+    await win.locator("#btn-expand").click(); await shot(win, "empty-dark"); expect(errors).toEqual([]);
     await app!.close(); app = null;
     ({ win, errors } = await launch(profile("light")));
-    expect(await win.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(250, 249, 246)");
+    expect(await win.evaluate(() => getComputedStyle(document.querySelector("#shell")!).backgroundColor)).toBe("rgb(250, 249, 246)");
     await shot(win, "empty-light"); expect(errors).toEqual([]);
   });
 
@@ -85,7 +93,7 @@ describe("Recast desktop", () => {
   it("what you copied anywhere becomes a piece, read for what it is (an error here)", async () => {
     const { win, errors } = await launch(profile("dark"));
     await app!.evaluate(({ clipboard }) => clipboard.writeText("TypeError: Cannot read properties of undefined (reading 'id')"));
-    await win.locator("#paste").click();
+    await win.locator("#btn-expand").click(); await win.locator("#paste").click();
     await expect.poll(() => objects(win).count()).toBe(1);
     expect(await objects(win).first().innerText()).toMatch(/TypeError/);
     expect(await objects(win).first().getAttribute("data-kind")).toBe("error");
@@ -127,4 +135,43 @@ describe("Recast desktop", () => {
     expect(await win.evaluate(() => (window as any).recastDesktop.openExternal("javascript:alert(1)"))).toBe(false);
     expect(await win.evaluate(() => (window as any).recastDesktop.act("commit", { destination: "anything" }))).toMatchObject({ status: 400 });
   });
+
+  it("grab: text selected in another app lifts into Recast with the app it came from; the capsule opens from a pill, without taking the keyboard", async () => {
+    const { app: a, win, errors } = await launch(profile("dark"));
+    const bounds = () => a.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getTitle() === "Recast")!.getBounds());
+    expect(await bounds()).toMatchObject({ width: 420, height: 64 });                 // idle: a small pill
+    // Another app: a real browser window on the same screen, with text selected by mouse (the X11 PRIMARY selection).
+    const browser = await chromium.launch({ headless: false, ...(otherBrowser ? { executablePath: otherBrowser } : {}), args: ["--no-sandbox"] });
+    try {
+      const other = await browser.newPage();
+      await other.setContent(`<p id="t" style="font: 20px sans-serif; margin: 40px">Lunch with Arjun on Friday 1:00 PM, if that works.</p>`);
+      const r = await other.evaluate(() => {
+        const n = document.getElementById("t")!.firstChild!; const i = n.textContent!.indexOf("Friday 1:00 PM");
+        const range = document.createRange(); range.setStart(n, i); range.setEnd(n, i + "Friday 1:00 PM".length);
+        const rects = [...range.getClientRects()]; return { x1: rects[0]!.left + 1, x2: rects.at(-1)!.right - 1, y: rects[0]!.top + rects[0]!.height / 2 };
+      });
+      await other.mouse.move(r.x1, r.y); await other.mouse.down(); await other.mouse.move(r.x2, r.y, { steps: 8 }); await other.mouse.up();
+      const selected = await other.evaluate(() => getSelection()!.toString());
+      expect(selected).toBe("Friday 1:00 PM");
+      const result = await a.evaluate(() => (globalThis as any).__recastGrab()) as { ok: boolean };
+      expect(result.ok).toBe(true);
+      await expect.poll(() => objects(win).count()).toBe(1);
+      expect(await objects(win).first().innerText()).toContain("Friday 1:00 PM");
+      expect(await objects(win).first().getAttribute("data-kind")).toBe("time");
+      await expect.poll(bounds).toMatchObject({ width: 440, height: 640 });         // something to do: the panel
+      expect(await win.locator("#status").innerText()).toMatch(/^Grabbed from/);
+      await shot(win, "grabbed-dark");
+    } finally { await browser.close(); }
+    expect(errors).toEqual([]);
+  });
+
+  it("grab with nothing selected says so, and adds nothing", async () => {
+    const { app: a, win } = await launch(profile("dark"));
+    await a.evaluate(({ clipboard }) => clipboard.selection?.writeText(""));
+    const result = await a.evaluate(() => (globalThis as any).__recastGrab()) as { ok: boolean; reason: string };
+    expect(result).toMatchObject({ ok: false, reason: "empty" });
+    expect(await win.locator("#status").innerText()).toBe("Select some text first, then press the shortcut");
+    expect(await objects(win).count()).toBe(0);
+  });
 });
+
