@@ -100,7 +100,8 @@ function createMain() {
   harden(main);
   void main.loadFile(page("index.html"));
   main.once("ready-to-show", () => {
-    if (!test || process.env["RECAST_SHOW"] !== "0") main?.show();
+    // Opened by the person (from Applications, the Dock, the menu): the panel, in front. The pill is for grabs.
+    if (!test || process.env["RECAST_SHOW"] !== "0") { main?.show(); main?.webContents.send("recast:expand"); }
     if (smoke) setTimeout(() => {
       console.log(`RECAST_SMOKE ${JSON.stringify({ visible: !!main?.isVisible(), bounds: main?.getBounds(), tray: !!tray, link: !serverNote })}`);
       quitting = true; app.quit();
@@ -109,7 +110,11 @@ function createMain() {
   // Closing hides: Recast keeps running in the tray, with its objects. Quit from the tray.
   main.on("close", (e) => { if (!quitting) { e.preventDefault(); main?.hide(); } });
 }
-function showMain() { if (!main || main.isDestroyed()) createMain(); main!.show(); main!.focus(); }
+function showMain() {
+  if (!main || main.isDestroyed()) { createMain(); return; }   // a new window opens as the panel when it is ready
+  main.webContents.send("recast:expand"); main.show(); main.focus();
+  if (process.platform === "darwin") app.focus({ steal: true });
+}
 /** Shown without taking the keyboard from the app the person is in. */
 function showQuietly() { if (!main || main.isDestroyed()) createMain(); if (!main!.isVisible()) main!.showInactive(); }
 function toggleMain() { if (main?.isVisible() && main.isFocused()) main.hide(); else showMain(); }

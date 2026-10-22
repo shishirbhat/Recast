@@ -19,7 +19,7 @@ interface DesktopApi {
   window(what: "hide" | "minimize" | "connections" | "playground" | "signin"): Promise<boolean>;
   size(mode: "compact" | "open"): Promise<string>;
   permission(): Promise<boolean>;
-  on(channel: "recast:capture" | "recast:theme" | "recast:settings" | "recast:grab-problem", fn: (v: any) => void): void;
+  on(channel: "recast:capture" | "recast:theme" | "recast:settings" | "recast:grab-problem" | "recast:expand", fn: (v: any) => void): void;
 }
 interface DesktopSettings { theme: "system" | "dark" | "light"; keepOnTop: boolean; shortcuts: { open: string; capture: string }; platform: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean }
 const api = (window as unknown as { recastDesktop: DesktopApi }).recastDesktop;
@@ -143,7 +143,9 @@ api.on("recast:grab-problem", (v: { reason: string; message: string }) => {
 });
 let needPermission = false, expanded = false;
 $("#btn-permission").addEventListener("click", async () => { if (await api.permission()) { needPermission = false; render(); } });
-$("#btn-expand").addEventListener("click", () => { expanded = true; render(); setTimeout(() => input.focus(), 50); });
+function expand() { expanded = true; render(); setTimeout(() => input.focus(), 50); }
+$("#btn-expand").addEventListener("click", expand);
+api.on("recast:expand", expand);
 /** The pill's one line: what just happened, or how to start. */
 let statusTimer = 0;
 function status(t: string) { const el = $("#status"); el.textContent = t; clearTimeout(statusTimer); statusTimer = window.setTimeout(() => { el.textContent = idleHint(); }, 4000); }

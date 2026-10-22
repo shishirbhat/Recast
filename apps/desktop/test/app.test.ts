@@ -58,8 +58,9 @@ describe("Recast desktop", () => {
     expect(await win.evaluate(() => document.documentElement.dataset["theme"])).toBe("dark");
     expect(await win.evaluate(() => getComputedStyle(document.querySelector("#shell")!).backgroundColor)).toBe("rgb(20, 19, 17)");
     expect(await win.evaluate(() => getComputedStyle(document.querySelector("#say")!).backgroundColor)).toBe("rgb(29, 27, 25)");
-    await shot(win, "pill-dark");
-    await win.locator("#btn-expand").click(); await shot(win, "empty-dark"); expect(errors).toEqual([]);
+    // Opened by the person, Recast is the panel (not a pill in a corner, which reads as nothing having opened).
+    expect(await win.evaluate(() => document.body.classList.contains("compact"))).toBe(false);
+    await shot(win, "empty-dark"); expect(errors).toEqual([]);
     await app!.close(); app = null;
     ({ win, errors } = await launch(profile("light")));
     expect(await win.evaluate(() => getComputedStyle(document.querySelector("#shell")!).backgroundColor)).toBe("rgb(250, 249, 246)");
@@ -93,7 +94,7 @@ describe("Recast desktop", () => {
   it("what you copied anywhere becomes a piece, read for what it is (an error here)", async () => {
     const { win, errors } = await launch(profile("dark"));
     await app!.evaluate(({ clipboard }) => clipboard.writeText("TypeError: Cannot read properties of undefined (reading 'id')"));
-    await win.locator("#btn-expand").click(); await win.locator("#paste").click();
+    await win.locator("#paste").click();
     await expect.poll(() => objects(win).count()).toBe(1);
     expect(await objects(win).first().innerText()).toMatch(/TypeError/);
     expect(await objects(win).first().getAttribute("data-kind")).toBe("error");
@@ -139,7 +140,9 @@ describe("Recast desktop", () => {
   it("grab: text selected in another app lifts into Recast with the app it came from; the capsule opens from a pill, without taking the keyboard", async () => {
     const { app: a, win, errors } = await launch(profile("dark"));
     const bounds = () => a.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getTitle() === "Recast")!.getBounds());
-    expect(await bounds()).toMatchObject({ width: 420, height: 64 });                 // idle: a small pill
+    await expect.poll(bounds).toMatchObject({ width: 440, height: 640 });         // opened: the panel
+    await win.locator("#btn-hide").click();                                          // put away: grabs start from a pill
+    await expect.poll(bounds).toMatchObject({ width: 420, height: 64 });
     // Another app: a real browser window on the same screen, with text selected by mouse (the X11 PRIMARY selection).
     const browser = await chromium.launch({ headless: false, ...(otherBrowser ? { executablePath: otherBrowser } : {}), args: ["--no-sandbox"] });
     try {

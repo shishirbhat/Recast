@@ -54,7 +54,7 @@ jobs:
           exe=/tmp/Recast.app/Contents/MacOS/$(defaults read /tmp/Recast.app/Contents/Info.plist CFBundleExecutable)
           set +e; perl -e 'alarm 90; exec @ARGV' "$exe" --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
-          grep -q 'RECAST_SMOKE {"visible":true' /tmp/smoke.log
+          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' /tmp/smoke.log
       - name: launch check (Linux, the packaged app)
         if: runner.os == 'Linux'
         shell: bash
@@ -62,7 +62,7 @@ jobs:
           sudo apt-get install -y xvfb >/dev/null
           set +e; timeout 90 xvfb-run -a apps/desktop/release/linux-unpacked/recast --no-sandbox --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
-          grep -q 'RECAST_SMOKE {"visible":true' /tmp/smoke.log
+          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' /tmp/smoke.log
       - uses: actions/upload-artifact@v4
         with:
           name: recast-${{ runner.os }}

@@ -71,6 +71,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-22 (cont.):** owner: on the Mac "nothing opens". CI launch check (new, `--recast-smoke`, runs the app from the .dmg on a macOS runner) showed the app does start and sign correctly; what it showed was only a 420×64 see-through pill in a corner, with no Dock icon. Now: a Dock icon, and opening Recast shows the panel in front (the pill only for grabs). CI checks the panel is on screen on macOS and Linux. Owner to confirm on their Mac.
 - **2026-10-22 (cont.):** owner said the first desktop app was just the try-it page in a wrapper; built system-wide grab (D37): select in any app + shortcut → object with its source; floating pill capsule; Mac Accessibility path (untested on a Mac). Desktop 8/8; Linux rpm/deb/AppImage rebuilt; `.dmg` from the `desktop` workflow.
 - **2026-10-22 (cont.):** Electron desktop app (D36) with 6 end-to-end tests on a virtual screen, Linux packages built and launched, CI workflow for .dmg/.exe; plain-language risk lines in the review; 967/0.
 - **2026-10-22 (cont.):** owner's mission brief: recipes / multi-destination runs with per-step outcomes (D35), capture-stack dedupe; tested on the try-it page and through the real local program (Google stand-in); 960/0. Next: Electron desktop app.
