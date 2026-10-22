@@ -5,10 +5,10 @@ import { calendar, mailSend, obj, tasks } from "./helpers.js";
 const person = (extra: Record<string, unknown> = { email: ["m@example.com"] }, conf?: number) => obj("Person", { name: "Meera Iyer", ...extra }, conf);
 
 describe("grammar and contracts", () => {
-  it("loads all eleven relations from data", () => {
+  it("loads all sixteen relations from data", () => {
     expect(RELATIONS.map((r) => `${r.from}>${r.to}=${r.relation}`).sort()).toEqual([
-      "Document>Project=source", "Document>Task=reference", "Event>Calendar=entry", "Image>Project=asset", "Location>Event=location", "Message>Task=source",
-      "Person>Event=attendee", "Person>Message=recipient", "Product>Product=compare", "ResearchPaper>Claim=evidence", "ResearchPaper>ResearchPaper=compare",
+      "Document>Project=source", "Document>Task=reference", "Event>Calendar=entry", "Image>Project=asset", "Issue>Issues=entry", "Location>Event=location", "Location>Map=directions", "Message>Drafts=draft", "Message>Task=source", "Note>Docs=entry",
+      "Person>Event=attendee", "Person>Message=recipient", "Product>Product=compare", "ResearchPaper>Claim=evidence", "ResearchPaper>ResearchPaper=compare", "Task>TaskList=entry",
     ]);
   });
   it("accepts valid contracts", () => { for (const c of [calendar, mailSend, tasks]) expect(checkContract(c)).toBe(c); });
@@ -20,6 +20,8 @@ describe("grammar and contracts", () => {
   bad("dataMoved from the wrong type", { accepts: [{ relationId: "person-event-attendee", effect: "x", dataMoved: ["Location.name"] }] }, /conflicts with grammar/);
   bad("unsupported destination that accepts things", { reliability: "unsupported" }, /conflicts with grammar/);
   bad("schema violation", { reliability: "magic" }, /fails schema/);
+  bad("a deep link claiming it can undo", { reliability: "deep-link", abilities: ["open", "undo"] }, /conflicts with grammar/);
+  bad("an API destination claiming to open the app", { abilities: ["open", "create"] }, /conflicts with grammar/);
 });
 
 describe("propose", () => {
@@ -27,6 +29,11 @@ describe("propose", () => {
     const ps = propose(person(), calendar);
     expect(ps.map((p) => p.relationId)).toEqual(["person-event-attendee"]);
     expect(ps[0]).toMatchObject({ status: "ready", relation: "attendee", reliability: "official-api" });
+  });
+  it("offers no Undo when the destination does not declare the undo ability", () => {
+    const [p] = propose(person(), { ...calendar, abilities: ["create"] });
+    expect(p!.reversible).toBe(false);
+    expect(propose(person(), { ...calendar, abilities: ["create", "undo"] })[0]!.reversible).toBe(true);
   });
   it("offers nothing if the destination has no row for the type", () => {
     expect(propose(person(), tasks)).toEqual([]);
@@ -63,6 +70,12 @@ describe("propose", () => {
 
 describe("trust model", () => {
   const base = { baseRisk: "low", flags: [], reversible: true, confidence: 0.95, reliability: "official-api" } as const;
+  it("a deep link is not raised for having nothing to undo: it writes nothing", () => {
+    const r = assessRisk({ ...base, reversible: false, reliability: "deep-link" });
+    expect(r).toMatchObject({ tier: "low", consent: "release" });
+    expect(r.reasons.join(";")).toMatch(/nothing is saved until you finish there/);
+    expect(assessRisk({ ...base, reversible: false, reliability: "deep-link", flags: ["send"] }).tier).toBe("high");
+  });
   it("low and reversible releases immediately", () => {
     expect(assessRisk(base)).toMatchObject({ tier: "low", consent: "release", requiresDeliberateChoice: false });
   });

@@ -3,6 +3,9 @@ html { color-scheme: light dark; }
 body { margin: 0; width: 360px; max-height: 560px; overflow-y: auto; background: var(--surface); color: var(--text); font: var(--fs-md)/var(--lh-body) var(--font-ui); -webkit-font-smoothing: antialiased; }
 header { padding: var(--sp-4) var(--sp-4) var(--sp-2); }
 h1 { margin: 0; font-size: var(--fs-lg); letter-spacing: -0.01em; }
+.clump { margin-top: var(--sp-2); display: inline-flex; align-items: center; gap: var(--sp-2); font-weight: 600; font-size: var(--fs-sm); color: var(--surface); background: var(--text); border: 0; padding: 6px var(--sp-3); }
+.clump:hover { background: var(--text); opacity: .9; }
+.clump kbd { font: 500 var(--fs-2xs)/1 var(--font-ui); padding: 3px 5px; border-radius: 5px; background: color-mix(in srgb, currentColor 18%, transparent); }
 #status { margin: var(--sp-1) 0 0; color: var(--text-muted); font-size: var(--fs-sm); }
 main { padding: 0 var(--sp-4) var(--sp-4); }
 .obj { border-top: 1px solid var(--line-soft); padding: var(--sp-3) 0; }
@@ -24,3 +27,13 @@ summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); 
 .empty { padding: var(--sp-4) 0; color: var(--text-muted); font-size: var(--fs-sm); }
 .related-head { margin: var(--sp-4) 0 var(--sp-1); color: var(--text-muted); font-size: var(--fs-xs); }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+.link { margin: 0 var(--sp-4) var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line-soft); border-radius: var(--r-input); }
+.link h2 { margin: 0; font-size: var(--fs-sm); }
+.link p { margin: var(--sp-1) 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
+.link .code { font: 600 var(--fs-lg)/1 var(--font-mono); letter-spacing: .1em; color: var(--text); }
+.ask { margin: 0 var(--sp-4) var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line-soft); border-radius: var(--r-input); }
+.ask.first { border-color: var(--accent); }
+.ask h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-sm); }
+.ask p { margin: 0 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
+.ask label { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-xs); margin-top: var(--sp-2); cursor: pointer; }
+.ask input { margin-top: 2px; }

@@ -2,9 +2,32 @@
   "manifest_version": 3,
   "name": "Recast",
   "version": "0.1.0",
-  "description": "Shows the people, places, events, papers and products a page describes, and where each fact came from. Runs only when you click it. Nothing leaves your device.",
+  "description": "Shows the people, places, events, papers and products a page describes, and lets you press pieces from different tabs into one object and place it. Runs only on tabs where you invoke it. Nothing leaves your device.",
   "minimum_chrome_version": "120",
-  "action": { "default_title": "Recast: what is on this page?", "default_popup": "popup.html" },
-  "permissions": ["activeTab", "scripting"],
-  "content_security_policy": { "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'" }
+  "action": {
+    "default_title": "Recast: what is on this page?",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "http://localhost/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src http://localhost:8787"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "recast-clay": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Bring Recast into this tab (then Control twice turns it on, Control once turns it off)"
+    }
+  }
 }

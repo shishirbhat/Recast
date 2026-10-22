@@ -19,6 +19,10 @@ describe("pieces read from the element under the pointer", () => {
     page(`<div class="card"><address id="a">298 100 Feet Road, Indiranagar, Bengaluru 560038</address></div>`);
     expect(piece("#a")).toMatchObject({ kind: "place", value: { address: "298 100 Feet Road, Indiranagar, Bengaluru 560038" } });
   });
+  it("a heading with its address under it is a place: the heading is the name, the rest is the address", () => {
+    page(`<section class="place"><h1 id="h">Dakshin</h1><address>12 MG Road, Bengaluru 560001</address></section>`);
+    expect(piece("#h")).toMatchObject({ kind: "place", text: "Dakshin", value: { name: "Dakshin", address: "12 MG Road, Bengaluru 560001" } });
+  });
   it("a short heading is a title piece; ordinary prose is nothing", () => {
     page(`<h2 id="h">Launch dinner</h2><p id="p">We should really catch up properly sometime soon, it has been ages.</p>`);
     expect(piece("#h")).toMatchObject({ kind: "title", text: "Launch dinner" });

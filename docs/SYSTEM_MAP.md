@@ -41,11 +41,17 @@ Screen element → extraction → evidence and object → composition of pieces 
 |---|---|---|---|---|---|
 | Point at an element | `packages/extract-web/src/element.ts` (`classifyElement`) | DOM element → candidates | local, in page | U, H (labelled corpus) | browser DOM only; no native capture |
 | Page extraction | `packages/extract-web/src/{extract,dom,signals}.ts` | Document → candidates with evidence | local | U, H | JSON-LD, OG, `citation_*`, DOM rules |
-| Browser extension | `apps/extension/src/{page,popup}.ts` | popup lists what the page holds | local | U | **Does not include the overlay or placement.** Extraction and display only |
+| Browser extension | `apps/extension/src/{page,popup}.ts` | popup lists what the page holds | local | U | extraction and display |
+| Clay in the extension | `apps/extension/src/{background,clay-content,clay-messages}.ts` | worker holds `ClumpState` in `storage.session`; tabs send events, receive state; effects routed by `<tabId>:` destination ids | local, activated tabs only | H, F | stand-in destinations on local pages; `docs/20-clay.md` |
 | Resolve to object | `packages/core/src/resolve.ts` | candidate → `SemanticObject` (content id, per-field confidence and evidence) | local | U | |
 | Pick pieces | `packages/extract-web/src/element.ts` (`classifyPiece`) | element → time, place or title `Fragment` | local | U, H | |
 | Compose fragments | `packages/core/src/compose.ts` (`compose`, `readTime`) | fragments + context → values with origins, missing, conflicts, assumptions, candidate | local, pure | U, H | |
 | Capsule gesture | `packages/interaction` (capsule, `completing` phase) | collect, park, approach, complete, place | local, pure | U, H | |
+| Clumps | `packages/core/src/clump.ts` | `mergeClumps`, `removeIngredient`, `viewClump` → type, missing, conflicts, candidate | local, pure | U | |
+| Clump state machine | `packages/interaction/src/clump-machine.ts` | `reduceClump(state, event) → {state, effects, error}`; JSON state | local, pure | U (11), H | |
+| Clay renderer | `packages/overlay/src/clay.ts` | `createClay(host).update(items)`, `fuse()` | local, SVG | H | |
+| Action module | `packages/interaction/src/wheel.ts` (`moduleModel`, `wheelEntries`, `commandEvents`, `escapeEvent`), `packages/overlay/src/glass.ts` (`createGlass`, `intentEvents`) | state + `REGISTRY` → one model → one glass module; intents → machine events | local | U, H | `docs/21-glass-module.md` |
+| Bridge registry (data) | `packages/bridges/src/contracts.ts` (`REGISTRY`) | the contracts every picker lists; no network code | local | U | specs in `specs.ts` perform them |
 | Interaction state machine | `packages/interaction/src/{machine,view}.ts` | `reduce(state, event) → {state, effects}`; `selectView` | local, pure | U (32) | single object per carry today |
 | Overlay | `packages/overlay/src/{components,store,motion}.tsx` | `mountOverlay({onUndo}).update(view)` | local, shadow DOM | H | |
 | Propose, plan, risk | `packages/core/src/{propose,trust,operate}.ts` | `propose(obj, contract)`, `plan`, `assessRisk`, `checkConsent` | local | U | consent: release, confirm or hold ≥600 ms |
@@ -54,7 +60,7 @@ Screen element → extraction → evidence and object → composition of pieces 
 | Real destinations | `packages/bridges/src/specs.ts` | request builders for Calendar, Gmail draft, Sheets, Tasks and Notion | — | U, F | never called against real Google or Notion |
 | Windows shell | `apps/spike-win/` | measurement probes (`main.cjs`, `uia-probe.ps1`) | — | none | not run on Windows; no native shell exists |
 
-**End to end today:** grab, carry, preview, place and undo work only in the harness, against in-page stand-ins (**H**). No path reaches a real app.
+**End to end today:** grab, carry, preview, place and undo work in the harness, and (for clay) in the extension across real tabs, always against in-page stand-ins (**H**, **F**). No path reaches a real app.
 
 ## 2. API and SDK path
 **Resolution** (read-only): developer app → `packages/sdk` (`Recast.resolve`) → HTTP → `apps/api` (`app/v1/[...path]/route.ts`) → `packages/api-core` (`createApi().handle`) → key auth (hash lookup) → release gate (`packages/release`, tenant cohort) → `Limiter` → monthly quota → `IdempotencyStore` claim → `packages/resolve` (rules → optional embedder → optional LLM) → `toWire` → usage recorded.

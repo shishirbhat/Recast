@@ -1,0 +1,54 @@
+/* Recast desktop: warm ivory and ink, one ember accent, the same type as the browser. Dark and light are equal citizens. */
+:root {
+  --bg: #faf9f6; --surface: #ffffff; --ink: #1a1a1a; --muted: #625f5a; --line: #e6e2da; --accent: #b83d12; --accent-soft: #ffe5dc;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --font-display: "Instrument Serif", ui-serif, Georgia, serif; --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --clay-fill: #fffaf6; --clay-fill-composed: #ffe5dc; --clay-fill-carried: #ffffff; --clay-ink: #1a1a1a; --clay-muted: #625f5a; --clay-accent: #b83d12; --clay-focus: #1a1a1a;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #141311; --surface: #1d1b19; --ink: #f3f1ec; --muted: #b0aba3; --line: #34302b; --accent: #ff8a5c; --accent-soft: #3d1f14;
+  --clay-fill: #2a2522; --clay-fill-composed: #3d1f14; --clay-fill-carried: #33302d; --clay-ink: #f3f1ec; --clay-muted: #b5b0a8; --clay-accent: #ff8a5c; --clay-focus: #f3f1ec;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 14px/1.45 var(--font-ui); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+#top { -webkit-app-region: drag; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); }
+body.mac #top { padding-left: 80px; }
+#top button { -webkit-app-region: no-drag; }
+.mark { width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 60%, white), var(--accent) 70%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+h1 { margin: 0; font: 400 21px/1 var(--font-display); letter-spacing: .01em; }
+.grow { flex: 1; }
+.icon { width: 30px; height: 30px; border: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--muted); cursor: pointer; }
+.icon:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+#desk { position: absolute; inset: 44px 0 96px 0; overflow: hidden; }
+#empty { padding: 28px 24px; color: var(--muted); max-width: 400px; }
+#empty .lead { color: var(--ink); font: 400 22px/1.25 var(--font-display); margin: 0 0 10px; }
+#empty p { margin: 0 0 10px; }
+.quiet { color: var(--muted); font-size: 12.5px; }
+kbd { font: 500 11.5px/1 var(--font-ui); padding: 3px 6px; border-radius: 6px; background: color-mix(in srgb, var(--ink) 8%, transparent); box-shadow: inset 0 -1px 0 var(--line); color: var(--ink); }
+.linkish { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+#say-form { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 12px 10px; border-top: 1px solid var(--line); background: var(--bg); margin: 0; }
+#bar { display: flex; gap: 6px; }
+#say { flex: 1; min-width: 0; font: 400 14px var(--font-ui); color: var(--ink); background: var(--surface); border: 0; border-radius: 999px; padding: 9px 14px; box-shadow: inset 0 0 0 1px var(--line); user-select: text; }
+#say:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }
+#say::placeholder { color: var(--muted); }
+.pill { border: 0; border-radius: 999px; padding: 8px 14px; background: var(--ink); color: var(--bg); font: 600 13px/1 var(--font-ui); cursor: pointer; white-space: nowrap; }
+.pill.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.pill:focus-visible, .icon:focus-visible, .linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#dictate { margin: 6px 4px 0; }
+#note { position: absolute; left: 50%; translate: -50% 0; top: 54px; margin: 0; padding: 7px 12px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 12.5px; z-index: 5; }
+#settings { position: absolute; inset: 44px 0 0 0; overflow: auto; padding: 16px 20px 24px; background: var(--bg); z-index: 2147483100; user-select: text; }
+#settings h2 { margin: 0 0 12px; font: 400 22px var(--font-display); }
+#settings fieldset { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px 12px; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+#settings legend { padding: 0 6px; color: var(--muted); font-size: 12px; }
+#settings label { display: flex; align-items: center; gap: 8px; }
+#settings fieldset label:has(input:not([type])) { flex-direction: column; align-items: stretch; gap: 4px; font-size: 12.5px; color: var(--muted); }
+#settings input:not([type]) { font: 13px var(--font-mono); color: var(--ink); background: var(--surface); border: 0; border-radius: 10px; padding: 8px 10px; box-shadow: inset 0 0 0 1px var(--line); }
+#settings input[type=radio], #settings input[type=checkbox] { accent-color: var(--accent); }
+#settings .row { margin: 0 0 12px; }
+.warn { color: var(--ink); font-size: 12.5px; margin: 0; }
+.warn:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+/* Always on here: the "on" pill is not needed; messages show in the note above. */
+.rg[data-mode="pill"] { display: none !important; }

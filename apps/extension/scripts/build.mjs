@@ -7,10 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = (f) => path.join(root, "src", f);
-for (const [dir, extra] of [["dist", {}], ["dist-test", { host_permissions: ["http://127.0.0.1/*"] }]]) {
+for (const [dir, extra] of [["dist", {}], ["dist-test", { host_permissions: ["http://127.0.0.1/*", "http://localhost/*"] }]]) {
   const out = path.join(root, dir);
   rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
-  await build({ entryPoints: { page: src("page.ts"), popup: src("popup.ts") }, bundle: true, format: "iife", target: "es2022", platform: "browser", outdir: out, legalComments: "none", logLevel: "warning", minifySyntax: true, define: { __RECAST_TEST__: String(dir === "dist-test") } });
+  await build({ entryPoints: { page: src("page.ts"), popup: src("popup.ts"), background: src("background.ts"), "clay-content": src("clay-content.ts") }, bundle: true, format: "iife", target: "es2022", platform: "browser", outdir: out, legalComments: "none", logLevel: "warning", minifySyntax: true, define: { __RECAST_TEST__: String(dir === "dist-test") } });
   cpSync(src("popup.html"), path.join(out, "popup.html")); cpSync(src("popup.css"), path.join(out, "popup.css"));
   cpSync(path.join(root, "../../design/tokens.css"), path.join(out, "tokens.css"));
   const manifest = { ...JSON.parse(readFileSync(src("manifest.json"), "utf8")), ...extra };

@@ -28,7 +28,10 @@ export function assessRisk(i: RiskInput): RiskAssessment {
   const hi = i.flags.filter((f) => HIGH_FLAGS.includes(f));
   if (hi.length) raise("high", `effect is ${hi.join(", ")}`);
   if (i.flags.includes("notifies-third-party")) raise("medium", "notifies someone else");
-  if (!i.reversible) raise("medium", "cannot be undone");
+  // A deep link writes nothing: it opens the app with the details filled in and the person finishes there. There is nothing
+  // to undo, so that is not a risk; flags (send, delete, ...) still raise it.
+  if (i.reliability === "deep-link") reasons.push("opens the app with the details filled in; nothing is saved until you finish there");
+  else if (!i.reversible) raise("medium", "cannot be undone");
   if (i.reliability === "ui-automation") raise("medium", "destination is driven by fragile UI automation");
   if (i.confidence < MEDIUM_CONFIDENCE) raise("medium", `confidence ${i.confidence.toFixed(2)} is below ${MEDIUM_CONFIDENCE}`);
   return { tier, consent: CONSENT[tier], requiresDeliberateChoice: i.confidence < LOW_CONFIDENCE, reasons };

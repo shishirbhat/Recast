@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryEventLog, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleSheets, googleTasks, gmailDraft, notion, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { InMemoryEventLog, OutcomeUnknownError, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
+import { HttpBridge, DestinationError, rfc822Draft, githubIssue, linearIssue, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,9 +26,29 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, gmailDraft, googleSheets, googleTasks, notion })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
+});
+
+// The abilities a contract declares are what the picker and the review promise. They must match what the bridge's
+// operations declare about themselves, so a destination never offers an Undo or a check it cannot perform.
+describe("declared abilities match what each bridge actually does", () => {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
+    it(name, () => {
+      const caps = spec.contract.accepts.map((row) => spec.capabilities[row.relationId]);
+      expect(caps.every(Boolean), "every accepted row declares its operation").toBe(true);
+      const has = (a: string) => spec.contract.abilities!.includes(a as never);
+      expect(has("undo")).toBe(caps.some((c) => c!.reversal !== "none"));
+      expect(has("verify")).toBe(caps.some((c) => c!.verifiable));
+      expect(has("create")).toBe(caps.some((c) => c!.reversal === "delete-created" || c!.reversal === "archive"));
+      expect(has("update")).toBe(caps.some((c) => c!.reversal === "restore-previous"));
+      expect(has("open")).toBe(false);
+    });
+  }
+  it("every destination in the registry declares its abilities", () => {
+    for (const c of REGISTRY) expect(c.abilities?.length, c.destination).toBeGreaterThan(0);
+  });
 });
 
 describe("Google Calendar", () => {
@@ -97,6 +117,17 @@ describe("Gmail", () => {
     await r.undo(); expect(s.calls[1]).toMatchObject({ method: "DELETE", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts/d%2F1" });
   });
 
+  it("a composed message is saved as a draft with its recipient and its text, and undo deletes it", async () => {
+    const s = fake((r) => (r.method === "POST" ? ok({ id: "d2" }) : ok()));
+    const msg = obj("Message", { to: ["maya.rao@example.com"], snippet: "Free for dinner this week?" });
+    const r = await place(gmailMessageDraft, {}, s.t, msg, "message-draft-entry");
+    expect(s.calls[0]).toMatchObject({ method: "POST", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts" });
+    const raw = (s.calls[0]!.body as { message: { raw: string } }).message.raw;
+    expect(atob(raw.replace(/-/g, "+").replace(/_/g, "/"))).toBe('To: maya.rao@example.com\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\nFree for dinner this week?');
+    expect(r.receipt).toMatchObject({ relationId: "message-draft-entry", reversible: true });
+    await r.undo(); expect(s.calls[1]).toMatchObject({ method: "DELETE", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts/d2" });
+  });
+
   it("refuses a recipient containing a line break, so a page cannot slip in a Bcc header", () => {
     expect(() => rfc822Draft("a@example.com\r\nBcc: attacker@example.com")).toThrow(DestinationError);
     expect(() => rfc822Draft("a@example.com\nBcc: x")).toThrow(/line break/);
@@ -135,6 +166,20 @@ describe("Google Tasks", () => {
   });
 });
 
+describe("Google Tasks: a whole task with a due date", () => {
+  it("sends the title, the link as notes and the due day as midnight UTC (Google keeps only the date); undo deletes it", async () => {
+    const s = fake((r) => (r.method === "POST" ? ok({ id: "t9" }) : ok()));
+    const r = await place(googleTasksEntry, { taskListId: "@default" }, s.t, obj("Task", { title: "Q3 plan", url: "https://example.com/q3", due: "2026-10-23" }), "task-tasklist-entry");
+    expect(s.calls[0]).toMatchObject({ method: "POST", url: "https://tasks.googleapis.com/tasks/v1/lists/%40default/tasks", body: { title: "Q3 plan", notes: "https://example.com/q3", due: "2026-10-23T00:00:00.000Z" } });
+    await r.undo(); expect(s.calls[1]).toMatchObject({ method: "DELETE", url: "https://tasks.googleapis.com/tasks/v1/lists/%40default/tasks/t9" });
+  });
+  it("a task without a due date or a link is just its title", async () => {
+    const s = fake(() => ok({ id: "t1" }));
+    await place(googleTasksEntry, { taskListId: "@default" }, s.t, obj("Task", { title: "Call the bank" }), "task-tasklist-entry");
+    expect(s.calls[0]!.body).toEqual({ title: "Call the bank" });
+  });
+});
+
 describe("Notion", () => {
   it("creates a page in the chosen database with the version header, and undo archives it", async () => {
     const s = fake((r) => (r.method === "POST" ? ok({ id: "page-1" }) : ok()));
@@ -160,5 +205,120 @@ describe("shared behaviour", () => {
     const { readFileSync, readdirSync } = await import("node:fs");
     const src = readdirSync(new URL("../src/", import.meta.url)).map((f) => readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8")).join("\n");
     expect(src).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|WebSocket/);
+  });
+});
+
+describe("the registry", () => {
+  it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "github.issues", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "linear.issues", "notion.database"]);
+    expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
+    expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
+    expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);
+  });
+});
+
+describe("open-and-prefill links (Google Maps, Apple Maps)", () => {
+  const place = (props: Record<string, unknown>) => obj("Location", props);
+  async function open(spec: LinkSpec, location: SemanticObject) {
+    const opened: string[] = [];
+    const bridge = new LinkBridge(spec, (u) => opened.push(u)); const log = new InMemoryEventLog();
+    const p = propose(location, bridge.describe())[0]!;
+    const op = plan(p, { now: NOW });
+    const receipt = await commit(op, { kind: "release" }, { bridge, log, now: NOW });
+    return { p, op, receipt, opened, bridge, log };
+  }
+  it("opens Google Maps with directions to the name and address the review showed, and nothing else", async () => {
+    const { p, receipt, opened } = await open(googleMapsDirections, place({ name: "Dakshin", address: "12 MG Road, Bengaluru" }));
+    expect(p).toMatchObject({ status: "ready", reversible: false, risk: { tier: "low", consent: "release" } });
+    expect(opened).toEqual(["https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru"]);
+    expect(receipt).toMatchObject({ reversible: false, bridgeRef: opened[0] });
+  });
+  it("Apple Maps takes the same place", async () => {
+    const { opened } = await open(appleMapsDirections, place({ name: "Dakshin" }));
+    expect(opened).toEqual(["https://maps.apple.com/?daddr=Dakshin"]);
+  });
+  it("a place's text can never change the host or add parameters", async () => {
+    const { opened } = await open(googleMapsDirections, place({ name: "x&api=0#@evil.example/?q=1" }));
+    const u = new URL(opened[0]!);
+    expect(u.host).toBe("www.google.com");
+    expect([...u.searchParams.keys()]).toEqual(["api", "destination"]);
+    expect(u.searchParams.get("destination")).toBe("x&api=0#@evil.example/?q=1");
+  });
+  it("declares it writes nothing and offers no Undo", async () => {
+    const { receipt, bridge, log } = await open(googleMapsDirections, place({ name: "Dakshin" }));
+    expect(bridge.capabilities()).toMatchObject({ writes: false, reversal: "none", verifiable: false });
+    await expect(undo(receipt, { bridge, log, now: NOW })).rejects.toThrow(/cannot be undone/);
+    expect(linkFor("google-maps.directions")).toBe(googleMapsDirections);
+    expect(linkFor("google-calendar.calendar")).toBeUndefined();
+  });
+});
+
+describe("Google Docs: a note becomes a new document", () => {
+  const note = () => obj("Note", { title: "Design reading", body: "“Make the common case fast.”\n— Notes, https://b.example/notes", sources: ["https://b.example/notes"] });
+  const server = (fail?: { batch?: number }) => fake((r) => {
+    if (r.method === "POST" && r.url === "https://docs.googleapis.com/v1/documents") return ok({ documentId: "doc 1", title: (r.body as { title: string }).title });
+    if (r.url.endsWith(":batchUpdate")) return fail?.batch ? { status: fail.batch, json: {} } : ok({ replies: [{}] });
+    if (r.method === "PATCH" && r.url.startsWith("https://www.googleapis.com/drive/v3/files/")) return ok({ trashed: true });
+    return { status: 404, json: {} };
+  });
+  it("creates the document with the reviewed title, then inserts the reviewed text as plain text; Undo moves it to the trash", async () => {
+    const { calls, t } = server();
+    const { receipt, undo: u } = await place(googleDocs, {}, t, note(), "note-docs-entry");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["POST https://docs.googleapis.com/v1/documents", "POST https://docs.googleapis.com/v1/documents/doc%201:batchUpdate"]);
+    expect(calls[0]!.body).toEqual({ title: "Design reading" });
+    expect(calls[1]!.body).toEqual({ requests: [{ insertText: { location: { index: 1 }, text: "“Make the common case fast.”\n— Notes, https://b.example/notes" } }] });
+    expect(JSON.parse(receipt.bridgeRef!)).toEqual({ id: "doc 1" });
+    await u();
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", url: "https://www.googleapis.com/drive/v3/files/doc%201", body: { trashed: true } });
+  });
+  it("if the text cannot be added, the empty document is trashed and the placement fails: nothing half-made is left", async () => {
+    const { calls, t } = server({ batch: 400 });
+    await expect(place(googleDocs, {}, t, note(), "note-docs-entry")).rejects.toThrow(/answered 400/);
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", body: { trashed: true } });
+  });
+  it("a lost answer while adding the text is unknown, with the document's id kept, and is never resent", async () => {
+    const { calls, t } = server({ batch: 504 });
+    await expect(place(googleDocs, {}, t, note(), "note-docs-entry")).rejects.toBeInstanceOf(OutcomeUnknownError);
+    expect(calls.filter((c) => c.url.endsWith(":batchUpdate"))).toHaveLength(1);
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+});
+
+describe("GitHub: an issue opened in one repository", () => {
+  const issue = () => obj("Issue", { title: "Sign-in crash", body: "Captured with Recast.\n\n**Error**\n```text\nTypeError: x\n```", sources: ["https://ci.example/run/42"] });
+  it("opens the issue with the reviewed title and body; asks for a confirm (watchers may be notified); Undo closes it as not planned", async () => {
+    const { calls, t } = fake((r) => r.method === "POST" ? ok({ number: 7, html_url: "https://github.com/acme/app/issues/7" }) : ok({ state: "closed" }));
+    const p = propose(issue(), CONTRACTS.githubIssue)[0]!;
+    expect(p.risk).toMatchObject({ tier: "medium", consent: "confirm" });
+    const { receipt, undo: u } = await place(githubIssue, { owner: "acme", repo: "app" }, t, issue(), "issue-tracker-entry");
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.github.com/repos/acme/app/issues", headers: { Accept: "application/vnd.github+json" }, body: { title: "Sign-in crash", body: "Captured with Recast.\n\n**Error**\n```text\nTypeError: x\n```" } });
+    expect(JSON.parse(receipt.bridgeRef!)).toEqual({ number: 7, url: "https://github.com/acme/app/issues/7" });
+    await u();
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", url: "https://api.github.com/repos/acme/app/issues/7", body: { state: "closed", state_reason: "not_planned" } });
+  });
+  it("a repository name cannot change which resource the request reaches", async () => {
+    const { calls, t } = fake(() => ok({ number: 1 }));
+    await place(githubIssue, { owner: "acme", repo: "app/../../orgs/x" }, t, issue(), "issue-tracker-entry");
+    expect(calls[0]!.url).toBe("https://api.github.com/repos/acme/app%2F..%2F..%2Forgs%2Fx/issues");
+  });
+});
+
+describe("Linear: the same issue on one team (GraphQL)", () => {
+  const issue = () => obj("Issue", { title: "Sign-in crash", body: "**Error**\n```text\nTypeError: x\n```" });
+  it("creates it with values as variables (never in the query text); Undo deletes it", async () => {
+    const { calls, t } = fake((r) => {
+      const q = String((r.body as { query: string }).query);
+      return q.includes("issueCreate") ? ok({ data: { issueCreate: { success: true, issue: { id: "lin-1", identifier: "ENG-7", url: "https://linear.app/x/issue/ENG-7" } } } }) : ok({ data: { issueDelete: { success: true } } });
+    });
+    const { receipt, undo: u } = await place(linearIssue, { teamId: "team-1" }, t, issue(), "issue-tracker-entry");
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.linear.app/graphql", body: { variables: { input: { teamId: "team-1", title: "Sign-in crash", description: "**Error**\n```text\nTypeError: x\n```" } } } });
+    expect(String((calls[0]!.body as { query: string }).query)).not.toContain("Sign-in crash");
+    expect(JSON.parse(receipt.bridgeRef!)).toEqual({ id: "lin-1", identifier: "ENG-7" });
+    await u();
+    expect(calls[1]!.body).toMatchObject({ variables: { id: "lin-1" } });
+  });
+  it("a GraphQL error in a 200 answer is a failure, not a success", async () => {
+    const { t } = fake(() => ok({ errors: [{ message: "Entity not found: Team" }] }));
+    await expect(place(linearIssue, { teamId: "nope" }, t, issue(), "issue-tracker-entry")).rejects.toThrow(/Linear refused it: Entity not found: Team/);
   });
 });

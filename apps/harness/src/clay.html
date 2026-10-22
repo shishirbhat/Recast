@@ -1,0 +1,115 @@
+<title>Recast Clay Desk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--@FONTS-->
+<style>/*@CSS*/</style>
+<div class="app">
+  <header class="chrome">
+    <div class="tabs" role="tablist" aria-label="Browser tabs">
+      <button type="button" role="tab" id="tab-profile" data-for="profile" aria-controls="page-profile"><span class="fav" aria-hidden="true">M</span><span class="tname">Maya Rao</span></button>
+      <button type="button" role="tab" id="tab-restaurant" data-for="restaurant" aria-controls="page-restaurant"><span class="fav" aria-hidden="true">D</span><span class="tname">Dakshin</span></button>
+      <button type="button" role="tab" id="tab-calendar" data-for="calendar" aria-controls="page-calendar"><span class="fav" aria-hidden="true">31</span><span class="tname">Calendar</span></button>
+      <button type="button" role="tab" id="tab-mail" data-for="mail" aria-controls="page-mail"><span class="fav" aria-hidden="true">@</span><span class="tname">Mail</span></button>
+      <button type="button" role="tab" id="tab-docs" data-for="docs" aria-controls="page-docs"><span class="fav" aria-hidden="true">¶</span><span class="tname">Docs</span></button>
+      <button type="button" role="tab" id="tab-build" data-for="build" aria-controls="page-build"><span class="fav" aria-hidden="true">!</span><span class="tname">Build #42</span></button>
+    </div>
+    <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span>
+      <button type="button" id="recast-trigger" class="trigger" aria-pressed="false" aria-description="Or press Control twice"><span class="trigger-dot" aria-hidden="true"></span><span class="trigger-label">Recast</span><kbd class="trigger-kbd">Ctrl Ctrl</kbd></button></div>
+  </header>
+
+  <main class="viewport">
+    <section class="page" id="page-profile" data-tab="profile" role="tabpanel" aria-labelledby="tab-profile" data-url="people.example/maya-rao" data-title="Maya Rao · Profile">
+      <p class="eyebrow">Profile</p>
+      <h1><span class="grab" id="maya" data-kind="person" data-name="Maya Rao" data-email="maya.rao@example.com">Maya Rao</span></h1>
+      <p class="sub">Product designer, Bengaluru · <span class="mono">maya.rao@example.com</span></p>
+      <p>Maya leads design for a small team building tools for clinics. She is in town all week and likes South Indian food.</p>
+      <blockquote><span class="grab" id="maya-line" data-kind="text">Free for dinner this week?</span></blockquote>
+      <p class="muted">Works with <span class="grab" id="arjun" data-kind="person" data-name="Arjun Mehta">Arjun Mehta</span>.</p>
+    </section>
+
+    <section class="page" id="page-restaurant" data-tab="restaurant" role="tabpanel" aria-labelledby="tab-restaurant" data-url="dakshin.example" data-title="Dakshin · Restaurant" hidden>
+      <p class="eyebrow">Restaurant</p>
+      <h1><span class="grab" id="dakshin" data-kind="place" data-name="Dakshin" data-address="12 MG Road, Bengaluru">Dakshin</span></h1>
+      <p class="sub">South Indian · 12 MG Road, Bengaluru · ₹₹</p>
+      <div class="avail"><p class="label">Next free table</p><p class="big"><span class="grab" id="dakshin-time" data-kind="time">Friday, 7:30 PM</span></p></div>
+      <p>Dosa, appam and a long filter-coffee list. Tables for four or fewer.</p>
+      <blockquote class="review"><span class="grab" id="dakshin-review" data-kind="text">The filter coffee alone is worth the trip.</span><cite>From a review</cite></blockquote>
+      <p class="muted">Gift a meal: <span class="grab" id="giftcard" data-kind="thing">Gift card · ₹2,000</span></p>
+      <figure class="photo" data-photo-slot="restaurant-front">
+        <div class="photo-frame">
+          <svg viewBox="0 0 640 360" role="img" aria-label="Illustration of the Dakshin storefront: a dark awning, a wooden sign reading Dakshin, a lit window and a brass plaque with the address">
+            <defs>
+              <linearGradient id="ph-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3e6d3"/><stop offset="1" stop-color="#e9d6bb"/></linearGradient>
+              <linearGradient id="ph-glow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd59a"/><stop offset="1" stop-color="#f0a95b"/></linearGradient>
+              <pattern id="ph-stripe" width="28" height="40" patternUnits="userSpaceOnUse"><rect width="14" height="40" fill="#2b2622"/><rect x="14" width="14" height="40" fill="#c2410c"/></pattern>
+            </defs>
+            <rect width="640" height="360" fill="url(#ph-sky)"/>
+            <rect x="40" y="70" width="560" height="290" fill="#efe4d2"/><rect x="40" y="70" width="560" height="290" fill="none" stroke="#d8c6aa" stroke-width="2"/>
+            <rect x="150" y="84" width="340" height="56" rx="8" fill="#5b3a22"/><rect x="156" y="90" width="328" height="44" rx="6" fill="#6d4529"/>
+            <text x="320" y="122" text-anchor="middle" font-family="Instrument Serif, Georgia, serif" font-size="34" fill="#f7e7c6" letter-spacing="3">DAKSHIN</text>
+            <path d="M60 150h520l-22 52H82z" fill="url(#ph-stripe)"/><path d="M82 202h476" stroke="#1d1916" stroke-width="3"/>
+            <rect x="96" y="214" width="250" height="122" rx="6" fill="url(#ph-glow)"/><rect x="96" y="214" width="250" height="122" rx="6" fill="none" stroke="#3a2f27" stroke-width="6"/>
+            <path d="M221 214v122M96 275h250" stroke="#3a2f27" stroke-width="4"/>
+            <circle cx="140" cy="258" r="10" fill="#fff3d6" opacity=".8"/><circle cx="300" cy="300" r="8" fill="#fff3d6" opacity=".7"/>
+            <rect x="380" y="214" width="96" height="146" rx="4" fill="#2f2924"/><circle cx="462" cy="292" r="4" fill="#d6b16a"/>
+            <rect x="492" y="232" width="86" height="40" rx="5" fill="#c79a4a"/><rect x="495" y="235" width="80" height="34" rx="4" fill="none" stroke="#8a6526" stroke-width="1.5"/>
+            <text x="535" y="250" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="10" font-weight="600" fill="#3b2a12">12 MG ROAD</text>
+            <text x="535" y="263" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="9" fill="#3b2a12">BENGALURU</text>
+            <ellipse cx="560" cy="350" rx="26" ry="6" fill="#00000022"/><path d="M548 344h24l-4-26h-16z" fill="#8a4b2a"/><circle cx="552" cy="312" r="12" fill="#4d7a3a"/><circle cx="566" cy="306" r="13" fill="#5d8c46"/><circle cx="560" cy="296" r="10" fill="#6c9b52"/>
+          </svg>
+          <span class="grab hotspot" id="dakshin-sign" data-kind="place" data-name="Dakshin" data-address="12 MG Road, Bengaluru" data-text="Dakshin" data-source-title="Photo of the storefront · Dakshin" style="left: 22.5%; top: 22.5%; width: 55%; height: 17.5%"><span class="vh">Dakshin, the sign over the door</span></span>
+        </div>
+        <figcaption>An illustration standing in for a photo. With Recast on, the sign is a piece you can pick up. A real photo can replace it; the hotspot is placed in percentages.</figcaption>
+      </figure>
+    </section>
+
+    <section class="page" id="page-calendar" data-tab="calendar" role="tabpanel" aria-labelledby="tab-calendar" data-url="calendar.example/week" data-title="Calendar" hidden>
+      <p class="eyebrow">This weekend</p>
+      <h1 class="plain">Calendar</h1>
+      <p class="note">This calendar is a stand-in inside this page. Nothing reaches Google Calendar.</p>
+      <div id="cal-grid" class="cal-grid"></div>
+      <div class="drop any" data-dest="cal" tabindex="0" role="button" aria-label="Calendar, choose the time yourself"><span class="drop-label">Drop here to choose the time yourself</span></div>
+      <div id="cal-other-wrap" hidden><h2>Also on your calendar</h2><ul id="cal-other" class="plain-list"></ul></div>
+      <label class="control"><input type="checkbox" id="silent"> Make this stand-in calendar not answer, to see what Recast does when a calendar times out</label>
+    </section>
+
+    <section class="page" id="page-mail" data-tab="mail" role="tabpanel" aria-labelledby="tab-mail" data-url="mail.example/drafts" data-title="Mail" hidden>
+      <p class="eyebrow">Mail</p>
+      <h1 class="plain">Drafts</h1>
+      <p class="note">A stand-in mailbox inside this page. Saving a draft sends nothing.</p>
+      <div class="drop" data-dest="mail" tabindex="0" role="button" aria-label="Mail drafts"><span class="drop-label">Drop a message here to save it as a draft</span></div>
+      <ul id="drafts-list" class="drafts"></ul>
+    </section>
+
+    <section class="page" id="page-docs" data-tab="docs" role="tabpanel" aria-labelledby="tab-docs" data-url="docs.example" data-title="Docs" hidden>
+      <p class="eyebrow">Documents</p>
+      <h1 class="plain">Docs</h1>
+      <p class="note">A stand-in for Google Docs inside this page. Nothing reaches Google.</p>
+      <div class="drop" data-dest="docs" tabindex="0" role="button" aria-label="Docs"><span class="drop-label">Drop a note here to make it a document</span></div>
+      <ul id="docs-list" class="drafts"></ul>
+    </section>
+
+    <section class="page" id="page-build" data-tab="build" role="tabpanel" aria-labelledby="tab-build" data-url="ci.example/acme/app/42" data-title="Build #42 · CI" hidden>
+      <p class="eyebrow">Continuous integration</p>
+      <h1 class="plain">Build #42 failed</h1>
+      <pre class="log">$ npm test
+<span class="grab" id="build-error" data-kind="error">TypeError: Cannot read properties of undefined (reading 'id')</span>
+    at load (src/app.js:12:7)</pre>
+      <p>Note from the team: <span class="grab" id="build-note" data-kind="text">It started after the sign-in change.</span></p>
+      <h2>Issues</h2>
+      <p class="note">A stand-in for GitHub issues inside this page. Nothing reaches GitHub.</p>
+      <div class="drop" data-dest="issues" tabindex="0" role="button" aria-label="Issues"><span class="drop-label">Drop an error here to open an issue</span></div>
+      <ul id="issues-list" class="drafts"></ul>
+    </section>
+  </main>
+
+  <aside id="desk" class="desk" aria-label="Your objects">
+    <div class="desk-head"><h2>Your objects</h2><p id="hint" class="hint" role="status" aria-live="polite" hidden></p></div>
+    <div id="desk-objects" class="desk-objects"></div>
+    <p id="desk-empty" class="desk-empty"></p>
+  </aside>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</div>
+<div id="glass"></div>
+<div id="clay"></div>
+<script>/*@JS*/</script>

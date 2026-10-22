@@ -43,6 +43,7 @@ Updating the baseline: `pnpm --filter @recast/api-core contract:snapshot`. It **
 - The major version is in the path (`/v1`). A breaking change is a new path (`/v2`), served next to the old one.
 - `X-Recast-Version: 1.x.y` may be sent. A different major version is refused with `400 unsupported_version`. Every answer carries `Recast-Schema-Version`.
 - **Deprecation:** a deprecated version gets `Deprecation: true` and a `Sunset` date on every answer. The minimum notice is **6 months** for a public endpoint. Internal and private endpoints (release states) can change with notice to the design partners using them.
+- **No default address:** the SDK requires `baseUrl`, and the MCP server needs `RECAST_API_URL`, until a hosted API has a published address. A key is never sent to a guessed host.
 - **SDK versions:** `@recast/sdk` major versions follow API majors. A minor SDK release may add methods for new operations, and never changes what an existing method returns for an existing answer.
 
 ## Not covered yet

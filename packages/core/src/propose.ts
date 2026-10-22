@@ -20,7 +20,8 @@ export function propose(object: SemanticObject, destination: unknown, approach: 
     const usedProps = new Set(rel.requires.flatMap((g) => g.filter((p) => present(object, p))));
     const confidence = usedProps.size ? Math.min(...[...usedProps].map((p) => object.fields[p]?.confidence ?? 0)) : 0;
     const flags = row.effectFlags ?? [];
-    const reversible = (row.reversible ?? rel.reversible) && rel.reversible;
+    // Undo is offered only when the grammar, the row and the destination's declared abilities (when it declares them) all allow it.
+    const reversible = (row.reversible ?? rel.reversible) && rel.reversible && (dest.abilities ? dest.abilities.includes("undo") : true);
     const baseRisk = row.risk ?? rel.risk;
     const ready = missing.length === 0;
     out.push({

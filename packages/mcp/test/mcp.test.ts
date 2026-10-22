@@ -69,7 +69,7 @@ describe("remote mode, through the real API core", () => {
   it("a bad key or an outage becomes a clear tool error, never a crash", async () => {
     const bad: any = await (await memClient(remoteBackend({ apiKey: "sk_nobody_nobody_01", baseUrl: "https://api.test", fetch: await api() }))).callTool({ name: "resolve_object", arguments: { raw: "x" } });
     expect(bad.isError).toBe(true); expect(text(bad)).toContain("Recast API 401 unauthorized");
-    const down: any = await (await memClient(remoteBackend({ apiKey: KEY, fetch: (async () => { throw new TypeError("fetch failed"); }) as typeof fetch }))).callTool({ name: "list_destinations", arguments: {} });
+    const down: any = await (await memClient(remoteBackend({ apiKey: KEY, baseUrl: "https://api.test", fetch: (async () => { throw new TypeError("fetch failed"); }) as typeof fetch }))).callTool({ name: "list_destinations", arguments: {} });
     expect(down.isError).toBe(true); expect(text(down)).toBe("could not reach the Recast API; try again shortly");
   });
 });
@@ -92,4 +92,8 @@ describe("transports", () => {
     const r: any = await c.callTool({ name: "resolve_object", arguments: { raw: "Meera Iyer, meera@x.com" } });
     expect(r.structuredContent.object.type).toBe("Person"); await c.close();
   }, 60_000);
+  it("remote mode refuses to start without RECAST_API_URL, so a key is never sent to a guessed address", async () => {
+    const { backendFromEnv } = await import("../src/backend");
+    expect(() => backendFromEnv({ RECAST_API_KEY: "sk_live_x_000000000001" } as never)).toThrow(/RECAST_API_URL is required/);
+  });
 });

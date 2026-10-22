@@ -80,6 +80,9 @@ async function main() {
   const qs = __RECAST_TEST__ ? new URLSearchParams(location.search).get("tabId") : null;
   const tabId = qs && /^\d+$/.test(qs) ? Number(qs) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
   if (tabId === undefined) { $("status").textContent = "No tab to read."; return; }
+  // The explicit alternative to the shortcut: the worker brings Recast into this tab (activeTab, granted by opening this
+  // popup) and turns it on, or reopens a composition. The popup then gets out of the way.
+  $("clump").addEventListener("click", () => { void chrome.runtime.sendMessage({ type: "invoke", tabId }).then(() => window.close()); });
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ["page.js"] });
     const c = await inTab<Capture>(tabId, (() => (globalThis as unknown as { __recast: { capture(): unknown } }).__recast.capture()) as never);
@@ -89,5 +92,34 @@ async function main() {
     $("root").appendChild(el("p", { cls: "empty", text: "Browser pages, the extension store and some protected pages can't be read. Try an ordinary web page." }));
   }
 }
+// How much Recast asks (D24). Asked once, the first time the popup opens; changeable here.
+void (chrome.runtime.sendMessage({ type: "confirm" }) as Promise<{ level?: "none" | "high" }>).then(({ level }) => {
+  const box = document.querySelector<HTMLElement>(".ask")!;
+  if (!level) { box.classList.add("first"); $("ask-first").hidden = false; }
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name="ask"]')) {
+    r.checked = r.value === level;
+    r.addEventListener("change", () => { void chrome.runtime.sendMessage({ type: "confirm", level: r.value as "none" | "high" }).then(() => { box.classList.remove("first"); $("ask-first").hidden = true; }); });
+  }
+});
+
+// The real Google Calendar, through the Recast program on this computer. Access to http://localhost is asked for only
+// when the person presses Connect; the program then shows the same code and asks them to Allow this extension.
+type LinkState = { state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean; tasks?: boolean; docs?: boolean; github?: string; linear?: string };
+function showLink(l: LinkState) {
+  const text = $("link-text"), btn = $<HTMLButtonElement>("link-btn");
+  text.replaceChildren(); btn.hidden = false;
+  if (l.state === "off") { text.textContent = "Calendar placements go to a local stand-in."; btn.textContent = "Connect the real Google Calendar"; }
+  else if (l.state === "unreachable") { text.textContent = "The Recast program isn't running on this computer. In a terminal: pnpm --filter @recast/calendar-link run start"; btn.textContent = "Try again"; }
+  else if (l.state === "pending") { text.append("Open http://localhost:8787 and press Allow if it shows this code: ", el("span", { cls: "code", text: l.code ?? "" })); btn.textContent = "I allowed it"; }
+  else if (l.state === "not-signed-in") { text.textContent = "Allowed. Now sign in with Google on http://localhost:8787."; btn.textContent = "Check again"; }
+  else { text.textContent = `Connected. Placing in Calendar adds a real event, with Undo.${l.gmail ? " Mail saves a real Gmail draft (never sent)." : " Gmail drafts: not allowed (tick Gmail when signing in on http://localhost:8787)."}${l.tasks ? " Tasks adds a page to Google Tasks." : " Google Tasks: not allowed (tick Tasks when signing in)."}${l.docs ? " Documents creates a Google Doc from a note." : " Google Docs: not allowed (tick Google Drive when signing in)."}${l.github ? ` An error opens an issue in GitHub ${l.github}.` : ""}${l.linear ? ` Or in Linear (${l.linear}).` : ""}`; btn.hidden = true; }
+}
+async function linkFlow(ask: boolean) {
+  if (ask && !(await chrome.permissions.request({ origins: ["http://localhost/*"] }))) return showLink({ state: "off" });
+  showLink(await chrome.runtime.sendMessage({ type: "link" }) as LinkState);
+}
+$("link-btn").addEventListener("click", () => { void linkFlow(true); });
+void chrome.permissions.contains({ origins: ["http://localhost/*"] }).then((has) => { if (has) void linkFlow(false); });
+
 addEventListener("keydown", (e) => { if (e.key === "Escape") window.close(); });
 void main();

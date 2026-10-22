@@ -34,6 +34,12 @@ export function checkContract(input: unknown): CapabilityContract {
   const c = input as CapabilityContract;
   const problems: string[] = [];
   if (c.reliability === "unsupported" && c.accepts.length > 0) problems.push("an 'unsupported' destination cannot accept anything");
+  // A deep link only opens the app with the details filled in: the person finishes there, so Recast cannot claim the result.
+  const abilities = c.abilities;
+  if (c.reliability === "deep-link") {
+    const claimed = (abilities ?? []).filter((a) => a !== "open");
+    if (claimed.length) problems.push(`a 'deep-link' destination only opens the app; it cannot ${claimed.join(", ")}`);
+  } else if (abilities?.includes("open")) problems.push("only a 'deep-link' destination opens the app instead of writing");
   for (const row of c.accepts) {
     const rel = relationById(row.relationId);
     if (!rel) { problems.push(`unknown relation '${row.relationId}'`); continue; }

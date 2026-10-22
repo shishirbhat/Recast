@@ -1,4 +1,5 @@
 import { hash32, OutcomeUnknownError, type Operation, type OperationCapabilities } from "@recast/core";
+import { CONTRACTS } from "./contracts";
 import { DestinationError, DuplicateError, need, moved, seg, type Send, type Spec } from "./http";
 
 /** A write that cannot be repeated safely and cannot be read back: an unknown outcome stays unknown until the person checks. */
@@ -13,13 +14,7 @@ const GCAL = "https://www.googleapis.com/calendar/v3";
 const eventUrl = (t: CalendarTarget) => `${GCAL}/calendars/${seg(t.calendarId)}/events/${seg(t.eventId)}`;
 
 export const googleCalendar: Spec<CalendarTarget> = {
-  contract: {
-    destination: "google-calendar.event-editor", app: "Google Calendar", targetKind: "Event", reliability: "official-api",
-    accepts: [
-      { relationId: "person-event-attendee", effect: "Add attendee", effectFlags: ["notifies-third-party"], dataMoved: ["Person.name", "Person.email"] },
-      { relationId: "location-event-location", effect: "Set location", dataMoved: ["Location.name", "Location.address"] },
-    ],
-  },
+  contract: CONTRACTS.googleCalendar,
   // PATCH sets a value: repeating the same request gives the same result, and the event can be read back.
   capabilities: {
     "person-event-attendee": { writes: true, idempotency: "not-applicable", verifiable: true, reversal: "restore-previous", onTimeout: "safe-to-retry", permission: "calendar.events" },
@@ -55,16 +50,14 @@ const GMAIL = "https://gmail.googleapis.com/gmail/v1/users";
 export function headerSafe(v: string, what: string): string {
   if (/[\r\n\0]/.test(v)) throw new DestinationError(`${what} contains a line break`); return v;
 }
-export function rfc822Draft(to: string): string {
-  const raw = `To: ${headerSafe(to, "recipient")}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n`;
+export function rfc822Draft(to: string, body = ""): string {
+  // The body follows the blank line, so it cannot add headers; it is sent as written.
+  const raw = `To: ${headerSafe(to, "recipient")}\r\nContent-Type: text/plain; charset="UTF-8"\r\n\r\n${body}`;
   const bin = Array.from(new TextEncoder().encode(raw), (b) => String.fromCharCode(b)).join("");
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 export const gmailDraft: Spec<GmailTarget> = {
-  contract: {
-    destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api",
-    accepts: [{ relationId: "person-message-recipient", effect: "Create a draft to this person", dataMoved: ["Person.email"] }],
-  },
+  contract: CONTRACTS.gmailDraft,
   capabilities: { "person-message-recipient": unkeyedCreate("gmail.compose", "delete-created") },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Person.email")) } } }));
@@ -73,14 +66,22 @@ export const gmailDraft: Spec<GmailTarget> = {
   async undo(token, t, send) { await send({ method: "DELETE", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts/${seg((JSON.parse(token) as { id: string }).id)}` }); },
 };
 
+/** A composed message (a person and what to say) saved as a draft: To and the text. Still a draft, never a send. */
+export const gmailMessageDraft: Spec<GmailTarget> = {
+  contract: CONTRACTS.gmailMessageDraft,
+  capabilities: { "message-draft-entry": unkeyedCreate("gmail.compose", "delete-created") },
+  async execute(op, t, send) {
+    const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Message.to"), need(op, "Message.snippet")) } } }));
+    return JSON.stringify({ id: str(r.id, "draft id") });
+  },
+  undo: (token, t, send) => gmailDraft.undo(token, t, send),
+};
+
 // ---- Google Sheets (Sheets API v4, values.append / values.clear) ---------------------------------
 export interface SheetTarget { spreadsheetId: string; range: string }
 const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 export const googleSheets: Spec<SheetTarget> = {
-  contract: {
-    destination: "google-sheets.range", app: "Google Sheets", targetKind: "Product", reliability: "official-api",
-    accepts: [{ relationId: "product-product-compare", effect: "Add a row", dataMoved: ["Product.name", "Product.url"] }],
-  },
+  contract: CONTRACTS.googleSheets,
   capabilities: { "product-product-compare": unkeyedCreate("spreadsheets", "delete-created") },
   async execute(op, t, send) {
     const row = [need(op, "Product.name"), moved(op, "Product.url") ?? ""];
@@ -97,10 +98,7 @@ export const googleSheets: Spec<SheetTarget> = {
 export interface TasksTarget { taskListId: string }
 const TASKS = "https://tasks.googleapis.com/tasks/v1/lists";
 export const googleTasks: Spec<TasksTarget> = {
-  contract: {
-    destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api",
-    accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
-  },
+  contract: CONTRACTS.googleTasks,
   capabilities: { "document-task-reference": unkeyedCreate("tasks", "delete-created") },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Document.title"), ...(moved(op, "Document.url") ? { notes: moved(op, "Document.url") } : {}) } }));
@@ -109,15 +107,98 @@ export const googleTasks: Spec<TasksTarget> = {
   async undo(token, t, send) { await send({ method: "DELETE", url: `${TASKS}/${seg(t.taskListId)}/tasks/${seg((JSON.parse(token) as { id: string }).id)}` }); },
 };
 
+// A whole task, with its due date. Google keeps only the date of `due` (the time part is discarded), so it is sent as
+// midnight UTC of that day: the date the person saw is the date Google shows.
+export const googleTasksEntry: Spec<TasksTarget> = {
+  contract: CONTRACTS.googleTasksEntry,
+  capabilities: { "task-tasklist-entry": unkeyedCreate("tasks", "delete-created") },
+  async execute(op, t, send) {
+    const url = moved(op, "Task.url"), due = moved(op, "Task.due");
+    const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Task.title"), ...(url ? { notes: url } : {}), ...(due ? { due: `${String(due).slice(0, 10)}T00:00:00.000Z` } : {}) } }));
+    return JSON.stringify({ id: str(r.id, "task id") });
+  },
+  undo: googleTasks.undo,
+};
+
+// ---- Google Docs (Docs API v1 documents.create + batchUpdate; Drive API v3 files.update to trash) --------------------
+// Scope: drive.file, the narrowest: Recast can see and change only the documents it created, nothing else in Drive.
+export type DocsTarget = Record<string, never>;
+const DOCS = "https://docs.googleapis.com/v1/documents";
+const DRIVE = "https://www.googleapis.com/drive/v3/files";
+const trash = (id: string, send: Send) => send({ method: "PATCH", url: `${DRIVE}/${seg(id)}`, body: { trashed: true } });
+export const googleDocs: Spec<DocsTarget> = {
+  contract: CONTRACTS.googleDocs,
+  // Undo trashes (the person can restore it from the Drive trash): "archive". Google's document id is Google's, so a lost
+  // answer cannot be checked exactly: unknown stays unknown until the person looks.
+  capabilities: { "note-docs-entry": unkeyedCreate("drive.file", "archive") },
+  async execute(op, _t, send) {
+    const r = asObj(await send({ method: "POST", url: DOCS, body: { title: need(op, "Note.title") } }));
+    const id = str(r.documentId, "documentId"); const token = JSON.stringify({ id });
+    // The text goes in as plain text (insertText), never as markup: a passage cannot add links, styles or anything else.
+    try { await send({ method: "POST", url: `${DOCS}/${seg(id)}:batchUpdate`, body: { requests: [{ insertText: { location: { index: 1 }, text: need(op, "Note.body") } }] } }); }
+    catch (e) {
+      if (e instanceof OutcomeUnknownError) throw new OutcomeUnknownError(`${e.message}; the document was created, its text may be missing`, token);
+      // An empty document is not what the person reviewed: take it back out, then report the failure.
+      try { await trash(id, send); } catch { throw new DestinationError("the document was created but its text could not be added, and it could not be removed: look in Google Drive"); }
+      throw e;
+    }
+    return token;
+  },
+  async undo(token, _t, send) { await trash((JSON.parse(token) as { id: string }).id, send); },
+};
+
+// ---- GitHub (REST API 2022-11-28: issues.create / issues.update to close) ---------------------------------------------
+// Token: a fine-grained personal access token limited to one repository, with Issues: read and write, nothing else.
+export interface GithubTarget { owner: string; repo: string }
+const GITHUB_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+const issuesUrl = (t: GithubTarget) => `https://api.github.com/repos/${seg(t.owner)}/${seg(t.repo)}/issues`;
+export const githubIssue: Spec<GithubTarget> = {
+  contract: CONTRACTS.githubIssue,
+  // Closing is the reversal GitHub allows (deleting needs admin rights). The issue number is GitHub's: a lost answer
+  // cannot be checked exactly, so it stays unknown until the person looks.
+  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:write", "archive") },
+  async execute(op, t, send) {
+    const r = asObj(await send({ method: "POST", url: issuesUrl(t), headers: GITHUB_HEADERS, body: { title: need(op, "Issue.title"), body: need(op, "Issue.body") } }));
+    if (typeof r.number !== "number") throw new DestinationError("unexpected response: no issue number");
+    return JSON.stringify({ number: r.number, ...(typeof r.html_url === "string" ? { url: r.html_url } : {}) });
+  },
+  async undo(token, t, send) {
+    await send({ method: "PATCH", url: `${issuesUrl(t)}/${(JSON.parse(token) as { number: number }).number}`, headers: GITHUB_HEADERS, body: { state: "closed", state_reason: "not_planned" } });
+  },
+};
+
+// ---- Linear (GraphQL: issueCreate / issueDelete) -----------------------------------------------------------------------
+// Values travel as GraphQL variables, never inside the query text. GraphQL reports failures in the body with HTTP 200,
+// so `errors` (or success: false) is a failure, never a success.
+export interface LinearTarget { teamId: string }
+const LINEAR = "https://api.linear.app/graphql";
+async function gql(send: Send, query: string, variables: Record<string, unknown>) {
+  const r = asObj(await send({ method: "POST", url: LINEAR, body: { query, variables } }));
+  if (Array.isArray(r.errors) && r.errors.length) throw new DestinationError(`Linear refused it: ${String(asObj(r.errors[0]).message ?? "error")}`);
+  return asObj(r.data);
+}
+export const linearIssue: Spec<LinearTarget> = {
+  contract: CONTRACTS.linearIssue,
+  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:create", "delete-created") },
+  async execute(op, t, send) {
+    const d = asObj((await gql(send, "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }",
+      { input: { teamId: t.teamId, title: need(op, "Issue.title"), description: need(op, "Issue.body") } })).issueCreate);
+    const issue = asObj(d.issue);
+    if (d.success !== true) throw new DestinationError("Linear did not create the issue");
+    return JSON.stringify({ id: str(issue.id, "issue id"), ...(typeof issue.identifier === "string" ? { identifier: issue.identifier } : {}) });
+  },
+  async undo(token, _t, send) {
+    const d = asObj((await gql(send, "mutation($id: String!) { issueDelete(id: $id) { success } }", { id: (JSON.parse(token) as { id: string }).id })).issueDelete);
+    if (d.success !== true) throw new DestinationError("Linear did not delete the issue");
+  },
+};
+
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
 export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
 const NOTION = "https://api.notion.com/v1/pages";
 const NOTION_HEADERS = { "Notion-Version": "2022-06-28", "Content-Type": "application/json" };
 export const notion: Spec<NotionTarget> = {
-  contract: {
-    destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api",
-    accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],
-  },
+  contract: CONTRACTS.notion,
   capabilities: { "document-project-source": unkeyedCreate("insert_content", "archive") },
   async execute(op, t, send) {
     const properties: Record<string, unknown> = { [t.titleProperty ?? "Name"]: { title: [{ text: { content: need(op, "Document.title") } }] } };
@@ -155,10 +236,7 @@ function eventBody(op: Operation, id: string) {
 }
 
 export const googleCalendarEvent: Spec<CalendarListTarget> = {
-  contract: {
-    destination: "google-calendar.calendar", app: "Google Calendar", targetKind: "Calendar", reliability: "official-api",
-    accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
-  },
+  contract: CONTRACTS.googleCalendarEvent,
   capabilities: { "event-calendar-entry": { writes: true, idempotency: "provider-key", verifiable: true, reversal: "delete-created", onTimeout: "safe-to-retry", permission: "calendar.events" } },
   // A timed event needs an end; Recast does not invent one here (composition offers a visible default instead).
   check: (op) => { const start = moved(op, "Event.start") ?? ""; const allDay = moved(op, "Event.allDay") === "true" || !start.includes("T"); return !allDay && !moved(op, "Event.end") ? ["Event.end"] : []; },

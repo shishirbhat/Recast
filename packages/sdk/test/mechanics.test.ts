@@ -32,7 +32,8 @@ describe("requests", () => {
     await mk(f).sdk.from("Launch dinner 2026-11-14").as("Event").to("google_calendar").threshold(0.8).withoutProvenance().run();
     expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ input: { raw: "Launch dinner 2026-11-14" }, target: { type: "Event", destination: "google_calendar" }, options: { confidence_threshold: 0.8, include_provenance: false } });
   });
-  it("requires an api key", () => { expect(() => new Recast({ apiKey: "" })).toThrow(/apiKey/); });
+  it("requires an api key", () => { expect(() => new Recast({ apiKey: "", baseUrl: "https://api.test" })).toThrow(/apiKey/); });
+  it("requires a base URL: a key is never sent to a guessed host", () => { expect(() => new Recast({ apiKey: "sk_test_x_000000000001" } as never)).toThrow(/baseUrl is required/); });
 });
 
 describe("errors map to types, and only the right ones retry", () => {

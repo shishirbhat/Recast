@@ -153,6 +153,81 @@
         ]
       ],
       "reversible": true
+    },
+    {
+      "id": "message-draft-entry",
+      "from": "Message",
+      "to": "Drafts",
+      "relation": "draft",
+      "risk": "low",
+      "requires": [
+        [
+          "to"
+        ],
+        [
+          "snippet"
+        ]
+      ],
+      "reversible": true
+    },
+    {
+      "id": "task-tasklist-entry",
+      "from": "Task",
+      "to": "TaskList",
+      "relation": "entry",
+      "risk": "low",
+      "requires": [
+        [
+          "title"
+        ]
+      ],
+      "reversible": true
+    },
+    {
+      "id": "location-map-directions",
+      "from": "Location",
+      "to": "Map",
+      "relation": "directions",
+      "risk": "low",
+      "requires": [
+        [
+          "name",
+          "address"
+        ]
+      ],
+      "reversible": false
+    },
+    {
+      "id": "note-docs-entry",
+      "from": "Note",
+      "to": "Docs",
+      "relation": "entry",
+      "risk": "low",
+      "requires": [
+        [
+          "title"
+        ],
+        [
+          "body"
+        ]
+      ],
+      "reversible": true
+    },
+    {
+      "id": "issue-tracker-entry",
+      "from": "Issue",
+      "to": "Issues",
+      "relation": "entry",
+      "risk": "low",
+      "requires": [
+        [
+          "title"
+        ],
+        [
+          "body"
+        ]
+      ],
+      "reversible": true
     }
   ]
 }

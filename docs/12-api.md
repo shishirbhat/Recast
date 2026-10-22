@@ -130,12 +130,12 @@ Tested against a stand-in Google over HTTP (`packages/api-core/test/place.test.t
 Agents reach Recast as tools. `@recast/mcp` exposes two read-only tools: `resolve_object` (raw text in; typed object, provenance and routing out) and `list_destinations`. Nothing is placed in any app; acting on an answer stays a separate, consented step.
 
 - **Local mode** (no key): the resolve engine runs inside the server process.
-- **Remote mode** (`RECAST_API_KEY`, optional `RECAST_API_URL`): calls the hosted API, so the tenant's limits, quota and consent apply. API errors become tool errors the model can read ("Recast API 429 rate_limited ... Retry after 2 s."), never crashes.
+- **Remote mode** (`RECAST_API_KEY` and `RECAST_API_URL`, both required; a key is never sent to a guessed address): calls the hosted API, so the tenant's limits, quota and consent apply. API errors become tool errors the model can read ("Recast API 429 rate_limited ... Retry after 2 s."), never crashes.
 - **Transports**: stdio for desktop agents (`pnpm --filter @recast/mcp start`), Streamable HTTP for hosted agents (`start:http`, `POST /mcp`, `GET /healthz`, 64 KB body cap).
 
 Claude Desktop or any stdio client:
 ```json
-{ "mcpServers": { "recast": { "command": "npx", "args": ["tsx", "/path/to/Recast/packages/mcp/src/stdio.ts"], "env": { "RECAST_API_KEY": "sk_live_..." } } } }
+{ "mcpServers": { "recast": { "command": "npx", "args": ["tsx", "/path/to/Recast/packages/mcp/src/stdio.ts"], "env": { "RECAST_API_KEY": "sk_live_...", "RECAST_API_URL": "https://<your Recast API>" } } } }
 ```
 Tested with the official MCP client (`packages/mcp/test/mcp.test.ts`): in memory, over Streamable HTTP, over stdio with the real binary as a child process, and in remote mode through the real API core (same answers as local mode; bad key and outage become tool errors). Behind the Agent Runtime gateway, these tools get identity, scopes, policy and the signed audit like any other upstream.
 

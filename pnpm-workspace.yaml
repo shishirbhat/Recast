@@ -6,4 +6,5 @@ packages:
   - corpus
   - bench
 onlyBuiltDependencies:
+  - electron
   - esbuild

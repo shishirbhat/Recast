@@ -1,0 +1,139 @@
+/* Layout: a browser window (tabs, address bar, page) with a desk of objects along the bottom that stays put across tabs. */
+:root {
+  --bg: #faf9f6; --surface: #ffffff; --ink: #1a1a1a; --muted: #625f5a; --line: #e6e2da;
+  --accent: #b83d12; --accent-fill: #ff6b35; --accent-soft: #ffe5dc; --focus: #1a1a1a;
+  --chrome: #efece6; --tab: #e4e0d8; --ok: #15803d;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-ui: "Inter", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --clay-fill: #fffaf6; --clay-fill-composed: #ffe5dc; --clay-fill-carried: #ffffff; --clay-ink: #1a1a1a; --clay-muted: #625f5a; --clay-accent: #b83d12; --clay-focus: #1a1a1a;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141311; --surface: #1d1b19; --ink: #f3f1ec; --muted: #b0aba3; --line: #34302b;
+  --accent: #ff8a5c; --accent-fill: #ff6b35; --accent-soft: #3d1f14; --focus: #f3f1ec; --chrome: #1a1816; --tab: #26231f; --ok: #4ade80;
+  --clay-fill: #2a2522; --clay-fill-composed: #45261a; --clay-fill-carried: #332e2a; --clay-ink: #f3f1ec; --clay-muted: #b0aba3; --clay-accent: #ff8a5c; --clay-focus: #f3f1ec;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #141311; --surface: #1d1b19; --ink: #f3f1ec; --muted: #b0aba3; --line: #34302b;
+  --accent: #ff8a5c; --accent-fill: #ff6b35; --accent-soft: #3d1f14; --focus: #f3f1ec; --chrome: #1a1816; --tab: #26231f; --ok: #4ade80;
+  --clay-fill: #2a2522; --clay-fill-composed: #45261a; --clay-fill-carried: #332e2a; --clay-ink: #f3f1ec; --clay-muted: #b0aba3; --clay-accent: #ff8a5c; --clay-focus: #f3f1ec;
+  color-scheme: dark; }
+
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-ui); -webkit-tap-highlight-color: transparent; }
+.app { min-height: 100%; display: flex; flex-direction: column; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Browser chrome */
+.chrome { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--chrome); border-bottom: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 8px 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--chrome); }
+.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+[role=tab] { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 190px; padding: 8px 12px; border: 0; border-radius: 10px 10px 0 0; background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
+[role=tab][aria-selected=true] { background: var(--bg); color: var(--ink); }
+[role=tab].springing { box-shadow: inset 0 -3px 0 var(--accent); color: var(--ink); }
+.tname { overflow: hidden; text-overflow: ellipsis; }
+.fav { flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font-size: 10px; font-weight: 700; background: var(--tab); color: var(--ink); }
+.bar { display: flex; align-items: center; gap: 8px; margin-inline: -16px; padding: 6px 16px; background: var(--bg); border-top: 1px solid var(--line); }
+.address { font: 13px/1.3 var(--font-mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lock { color: var(--muted); }
+/* The Recast command, in the browser's own bar (where an extension's button lives) */
+.trigger { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 5px 6px 5px 10px; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font-weight: 600; font-size: 13px; cursor: pointer; }
+.trigger kbd { font: 500 11px/1 var(--font-ui); padding: 4px 6px; border-radius: 6px; background: var(--chrome); color: var(--muted); }
+.trigger-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.trigger[aria-pressed=true] .trigger-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+@media (max-width: 640px) { .trigger kbd { display: none; } }
+
+/* Pages */
+.viewport { flex: 1; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px calc(var(--desk-h, 180px) + 32px); }
+.page { max-width: 640px; margin-inline: auto; display: flex; flex-direction: column; gap: 12px; }
+.eyebrow { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 400 46px/1.05 var(--font-display); letter-spacing: -.01em; text-wrap: balance; }
+h1.plain { font-size: 34px; }
+h2 { font: 600 13px/1.3 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 0; }
+p { margin: 0; max-width: 65ch; }
+.sub, .muted, .note { color: var(--muted); }
+.note { font-size: 13px; border-left: 3px solid var(--line); padding-left: 10px; }
+.mono { font-family: var(--font-mono); font-size: 13px; }
+blockquote { margin: 0; font: italic 24px/1.35 var(--font-display); }
+.avail { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); width: fit-content; }
+.avail .label { font-size: 12px; color: var(--muted); }
+.avail .big { font: 400 28px/1.15 var(--font-display); }
+
+/* Pieces you can pick up: underlined like a link, lifted when grabbed */
+.grab { cursor: grab; border-radius: 6px; padding: 0 3px; margin: 0 -3px; background: linear-gradient(transparent 62%, var(--accent-soft) 62%); box-shadow: inset 0 -2px 0 var(--accent-fill); touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: background-color .15s; }
+.grab:hover { background: var(--accent-soft); }
+.grab.lifted { animation: lifted .5s ease-out; }
+@keyframes lifted { 0% { background: var(--accent-fill); color: #1a1a1a; } 100% {} }
+.grab.accepts { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }
+.grab.refuses { box-shadow: none; outline: 2px dashed var(--muted); outline-offset: 2px; }
+/* With Recast off, pieces are just text: no highlight, no grab cursor, ordinary selection. */
+body:not(.recast-on) .grab { background: none; box-shadow: none; cursor: auto; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; touch-action: auto; }
+
+/* A photo (here an illustration standing in for one) with pieces Recast can read from it. Hotspots are placed in
+   percentages of the image, so a real photo drops in without moving them. */
+.photo { margin: 4px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.photo-frame { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); aspect-ratio: 16 / 9; background: var(--surface); }
+.photo-frame svg, .photo-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo figcaption { font-size: 12px; color: var(--muted); }
+.hotspot { position: absolute; border-radius: 10px; color: transparent; background: none !important; box-shadow: none; margin: 0; padding: 0; }
+body.recast-on .hotspot { box-shadow: 0 0 0 2px var(--accent-fill), 0 0 0 6px color-mix(in srgb, var(--accent-fill) 22%, transparent) !important; }
+body.recast-on .hotspot:hover, .hotspot.accepts { box-shadow: 0 0 0 3px var(--accent), 0 0 0 8px color-mix(in srgb, var(--accent-fill) 30%, transparent) !important; }
+.hotspot .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Calendar and mail drop targets */
+.cal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.day { display: flex; flex-direction: column; gap: 8px; }
+.drop { border: 1.5px dashed var(--line); border-radius: 16px; padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; min-height: 64px; transition: border-color .15s, background-color .15s; }
+.drop.slot .slot-label { font-weight: 600; font-variant-numeric: tabular-nums; }
+.drop.any { align-items: center; justify-content: center; text-align: center; color: var(--muted); }
+.drop.accepts { border: 2px solid var(--accent); background: var(--accent-soft); }
+.drop.refuses { border-style: dashed; border-color: var(--muted); }
+.drop.refuses::after { content: "Doesn't fit here"; font-size: 12px; color: var(--muted); }
+.drop-label { font-size: 14px; }
+.placed { display: block; padding: 6px 10px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 13px; }
+.plain-list { margin: 0; padding-left: 18px; }
+.drafts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.drafts li { padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 2px; }
+.drafts li.none { color: var(--muted); border-style: dashed; }
+.control { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--muted); padding-top: 8px; }
+
+/* The desk: where objects rest, the same in every tab */
+.desk { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: color-mix(in srgb, var(--chrome) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid var(--line);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 10px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; }
+.desk-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.hint { font-size: 13px; color: var(--ink); min-width: 0; }
+.desk-objects { position: relative; min-height: 60px; }
+.desk-empty { font-size: 13px; color: var(--muted); max-width: 70ch; }
+body.carrying .grab { cursor: copy; }
+body.carrying { cursor: grabbing; }
+
+.toast { position: fixed; z-index: 2147483001; left: 50%; transform: translateX(-50%); bottom: calc(var(--desk-h, 180px) + 16px); max-width: calc(100vw - 32px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+
+@media (max-width: 640px) {
+  h1 { font-size: 38px; }
+  [role=tab] { flex: 0 0 auto; padding: 8px 10px; }
+  .tname { max-width: 84px; }
+}
+@media (prefers-reduced-motion: reduce) { .grab.lifted { animation: none; } .grab, .drop { transition: none; } }
+.drafts .doc-body { white-space: pre-line; color: var(--muted); font-size: 14px; }
+blockquote.review { font-size: 20px; margin: 4px 0 12px; }
+blockquote.review cite { display: block; font: 13px/1.4 var(--font-ui, system-ui); font-style: normal; color: var(--muted); margin-top: 4px; }
+pre.log { font: 13px/1.6 var(--font-mono, ui-monospace, monospace); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Phase two: the blob beside a selection. Shaped like a clay object, so it reads as something you can pick up. */
+body.recast-on .grab.sel-blob, body.recast-on .grab.sel-blob:hover { margin: 0; position: fixed; z-index: 2147482900; display: inline-flex; align-items: center; gap: 8px; max-width: min(320px, calc(100vw - 16px)); padding: 7px 12px; border-radius: 999px;
+  background: var(--surface, #fff7f2); color: var(--ink, #1a1a1a); font: 500 13px/1.2 var(--font-ui, system-ui, sans-serif); cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none;
+  box-shadow: 0 0 0 1.5px var(--accent, #c2410c), 0 8px 22px rgba(26,26,26,.16); }
+body.recast-on .grab.sel-blob.accepts { box-shadow: 0 0 0 2.5px var(--accent, #c2410c), 0 8px 22px rgba(26,26,26,.16); }
+.sel-blob .sel-glyph { color: var(--accent, #c2410c); }
+.sel-blob .sel-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-blob .sel-kind { flex: none; font-size: 11px; color: var(--muted, #6b6b6b); padding-left: 6px; border-left: 1px solid var(--line, #e3ddd3); }
+.sel-blob:focus-visible { outline: 2px solid var(--accent, #c2410c); outline-offset: 2px; }
+/* More tabs than fit (phones): the strip scrolls sideways; a fade at the edge says there is more. */
+.tabs.more-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+.tabs.more-left.more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+.tabs.more-left:not(.more-right) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+@media (max-width: 520px) { [role=tab] { padding: 8px 8px; gap: 6px; font-size: 14px; } }
