@@ -119,6 +119,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   const q = <T extends HTMLElement = HTMLElement>(s: string) => el.querySelector<T>(s)!;
   let model: ModuleModel = { mode: "off" };
   let drill: "more" | null = null;          // the "More" ring is turned into view inside the wheel
+  let blocked: string | null = null;        // an open-and-prefill link the browser refused to open in a new tab
   let holdStart = 0;
   const emit = (i: GlassIntent) => opts.onIntent(i);
 
@@ -215,7 +216,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     const m = model;
     if (m.mode !== "choosing") { if (sig) { side.innerHTML = ""; sig = ""; } return; }
     const list = rows(m); const s = JSON.stringify([drill, list.map((r) => [r.key, r.available, r.sub, r.reason])]);
-    const want = drill === "more" ? (sig.startsWith('["more"') ? target : 0) : Math.max(0, m.entries.findIndex((e) => e.key === m.choice));
+    // Into "More": land on the first place that takes this object, not on the first in the list.
+    const want = drill === "more" ? (sig.startsWith('["more"') ? target : Math.max(0, list.findIndex((r) => r.available && r.key !== "more:back"))) : Math.max(0, m.entries.findIndex((e) => e.key === m.choice));
     if (s !== sig) {
       const fresh = !sig || JSON.parse(sig)[0] !== drill; sig = s; wRows = list;
       side.innerHTML = `<div class="rg-drum" role="listbox" tabindex="0" aria-label="${drill === "more" ? "More destinations" : "Where it goes"}" style="height:${DRUM_H}px">
@@ -307,7 +309,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         if (op && d?.opensOnly) {
           // Open and prefill: nothing is written by Recast, so the review says so instead of a risk line.
           const open = link ? `<a class="rg-btn primary" data-act="place" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(op.proposal.effect)} in ${esc(d.app)}</a>` : `<button type="button" class="rg-btn primary" disabled>${esc(d.app)} cannot be opened from here</button>`;
-          return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}<p class="rg-risk">Opens ${esc(d.app)} in a new tab with this filled in. Recast saves nothing; you finish there.</p>`, actions: `${open}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
+          // The browser may refuse a new tab here (a pop-up blocker, or a page embedded without permission to open one).
+          // Then nothing is claimed: the address is shown to open by hand.
+          const refused = link && blocked === link ? `<p class="rg-error" role="alert">Your browser did not open a new tab: this page may not be allowed to. Open the address yourself:</p>${copyBox(link, d.app)}` : "";
+          return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}<p class="rg-risk">Opens ${esc(d.app)} in a new tab with this filled in. Recast saves nothing; you finish there.</p>${refused}`, actions: `${open}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
         }
         const go = op ? (op.risk.consent === "hold" ? `<button type="button" class="rg-btn primary hold" data-act="hold">Hold to confirm: ${esc(op.proposal.effect.toLowerCase())}</button>` : `<button type="button" class="rg-btn primary" data-act="place">Confirm: ${esc(op.proposal.effect)}</button>`) : `<button type="button" class="rg-btn primary" disabled>Answer what is still needed</button>`;
         return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${standIn}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
@@ -315,7 +320,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "executing": return { title: `${dIcon}${d?.opensOnly ? "Opening" : "Adding to"} ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
       case "undoing": return { title: `${dIcon}Undoing in ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm it is removed.</p>${err}`, actions: "" };
       case "succeeded": if (d?.opensOnly) return { title: `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>Opened ${esc(where)}`, head: "", facts: "",
-          body: `<p class="rg-hint">${esc(where)} opened in a new tab with this filled in. Recast cannot see what you do there, so it does not say it was added.</p>`,
+          body: `<p class="rg-hint">${esc(where)} opened in a new tab with this filled in. Recast cannot see what you do there, so it does not say it was added.</p>${/^https:\/\//.test(m.placement?.receipt?.bridgeRef ?? "") ? `<p class="rg-hint">Did it not open, or open blank? Copy the address into a new tab:</p>${copyBox(m.placement!.receipt!.bridgeRef!, d.app)}` : ""}`,
           actions: `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
         return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
         body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>`,
@@ -329,7 +334,11 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   }
 
   let shown = { title: "", head: "", facts: "", body: "", actions: "" };
+  function copyBox(url: string, app: string) {
+    return `<div class="rg-answer"><input class="rg-url" readonly value="${esc(url)}" aria-label="${esc(app)} address"><button type="button" class="rg-btn small ghost" data-copy="${esc(url)}">Copy</button></div>`;
+  }
   function update(m: ModuleModel, extra: { error?: string } = {}) {
+    if (m.mode !== "preview") blocked = null;
     const before = el.dataset["mode"]!; const prev = el.getBoundingClientRect();
     if (m.mode !== "choosing") drill = null;
     model = m; el.dataset["mode"] = m.mode; el.hidden = m.mode === "off";
@@ -370,6 +379,21 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   el.addEventListener("click", (e) => {
     // A link (an open-and-prefill destination) is followed by the browser as usual; its click also records the placement.
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button, a[data-act]"); if (!b || b.disabled) return;
+    if (b instanceof HTMLAnchorElement && b.dataset["act"] === "place") {
+      // Opened here, from the person's click, so the result is known: a refused tab is reported, not called "opened".
+      e.preventDefault();
+      const w = window.open(b.href, "_blank");
+      if (!w) { blocked = b.getAttribute("href"); update(model); return; }
+      try { w.opener = null; } catch { /* another origin already */ }
+      return emit({ type: "place" });
+    }
+    if (b.dataset["copy"] !== undefined) {
+      const input = b.parentElement?.querySelector<HTMLInputElement>(".rg-url"); input?.select();
+      const done = () => { b.textContent = "Copied"; };
+      if (navigator.clipboard) navigator.clipboard.writeText(b.dataset["copy"]!).then(done, () => { if (document.execCommand?.("copy")) done(); });
+      else if (document.execCommand?.("copy")) done();
+      return;
+    }
     if (b.dataset["answer"]) return emit({ type: "answer", field: b.dataset["answer"] as AnswerField, value: b.dataset["value"]! });
     if (b.dataset["submit"]) return submit(b.dataset["submit"]);
     if (b.dataset["choose"]) return emit({ type: "choose", field: b.dataset["choose"] as EventField, ingredientId: b.dataset["ingredient"]! });

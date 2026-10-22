@@ -432,7 +432,7 @@ describe("a place on its own → Google Maps (open and prefill, the real Google 
     await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
     await page.getByRole("button", { name: "Open" }).click();                         // into More
     const maps = page.locator(".rg-opt", { hasText: "Google Maps" });
-    await maps.click(); await page.waitForTimeout(150); await maps.click();
+    await expect.poll(() => page.locator(".rg-opt.on .rg-label").innerText()).toBe("Google Maps"); await page.waitForTimeout(150); await maps.click();
     s = await st(page); expect(s.phase).toBe("previewing");
     expect(await page.locator(".rg-title").innerText()).toBe("Google Maps: review");
     expect(await page.locator(".rg-body").innerText()).toMatch(/Opens Google Maps in a new tab with this filled in\. Recast saves nothing; you finish there\./);
@@ -448,6 +448,52 @@ describe("a place on its own → Google Maps (open and prefill, the real Google 
     expect(await page.locator(".rg-body").innerText()).toMatch(/Recast cannot see what you do there/);
     expect(await page.getByRole("button", { name: "Undo" }).count()).toBe(0);
     expect(errors).toEqual([]); await ctx.close();
+  });
+});
+
+describe("Google Maps when the page is embedded without permission to open tabs (as a hosted artifact can be)", () => {
+  it("the browser refuses the new tab: Recast says so, places nothing, and shows the address to copy; allowed, it opens and keeps the address on hand", async () => {
+    const run = async (sandbox: string) => {
+      const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "Asia/Kolkata" });
+      await ctx.route("https://www.google.com/**", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "<title>Maps</title>" }));
+      const page = await ctx.newPage(); const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(`${base}/compose.html`);
+      await page.setContent(`<iframe sandbox="${sandbox}" src="${base}/clay.html?${Q}" style="width:1180px;height:780px;border:0"></iframe>`);
+      const f = page.frameLocator("iframe");
+      await f.locator("#recast-trigger").click();
+      await f.locator("#tab-restaurant").click(); await f.locator("#dakshin").click();
+      await f.locator(".clay-item").first().click();
+      await f.locator(".rg-actions [data-act=placeIt]").click();
+      await f.getByRole("button", { name: /Choose where it goes/ }).click();
+      await page.waitForTimeout(300);
+      await f.getByRole("button", { name: "Open" }).click();
+      const maps = f.locator(".rg-opt", { hasText: "Google Maps" });
+      await expect.poll(() => f.locator(".rg-opt.on .rg-label").innerText()).toBe("Google Maps"); await page.waitForTimeout(150); await maps.click();
+      await f.locator(".rg-actions a[data-act=place]").waitFor();
+      const frame = page.frames()[1]!;
+      return { ctx, page, f, frame, errors };
+    };
+    const href = "https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru";
+    // 1. Not allowed to open tabs: nothing opens, nothing is called opened.
+    const a = await run("allow-scripts allow-same-origin");
+    const tabs = a.ctx.pages().length;
+    await a.f.locator(".rg-actions a[data-act=place]").click();
+    await a.f.locator(".rg-error").waitFor();
+    expect(await a.f.locator(".rg-error").innerText()).toMatch(/did not open a new tab/);
+    expect(await a.f.locator(".rg-url").inputValue()).toBe(href);
+    expect(await a.frame.evaluate(() => (globalThis as any).recast.state.phase)).toBe("previewing");
+    expect(a.ctx.pages().length).toBe(tabs);
+    expect(a.errors).toEqual([]); await a.ctx.close();
+    // 2. Allowed: it opens, and the address stays on hand in case the tab came up blank.
+    const b = await run("allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+    const [tab] = await Promise.all([b.ctx.waitForEvent("page"), b.f.locator(".rg-actions a[data-act=place]").click()]);
+    await tab.waitForLoadState(); expect(tab.url()).toBe(href);
+    expect(await tab.evaluate(() => window.opener)).toBeNull();
+    await b.f.locator(".rg-url").waitFor();
+    expect(await b.f.locator(".rg-title").innerText()).toBe("Opened Google Maps");
+    expect(await b.f.locator(".rg-url").inputValue()).toBe(href);
+    expect(b.errors).toEqual([]); await b.ctx.close();
   });
 });
 

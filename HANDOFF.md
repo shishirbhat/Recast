@@ -15,7 +15,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-22)
-- Last full run: **910 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+- Last full run: **911 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
   - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
@@ -63,6 +63,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-22 (cont.):** owner said Google Maps did not work on the try-it page; fixed (open the tab from code, report a refused tab with the address to copy; land on Maps in More); 911/0; republished.
 - **2026-10-22, session_01Bdx3pBhgmXK4WtvwEoTnHb (cont.):** owner's integration direction: declared abilities (D30), Google/Apple Maps open-and-prefill, passages → Note → Google Docs (D31), extension drop-on-empty-page fix; full run 910/0; try-it page republished (Maps live, Docs stand-in).
 - **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb (later):** time-zone fix (`setTimezone`), full run 877/0; audit for outside users (no code changed during it); published the try-it page as a private artifact; wrote `docs/23-user-validation.md` (audit, journey table, run steps, tester protocol, next milestone).
 - **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb:** reconstructed context; re-ran `apps/extension` on committed code (28/28 pass); created this file and `CLAUDE.md`; built a whole page → real Google Tasks ("This page", Document clumps, Tasks permission, REAL_TEST_PLAN E); full run 862/0. Then a page + a date → a task due that day (D29, new relation and contract); fixed the extension's stuck "Combine" merge; fixed a time-zone race in the extension tests; full run 873/0 twice.

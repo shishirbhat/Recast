@@ -94,7 +94,12 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
-## Latest full run (2026-10-22, after Google Maps and Google Docs)
+## Latest full run (2026-10-22, after the Google Maps fix)
+`pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 911 tests, 0 failures** (harness 55).
+- **Owner report: Google Maps did not work on the published try-it page.** Likely cause: the page is shown inside a sandboxed frame that may not open new tabs, and the old link failed silently while Recast still said "Opened". Now Recast opens the tab itself and checks the result: a refused tab is reported, with the address to copy, and nothing is called opened; after opening, the address stays on hand in case the tab came up blank. Tested in real Chromium with the page in a sandboxed frame both without and with permission to open tabs. Not yet re-checked by the owner on claude.ai.
+- Into "More", the selector now lands on the first place that takes the object (Google Maps for a place), not on Google Calendar.
+
+## Earlier full run (2026-10-22, after Google Maps and Google Docs)
 `pnpm gen` leaves no diff beyond the new schema; `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 910 tests, 0 failures** (core 121, bridges 59, interaction 122, calendar-link 23, extension 33, harness 54, …). Before: 877.
 - **Bug found and fixed on the way (extension):** letting go of an object over empty page space pressed it into whatever date or place the page body held, instead of putting it down. Confirmed by re-running the new test with the fix removed (it failed: the object became "Meet at Dakshin").
 - Conformance goldens regenerated (`pnpm --filter @recast/conformance golden`): the two deep-link cases gain one risk reason; nothing else changed.

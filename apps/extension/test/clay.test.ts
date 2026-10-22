@@ -284,7 +284,7 @@ describe("a place on a real page → Google Maps (open and prefill)", () => {
     expect(await restaurant.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-more");
     await restaurant.locator("recast-clay >> button", { hasText: "Open" }).click();
     const maps = restaurant.locator("recast-clay >> .rg-opt", { hasText: "Google Maps" });
-    await maps.click(); await restaurant.waitForTimeout(150); await maps.click();
+    await until(async () => (await restaurant.locator("recast-clay >> .rg-opt.on .rg-label").innerText()) === "Google Maps"); await restaurant.waitForTimeout(150); await maps.click();
     await until(async () => (await stored()).phase === "previewing");
     const href = "https://www.google.com/maps/dir/?api=1&destination=Dakshin%2C%2012%20MG%20Road%2C%20Bengaluru%20560001";
     const link = restaurant.locator("recast-clay >> .rg-actions a[data-act=place]");
