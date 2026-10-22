@@ -5,6 +5,18 @@ import { dirname, join } from "node:path";
 import { Relay } from "../src/core/engine.ts";
 import type { Actor } from "../src/core/types.ts";
 
+// Test repositories are throwaway: never sign their commits, whatever the machine's git config says. A signing
+// service outage (or a missing key) would otherwise fail unrelated tests. Applies to every git this process starts,
+// including the ones the server under test runs.
+{
+  const n = Number(process.env.GIT_CONFIG_COUNT ?? 0);
+  process.env[`GIT_CONFIG_KEY_${n}`] = "commit.gpgsign";
+  process.env[`GIT_CONFIG_VALUE_${n}`] = "false";
+  process.env[`GIT_CONFIG_KEY_${n + 1}`] = "tag.gpgsign";
+  process.env[`GIT_CONFIG_VALUE_${n + 1}`] = "false";
+  process.env.GIT_CONFIG_COUNT = String(n + 2);
+}
+
 export const HUMAN: Actor = { kind: "human", id: "alice" };
 export const AGENT_A: Actor = { kind: "agent", id: "claude-code" };
 export const AGENT_B: Actor = { kind: "agent", id: "codex" };

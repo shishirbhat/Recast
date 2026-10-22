@@ -122,7 +122,7 @@ Consequences:
 | `GET /api/tasks/:id/diff?path=` · `GET/POST /api/reviews` · `/reviews/:id/resolve` | read / edit | a task's change to one file; line comments pinned to the reviewed revision |
 | `GET /api/tests` · `POST /tests/run` · `/tests/stop` | read / admin | discover and run the project's tests on the Relay machine; latest run with per-test results and a stale flag |
 | `GET /api/conflicts/:id` · `POST /conflicts/:id/resolve` | read / edit | an outside edit that couldn't merge: both sides; keep the shared copy or take the outside version (both stay recorded) |
-| WS `/collab/file:<path>` | read (viewers read-only) | Yjs sync and awareness |
+| WS `/collab/file:<path>` | read (viewers read-only) | Yjs sync and awareness. With `?ack=1`, the server also sends message type 10 (its state vector) after applying and logging the client's updates, so the client can tell "saved" from "sent" |
 | WS `/events` | read | `{ type: "events", events: RelayEvent[] }`, pushed when this server records events and polled every 200 ms for events from hooks, MCP servers and the CLI; also `{ type: "presence" }` (ephemeral, throttled) and `{ type: "tests", run }` |
 | WS `/terminal` | owner, loopback unless `--allow-terminal` | PTY sessions |
 

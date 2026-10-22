@@ -188,9 +188,9 @@ function useSessionState(session: DocSession | null) {
     },
     [session],
   );
-  const snap = useCallback(() => (session ? `${session.status}|${session.pendingOffline}|${session.peers().map((p) => p.clientId).join(",")}|${session.typing().join(",")}` : "none"), [session]);
+  const snap = useCallback(() => (session ? `${session.status}|${session.pendingOffline}|${session.late()}|${session.peers().map((p) => p.clientId).join(",")}|${session.typing().join(",")}` : "none"), [session]);
   useSyncExternalStore(sub, snap, () => "none");
-  return session ? { status: session.status, pending: session.pendingOffline, peers: session.peers() } : { status: "offline" as const, pending: false, peers: [] };
+  return session ? { status: session.status, pending: session.pendingOffline, late: session.late(), peers: session.peers() } : { status: "offline" as const, pending: false, late: false, peers: [] };
 }
 
 interface Note {
@@ -519,7 +519,10 @@ export function Workbench() {
   }, []);
 
   const here = useRef<{ path: string | null; line: number }>({ path: null, line: 1 });
-  const open = useCallback((path: string, line?: number, fromHistory = false) => {
+  /** A pending "put the keyboard in this file's editor" request, consumed by the editor once it has focused. */
+  const [focusRequest, setFocusRequest] = useState<{ path: string; nonce: number; group: number } | null>(null);
+  const focusConsumed = useCallback(() => setFocusRequest(null), []);
+  const open = useCallback((path: string, line?: number, fromHistory = false, focusEditor = false) => {
     const from = here.current;
     if (!fromHistory && from.path && (from.path !== path || (line && Math.abs(line - from.line) > 1))) {
       nav.current.back = [...nav.current.back, { path: from.path, line: from.line }].slice(-50);
@@ -529,12 +532,13 @@ export function Workbench() {
     setActive(path);
     setRecent((r) => [path, ...r.filter((x) => x !== path)].slice(0, 12));
     if (line) setReveal({ line, nonce: Date.now(), group: focusRef.current });
+    else if (focusEditor) setFocusRequest({ path, nonce: Date.now(), group: focusRef.current });
   }, []);
   const closeTab = useCallback((path: string, gi = focusRef.current) => {
     const s = sessions.current.get(path);
     // The shared session stays while another group still shows the file.
     const elsewhere = groupsRef.current.some((x, i) => i !== gi && x.tabs.includes(path));
-    if (!elsewhere && s?.pendingOffline && !confirm(`${path} has edits made while offline that haven't reached the server yet. Close it and discard them from this browser?`)) return;
+    if (!elsewhere && (s?.pendingOffline || s?.late()) && !confirm(`${path} has edits that haven't reached the server yet. Close it and discard them from this browser?`)) return;
     if (!elsewhere) {
       s?.destroy();
       sessions.current.delete(path);
@@ -554,7 +558,7 @@ export function Workbench() {
     const gs = groupsRef.current;
     if (gs.length < 2) return;
     const only = gs[gi]!.tabs.filter((t) => !gs.some((x, i) => i !== gi && x.tabs.includes(t)));
-    if (only.some((t) => sessions.current.get(t)?.pendingOffline) && !confirm("Some files in this group have edits made while offline that haven't reached the server yet. Close the group and discard them from this browser?")) return;
+    if (only.some((t) => sessions.current.get(t)?.pendingOffline || sessions.current.get(t)?.late()) && !confirm("Some files in this group have edits that haven't reached the server yet. Close the group and discard them from this browser?")) return;
     for (const t of only) {
       sessions.current.get(t)?.destroy();
       sessions.current.delete(t);
@@ -623,7 +627,7 @@ export function Workbench() {
   // Never lose edits silently: warn before unloading while any open file has offline edits.
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
-      if ([...sessions.current.values()].some((s) => s.pendingOffline)) e.preventDefault();
+      if ([...sessions.current.values()].some((s) => s.pendingOffline || s.unsent())) e.preventDefault();
     };
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
@@ -638,7 +642,7 @@ export function Workbench() {
     setTabs((t) => (t.includes(id) ? t : [...t, id]));
     setActive(id);
   }, []);
-  const { status, pending, peers } = useSessionState(session);
+  const { status, pending, late, peers } = useSessionState(session);
   const onCursor = useCallback((l: number, c: number) => setCursor([l, c]), []);
   here.current = { path: activePath, line: cursor[0] };
   const onAuthorClick = useCallback((line: number) => activePath && setLineHistory({ path: activePath, line }), [activePath]);
@@ -1310,6 +1314,8 @@ export function Workbench() {
                 problems={focused ? syntax : null}
                 language={langs[gPath!] ?? undefined}
                 onAuthorClick={onAuthorClick}
+                focusRequest={focusRequest && focusRequest.group === gi && focusRequest.path === gPath ? focusRequest.nonce : null}
+                onFocused={focusConsumed}
               />
             </div>
           </>
@@ -1574,8 +1580,11 @@ export function Workbench() {
         <span className="ml-auto" />
         {session && (
           <>
-            <StatusItem title="Collaboration sync" testId="sync-status">
-              {status === "gone" ? "File moved or deleted" : pending ? "Offline edits pending" : status === "synced" ? "Synced" : status === "connecting" ? "Connecting…" : "Offline"}
+            <StatusItem
+              title={late && !pending && status === "synced" ? "The server hasn't confirmed your latest edits. They are kept in this browser and sent again when the connection recovers." : "Collaboration sync: Synced means the server has confirmed saving your edits"}
+              testId="sync-status"
+            >
+              {status === "gone" ? "File moved or deleted" : pending ? "Offline edits pending" : late && status === "synced" ? "Not saved yet" : status === "synced" ? "Synced" : status === "connecting" ? "Connecting…" : "Offline"}
             </StatusItem>
             {showAuthors && authors?.get(cursor[0]) && (
               <StatusItem title="Who wrote this line, from Relay's edit history. Click for when and in which change." onClick={() => activePath && setLineHistory({ path: activePath, line: cursor[0] })} testId="status-line-author">
@@ -1645,7 +1654,7 @@ export function Workbench() {
         lineCount={editorView.current?.state.doc.lines ?? 0}
         fileSymbols={symbolsNow}
         onClose={() => setPalette((p) => ({ ...p, open: false, pick: null }))}
-        onOpenFile={(p, line) => open(p, line)}
+        onOpenFile={(p, line) => open(p, line, false, true)}
       />
 
       <div className="pointer-events-none fixed bottom-9 right-4 z-50 flex flex-col items-end gap-2" aria-live="polite">

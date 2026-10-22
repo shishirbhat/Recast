@@ -1,10 +1,16 @@
 import * as Y from "yjs";
+import * as decoding from "lib0/decoding";
 import { WebsocketProvider } from "y-websocket";
 import { restorePresenceOnReconnect } from "./presence";
 import type { Member } from "./types";
 
 /** "gone": the file was renamed or deleted; the session stops and never reconnects. */
 export type SyncStatus = "connecting" | "synced" | "offline" | "gone";
+
+/** Relay's acknowledgement message: the server's state vector after it saved our update (`src/server/collab.ts`). */
+const MESSAGE_ACK = 10;
+/** How long our edits may be unconfirmed before the status bar stops saying "Synced". */
+export const UNCONFIRMED_MS = 2500;
 
 /** One shared file: its Yjs document, the connection, and this user's presence in it. */
 let nextId = 0;
@@ -21,6 +27,11 @@ export class DocSession {
   status: SyncStatus = "connecting";
   /** Local edits made while not connected: kept in the CRDT and sent on reconnect, but not yet on the server. */
   pendingOffline = false;
+  /** Our own edits the server has confirmed saving: its clock for our Yjs client id. */
+  private confirmed = 0;
+  /** When our oldest unconfirmed edit was made, or null when the server has everything we typed. */
+  private unconfirmedSince: number | null = null;
+  private lateTimer: ReturnType<typeof setTimeout> | undefined;
   private listeners = new Set<() => void>();
   /** Member id -> when their last document update arrived. Typing is read from the edits themselves, not extra messages. */
   private typedAt = new Map<string, number>();
@@ -33,7 +44,8 @@ export class DocSession {
     // Undo only reverts this user's own edits, never a collaborator's.
     this.undoManager = new Y.UndoManager(this.text);
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    this.provider = new WebsocketProvider(`${proto}//${location.host}/collab`, encodeURIComponent(`file:${path}`), this.doc, { disableBc: true });
+    this.provider = new WebsocketProvider(`${proto}//${location.host}/collab`, encodeURIComponent(`file:${path}`), this.doc, { disableBc: true, params: { ack: "1" } });
+    this.provider.messageHandlers[MESSAGE_ACK] = (_enc, dec) => this.acknowledged(Y.decodeStateVector(decoding.readVarUint8Array(dec)));
     restorePresenceOnReconnect(this.provider);
     this.provider.awareness.setLocalStateField("user", { id: me.id, name: me.name, color: me.color, colorLight: me.color + "33" });
     this.provider.on("status", ({ status }: { status: string }) => {
@@ -48,7 +60,6 @@ export class DocSession {
       this.set("gone");
     });
     this.provider.on("sync", (synced: boolean) => {
-      if (synced) this.pendingOffline = false;
       this.set(synced ? "synced" : "connecting");
     });
     this.doc.on("update", (u: Uint8Array, origin: unknown) => {
@@ -63,11 +74,40 @@ export class DocSession {
         }
       }
       // Origin is the provider for remote updates; anything else is a local edit.
-      if (origin !== this.provider && this.status !== "synced" && !this.pendingOffline) {
+      if (origin === this.provider || !this.unsent()) return;
+      if (this.unconfirmedSince === null) {
+        this.unconfirmedSince = Date.now();
+        clearTimeout(this.lateTimer);
+        this.lateTimer = setTimeout(() => this.set(this.status), UNCONFIRMED_MS + 50);
+      }
+      if (this.status !== "synced" && !this.pendingOffline) {
         this.pendingOffline = true;
         this.set(this.status);
       }
     });
+  }
+
+  /** Edits of ours the server hasn't confirmed yet (typed offline, in flight, or lost on a dead connection). */
+  unsent(): boolean {
+    return Y.getState(this.doc.store, this.doc.clientID) > this.confirmed;
+  }
+
+  /**
+   * Our edits have gone unconfirmed for longer than a round trip should take. The connection may look open but be
+   * dead (no acknowledgement ever comes), so the status bar says so instead of "Synced". Edits stay in the CRDT and
+   * are resent when the connection recovers.
+   */
+  late(): boolean {
+    return this.unconfirmedSince !== null && Date.now() - this.unconfirmedSince >= UNCONFIRMED_MS;
+  }
+
+  private acknowledged(sv: Map<number, number>): void {
+    this.confirmed = Math.max(this.confirmed, sv.get(this.doc.clientID) ?? 0);
+    if (this.unsent() || (this.unconfirmedSince === null && !this.pendingOffline)) return;
+    this.unconfirmedSince = null;
+    this.pendingOffline = false;
+    clearTimeout(this.lateTimer);
+    this.set(this.status);
   }
 
   private set(s: SyncStatus): void {
@@ -125,6 +165,7 @@ export class DocSession {
 
   destroy(): void {
     clearTimeout(this.typingLapse);
+    clearTimeout(this.lateTimer);
     this.provider.destroy();
     this.doc.destroy();
   }

@@ -690,7 +690,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const fromAbs = join(root, from);
       const st = statSync(fromAbs, { throwIfNoEntry: false });
       if (!st) throw new HttpError(404, "not_found", `${from} doesn't exist`);
-      if (existsSync(join(root, to))) throw new HttpError(409, "conflict", `${to} already exists`);
+      // A case-only rename (a.js -> A.js) on a case-insensitive disk finds "to" already there: it's the same file.
+      const toSt = statSync(join(root, to), { throwIfNoEntry: false });
+      if (to === from || (toSt && toSt.ino !== st.ino)) throw new HttpError(409, "conflict", `${to} already exists`);
       if (to.startsWith(`${from}/`)) throw new HttpError(400, "invalid", "A folder can't be moved inside itself");
       // Every shared file under the old path: written out, its editors closed, its history carried to the new name.
       const moved = st.isDirectory() ? listProjectFiles(root).filter((p) => p.startsWith(`${from}/`)) : [from];
@@ -1038,7 +1040,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       wss.handleUpgrade(req, socket, head, (ws) => {
         if (gone) return ws.close(4410, "deleted");
         (ws as unknown as { __member: string }).__member = member.name;
-        collab.attach(ws, path, member);
+        collab.attach(ws, path, member, { ack: url.searchParams.get("ack") === "1" });
       });
     } catch (err) {
       reject(err instanceof RelayError && err.code === "forbidden" ? 403 : 400, "Bad Request");

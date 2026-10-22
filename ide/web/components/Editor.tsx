@@ -199,7 +199,7 @@ function prefsExtension(p: EditorPrefs): Extension {
   ];
 }
 
-export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null, language, onAuthorClick }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null; /** Language mode id; defaults to the file extension's. */ language?: string; /** Clicking a line's authorship bar. */ onAuthorClick?: (line: number) => void }) {
+export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs = DEFAULT_PREFS, authors = null, problems = null, language, onAuthorClick, focusRequest, onFocused }: { session: DocSession; readOnly: boolean; onCursor?: (line: number, col: number) => void; reveal?: { line: number; nonce: number } | null; viewHandle?: { current: EditorView | null }; prefs?: EditorPrefs; authors?: Map<number, LineMark> | null; problems?: SyntaxProblem[] | null; /** Language mode id; defaults to the file extension's. */ language?: string; /** Clicking a line's authorship bar. */ onAuthorClick?: (line: number) => void; /** Take keyboard focus once (e.g. opened from Quick Open); `onFocused` consumes the request. */ focusRequest?: number | null; onFocused?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const prefsC = useRef(new Compartment());
@@ -309,6 +309,14 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
     view.focus();
     return session.subscribe(() => session.status === "synced" && go());
   }, [reveal, session]);
+
+  // Opened from somewhere that hands over the keyboard (Quick Open, Go to Symbol): focus right away, before the
+  // document syncs, so the next keys land here (Yjs merges them). Declared after the view is created.
+  useEffect(() => {
+    if (!focusRequest || !viewRef.current) return;
+    viewRef.current.focus();
+    onFocused?.();
+  }, [focusRequest, session, onFocused]);
 
   return <div ref={host} className="h-full min-h-0" data-testid="editor" />;
 }

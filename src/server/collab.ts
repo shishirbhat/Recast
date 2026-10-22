@@ -12,6 +12,12 @@ import { can } from "./auth.ts";
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const MESSAGE_QUERY_AWARENESS = 3;
+/**
+ * Relay's own message: the server's state vector, sent after it has applied (and durably logged) a client's update.
+ * The Yjs sync protocol has no acknowledgements, so without this a client can't tell "sent" from "saved".
+ */
+export const MESSAGE_ACK = 10;
+const ACK_MS = 120;
 /** Bytes a client may have queued before we drop it instead of buffering without bound. */
 const MAX_BUFFERED = 8 * 1024 * 1024;
 const PING_MS = 15_000;
@@ -30,6 +36,10 @@ export interface Conn {
   member: Member;
   clientIds: Set<number>;
   alive: boolean;
+  /** The client asked for acknowledgements (`?ack=1`); plain y-websocket clients don't know the message. */
+  wantsAck: boolean;
+  /** Pending acknowledgement, coalesced so a burst of keystrokes costs one reply. */
+  ackTimer?: NodeJS.Timeout;
 }
 
 function send(ws: WebSocket, data: Uint8Array): void {
@@ -139,9 +149,9 @@ export class CollabService {
   }
 
   /** Attach an authenticated socket to a document. The caller has already validated `path` and `member`. */
-  attach(ws: WebSocket, path: string, member: Member): void {
+  attach(ws: WebSocket, path: string, member: Member, opts: { ack?: boolean } = {}): void {
     const room = this.room(path);
-    const conn: Conn = { member, clientIds: new Set(), alive: true };
+    const conn: Conn = { member, clientIds: new Set(), alive: true, wantsAck: opts.ack ?? false };
     room.conns.set(ws, conn);
     ws.binaryType = "arraybuffer";
     ws.on("pong", () => (conn.alive = true));
@@ -173,12 +183,14 @@ export class CollabService {
             this.store.claimClients(path, clients, conn.member.id);
             Y.applyUpdate(room.entry.doc, update, ws);
             this.touch(conn.member.id, path, true);
+            this.ack(ws, conn, room);
             return;
           }
           const enc = encoding.createEncoder();
           encoding.writeVarUint(enc, MESSAGE_SYNC);
           syncProtocol.readSyncMessage(dec, enc, room.entry.doc, ws);
           if (encoding.length(enc) > 1) send(ws, encoding.toUint8Array(enc));
+          this.ack(ws, conn, room);
         } else if (type === MESSAGE_AWARENESS) {
           const update = decoding.readVarUint8Array(dec);
           if (!awarenessIsOwn(update, conn, room)) return;
@@ -200,6 +212,7 @@ export class CollabService {
     });
 
     ws.on("close", () => {
+      clearTimeout(conn.ackTimer);
       room.conns.delete(ws);
       if (![...this.rooms.values()].some((r) => [...r.conns.values()].some((c) => c.member.id === member.id))) this.activity.delete(member.id);
       this.onPresence?.();
@@ -220,6 +233,19 @@ export class CollabService {
     syncProtocol.writeSyncStep1(enc, room.entry.doc);
     send(ws, encoding.toUint8Array(enc));
     this.sendAwareness(ws, room);
+  }
+
+  /** Tell the client what the server now holds (its state vector), at most every ACK_MS. */
+  private ack(ws: WebSocket, conn: Conn, room: Room): void {
+    if (!conn.wantsAck || conn.ackTimer) return;
+    conn.ackTimer = setTimeout(() => {
+      conn.ackTimer = undefined;
+      if (room.closed) return;
+      const enc = encoding.createEncoder();
+      encoding.writeVarUint(enc, MESSAGE_ACK);
+      encoding.writeVarUint8Array(enc, Y.encodeStateVector(room.entry.doc));
+      send(ws, encoding.toUint8Array(enc));
+    }, ACK_MS);
   }
 
   private sendAwareness(ws: WebSocket, room: Room): void {

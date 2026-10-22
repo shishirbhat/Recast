@@ -8,7 +8,9 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
-import type { Browser, BrowserContext, Page, WebSocketRoute } from "playwright-core";
+import type { Browser, BrowserContext, Page } from "playwright-core";
+import { partitionable } from "./net.ts";
+import type { Partition } from "./net.ts";
 import { api, join as joinAs, testServer, until } from "../collab-helpers.ts";
 import type { RelayServer } from "../../src/server/server.ts";
 
@@ -47,36 +49,6 @@ after(async () => {
   await browser.close();
   await server.close();
 });
-
-/**
- * A network partition for one browser's document connections: while cut, messages in both directions are dropped
- * (as on a dead network, the client isn't told); `heal` then drops the connections so the client reconnects for real.
- */
-interface Partition {
-  cut(): void;
-  heal(): Promise<void>;
-}
-async function partitionable(p: Page, what: RegExp = /\/collab\//): Promise<Partition> {
-  let cut = false;
-  const links: { page: WebSocketRoute; server: WebSocketRoute }[] = [];
-  await p.routeWebSocket(what, (ws) => {
-    const srv = ws.connectToServer();
-    ws.onMessage((m) => void (!cut && srv.send(m)));
-    srv.onMessage((m) => void (!cut && ws.send(m)));
-    srv.onClose((code, reason) => void ws.close({ code, reason }));
-    links.push({ page: ws, server: srv });
-  });
-  return {
-    cut: () => void (cut = true),
-    heal: async () => {
-      cut = false;
-      for (const l of links.splice(0)) {
-        await l.server.close().catch(() => {});
-        await l.page.close({ code: 1012, reason: "network restored" }).catch(() => {});
-      }
-    },
-  };
-}
 
 async function signIn(net?: (p: Page) => Promise<void>): Promise<Page> {
   const { token } = server.members.invite(`Ada ${Math.random().toString(36).slice(2, 6)}`, "owner");
