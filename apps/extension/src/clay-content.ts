@@ -5,7 +5,7 @@
 // in any tab you bring Recast into it is "in hand" on the shelf, ready to be dragged onto something there.
 // A tab cannot follow the pointer while another tab is in front, so carrying across tabs is: switch tabs, then pick the
 // object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
-import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
+import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { createControlTrigger, doubtNote, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
@@ -90,7 +90,8 @@ async function main() {
     const piece = classifyPiece(el, opts);
     if (piece) return { ...piece, id: `${piece.id}#${++seq}` };
     const sel = getSelection()?.toString().replace(/\s+/g, " ").trim();
-    if (sel && sel.length <= 300) return { id: `t${++seq}-${Date.now()}`, kind: "text", text: sel, confidence: 0.9, evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: sel.slice(0, 200) }], source };
+    // A selected error message (an exception, a failed step) is an error piece: it can become an issue.
+    if (sel && sel.length <= 300) return { id: `t${++seq}-${Date.now()}`, kind: looksLikeError(sel) ? "error" : "text", text: sel, confidence: 0.9, evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: sel.slice(0, 200) }], source };
     return null;
   }
 

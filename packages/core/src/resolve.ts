@@ -8,7 +8,7 @@ const collapse = (s: string) => s.normalize("NFC").replace(/\s+/g, " ").trim();
 const normDoi = (s: string) => s.trim().replace(/^(https?:\/\/(dx\.)?doi\.org\/|doi:\s*)/i, "").toLowerCase();
 
 /** Normalise property values. Pure: returns a new object. */
-const MULTILINE: Partial<Record<ObjectType, readonly string[]>> = { Note: ["body"] };
+const MULTILINE: Partial<Record<ObjectType, readonly string[]>> = { Note: ["body"], Issue: ["body"] };
 const collapseLines = (v: string) => v.normalize("NFC").split(/\r\n?|\n/).map((l) => l.replace(/[^\S\n]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 
 export function normalizeProps(type: ObjectType, input: Props): Props {

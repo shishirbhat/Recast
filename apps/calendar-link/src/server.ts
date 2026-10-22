@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, chmodSync }
 import path from "node:path";
 import { createTestEvents, type Outcome } from "./test-event.js";
 import { createExtensionApi } from "./extension-api.js";
+import { connectGithub, forgetGithub, readGithub } from "./github.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 /** Optional: create (and delete its own) Gmail drafts. Never sends mail; the person sends a draft from Gmail. */
@@ -64,6 +65,8 @@ export function createLinkServer(c: LinkConfig): Server {
   const ext = createExtensionApi({ clientId: c.clientId, clientSecret: c.clientSecret, tokenFile: c.tokenFile, tokenUrl, fetch: f, now,
     stateFile: path.join(path.dirname(c.tokenFile), "test-event.json"), dir: path.dirname(c.tokenFile) });
   let last: Outcome | null = null;   // the result of the last test button, shown once on the page
+  let githubNote: string | null = null;   // the result of the last GitHub form, shown once
+  const dir = path.dirname(c.tokenFile);
   const pending = new Map<string, { verifier: string; at: number }>();   // state → PKCE verifier, one use each
 
   const send = (res: ServerResponse, status: number, html: string, extra: Record<string, string> = {}) => {
@@ -83,6 +86,16 @@ export function createLinkServer(c: LinkConfig): Server {
 @media (prefers-color-scheme:dark){body{background:#141311;color:#f5f1e8}.box{background:#1d1b19;border-color:#34302b}button,.btn{background:#f5f1e8;color:#141311}.ghost{background:transparent;color:#f5f1e8;box-shadow:inset 0 0 0 1px #46413a}.muted{color:#b0aba3}.ok{color:#4ade80}}</style></head><body>${body}</body></html>`;
 
   const json = (res: ServerResponse, status: number, body: unknown) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" }); res.end(JSON.stringify(body)); };
+
+  /** GitHub, optional and separate from Google: one repository, one fine-grained token, kept on this computer. */
+  function githubBox() {
+    const g = readGithub(dir); const note = githubNote; githubNote = null;
+    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">GitHub issues (optional)</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${g
+      ? `<p class="ok">Connected to ${esc(g.owner)}/${esc(g.repo)}.</p><p class="muted">Recast can open issues there and close the ones it opened (Undo). The token stays on this computer.</p><form method="post" action="/github/disconnect"><button class="ghost" type="submit">Disconnect GitHub</button></form>`
+      : `<p class="muted">On github.com: Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only the one repository. Permissions: Issues, read and write. Nothing else.</p>
+<form method="post" action="/github/connect"><p><label>Repository (owner/name)<br><input name="repo" required placeholder="acme/app" autocomplete="off" style="font:inherit;width:100%"></label></p>
+<p><label>Token<br><input name="token" type="password" required autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Connect GitHub</button></form>`}</div>`;
+  }
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     // Only this computer, by name: a web page elsewhere cannot point a DNS name at 127.0.0.1 and talk to this server.
@@ -113,7 +126,7 @@ ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them
 ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
 ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Google Drive box (only the files Recast creates).</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${githubBox()}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start") {
@@ -184,6 +197,18 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
       let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) break; }
       const origin = new URLSearchParams(raw).get("origin") ?? "";
       if (decision === "remove") ext.forget(origin); else ext.decide(origin, decision === "allow");
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
+    if (req.method === "POST" && (url.pathname === "/github/connect" || url.pathname === "/github/disconnect")) {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      if (url.pathname === "/github/disconnect") { forgetGithub(dir); githubNote = "GitHub is disconnected here. To revoke the token itself, delete it on github.com (Settings → Developer settings)."; }
+      else {
+        let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) break; }
+        const form = new URLSearchParams(raw);
+        const r = await connectGithub(dir, form.get("token") ?? "", form.get("repo") ?? "", f, now());
+        githubNote = r.ok ? `Connected to ${r.link.owner}/${r.link.repo}.` : r.message;
+      }
       res.writeHead(303, { location: "/" }); return res.end();
     }
 

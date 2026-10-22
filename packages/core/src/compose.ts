@@ -8,7 +8,7 @@ export type Origin = "extracted" | "inferred" | "default" | "user";
  * `thing`: something recognised but not composable (a product, a paper): it can be carried, never merged.
  * `page`: the page (or file) itself, from its own metadata (title and address): on its own it is a document.
  */
-export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing" | "page";
+export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing" | "page" | "error";
 
 /** One piece the person captured. `text` is exactly what was on screen; `value` is optional structure from extraction. */
 export interface Fragment {

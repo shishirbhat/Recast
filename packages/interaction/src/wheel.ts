@@ -11,7 +11,7 @@ export type WheelKey = "calendar" | "mail" | "tasks" | "documents" | "more";
 export const WHEEL_SLOTS: readonly { key: WheelKey; label: string; kinds: readonly string[] }[] = [
   { key: "calendar", label: "Calendar", kinds: ["Calendar"] },
   { key: "mail", label: "Mail", kinds: ["Drafts"] },
-  { key: "tasks", label: "Tasks", kinds: ["Task", "TaskList"] },
+  { key: "tasks", label: "Tasks", kinds: ["Task", "TaskList", "Issues"] },
   { key: "documents", label: "Documents", kinds: ["Project", "Docs"] },
   { key: "more", label: "More", kinds: [] },   // everything else in the registry
 ];

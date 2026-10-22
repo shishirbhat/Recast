@@ -1,6 +1,6 @@
 // Clumps: pieces pressed together into one object, recursively, without losing any ingredient.
 import { describe, expect, it } from "vitest";
-import { answerClump, canMerge, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
+import { answerClump, canMerge, looksLikeError, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
 import { relationById } from "../src/rules.js";
 
 const CTX = { now: "2026-10-19T09:00:00Z", timezone: "Asia/Kolkata" };   // Monday 19 Oct 2026, 14:30 in Bengaluru
@@ -203,5 +203,32 @@ describe("passages → a note that keeps its sources (D31)", () => {
     expect(v).toMatchObject({ type: "Fragment", placeableAs: ["Docs"] }); expect(v.candidate!.type).toBe("Note");
     const note = merged(quote("a", "https://a.example", "A"), quote("b", "https://b.example", "B"));
     expect(canMerge(note, one("person", "Maya Rao"))).toMatchObject({ ok: true, becomes: "Message", change: { from: "Note", to: "Message" } });
+  });
+});
+
+describe("an error → an issue (D32)", () => {
+  const err = (text: string) => one("error", text, { source: { app: "chrome", url: "https://ci.example/run/42", title: "Build #42" } });
+  it("an error with a note is an issue; everything captured is quoted literally, so a mention or link cannot act", () => {
+    const c = merged(err("TypeError: Cannot read properties of undefined (reading 'id')\n    at load (app.js:12)"), one("text", "Happens after @maya signs in ```twice``` [x](https://evil.example)", { source: { app: "chrome", url: "https://ci.example/run/42", title: "Build #42" } }));
+    const v = viewClump(c, CTX);
+    expect(v).toMatchObject({ type: "Issue", proposed: true, placeableAs: ["Issues"], candidate: null, label: "TypeError: Cannot read properties of undefined (reading 'id')" });
+    const body = v.issue!.fields.body!.value;
+    expect(body).toBe([
+      "Captured with Recast. Everything below is quoted exactly as it appeared.",
+      "**Error**\n```text\nTypeError: Cannot read properties of undefined (reading 'id')\nat load (app.js:12)\n```",
+      "**Notes**\n````text\nHappens after @maya signs in ```twice``` [x](https://evil.example)\n````",
+      "**Seen on**\n```text\nBuild #42 — https://ci.example/run/42\n```",
+    ].join("\n\n"));
+    const o = resolve(viewClump(answerClump(c, "title", "Sign-in crash"), CTX).candidate!);
+    expect(o.type).toBe("Issue"); expect(o.properties["body"]).toBe(body); expect(o.properties["sources"]).toEqual(["https://ci.example/run/42"]);
+  });
+  it("an error alone can be placed as an issue; a time or a person does not join an error", () => {
+    expect(viewClump(err("Error: exit code 2"), CTX)).toMatchObject({ type: "Fragment", placeableAs: ["Issues"], missing: [{ field: "title", suggestions: ["Error: exit code 2"] }] });
+    expect(canMerge(err("panic: oops"), one("time", "Friday 7 PM"))).toMatchObject({ ok: false, code: "incompatible" });
+    expect(canMerge(err("panic: oops"), one("person", "Maya Rao"))).toMatchObject({ ok: false, code: "incompatible" });
+  });
+  it("what reads as an error", () => {
+    for (const t of ["TypeError: x is undefined", "Traceback (most recent call last):", "panic: runtime error", "npm ERR! code ERR_SOCKET_TIMEOUT", "Process completed with exit code 1", "Uncaught ReferenceError: y"]) expect(looksLikeError(t), t).toBe(true);
+    for (const t of ["Free for dinner this week?", "The filter coffee alone is worth the trip.", "exit code 0"]) expect(looksLikeError(t), t).toBe(false);
   });
 });

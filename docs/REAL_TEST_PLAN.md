@@ -123,3 +123,19 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | G4 | Click **Open directions in Google Maps** | A new tab: Google Maps with directions to that place. The module says "Opened Google Maps", with no Undo | real handoff |
 | G5 | Try the same on the try-it page (Dakshin) | The same, opening the real Google Maps | try-it page |
 
+## H. An error to a GitHub issue (needs a GitHub token for one repository)
+**Checks:** the separate GitHub connection, an error captured from a page, a real issue opened with everything quoted, and Undo closing it.
+
+**Setup, once:** follow `apps/calendar-link/README.md` Part 10 (a fine-grained token for one test repository, Issues read and write; connect it on http://localhost:8787/).
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| H1 | Open http://localhost:8787/ | "Connected to owner/name." under GitHub issues | connection |
+| H2 | Open the Recast popup | "An error opens an issue in GitHub owner/name." | extension sees it |
+| H3 | On a page with an error (a failed CI log, or any page where you paste `TypeError: x is undefined`), turn Recast on, select the error line, Alt-press it and let go on empty space | One object: the error | error piece |
+| H4 | Optional: select a sentence of notes and Alt-drag it onto the error | One object: an issue, "2 pieces" | notes join |
+| H5 | **Choose where it goes** → Tasks (GitHub) → **Open** | The review shows the body: the error and notes in quoted blocks, then "Seen on" with the page. Title missing, with the error's first line suggested | review |
+| H6 | Accept the title, then **Confirm: Open an issue** | "Added to GitHub owner/name". On github.com, a new issue with that title and body; text like `@name` in the notes shows as plain text and notifies nobody | real issue |
+| H7 | **Undo** | The issue is closed as "not planned" (it is not deleted: GitHub does not allow that without admin rights) | real undo |
+| H8 | Disconnect GitHub on the local page | GitHub is no longer offered in Tasks | optional |
+

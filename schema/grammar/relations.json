@@ -212,6 +212,22 @@
         ]
       ],
       "reversible": true
+    },
+    {
+      "id": "issue-tracker-entry",
+      "from": "Issue",
+      "to": "Issues",
+      "relation": "entry",
+      "risk": "low",
+      "requires": [
+        [
+          "title"
+        ],
+        [
+          "body"
+        ]
+      ],
+      "reversible": true
     }
   ]
 }

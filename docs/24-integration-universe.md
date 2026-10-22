@@ -24,7 +24,7 @@ The owner proposed a universal object and action model. Most of it already exist
 
 1. Any date or time → a real event (built for Google Calendar).
 2. Any sentence → a tracked task with due date and source link (page → Google Tasks built; a sentence as a task is not).
-3. Any error → a bug report for GitHub, GitLab, Jira or Linear, with sources kept.
+3. Any error → a bug report for GitHub, GitLab, Jira or Linear, with sources kept (built for GitHub, D32).
 4. Any context → a ready-to-send message (Gmail drafts built; Slack and others not).
 5. Any research → a sourced note, with each quote keeping its URL (built: passages → a note → Google Docs, D31).
 6. One capture → several coordinated destinations, all shown before any runs.

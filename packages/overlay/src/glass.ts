@@ -266,7 +266,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   // ---- everything else: rebuilt only when its text changes, keeping focus where it was ---------------------------------
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
-    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
+    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? v.issue?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
     const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
     const missing = v.missing.map((x) => {
       const id = `rg-in-${x.field}`;

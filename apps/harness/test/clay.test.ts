@@ -497,6 +497,32 @@ describe("Google Maps when the page is embedded without permission to open tabs 
   });
 });
 
+describe("an error → an issue (stand-in for GitHub issues)", () => {
+  it("the note is pressed into the error; Tasks opens an issue after a confirm; everything captured is quoted; Undo closes it", async () => {
+    const { page, ctx, errors } = await open();
+    await page.locator("#tab-build").click();
+    await drag(page, "#build-note", "#build-error");
+    const s = await st(page); const id = s.focus;
+    expect(s.objects[id].ingredients.map((f: any) => f.kind)).toEqual(["error", "text"]);
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    expect(await page.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-tasks");
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    await page.getByRole("button", { name: "Open" }).click();
+    expect(await page.locator(".rg-body").innerText()).toMatch(/Stand-in: GitHub here is a local stand-in/);
+    await page.getByRole("button", { name: /^Use “TypeError/ }).click();
+    await page.getByRole("button", { name: "Confirm: Open an issue" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    const issue = page.locator("[data-placed='issue']");
+    expect(await issue.count()).toBe(1);
+    expect(await issue.locator("strong").innerText()).toBe("TypeError: Cannot read properties of undefined (reading 'id')");
+    expect(await issue.locator(".doc-body").innerText()).toContain("**Notes**\n```text\nIt started after the sign-in change.\n```");
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
+    expect(await page.locator("[data-placed='issue']").count()).toBe(0);
+    expect(errors).toEqual([]); await ctx.close();
+  });
+});
+
 describe("two quotes → a note → Docs (stand-in for Google Docs)", () => {
   it("Maya's line pressed into the review is a note; the review suggests a title; the Docs tab gets each quote with its page; Undo removes it", async () => {
     const { page, ctx, errors } = await open();

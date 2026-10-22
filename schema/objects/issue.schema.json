@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/objects/issue.schema.json",
+  "title": "IssueProperties",
+  "description": "A problem to track: an error someone saw, with any notes. body is exactly what the review shows and what the tracker receives; everything captured is quoted literally. sources lists the pages it was seen on.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "body"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "body": { "type": "string", "minLength": 1 },
+    "sources": { "type": "array", "items": { "type": "string" } }
+  }
+}

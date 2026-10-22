@@ -147,6 +147,26 @@ export const googleDocs: Spec<DocsTarget> = {
   async undo(token, _t, send) { await trash((JSON.parse(token) as { id: string }).id, send); },
 };
 
+// ---- GitHub (REST API 2022-11-28: issues.create / issues.update to close) ---------------------------------------------
+// Token: a fine-grained personal access token limited to one repository, with Issues: read and write, nothing else.
+export interface GithubTarget { owner: string; repo: string }
+const GITHUB_HEADERS = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+const issuesUrl = (t: GithubTarget) => `https://api.github.com/repos/${seg(t.owner)}/${seg(t.repo)}/issues`;
+export const githubIssue: Spec<GithubTarget> = {
+  contract: CONTRACTS.githubIssue,
+  // Closing is the reversal GitHub allows (deleting needs admin rights). The issue number is GitHub's: a lost answer
+  // cannot be checked exactly, so it stays unknown until the person looks.
+  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:write", "archive") },
+  async execute(op, t, send) {
+    const r = asObj(await send({ method: "POST", url: issuesUrl(t), headers: GITHUB_HEADERS, body: { title: need(op, "Issue.title"), body: need(op, "Issue.body") } }));
+    if (typeof r.number !== "number") throw new DestinationError("unexpected response: no issue number");
+    return JSON.stringify({ number: r.number, ...(typeof r.html_url === "string" ? { url: r.html_url } : {}) });
+  },
+  async undo(token, t, send) {
+    await send({ method: "PATCH", url: `${issuesUrl(t)}/${(JSON.parse(token) as { number: number }).number}`, headers: GITHUB_HEADERS, body: { state: "closed", state_reason: "not_planned" } });
+  },
+};
+
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
 export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
 const NOTION = "https://api.notion.com/v1/pages";

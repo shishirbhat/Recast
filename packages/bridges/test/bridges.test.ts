@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryEventLog, OutcomeUnknownError, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { HttpBridge, DestinationError, rfc822Draft, githubIssue, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,7 +26,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
 });
@@ -34,7 +34,7 @@ describe("every contract passes the real schema and grammar checks", () => {
 // The abilities a contract declares are what the picker and the review promise. They must match what the bridge's
 // operations declare about themselves, so a destination never offers an Undo or a check it cannot perform.
 describe("declared abilities match what each bridge actually does", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue })) {
     it(name, () => {
       const caps = spec.contract.accepts.map((row) => spec.capabilities[row.relationId]);
       expect(caps.every(Boolean), "every accepted row declares its operation").toBe(true);
@@ -210,7 +210,7 @@ describe("shared behaviour", () => {
 
 describe("the registry", () => {
   it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
-    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "github.issues", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
     expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
     expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
     expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);
@@ -281,5 +281,24 @@ describe("Google Docs: a note becomes a new document", () => {
     await expect(place(googleDocs, {}, t, note(), "note-docs-entry")).rejects.toBeInstanceOf(OutcomeUnknownError);
     expect(calls.filter((c) => c.url.endsWith(":batchUpdate"))).toHaveLength(1);
     expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+});
+
+describe("GitHub: an issue opened in one repository", () => {
+  const issue = () => obj("Issue", { title: "Sign-in crash", body: "Captured with Recast.\n\n**Error**\n```text\nTypeError: x\n```", sources: ["https://ci.example/run/42"] });
+  it("opens the issue with the reviewed title and body; asks for a confirm (watchers may be notified); Undo closes it as not planned", async () => {
+    const { calls, t } = fake((r) => r.method === "POST" ? ok({ number: 7, html_url: "https://github.com/acme/app/issues/7" }) : ok({ state: "closed" }));
+    const p = propose(issue(), CONTRACTS.githubIssue)[0]!;
+    expect(p.risk).toMatchObject({ tier: "medium", consent: "confirm" });
+    const { receipt, undo: u } = await place(githubIssue, { owner: "acme", repo: "app" }, t, issue(), "issue-tracker-entry");
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.github.com/repos/acme/app/issues", headers: { Accept: "application/vnd.github+json" }, body: { title: "Sign-in crash", body: "Captured with Recast.\n\n**Error**\n```text\nTypeError: x\n```" } });
+    expect(JSON.parse(receipt.bridgeRef!)).toEqual({ number: 7, url: "https://github.com/acme/app/issues/7" });
+    await u();
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", url: "https://api.github.com/repos/acme/app/issues/7", body: { state: "closed", state_reason: "not_planned" } });
+  });
+  it("a repository name cannot change which resource the request reaches", async () => {
+    const { calls, t } = fake(() => ok({ number: 1 }));
+    await place(githubIssue, { owner: "acme", repo: "app/../../orgs/x" }, t, issue(), "issue-tracker-entry");
+    expect(calls[0]!.url).toBe("https://api.github.com/repos/acme/app%2F..%2F..%2Forgs%2Fx/issues");
   });
 });

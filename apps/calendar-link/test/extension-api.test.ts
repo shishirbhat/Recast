@@ -4,6 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createExtensionApi } from "../src/extension-api.js";
+import { connectGithub, githubFile, readGithub } from "../src/github.js";
+import { statSync } from "node:fs";
 import { DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
 import { answerClump, mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
 import { CONTRACTS } from "@recast/bridges";
@@ -16,7 +18,7 @@ function setup(scope: string, google?: (url: string, init: RequestInit) => Respo
   const calls: string[] = [];
   const api = createExtensionApi({ clientId: "c", clientSecret: "s", tokenFile, tokenUrl: "https://google.test/token", now: Date.now, stateFile: path.join(dir, "t.json"), dir,
     fetch: (async (u: string, init: RequestInit) => { calls.push(`${init?.method ?? "GET"} ${u}`); return google ? google(String(u), init) : new Response("{}", { status: 500 }); }) as unknown as typeof fetch });
-  return { api, calls };
+  return { api, calls, dir };
 }
 async function pair(api: ReturnType<typeof setup>["api"]) {
   const r = await api.handle("pair", EXT, {}); expect(r.status).toBe(202); expect(String(r.body.code)).toMatch(/^\d{4}$/);
@@ -136,5 +138,51 @@ describe("Google Docs through the same door", () => {
     expect(u.body).toEqual({ outcome: "undone" }); expect(docs.get("d1")!.trashed).toBe(true);
     const c = await b.api.handle("reconcile", EXT, { destination: "docs", op: op() });
     expect(c.body).toMatchObject({ checkable: false });
+  });
+});
+
+describe("GitHub issues through the same door (its own connection, not Google's)", () => {
+  const TOKEN = "github_pat_" + "a".repeat(40);
+  const op = () => {
+    const src = { app: "ci.example", url: "https://ci.example/run/42", title: "Build #42" };
+    const e = newClump("e", { id: "err", kind: "error", text: "TypeError: Cannot read properties of undefined (reading 'id')", confidence: 0.9, evidence: [{ locator: { kind: "user", value: "selection" } }], source: src });
+    const v = viewClump(answerClump(e, "title", "Sign-in crash"), { now: "2026-10-22T09:00:00Z", timezone: "UTC" });
+    return plan(propose(resolve(v.candidate!), CONTRACTS.githubIssue)[0]!, { now: () => "2026-10-22T09:00:00Z" });
+  };
+  it("connecting checks the repository with the token first, and keeps it in a file only this user can read", async () => {
+    const a = setup(SCOPE);
+    const seen: string[] = [];
+    const gh = (status: number) => (async (u: string, init: RequestInit) => { seen.push(`${u} ${(init.headers as Record<string, string>).authorization}`); return new Response("{}", { status }); }) as unknown as typeof fetch;
+    expect(await connectGithub(a.dir, TOKEN, "not a repo", gh(200), 0)).toMatchObject({ ok: false, message: /owner\/name/ });
+    expect(await connectGithub(a.dir, "hunter2", "acme/app", gh(200), 0)).toMatchObject({ ok: false, message: /does not look like a GitHub token/ });
+    expect(await connectGithub(a.dir, TOKEN, "acme/app", gh(404), 0)).toMatchObject({ ok: false, message: /cannot see acme\/app/ });
+    expect(readGithub(a.dir)).toBeNull();
+    expect(await connectGithub(a.dir, TOKEN, "acme/app", gh(200), 0)).toMatchObject({ ok: true });
+    expect(seen.at(-1)).toBe(`https://api.github.com/repos/acme/app Bearer ${TOKEN}`);
+    expect(statSync(githubFile(a.dir)).mode & 0o777).toBe(0o600);
+  });
+  it("refused until connected; then opens one issue with the reviewed title and quoted body, Undo closes it, a lost answer cannot be checked", async () => {
+    const issues = new Map<number, { title: string; body: string; state?: string; state_reason?: string }>();
+    const a = setup(SCOPE, (url, init) => {
+      if (url === "https://api.github.com/repos/acme/app") return new Response("{}", { status: 200 });
+      if (init.method === "POST" && url === "https://api.github.com/repos/acme/app/issues") { const n = issues.size + 1; issues.set(n, JSON.parse(String(init.body))); return new Response(JSON.stringify({ number: n, html_url: `https://github.com/acme/app/issues/${n}` }), { status: 201 }); }
+      if (init.method === "PATCH") { Object.assign(issues.get(Number(url.split("/").pop()))!, JSON.parse(String(init.body))); return new Response("{}", { status: 200 }); }
+      return new Response("{}", { status: 400 });
+    });
+    await pair(a.api);
+    const before = await a.api.handle("commit", EXT, { destination: "github", op: op(), consent: { kind: "confirm" } });
+    expect(before.status).toBe(409); expect(String(before.body.message)).toMatch(/GitHub is not connected/);
+    expect((await a.api.handle("status", EXT, {})).body).toMatchObject({ github: false });
+    const f = (async (u: string, init: RequestInit) => new Response("{}", { status: u.endsWith("/acme/app") ? 200 : 400 })) as unknown as typeof fetch;
+    expect((await connectGithub(a.dir, TOKEN, "acme/app", f, 0)).ok).toBe(true);
+    expect((await a.api.handle("status", EXT, {})).body).toMatchObject({ github: "acme/app" });
+    const r = await a.api.handle("commit", EXT, { destination: "github", op: op(), consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "done", receipt: { destination: "github.issues", reversible: true } });
+    expect(issues.get(1)!.title).toBe("Sign-in crash");
+    expect(issues.get(1)!.body).toContain("```text\nTypeError: Cannot read properties of undefined (reading 'id')\n```");
+    expect(a.calls.some((c) => c.includes("googleapis"))).toBe(false);
+    const u = await a.api.handle("undo", EXT, { destination: "github", receipt: r.body.receipt });
+    expect(u.body).toEqual({ outcome: "undone" }); expect(issues.get(1)).toMatchObject({ state: "closed", state_reason: "not_planned" });
+    expect((await a.api.handle("reconcile", EXT, { destination: "github", op: op() })).body).toMatchObject({ checkable: false });
   });
 });

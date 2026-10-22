@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { connectGithub } from "../../calendar-link/src/github.js";
 import { createLinkServer, DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../../calendar-link/src/server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,10 +17,18 @@ const ext = path.join(root, "dist-test");
 const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") && !existsSync("/opt/pw-browsers/chromium/chrome") ? "/opt/pw-browsers/chromium" : undefined);
 
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
-const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = [];
+const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = []; const issues = new Map<number, Record<string, unknown>>();
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fakeGoogle: typeof fetch = async (u, init) => {
   const url = String(u), method = init?.method ?? "GET"; seenByGoogle.push(`${method} ${url}`);
+  if (url.startsWith("https://api.github.com/")) {
+    // Stand-in GitHub: only the token connected below; one repository.
+    if ((init?.headers as Record<string, string>)?.authorization !== `Bearer github_pat_${"x".repeat(30)}`) return json(401, {});
+    if (url === "https://api.github.com/repos/acme/app") return json(200, { full_name: "acme/app" });
+    if (method === "POST" && url === "https://api.github.com/repos/acme/app/issues") { const n = issues.size + 1; issues.set(n, JSON.parse(String(init!.body))); return json(201, { number: n, html_url: `https://github.com/acme/app/issues/${n}` }); }
+    if (method === "PATCH") { Object.assign(issues.get(Number(url.split("/").pop()))!, JSON.parse(String(init!.body))); return json(200, {}); }
+    return json(404, {});
+  }
   if ((init?.headers as Record<string, string>)?.authorization !== "Bearer AT-1") return json(401, {});
   if (url.startsWith("https://docs.googleapis.com/") || url.startsWith("https://www.googleapis.com/drive/")) {
     const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -310,5 +319,39 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await until(async () => (await stored()).phase === "idle");
     expect([...docs.values()][0]!.trashed).toBe(true);
     await wiki.close(); await other.close();
+  });
+
+  it("a selected error is an error piece; with GitHub connected, Tasks opens an issue (everything quoted), after a confirm; Undo closes it", async () => {
+    expect((await connectGithub(path.dirname(tokenFile), `github_pat_${"x".repeat(30)}`, "acme/app", fakeGoogle, Date.now())).ok).toBe(true);
+    await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await until(async () => (await stored()).destinations.some((d: any) => d.id === "link:github"));
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    const page = await openTab("build.html");
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle" && x.armed; });
+    await page.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.getElementById("err")!); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); });
+    const a = await centre(page, "#err");
+    await page.mouse.move(a.x, a.y); await page.keyboard.down("Alt"); await page.mouse.down(); await page.keyboard.up("Alt");
+    await page.mouse.move(1100, 600, { steps: 5 }); await page.mouse.up();
+    await until(async () => { const x = await stored(); return !x.carried && x.desk.length === 1; });
+    const id = (await stored()).desk[0] as string;
+    expect((await stored()).objects[id].ingredients[0]).toMatchObject({ kind: "error", text: "TypeError: Cannot read properties of undefined (reading 'id')" });
+    await atRest(page, item(id)); await page.locator(item(id)).click();
+    await page.locator("recast-clay >> .rg-actions [data-act=placeIt]").click();
+    await page.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-tasks");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await stored()).phase === "previewing");
+    await page.locator("recast-clay >> button", { hasText: "Use “TypeError: Cannot read properties of undefined (reading 'id')”" }).click();
+    expect(issues.size).toBe(0);
+    await page.locator("recast-clay >> button", { hasText: "Confirm: Open an issue" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(issues.get(1)!["title"]).toBe("TypeError: Cannot read properties of undefined (reading 'id')");
+    expect(String(issues.get(1)!["body"])).toContain(`**Seen on**\n\`\`\`text\nBuild #42 · CI — ${base}/build.html\n\`\`\``);
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(issues.get(1)).toMatchObject({ state: "closed", state_reason: "not_planned" });
+    await page.close();
   });
 });

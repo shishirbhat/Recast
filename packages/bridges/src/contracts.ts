@@ -44,6 +44,14 @@ export const CONTRACTS = {
     destination: "google-docs.new-document", app: "Google Docs", targetKind: "Docs", reliability: "official-api", abilities: ["create", "undo"],
     accepts: [{ relationId: "note-docs-entry", effect: "Create a document", dataMoved: ["Note.title", "Note.body"] }],
   },
+  /**
+   * An issue (an error, with notes) opened in one GitHub repository. Watchers may be notified, so it is confirmed first.
+   * GitHub does not let ordinary accounts delete issues: Undo closes it as "not planned".
+   */
+  githubIssue: {
+    destination: "github.issues", app: "GitHub", targetKind: "Issues", reliability: "official-api", abilities: ["create", "undo"],
+    accepts: [{ relationId: "issue-tracker-entry", effect: "Open an issue", effectFlags: ["notifies-third-party"], dataMoved: ["Issue.title", "Issue.body"] }],
+  },
   // Open-and-prefill: the map app opens with directions to the place. Nothing is written, so there is nothing to confirm or undo.
   googleMaps: {
     destination: "google-maps.directions", app: "Google Maps", targetKind: "Map", reliability: "deep-link", abilities: ["open"],

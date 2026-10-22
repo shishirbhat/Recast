@@ -59,28 +59,31 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
 // Off unless the person connects it from the popup: that grants access to http://localhost only, and the program then
 // asks the person to Allow this extension (a code shown in both places). The Google token never reaches the extension:
 // the program places the reviewed operation and answers with the outcome.
-export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks", LINK_TASKS_DUE = "link:google-tasks-due", LINK_DOCS = "link:google-docs";
+export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks", LINK_TASKS_DUE = "link:google-tasks-due", LINK_DOCS = "link:google-docs", LINK_GITHUB = "link:github";
 const linkDest: DestinationSpec = { id: LINK_DEST, label: "Google Calendar", contract: CONTRACTS.googleCalendarEvent };
 const gmailDest: DestinationSpec = { id: LINK_GMAIL, label: "Gmail drafts", contract: CONTRACTS.gmailMessageDraft };
 const tasksDest: DestinationSpec = { id: LINK_TASKS, label: "Google Tasks", contract: CONTRACTS.googleTasks };
 const tasksDueDest: DestinationSpec = { id: LINK_TASKS_DUE, label: "Google Tasks", contract: CONTRACTS.googleTasksEntry };
 const docsDest: DestinationSpec = { id: LINK_DOCS, label: "Google Docs", contract: CONTRACTS.googleDocs };
-const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS || id === LINK_TASKS_DUE || id === LINK_DOCS;
+const githubDest = (repo: string): DestinationSpec => ({ id: LINK_GITHUB, label: `GitHub ${repo}`, contract: CONTRACTS.githubIssue });
+const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS || id === LINK_TASKS_DUE || id === LINK_DOCS || id === LINK_GITHUB;
 /** What the program calls each destination. */
-const linkName = (id: string) => (id === LINK_GMAIL ? "gmail" : id === LINK_TASKS || id === LINK_TASKS_DUE ? "tasks" : id === LINK_DOCS ? "docs" : "calendar");
+const linkName = (id: string) => (id === LINK_GMAIL ? "gmail" : id === LINK_TASKS || id === LINK_TASKS_DUE ? "tasks" : id === LINK_DOCS ? "docs" : id === LINK_GITHUB ? "github" : "calendar");
 
 async function link(route: string, body: unknown = {}): Promise<{ status: number; body: Record<string, unknown> }> {
   const r = await fetch(`${LINK}/ext/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, body: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 /** Whether the program is reachable, this extension is allowed there, and a Google account is connected. */
-async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean; tasks?: boolean; docs?: boolean }> {
+async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean; tasks?: boolean; docs?: boolean; github?: string }> {
   if (!(await chrome.permissions.contains({ origins: LINK_ORIGINS }))) return { state: "off" };
   try {
     const r = await link("pair");
     if (r.status === 202) return { state: "pending", code: String(r.body["code"]) };
     if (r.status !== 200) return { state: "unreachable" };
-    return r.body["connected"] ? { state: "ready", gmail: !!r.body["gmail"], tasks: !!r.body["tasks"], docs: !!r.body["docs"] } : { state: "not-signed-in" };
+    const github = typeof r.body["github"] === "string" ? { github: r.body["github"] as string } : {};
+    // GitHub is its own connection: offered even when Google is not signed in.
+    return r.body["connected"] ? { state: "ready", gmail: !!r.body["gmail"], tasks: !!r.body["tasks"], docs: !!r.body["docs"], ...github } : { state: "not-signed-in", ...github };
   } catch { return { state: "unreachable" }; }
 }
 /** Real Google Calendar first in the list (the wheel takes the first live destination of a kind), only while ready. */
@@ -88,7 +91,7 @@ async function syncLink() {
   const st = await linkStatus();
   await apply((s) => {
     const others = s.destinations.filter((d) => !isLink(d.id));
-    const mine = st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest, tasksDueDest] : []), ...(st.docs ? [docsDest] : [])] : [];
+    const mine = [...(st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest, tasksDueDest] : []), ...(st.docs ? [docsDest] : [])] : []), ...(st.github ? [githubDest(st.github)] : [])];
     return { state: { ...s, destinations: [...mine, ...others] } };
   });
   return st;

@@ -10,6 +10,7 @@
     "Message":       [["threadId", "date"], ["url"], ["subject", "from", "date"], ["snippet"]],
     "Task":          [["url"], ["title", "due"]],
     "Note":          [["title", "body"]],
+    "Issue":         [["title", "body"]],
     "Product":       [["sku", "brand"], ["url"], ["name", "brand"], ["name"]],
     "ResearchPaper": [["doi"], ["arxivId"], ["title", "year"], ["title"]]
   }

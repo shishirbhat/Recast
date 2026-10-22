@@ -10,6 +10,7 @@
       <button type="button" role="tab" id="tab-calendar" data-for="calendar" aria-controls="page-calendar"><span class="fav" aria-hidden="true">31</span><span class="tname">Calendar</span></button>
       <button type="button" role="tab" id="tab-mail" data-for="mail" aria-controls="page-mail"><span class="fav" aria-hidden="true">@</span><span class="tname">Mail</span></button>
       <button type="button" role="tab" id="tab-docs" data-for="docs" aria-controls="page-docs"><span class="fav" aria-hidden="true">¶</span><span class="tname">Docs</span></button>
+      <button type="button" role="tab" id="tab-build" data-for="build" aria-controls="page-build"><span class="fav" aria-hidden="true">!</span><span class="tname">Build #42</span></button>
     </div>
     <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span>
       <button type="button" id="recast-trigger" class="trigger" aria-pressed="false" aria-description="Or press Control twice"><span class="trigger-dot" aria-hidden="true"></span><span class="trigger-label">Recast</span><kbd class="trigger-kbd">Ctrl Ctrl</kbd></button></div>
@@ -85,6 +86,19 @@
       <p class="note">A stand-in for Google Docs inside this page. Nothing reaches Google.</p>
       <div class="drop" data-dest="docs" tabindex="0" role="button" aria-label="Docs"><span class="drop-label">Drop a note here to make it a document</span></div>
       <ul id="docs-list" class="drafts"></ul>
+    </article>
+
+    <article id="page-build" data-tab="build" role="tabpanel" aria-labelledby="tab-build" data-url="ci.example/acme/app/42" data-title="Build #42 · CI" hidden>
+      <p class="eyebrow">Continuous integration</p>
+      <h1 class="plain">Build #42 failed</h1>
+      <pre class="log">$ npm test
+<span class="grab" id="build-error" data-kind="error">TypeError: Cannot read properties of undefined (reading 'id')</span>
+    at load (src/app.js:12:7)</pre>
+      <p>Note from the team: <span class="grab" id="build-note" data-kind="text">It started after the sign-in change.</span></p>
+      <h2>Issues</h2>
+      <p class="note">A stand-in for GitHub issues inside this page. Nothing reaches GitHub.</p>
+      <div class="drop" data-dest="issues" tabindex="0" role="button" aria-label="Issues"><span class="drop-label">Drop an error here to open an issue</span></div>
+      <ul id="issues-list" class="drafts"></ul>
     </article>
   </main>
 

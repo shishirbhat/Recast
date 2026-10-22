@@ -95,6 +95,11 @@ Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.
 2. Turn on two APIs in Google Cloud first: **Google Docs API** and **Google Drive API**. Then sign in again and tick the Drive box. The steps are in `docs/REAL_TEST_PLAN.md`, section F.
 3. In the extension, select a sentence on a page and Alt-drag it; press a second one into it. Two passages make a note, and **Documents** creates the Google Doc, each passage followed by the page it came from.
 
+## Part 10: GitHub issues (optional, separate from Google)
+1. On github.com: **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Repository access: **Only select repositories**, pick one (a test repository is best). Permissions: **Issues: Read and write**. Nothing else.
+2. On http://localhost:8787/, under **GitHub issues**, enter the repository as `owner/name` and paste the token, then **Connect GitHub**. Recast checks that the token can see the repository before saving it. The token stays in `.secrets/github.json` on this computer (readable only by you).
+3. In the extension, select an error message on a page (a build log, a console) and Alt-drag it. Notes (selected text) can be pressed into it. **Tasks** opens the issue after you confirm. Everything captured is quoted as text, so a copied `@name` notifies nobody. Undo closes the issue as "not planned" (GitHub does not let ordinary accounts delete issues). The steps are in `docs/REAL_TEST_PLAN.md`, section H.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

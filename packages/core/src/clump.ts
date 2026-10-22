@@ -5,7 +5,7 @@
 import { compose, type ComposeContext, type Composition, type Conflict, type EventField, type Fragment, type Missing, type Origin } from "./compose.js";
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
-export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document" | "Task" | "Note";
+export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document" | "Task" | "Note" | "Issue";
 export type MessageField = "to" | "snippet" | "subject";
 export type AnswerField = EventField | MessageField | "due";
 
@@ -53,12 +53,12 @@ export interface ClumpView {
   label: string; proposed: boolean;
   /** A few short things to show on the capsule: names, the place, the time. */
   summary: string[];
-  event?: Composition; message?: MessageView; document?: DocumentView; task?: TaskView; note?: NoteView;
+  event?: Composition; message?: MessageView; document?: DocumentView; task?: TaskView; note?: NoteView; issue?: NoteView;
   missing: { field: AnswerField; reason: string; suggestions?: string[] }[];
   conflicts: Conflict[];
   assumptions: string[];
   /** Where this kind of object can be placed. Empty when it cannot be placed as it is. */
-  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList" | "Map" | "Docs")[];
+  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList" | "Map" | "Docs" | "Issues")[];
   /** A complete object ready for the normal propose → plan → consent → commit path. Null until nothing is missing. */
   candidate: Candidate | null;
 }
@@ -80,6 +80,9 @@ const nameOf = (f: Fragment) => (f.value?.name ?? f.text).replace(/\s+/g, " ").t
 export function typeOf(fs: Fragment[]): ClumpType | { incompatible: string } {
   if (fs.length === 1 && fs[0]!.kind === "page") return "Document";
   if (fs.length <= 1) return "Fragment";
+  // An error, with notes: an issue to track. Nothing else joins an error (a time or a person would change what it is).
+  const errors = fs.filter((f) => f.kind === "error");
+  if (errors.length) return fs.every((f) => f.kind === "error" || f.kind === "text") ? "Issue" : { incompatible: `${nameOf(errors[0]!).slice(0, 60)} is an error: add notes (selected text) to it, or place it on its own as an issue` };
   const pages = fs.filter((f) => f.kind === "page");
   // A page and a date: a task due that day. Anything else with a page is refused, with what would work.
   if (pages.length === 1 && fs.every((f) => f.kind === "page" || f.kind === "time")) return "Task";
@@ -150,6 +153,7 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   if (t === "Fragment") {
     const f = fs[0]!;
     // A place on its own can already go somewhere: a map app, with directions to it. Other single pieces need company.
+    if (f.kind === "error") { const n = issueView(c); return { ...base, type: "Fragment", label: nameOf(f).slice(0, 80), proposed: false, summary: [kindLabel(f.kind)], issue: n, missing: n.missing, placeableAs: ["Issues"], candidate: n.status === "ready" ? noteCandidate(c, n, ctx, "Issue") : null }; }
     if (f.kind === "text") { const n = noteView(c); return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], note: n, missing: n.missing, placeableAs: ["Docs"], candidate: n.status === "ready" ? noteCandidate(c, n, ctx) : null }; }
     if (f.kind === "place") return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [], placeableAs: ["Map"], candidate: locationCandidate(f, ctx) };
     return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [] };
@@ -165,6 +169,10 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
     const conflicts = compose(fs.filter((f) => f.kind === "time"), { ...ctx, choose: c.choices }).conflicts.filter((x) => x.field === "start");
     return { ...base, type: "Task", label: k.fields.title?.value ?? nameOf(fs.find((f) => f.kind === "page")!), proposed: false, summary: ["Task", ...(due ? [`due ${shortTime(due)}`] : [])], task: k, missing: k.missing, conflicts,
       assumptions: k.timeDropped ? [`A task is due on a day: the time (${k.timeDropped}) is not kept`] : [], placeableAs: ["TaskList"], candidate: k.status === "ready" ? taskCandidate(c, k, ctx) : null };
+  }
+  if (t === "Issue") {
+    const n = issueView(c);
+    return { ...base, type: "Issue", label: n.fields.title?.value ?? n.missing[0]?.suggestions?.[0] ?? "New issue", proposed: !n.fields.title, summary: ["Issue", `${fs.length} pieces`], issue: n, missing: n.missing, placeableAs: ["Issues"], candidate: n.status === "ready" ? noteCandidate(c, n, ctx, "Issue") : null };
   }
   if (t === "Note") {
     const n = noteView(c);
@@ -185,7 +193,7 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   return { ...base, type: "Event", label, proposed: typeof title !== "string", summary, event, missing: event.missing, conflicts: event.conflicts, assumptions: event.assumptions, placeableAs: ["Calendar"], candidate: event.candidate };
 }
 
-function kindLabel(k: Fragment["kind"]) { return ({ person: "Person", place: "Place", time: "Time", title: "Title", text: "Text", thing: "Thing", page: "Page" } as const)[k]; }
+function kindLabel(k: Fragment["kind"]) { return ({ person: "Person", place: "Place", time: "Time", title: "Title", text: "Text", thing: "Thing", page: "Page", error: "Error" } as const)[k]; }
 
 const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url.slice(0, 40); } };
 
@@ -264,7 +272,31 @@ function noteView(c: Clump): NoteView {
   return { status: missing.length ? "incomplete" : "ready", fields, sources, missing };
 }
 
-function noteCandidate(c: Clump, n: NoteView, ctx: ComposeContext): Candidate {
+/** Selected text that reads as an error message (an exception, a failed step, a stack trace). Used where text is captured. */
+export const looksLikeError = (text: string) => /\b([A-Z]\w*(Error|Exception)|Traceback|FATAL|ERROR|Uncaught|Segmentation fault|failed with|ERR_[A-Z_]+)\b|\bpanic:|\bexit code [1-9]/.test(text);
+
+/**
+ * An issue's body, in Markdown for the tracker. Everything captured is quoted literally, in fenced blocks longer than any
+ * run of backticks inside it, so a captured "@name", link or image is shown as text: it cannot notify anyone or embed anything.
+ */
+function issueView(c: Clump): NoteView {
+  const errs = c.ingredients.filter((f) => f.kind === "error"), notes = c.ingredients.filter((f) => f.kind === "text");
+  const fence = (t: string) => { const run = Math.max(2, ...[...t.matchAll(/`+/g)].map((m) => m[0].length)); const f = "`".repeat(run + 1); return `${f}text\n${t}\n${f}`; };
+  // Lines are tidied the way a stored body is (resolve trims each line), so the review shows exactly what the tracker gets.
+  const clean = (f: Fragment) => f.text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[^\S\n]+/g, " ").trim()).join("\n").trim();
+  const seen = [...new Map(c.ingredients.filter((f) => f.source?.url).map((f) => [f.source!.url!, [f.source!.title, f.source!.url].filter(Boolean).join(" — ")])).values()];
+  const body = ["Captured with Recast. Everything below is quoted exactly as it appeared.", `**Error**\n${fence(errs.map(clean).join("\n\n"))}`,
+    ...(notes.length ? [`**Notes**\n${fence(notes.map(clean).join("\n\n"))}`] : []), ...(seen.length ? [`**Seen on**\n${fence(seen.join("\n"))}`] : [])].join("\n\n");
+  const fields: NoteView["fields"] = { body: { value: body, origin: "extracted", fragments: c.ingredients.map((f) => f.id) } };
+  const typed = c.answers.title;
+  if (typeof typed === "string" && typed.trim()) fields.title = { value: typed.trim(), origin: "user", fragments: [] };
+  const first = clean(errs[0]!).split("\n")[0]!.slice(0, 80);
+  const sources = [...new Set(c.ingredients.map((f) => f.source?.url).filter((u): u is string => !!u))];
+  const missing: NoteView["missing"] = fields.title ? [] : [{ field: "title", reason: "an issue needs a title", ...(first ? { suggestions: [first] } : {}) }];
+  return { status: missing.length ? "incomplete" : "ready", fields, sources, missing };
+}
+
+function noteCandidate(c: Clump, n: NoteView, ctx: ComposeContext, type: "Note" | "Issue" = "Note"): Candidate {
   const byId = new Map(c.ingredients.map((f) => [f.id, f]));
   const properties: Record<string, unknown> = { ...(n.sources.length ? { sources: n.sources } : {}) }; const meta: Record<string, FieldMeta> = {};
   const evOf = (ids: string[], origin: Origin): Evidence[] => ids.flatMap((id) => byId.get(id)!.evidence.map((e): Evidence => ({ ...e, origin, ...(byId.get(id)!.source ? { source: byId.get(id)!.source! } : {}) })));
@@ -273,9 +305,9 @@ function noteCandidate(c: Clump, n: NoteView, ctx: ComposeContext): Candidate {
     const ev = v!.origin === "user" ? [{ locator: { kind: "user", value: `user:${name}` }, origin: "user" } as Evidence] : evOf(v!.fragments, v!.origin);
     meta[name] = { confidence: v!.origin === "user" ? 1 : Math.min(...v!.fragments.map((id) => byId.get(id)!.confidence)), evidence: ev.length ? ev : [{ locator: { kind: "user", value: `user:${name}` }, origin: v!.origin }] };
   }
-  if (n.sources.length) { const ids = c.ingredients.filter((f) => f.kind === "text" && f.source?.url).map((f) => f.id); meta["sources"] = { confidence: Math.min(...ids.map((id) => byId.get(id)!.confidence)), evidence: evOf(ids, "extracted") }; }
+  if (n.sources.length) { const ids = c.ingredients.filter((f) => (f.kind === "text" || f.kind === "error") && f.source?.url).map((f) => f.id); meta["sources"] = { confidence: Math.min(...ids.map((id) => byId.get(id)!.confidence)), evidence: evOf(ids, "extracted") }; }
   const first = c.ingredients.find((f) => f.source)?.source;
-  return { type: "Note", properties, fields: meta, provenance: { source: { app: ctx.app ?? first?.app ?? "recast", ...(first?.url ? { url: first.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
+  return { type, properties, fields: meta, provenance: { source: { app: ctx.app ?? first?.app ?? "recast", ...(first?.url ? { url: first.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
 }
 
 function message(c: Clump): MessageView {
