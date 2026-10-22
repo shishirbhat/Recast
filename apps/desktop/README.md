@@ -4,7 +4,7 @@ The capsule in a small window of its own, always a shortcut away. Same objects, 
 
 ## Install
 Download the installer from the **desktop** workflow's latest run on GitHub (Actions → desktop → Artifacts):
-- **macOS:** `Recast-<version>-universal.dmg`. Open it and drag Recast to Applications. The app is not signed with an Apple Developer ID yet, so the first time, **right-click Recast → Open**, then confirm.
+- **macOS:** `Recast-<version>-arm64` for Apple silicon, `-x64` for Intel, each as `.zip` (double-click it to get Recast.app) or `.dmg` (open it and drag Recast to Applications). The app is not signed with an Apple Developer ID yet, so the first time, **right-click Recast → Open**, then confirm.
 - **Windows:** `Recast-<version>-x64.exe` (or `-arm64.exe`). Not signed yet: if SmartScreen says "Windows protected your PC", click **More info → Run anyway**.
 - **Linux:** `.rpm` (Fedora, RHEL, openSUSE), `.deb` (Ubuntu, Debian), or the AppImage (make it executable and run it).
 
