@@ -16,7 +16,7 @@ import { api, ApiError } from "@/lib/api";
 import { DocSession } from "@/lib/collab";
 import { availability, chordOf, execute, isMac, keyLabel, matches } from "@/lib/commands";
 import type { Command } from "@/lib/commands";
-import { applyTheme, initialTheme } from "@/lib/theme";
+import { THEMES, applyTheme, initialTheme } from "@/lib/theme";
 import type { Theme } from "@/lib/theme";
 import type { Member, ProjectState, Task } from "@/lib/types";
 import { useProject } from "@/lib/useProject";
@@ -1019,7 +1019,7 @@ export function Workbench() {
       { id: "file.autoSave", category: "File", title: "Auto Save", checked: () => true, when: () => "Always on: every edit reaches the shared copy as you type; Save writes it to disk", run: () => {} },
       { id: "file.copyRelativePath", category: "File", title: "Copy Relative Path of Active File", when: () => (activePath ? null : "Open a file first"), run: () => activePath && void navigator.clipboard?.writeText(activePath).then(() => notify(`Copied ${activePath}`)) },
       { id: "file.revealInExplorer", category: "File", title: "Reveal Active File in Explorer", when: () => (activePath ? null : "Open a file first"), run: () => (set({ view: "explorer", sidebar: true }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector(`[data-testid="file-${CSS.escape(activePath!)}"]`)?.scrollIntoView({ block: "center" }))) },
-      { id: "preferences.colorTheme", category: "Preferences", title: "Color Theme…", run: () => showPick({ placeholder: "Select a color theme", items: (["dark", "light"] as Theme[]).map((t) => ({ id: t, label: t === "dark" ? "Relay Dark" : "Relay Light", picked: t === theme, run: () => setTheme(t) })) }) },
+      { id: "preferences.colorTheme", category: "Preferences", title: "Color Theme…", run: () => showPick({ placeholder: "Select a color theme", items: THEMES.map((t) => ({ id: t.id, label: t.label, picked: t.id === theme, run: () => setTheme(t.id) })) }) },
       { id: "preferences.keyboardShortcuts", category: "Preferences", title: "Keyboard Shortcuts", keywords: ["keybindings"], run: () => (set({ view: "settings", sidebar: true }), setLastOpened("sidebar"), requestAnimationFrame(() => document.querySelector("[data-testid=shortcuts]")?.scrollIntoView())) },
       {
         id: "view.openView",
@@ -1138,7 +1138,7 @@ export function Workbench() {
             { id: `people.follow:${p.memberId}`, category: "Collaboration", title: `Follow ${who}`, run: () => setFollowing(p.memberId) },
           ];
         }),
-      { id: "theme.toggle", category: "Preferences", title: theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme", keybinding: "Mod+Alt+T", run: () => setTheme((t) => (t === "dark" ? "light" : "dark")) },
+      { id: "theme.toggle", category: "Preferences", title: theme === "light" ? "Switch to Dark Theme" : "Switch to Light Theme", keybinding: "Mod+Alt+T", run: () => setTheme((t) => (t === "light" ? "dark" : "light")) },
       { id: "agent.focus", category: "Relay", title: "Ask the Agent…", keywords: ["chat", "code with agent", "claude"], keybinding: "Mod+I", when: () => viewOnly, run: () => (showRight("agent"), setAgentNonce((n) => n + 1)) },
       { id: "relay.coordination", category: "Relay", title: "Show Coordination", keywords: ["agents", "tasks", "dependencies", "blockers", "integrate", "overview", "board"], keybinding: "Mod+Alt+C", run: () => (setTabs((t) => (t.includes(COORD) ? t : [...t, COORD])), setActive(COORD)) },
       { id: "relay.tasks", category: "Relay", title: "Show Tasks", run: () => (showRight("tasks"), setSelectedTask(null)) },

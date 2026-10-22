@@ -23,7 +23,7 @@
   - Radius rule: controls 4px, floating surfaces 8px, people round.
 */
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, [data-theme="oled"], [data-theme="oled"] *));
 
 :root,
 [data-theme="dark"] {
@@ -65,6 +65,60 @@
   --shadow: none;
   --shadow-pop: 0 18px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.04);
   --grid-dot: rgb(255 255 255 / 0.045);
+  --syn-keyword: #e3a184;
+  --syn-string: #a9d6a0;
+  --syn-number: #e9c46a;
+  --syn-type: #7ec8e8;
+  --syn-fn: #dcdfe5;
+  --syn-prop: #b3bfd3;
+  --syn-comment: #5d6573;
+  --syn-punct: #7a808c;
+}
+
+/*
+  OLED: Dark with every surface pure black, so an OLED screen switches those pixels off. Structure comes from hairlines
+  and the few interactive states that must stay visible (hover, selection), lit as little as possible. Text, accent and
+  syntax colours are Dark's.
+*/
+[data-theme="oled"] {
+  color-scheme: dark;
+  --chrome: #000000;
+  --chrome-ink: #8a8f99;
+  --sidebar: #000000;
+  --editor: #000000;
+  --panel: #000000;
+  --panel-2: #000000;
+  --page: #000000;
+  --sunken: #0b0b0c;
+  --hover: #121316;
+  --rule: #17181c;
+  --rule-strong: #26282e;
+  --ink: #dcdfe5;
+  --ink-2: #b9bec8;
+  --muted: #8a8f9a;
+  --faint: #5a5f6a;
+  --accent: #ff6b2c;
+  --accent-ink: #ff8f5e;
+  --accent-fg: #000000;
+  --accent-soft: #1c0f08;
+  --accent-line: #6e3418;
+  --attention: #e9b44c;
+  --attention-soft: #1a1508;
+  --ok: #5fd39a;
+  --ok-soft: #08160f;
+  --warn: #e9b44c;
+  --warn-soft: #1a1508;
+  --danger: #ff5d6e;
+  --danger-soft: #1c0a0d;
+  --selection: #1c2433;
+  --status-bg: #000000;
+  --status-fg: #8a8f99;
+  --remote-bg: transparent;
+  --remote-fg: #8a8f99;
+  --overlay: rgb(0 0 0 / 0.92);
+  --shadow: none;
+  --shadow-pop: 0 0 0 1px #26282e;
+  --grid-dot: rgb(255 255 255 / 0.05);
   --syn-keyword: #e3a184;
   --syn-string: #a9d6a0;
   --syn-number: #e9c46a;

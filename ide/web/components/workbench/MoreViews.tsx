@@ -9,6 +9,7 @@ import { CODE_FONTS, UI_FONTS } from "../Editor";
 import type { CodeFont, EditorPrefs, UiFont } from "../Editor";
 import type { Member, ProjectState } from "@/lib/types";
 import type { Theme } from "@/lib/theme";
+import { THEMES } from "@/lib/theme";
 import { Avatar } from "../ui";
 import { Section, ViewHeader } from "./Views";
 import type { TerminalAvailability } from "./Terminal";
@@ -269,8 +270,11 @@ export function SettingsView({ theme, setTheme, commands, terminal, onResetLayou
           <div className="flex items-center justify-between px-5 py-1 text-[13px]">
             <span className="text-ink-2">Color theme</span>
             <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)} className="h-[24px] rounded-sm border border-rule bg-editor px-1.5 text-[12.5px] text-ink" aria-label="Color theme">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
+              {THEMES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label.replace(/^Relay /, "")}
+                </option>
+              ))}
             </select>
           </div>
           <button onClick={onResetLayout} className={rowBtn}>

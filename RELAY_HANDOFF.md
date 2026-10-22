@@ -73,6 +73,7 @@ Deliberately disabled (with reasons): debugging (no debug adapter), installing e
 - **Status vocabulary** (`STATUS` in `components/workbench/CoordinationView.tsx`, mirrored from `src/analysis/coordination.ts` `statusOf`): proposed, waiting, queued, running, stopped, checking, blocked, verification failed, verification required, needs review, ready to integrate, failed, cancelled, done. Each maps to engine facts (tooltip shows the engine state). Never add a UI-only state; derive it in `statusOf` and test it in `test/coordination.test.ts`. Plain task states use `StatePill` labels: Awaiting approval, Queued, Running, In review, Blocked, Failed, Cancelled, Done.
 - Non-file editor tabs: `welcome:`, `relay:coordination`, `diff:…`. Use `isFileTab` / `tabLabel` in `Workbench.tsx`.
 - Editor groups: `groups` + `focus` in `Workbench.tsx`; `tabs`/`active`/`setTabs`/`setActive` are the focused group's. Act on all groups with `setGroups`.
+- **Themes:** `dark`, `oled`, `light` (`lib/theme.ts` `THEMES`; tokens in `app/globals.css`). OLED is Dark with every surface `#000`; only hairlines, hover and selection are lit. Add a theme by adding a token block and a `THEMES` entry; the terminal and editor read the tokens. `test/e2e/theme.e2e.test.ts` checks the surfaces are pure black. Screenshots: `node scripts/theme-shots.ts <theme> <dir>`.
 - Overlays (menus, palette, notifications) are solid (`.glass` in `globals.css`), not translucent.
 - Editing commands that change text go through CodeMirror transactions, so they reach collaborators as ordinary shared edits. Whole-document rewrites (Format Document) use `applyMinimalEdits` (`lib/format.ts`) so unchanged text keeps its CRDT identity, carets and authorship.
 
@@ -111,3 +112,4 @@ Deliberately disabled (with reasons): debugging (no debug adapter), installing e
 - Verification commands now run asynchronously, but still on the same machine as the server; heavy test suites compete for CPU with collaboration.
 - Case-only renames are handled by inode comparison; only exercised on Linux (case-sensitive), not on a case-insensitive disk.
 - An intermittent `test/testrunner.test.ts` failure was seen once in a full run before the git-signing fix; its output wasn't kept, and it didn't recur in 6 isolated and 5 full runs. Probably the same signing outage, unconfirmed.
+- 2026-10-22 — **OLED Black theme** (owner's request): third theme in Color Theme…, Settings and the boot script; Ctrl+Alt+T toggles light/dark. Screenshots in `docs/evidence/oled-2026-10-22/`.
