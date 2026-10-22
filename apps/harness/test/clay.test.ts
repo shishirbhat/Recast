@@ -451,6 +451,33 @@ describe("a place on its own → Google Maps (open and prefill, the real Google 
   });
 });
 
+describe("two quotes → a note → Docs (stand-in for Google Docs)", () => {
+  it("Maya's line pressed into the review is a note; the review suggests a title; the Docs tab gets each quote with its page; Undo removes it", async () => {
+    const { page, ctx, errors } = await open();
+    await drag(page, "#maya-line", "#dakshin-review", "#tab-restaurant");
+    let s = await st(page); const id = s.focus;
+    expect(s).toMatchObject({ phase: "composed" }); expect(s.objects[id].ingredients.map((f: any) => f.kind)).toEqual(["text", "text"]);
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    expect(await page.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-documents");
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    await page.getByRole("button", { name: "Open" }).click();
+    expect((await st(page)).phase).toBe("previewing");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/Stand-in: Google Docs here is a local stand-in/);
+    await page.getByRole("button", { name: /^Use “/ }).click();
+    await page.getByRole("button", { name: "Create a document" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
+    await page.locator("#tab-docs").click();
+    const doc = page.locator("[data-placed='doc']");
+    expect(await doc.count()).toBe(1);
+    expect(await doc.locator(".doc-body").innerText()).toBe("“The filter coffee alone is worth the trip.”\n— Dakshin · Restaurant, dakshin.example\n\n“Free for dinner this week?”\n— Maya Rao · Profile, people.example/maya-rao");
+    s = await st(page); expect(s.objects[id]).toBeDefined();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
+    expect(await page.locator("[data-placed='doc']").count()).toBe(0);
+    expect(errors).toEqual([]); await ctx.close();
+  });
+});
+
 describe("recovery: the calendar misbehaves (in-page stand-in, real Chromium)", () => {
   /** Maya + Dakshin + time, chosen for the calendar from the module, with its title answered: one click from placing. */
   async function readyToPlace(page: Page) {

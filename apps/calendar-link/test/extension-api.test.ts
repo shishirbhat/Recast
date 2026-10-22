@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createExtensionApi } from "../src/extension-api.js";
-import { GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
-import { mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
+import { DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
+import { answerClump, mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
 import { CONTRACTS } from "@recast/bridges";
 
 const EXT = `chrome-extension://${"a".repeat(32)}`;
@@ -100,5 +100,41 @@ describe("Google Tasks through the same door", () => {
     const b = setup(`${SCOPE} ${TASKS_SCOPE}`); await pair(b.api);
     const r = await b.api.handle("reconcile", EXT, { destination: "tasks", op: op() });
     expect(r.body).toMatchObject({ checkable: false }); expect(String(r.body.message)).toMatch(/Look in Google Tasks/); expect(b.calls).toHaveLength(0);
+  });
+});
+
+describe("Google Docs through the same door", () => {
+  // Two passages pressed into a note, titled, reviewed in the module: the operation the extension sends.
+  const op = () => {
+    const q = (id: string, text: string, url: string, title: string) => newClump(id, { id: `t-${id}`, kind: "text", text, confidence: 0.9, evidence: [{ locator: { kind: "css", value: `#${id}` } }], source: { app: "chrome", url, title } });
+    const m = mergeClumps(q("a", "Interfaces should disappear.", "https://a.example/essay", "On tools"), q("b", "Make the common case fast.", "https://b.example/notes", "Notes"));
+    if (!m.ok) throw new Error(m.reason);
+    const v = viewClump(answerClump(m.clump, "title", "Design reading"), { now: "2026-10-21T09:00:00Z", timezone: "UTC" });
+    return plan(propose(resolve(v.candidate!), CONTRACTS.googleDocs)[0]!, { now: () => "2026-10-21T09:00:00Z" });
+  };
+  it("without the Drive permission a note is refused before anything reaches Google", async () => {
+    const a = setup(`${SCOPE} ${TASKS_SCOPE}`); await pair(a.api);
+    expect((await a.api.handle("status", EXT, {})).body).toMatchObject({ docs: false });
+    const r = await a.api.handle("commit", EXT, { destination: "docs", op: op(), consent: { kind: "release" } });
+    expect(r.status).toBe(409); expect(String(r.body.message)).toMatch(/Google Docs is not allowed/); expect(a.calls).toHaveLength(0);
+  });
+  it("creates one document with the title and the passages with their sources; Undo moves exactly that one to the trash; a lost answer cannot be checked", async () => {
+    const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>();
+    const b = setup(`${SCOPE} ${DOCS_SCOPE}`, (url, init) => {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      if (init.method === "POST" && url === "https://docs.googleapis.com/v1/documents") { const id = `d${docs.size + 1}`; docs.set(id, { title: body.title }); return new Response(JSON.stringify({ documentId: id }), { status: 200 }); }
+      if (init.method === "POST" && url.endsWith(":batchUpdate")) { docs.get(url.split("/").pop()!.replace(":batchUpdate", ""))!.text = body.requests[0].insertText.text; return new Response("{}", { status: 200 }); }
+      if (init.method === "PATCH" && url.startsWith("https://www.googleapis.com/drive/v3/files/")) { docs.get(url.split("/").pop()!)!.trashed = body.trashed; return new Response("{}", { status: 200 }); }
+      return new Response("{}", { status: 400 });
+    });
+    await pair(b.api);
+    expect((await b.api.handle("status", EXT, {})).body).toMatchObject({ docs: true });
+    const r = await b.api.handle("commit", EXT, { destination: "docs", op: op(), consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "done", receipt: { destination: "google-docs.new-document", reversible: true } });
+    expect([...docs.values()]).toEqual([{ title: "Design reading", text: "“Interfaces should disappear.”\n— On tools, https://a.example/essay\n\n“Make the common case fast.”\n— Notes, https://b.example/notes" }]);
+    const u = await b.api.handle("undo", EXT, { destination: "docs", receipt: r.body.receipt });
+    expect(u.body).toEqual({ outcome: "undone" }); expect(docs.get("d1")!.trashed).toBe(true);
+    const c = await b.api.handle("reconcile", EXT, { destination: "docs", op: op() });
+    expect(c.body).toMatchObject({ checkable: false });
   });
 });

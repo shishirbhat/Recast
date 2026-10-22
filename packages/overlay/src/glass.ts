@@ -83,7 +83,7 @@ const ICON: Record<WheelKey, string> = {
 const svg = (k: WheelKey, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link", due: "Due" };
+const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link", due: "Due", body: "Text" };
 const ORIGIN: Record<string, string> = { extracted: "from the page", inferred: "Recast's reading", default: "a default", user: "you" };
 const INPUT_HINT: Record<string, string> = { start: "2026-10-23T19:30", end: "2026-10-23T21:00", title: "Dinner with Maya", to: "maya@example.com", due: "2026-10-23" };
 function fmt(field: string, v: unknown): string {
@@ -264,7 +264,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   // ---- everything else: rebuilt only when its text changes, keeping focus where it was ---------------------------------
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
-    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
+    const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
     const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
     const missing = v.missing.map((x) => {
       const id = `rg-in-${x.field}`;
@@ -538,7 +538,7 @@ export const GLASS_CSS = `
 .rg-fields { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .rg-row { display: grid; grid-template-columns: 72px 1fr; gap: 8px; }
 .rg-row dt { color: var(--g-muted); font-size: 12px; }
-.rg-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.rg-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 .rg-origin { font-size: 10.5px; color: var(--g-muted); border: 0.5px solid var(--g-line); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
 .rg-needs { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border-radius: 16px; background: color-mix(in srgb, var(--g-accent) 9%, transparent); box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--g-accent) 40%, transparent); }
 .rg-needs h3 { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--g-ink); }

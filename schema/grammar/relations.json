@@ -196,6 +196,22 @@
         ]
       ],
       "reversible": false
+    },
+    {
+      "id": "note-docs-entry",
+      "from": "Note",
+      "to": "Docs",
+      "relation": "entry",
+      "risk": "low",
+      "requires": [
+        [
+          "title"
+        ],
+        [
+          "body"
+        ]
+      ],
+      "reversible": true
     }
   ]
 }

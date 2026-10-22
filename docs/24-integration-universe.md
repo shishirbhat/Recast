@@ -12,9 +12,9 @@ The owner proposed a universal object and action model. Most of it already exist
 
 | Owner's term | In the repository today | Gap |
 |---|---|---|
-| Captured objects (`DateTime`, `Person`, `Place`, `URL`, `TextExcerpt`, `Task`, `Event`, `CodeReference`, `FileReference`) | Fragment kinds `person, place, time, text, title, thing, page` (`packages/core/src/compose.ts`); object types `Person, Document, Event, Location, Image, Message, Task, Product, ResearchPaper` (`schema/common/envelope.schema.json`) | No `CodeReference` (error, file and line, commit) and no `FileReference`. A quote is `text`, but it is not yet an object of its own that keeps its source when it is placed |
-| Each destination declares the actions it supports | Capability contracts (`packages/bridges/src/contracts.ts`, `schema/contracts/capability.schema.json`), checked against the grammar (`schema/grammar/relations.json`). A contract may raise risk, never lower it | Contracts declare *create* and *reversible* only. **Add:** read, search, update, delete, verify (read back after writing) and undo, as separate declared abilities |
-| Level 1: open and prefill | `reliability: "deep-link"` exists in the schema | No deep-link bridge exists. Such a bridge cannot confirm the result, so the review and the success message have to say "opened, not confirmed" |
+| Captured objects (`DateTime`, `Person`, `Place`, `URL`, `TextExcerpt`, `Task`, `Event`, `CodeReference`, `FileReference`) | Fragment kinds `person, place, time, text, title, thing, page` (`packages/core/src/compose.ts`); object types `Person, Document, Event, Location, Image, Message, Task, Product, ResearchPaper` (`schema/common/envelope.schema.json`) | No `CodeReference` (error, file and line, commit) and no `FileReference`. **Done (D31):** passages pressed together are a `Note` that keeps each passage's page |
+| Each destination declares the actions it supports | Capability contracts (`packages/bridges/src/contracts.ts`, `schema/contracts/capability.schema.json`), checked against the grammar (`schema/grammar/relations.json`). A contract may raise risk, never lower it | **Done (D30):** contracts declare `abilities` (open, create, read, update, search, delete, verify, undo), checked against each bridge's operations |
+| Level 1: open and prefill | `reliability: "deep-link"` exists in the schema | **Done (D30):** Google Maps and Apple Maps directions from a place. The review is a real link; done says "Opened", with no Undo |
 | Level 2: native action | `reliability: "official-api"`: Google Calendar (R), Gmail drafts and Google Tasks (F, through `apps/calendar-link`) | Per-provider OAuth; only Google so far |
 | Level 3: deep integration | Reconcile (check after an unknown outcome), Undo with receipts, duplicate guard | Search existing objects, resolve identities, detect conflicts at the destination |
 | Provenance preserved | Every property carries evidence, source URL and title (`provenance`, `fields[*].evidence`) | It reaches the destination only through `dataMoved`. A source link per passage in a note is not built yet |
@@ -26,7 +26,7 @@ The owner proposed a universal object and action model. Most of it already exist
 2. Any sentence → a tracked task with due date and source link (page → Google Tasks built; a sentence as a task is not).
 3. Any error → a bug report for GitHub, GitLab, Jira or Linear, with sources kept.
 4. Any context → a ready-to-send message (Gmail drafts built; Slack and others not).
-5. Any research → a sourced note, with each quote keeping its URL.
+5. Any research → a sourced note, with each quote keeping its URL (built: passages → a note → Google Docs, D31).
 6. One capture → several coordinated destinations, all shown before any runs.
 
 ## Order proposed by the owner (not a plan of record yet)

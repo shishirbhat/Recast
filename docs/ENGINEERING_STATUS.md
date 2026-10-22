@@ -84,6 +84,9 @@ The previously reported harness failures (two capitalisation assertions in Layer
 ## 2. Implemented but not fully verified
 | Requirement | Implementation | What exists | Missing to verify |
 |---|---|---|---|
+| Declared connector abilities (open, create, read, update, search, delete, verify, undo) | `schema/contracts/capability.schema.json`, `packages/core/src/{rules,propose}.ts`, `packages/bridges/src/contracts.ts` | every registry contract declares them; a test checks them against each bridge's own operation declarations; a deep link may only `open`; no declared `undo`, no Undo (D30) | U only. Nothing shows the abilities to the person yet beyond Undo and "opened" |
+| A place → Google Maps or Apple Maps directions (open and prefill) | `packages/bridges/src/links.ts`; try-it page; extension | the review is a real link on a fixed host, built only from the reviewed name and address; "Opened", no Undo; real Chromium on the try-it page and in the extension, with the Google request intercepted (H) | **R**: a person clicking it against the real Google Maps (`docs/REAL_TEST_PLAN.md` G); Apple Maps is in the registry but not offered anywhere yet |
+| Passages → a note → Google Docs | `packages/core/src/clump.ts` (Note), `packages/bridges/src/specs.ts` (`googleDocs`), `apps/calendar-link` (`drive.file`), extension | each passage keeps its page; create, then insert plain text; an empty document is trashed on failure; Undo trashes; F through the local program and the extension (Google stand-in), stand-in Docs tab on the try-it page (D31) | **R**: `docs/REAL_TEST_PLAN.md` F (needs Docs and Drive APIs enabled, and a re-sign-in ticking Drive) |
 | Destination bridges: Calendar attendee/location, Gmail draft, Sheets row, Tasks task, Notion page | `packages/bridges/src/specs.ts` | request builders, undo tokens, injection guards; F via a fake Google over HTTP (Gmail draft, Calendar attendee, Tasks task through `apps/calendar-link`) | **R**: needs OAuth apps (task #22). Calendar *event* creation reached R separately (see section 1) |
 | `POST /v1/place` and undo | `packages/api-core/src/{api,place}.ts` | re-resolve, object-id check, consent, sealed credentials, host allowlist, atomic undo claim; release state `internal` | R (the bridge itself reached R through `apps/calendar-link`, not through this endpoint); no OAuth flow here (tokens stored as given, no refresh) |
 | Browser extension | `apps/extension` | popup lists what the page holds; the clay layer carries objects across tabs; places on pages that declare destinations **and** in the real Google Calendar and Gmail drafts through `apps/calendar-link` (30 tests, 9 in real Chromium) | never loaded by a person; real-Google run pending (`docs/REAL_TEST_PLAN.md` B–D) |
@@ -91,7 +94,12 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
-## Latest full run (2026-10-21, after the time-zone fix, head 4fa65a0)
+## Latest full run (2026-10-22, after Google Maps and Google Docs)
+`pnpm gen` leaves no diff beyond the new schema; `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 910 tests, 0 failures** (core 121, bridges 59, interaction 122, calendar-link 23, extension 33, harness 54, …). Before: 877.
+- **Bug found and fixed on the way (extension):** letting go of an object over empty page space pressed it into whatever date or place the page body held, instead of putting it down. Confirmed by re-running the new test with the fix removed (it failed: the object became "Meet at Dakshin").
+- Conformance goldens regenerated (`pnpm --filter @recast/conformance golden`): the two deep-link cases gain one risk reason; nothing else changed.
+
+## Previous full run (2026-10-21, after the time-zone fix, head 4fa65a0)
 `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 877 tests, 0 failures** (interaction 121, extension 31, others as below). Re-run before publishing the try-it page.
 
 ## Previous full run (2026-10-21, after a page + a date → Google Tasks)

@@ -119,3 +119,6 @@ body.carrying { cursor: grabbing; }
   .tname { max-width: 84px; }
 }
 @media (prefers-reduced-motion: reduce) { .grab.lifted { animation: none; } .grab, .drop { transition: none; } }
+.drafts .doc-body { white-space: pre-line; color: var(--muted); font-size: 14px; }
+blockquote.review { font-size: 20px; margin: 4px 0 12px; }
+blockquote.review cite { display: block; font: 13px/1.4 var(--font-ui, system-ui); font-style: normal; color: var(--muted); margin-top: 4px; }

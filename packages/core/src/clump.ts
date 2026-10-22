@@ -5,7 +5,7 @@
 import { compose, type ComposeContext, type Composition, type Conflict, type EventField, type Fragment, type Missing, type Origin } from "./compose.js";
 import type { Candidate, Evidence, FieldMeta } from "./types.js";
 
-export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document" | "Task";
+export type ClumpType = "Fragment" | "Event" | "Message" | "People" | "Document" | "Task" | "Note";
 export type MessageField = "to" | "snippet" | "subject";
 export type AnswerField = EventField | MessageField | "due";
 
@@ -39,18 +39,26 @@ export interface TaskView {
   missing: { field: "title" | "due"; reason: string }[];
 }
 
+/** Passages pressed together: a note. Each passage keeps the page it came from; the title is typed or suggested. */
+export interface NoteView {
+  status: "ready" | "incomplete";
+  fields: Partial<Record<"title" | "body", { value: string; origin: Origin; fragments: string[] }>>;
+  sources: string[];
+  missing: { field: "title"; reason: string; suggestions?: string[] }[];
+}
+
 export interface ClumpView {
   type: ClumpType;
   /** The one name the capsule shows. `proposed` when it is Recast's suggestion, not something the person accepted or the page said. */
   label: string; proposed: boolean;
   /** A few short things to show on the capsule: names, the place, the time. */
   summary: string[];
-  event?: Composition; message?: MessageView; document?: DocumentView; task?: TaskView;
+  event?: Composition; message?: MessageView; document?: DocumentView; task?: TaskView; note?: NoteView;
   missing: { field: AnswerField; reason: string; suggestions?: string[] }[];
   conflicts: Conflict[];
   assumptions: string[];
   /** Where this kind of object can be placed. Empty when it cannot be placed as it is. */
-  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList" | "Map")[];
+  placeableAs: ("Calendar" | "Drafts" | "Task" | "Project" | "TaskList" | "Map" | "Docs")[];
   /** A complete object ready for the normal propose → plan → consent → commit path. Null until nothing is missing. */
   candidate: Candidate | null;
 }
@@ -82,7 +90,8 @@ export function typeOf(fs: Fragment[]): ClumpType | { incompatible: string } {
   const people = fs.filter((f) => f.kind === "person").length, texts = fs.filter((f) => f.kind === "text").length;
   if (people && texts === 0) return "People";
   if (people && texts) return "Message";
-  return { incompatible: "two pieces of text do not make an object yet; add a person to write a message, or a time or place to plan an event" };
+  // Only passages: a note that keeps where each one came from. (A person turns it into a message; a time, into an event.)
+  return "Note";
 }
 
 export function canMerge(target: Clump, incoming: Clump): MergeCheck {
@@ -141,6 +150,7 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   if (t === "Fragment") {
     const f = fs[0]!;
     // A place on its own can already go somewhere: a map app, with directions to it. Other single pieces need company.
+    if (f.kind === "text") { const n = noteView(c); return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], note: n, missing: n.missing, placeableAs: ["Docs"], candidate: n.status === "ready" ? noteCandidate(c, n, ctx) : null }; }
     if (f.kind === "place") return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [], placeableAs: ["Map"], candidate: locationCandidate(f, ctx) };
     return { ...base, type: "Fragment", label: nameOf(f), proposed: false, summary: [kindLabel(f.kind)], missing: [] };
   }
@@ -155,6 +165,10 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
     const conflicts = compose(fs.filter((f) => f.kind === "time"), { ...ctx, choose: c.choices }).conflicts.filter((x) => x.field === "start");
     return { ...base, type: "Task", label: k.fields.title?.value ?? nameOf(fs.find((f) => f.kind === "page")!), proposed: false, summary: ["Task", ...(due ? [`due ${shortTime(due)}`] : [])], task: k, missing: k.missing, conflicts,
       assumptions: k.timeDropped ? [`A task is due on a day: the time (${k.timeDropped}) is not kept`] : [], placeableAs: ["TaskList"], candidate: k.status === "ready" ? taskCandidate(c, k, ctx) : null };
+  }
+  if (t === "Note") {
+    const n = noteView(c);
+    return { ...base, type: "Note", label: n.fields.title?.value ?? n.missing[0]?.suggestions?.[0] ?? "New note", proposed: !n.fields.title, summary: [`${fs.length} passages`, ...(n.sources.length ? [`from ${n.sources.length === 1 ? hostOf(n.sources[0]!) : `${n.sources.length} pages`}`] : [])], note: n, missing: n.missing, placeableAs: ["Docs"], candidate: n.status === "ready" ? noteCandidate(c, n, ctx) : null };
   }
   if (t === "People") return { ...base, type: "People", label: people.join(" + "), proposed: false, summary: [`${people.length} people`], missing: [{ field: "title", reason: "add a time or place to plan something, or a sentence to write to them" }] };
   if (t === "Message") {
@@ -234,6 +248,34 @@ function locationCandidate(f: Fragment, ctx: ComposeContext): Candidate {
   const ev: Evidence[] = f.evidence.map((e): Evidence => ({ ...e, origin: "extracted", ...(f.source ? { source: f.source } : {}) }));
   for (const [k, v] of [["name", name], ["address", address]] as const) if (v) { properties[k] = v; meta[k] = { confidence: f.confidence, evidence: ev.length ? ev : [{ locator: { kind: "composition", value: `extracted:${k}` }, origin: "extracted" }] }; }
   return { type: "Location", properties, fields: meta, provenance: { source: { app: ctx.app ?? f.source?.app ?? "recast", ...(f.source?.url ? { url: f.source.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
+}
+
+/** Each passage in quotation marks, then the page it came from; the body is exactly what the review shows and what is written. */
+function noteView(c: Clump): NoteView {
+  const texts = c.ingredients.filter((f) => f.kind === "text");
+  const fields: NoteView["fields"] = {};
+  const typed = c.answers.title;
+  const suggestion = texts.map((f) => f.source?.title?.replace(/\s+/g, " ").trim()).find(Boolean);
+  if (typeof typed === "string" && typed.trim()) fields.title = { value: typed.trim(), origin: "user", fragments: [] };
+  const passage = (f: Fragment) => { const from = [f.source?.title, f.source?.url].filter(Boolean).join(", "); return `“${f.text.replace(/\s+/g, " ").trim()}”${from ? `\n— ${from}` : ""}`; };
+  fields.body = { value: texts.map(passage).join("\n\n"), origin: "extracted", fragments: texts.map((f) => f.id) };
+  const sources = [...new Set(texts.map((f) => f.source?.url).filter((u): u is string => !!u))];
+  const missing: NoteView["missing"] = fields.title ? [] : [{ field: "title", reason: "a note needs a title", ...(suggestion ? { suggestions: [suggestion] } : {}) }];
+  return { status: missing.length ? "incomplete" : "ready", fields, sources, missing };
+}
+
+function noteCandidate(c: Clump, n: NoteView, ctx: ComposeContext): Candidate {
+  const byId = new Map(c.ingredients.map((f) => [f.id, f]));
+  const properties: Record<string, unknown> = { ...(n.sources.length ? { sources: n.sources } : {}) }; const meta: Record<string, FieldMeta> = {};
+  const evOf = (ids: string[], origin: Origin): Evidence[] => ids.flatMap((id) => byId.get(id)!.evidence.map((e): Evidence => ({ ...e, origin, ...(byId.get(id)!.source ? { source: byId.get(id)!.source! } : {}) })));
+  for (const [name, v] of Object.entries(n.fields)) {
+    properties[name] = v!.value;
+    const ev = v!.origin === "user" ? [{ locator: { kind: "user", value: `user:${name}` }, origin: "user" } as Evidence] : evOf(v!.fragments, v!.origin);
+    meta[name] = { confidence: v!.origin === "user" ? 1 : Math.min(...v!.fragments.map((id) => byId.get(id)!.confidence)), evidence: ev.length ? ev : [{ locator: { kind: "user", value: `user:${name}` }, origin: v!.origin }] };
+  }
+  if (n.sources.length) { const ids = c.ingredients.filter((f) => f.kind === "text" && f.source?.url).map((f) => f.id); meta["sources"] = { confidence: Math.min(...ids.map((id) => byId.get(id)!.confidence)), evidence: evOf(ids, "extracted") }; }
+  const first = c.ingredients.find((f) => f.source)?.source;
+  return { type: "Note", properties, fields: meta, provenance: { source: { app: ctx.app ?? first?.app ?? "recast", ...(first?.url ? { url: first.url } : {}) }, capture: { method: "composition", adapter: "clump", at: new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z") } } };
 }
 
 function message(c: Clump): MessageView {

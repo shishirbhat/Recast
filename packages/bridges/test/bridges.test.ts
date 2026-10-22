@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryEventLog, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleCalendarEvent, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { InMemoryEventLog, OutcomeUnknownError, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
+import { HttpBridge, DestinationError, rfc822Draft, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,7 +26,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
 });
@@ -34,7 +34,7 @@ describe("every contract passes the real schema and grammar checks", () => {
 // The abilities a contract declares are what the picker and the review promise. They must match what the bridge's
 // operations declare about themselves, so a destination never offers an Undo or a check it cannot perform.
 describe("declared abilities match what each bridge actually does", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs })) {
     it(name, () => {
       const caps = spec.contract.accepts.map((row) => spec.capabilities[row.relationId]);
       expect(caps.every(Boolean), "every accepted row declares its operation").toBe(true);
@@ -210,7 +210,7 @@ describe("shared behaviour", () => {
 
 describe("the registry", () => {
   it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
-    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
     expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
     expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
     expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);
@@ -250,5 +250,36 @@ describe("open-and-prefill links (Google Maps, Apple Maps)", () => {
     await expect(undo(receipt, { bridge, log, now: NOW })).rejects.toThrow(/cannot be undone/);
     expect(linkFor("google-maps.directions")).toBe(googleMapsDirections);
     expect(linkFor("google-calendar.calendar")).toBeUndefined();
+  });
+});
+
+describe("Google Docs: a note becomes a new document", () => {
+  const note = () => obj("Note", { title: "Design reading", body: "“Make the common case fast.”\n— Notes, https://b.example/notes", sources: ["https://b.example/notes"] });
+  const server = (fail?: { batch?: number }) => fake((r) => {
+    if (r.method === "POST" && r.url === "https://docs.googleapis.com/v1/documents") return ok({ documentId: "doc 1", title: (r.body as { title: string }).title });
+    if (r.url.endsWith(":batchUpdate")) return fail?.batch ? { status: fail.batch, json: {} } : ok({ replies: [{}] });
+    if (r.method === "PATCH" && r.url.startsWith("https://www.googleapis.com/drive/v3/files/")) return ok({ trashed: true });
+    return { status: 404, json: {} };
+  });
+  it("creates the document with the reviewed title, then inserts the reviewed text as plain text; Undo moves it to the trash", async () => {
+    const { calls, t } = server();
+    const { receipt, undo: u } = await place(googleDocs, {}, t, note(), "note-docs-entry");
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["POST https://docs.googleapis.com/v1/documents", "POST https://docs.googleapis.com/v1/documents/doc%201:batchUpdate"]);
+    expect(calls[0]!.body).toEqual({ title: "Design reading" });
+    expect(calls[1]!.body).toEqual({ requests: [{ insertText: { location: { index: 1 }, text: "“Make the common case fast.”\n— Notes, https://b.example/notes" } }] });
+    expect(JSON.parse(receipt.bridgeRef!)).toEqual({ id: "doc 1" });
+    await u();
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", url: "https://www.googleapis.com/drive/v3/files/doc%201", body: { trashed: true } });
+  });
+  it("if the text cannot be added, the empty document is trashed and the placement fails: nothing half-made is left", async () => {
+    const { calls, t } = server({ batch: 400 });
+    await expect(place(googleDocs, {}, t, note(), "note-docs-entry")).rejects.toThrow(/answered 400/);
+    expect(calls.at(-1)).toMatchObject({ method: "PATCH", body: { trashed: true } });
+  });
+  it("a lost answer while adding the text is unknown, with the document's id kept, and is never resent", async () => {
+    const { calls, t } = server({ batch: 504 });
+    await expect(place(googleDocs, {}, t, note(), "note-docs-entry")).rejects.toBeInstanceOf(OutcomeUnknownError);
+    expect(calls.filter((c) => c.url.endsWith(":batchUpdate"))).toHaveLength(1);
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
   });
 });

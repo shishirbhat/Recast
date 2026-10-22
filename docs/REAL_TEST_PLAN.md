@@ -90,3 +90,36 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | E8c | **Choose where it goes** → Tasks → **Open** | The review shows Title, Link, **Due** with the day, and "the time (5:00 PM) is not kept" | due date |
 | E8d | **Add a task**, then look in Google Tasks | The task is due on that day. Then **Undo**: it disappears | real due date |
 | E9 | Sign in again without the Tasks box | The popup says Google Tasks is not allowed. Tasks shows as unavailable | permission is optional |
+
+## F. Passages to a Google Doc (needs the Google Drive permission)
+**Checks:** the optional Drive permission (only files Recast creates), passages pressed into a note, a real document created with each passage's source, and Undo moving it to the trash.
+
+**Setup, once:**
+1. In Google Cloud (same project), enable **Google Docs API** and **Google Drive API** (search each name, then **Enable**).
+2. On the OAuth consent screen, the program asks for `drive.file` itself. It is not a restricted scope; an app in **Testing** works for its test users.
+3. At http://localhost:8787/, click **Sign in with Google** again. On Google's screen, **tick the Google Drive box** ("only the specific files you use with this app"); keep the others ticked.
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| F1 | Open http://localhost:8787/ | "Permission: … Create Google Docs, and move the ones Recast created to the trash (it sees no other files)." | permission recorded |
+| F2 | Open the Recast popup | "Documents creates a Google Doc from a note." | extension sees it |
+| F3 | On an article, turn Recast on. Select a sentence, Alt-press it and let go on empty space | One object on the desk, named after the sentence | a passage |
+| F4 | On another page, select a sentence and Alt-drag it onto that object | One object: a note, "2 passages · from 2 pages" | passages combine |
+| F5 | **Choose where it goes** | The wheel rests on **Documents** (Google Docs). Calendar and Mail are unavailable, with their reasons | fit rules |
+| F6 | **Open** | The review shows **Text**: each passage in quotes, then the page title and address it came from. Title is missing, with a suggestion (the first page's title). No "stand-in" note | review, provenance |
+| F7 | Accept the suggested title (or type one), then **Create a document** | "Added to Google Docs". In Google Drive, a new document with that title; inside, the passages and their sources, line by line | real document |
+| F8 | **Undo** | The document moves to the Drive trash (you can restore it from there) | real undo |
+| F9 | Make another note → Documents → stop the program before clicking **Create a document**, then click it | "…did not answer". **Check** says Google Docs can't be asked about one document and tells you to look in Drive. Nothing is created twice | honest unknown |
+| F10 | Sign in again without the Drive box | The popup says Google Docs is not allowed. Documents is unavailable for a note | permission is optional |
+
+## G. A place to Google Maps (no account, no permission)
+**Checks:** open and prefill: the review is a link, the real Google Maps opens with directions, and Recast says "opened", never "added".
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| G1 | On a restaurant or venue page with an address, turn Recast on. Alt-press the name and let go on empty space | One object on the desk: the place | a place on its own |
+| G2 | Click the object, then **Choose where it goes** in "Inside this object" | The module opens; the wheel rests on **More** | placeable alone |
+| G3 | **Open**, then pick **Google Maps** | The review shows Title/Where, and "Opens Google Maps in a new tab with this filled in. Recast saves nothing; you finish there." | honest review |
+| G4 | Click **Open directions in Google Maps** | A new tab: Google Maps with directions to that place. The module says "Opened Google Maps", with no Undo | real handoff |
+| G5 | Try the same on the try-it page (Dakshin) | The same, opening the real Google Maps | try-it page |
+

@@ -120,6 +120,33 @@ export const googleTasksEntry: Spec<TasksTarget> = {
   undo: googleTasks.undo,
 };
 
+// ---- Google Docs (Docs API v1 documents.create + batchUpdate; Drive API v3 files.update to trash) --------------------
+// Scope: drive.file, the narrowest: Recast can see and change only the documents it created, nothing else in Drive.
+export type DocsTarget = Record<string, never>;
+const DOCS = "https://docs.googleapis.com/v1/documents";
+const DRIVE = "https://www.googleapis.com/drive/v3/files";
+const trash = (id: string, send: Send) => send({ method: "PATCH", url: `${DRIVE}/${seg(id)}`, body: { trashed: true } });
+export const googleDocs: Spec<DocsTarget> = {
+  contract: CONTRACTS.googleDocs,
+  // Undo trashes (the person can restore it from the Drive trash): "archive". Google's document id is Google's, so a lost
+  // answer cannot be checked exactly: unknown stays unknown until the person looks.
+  capabilities: { "note-docs-entry": unkeyedCreate("drive.file", "archive") },
+  async execute(op, _t, send) {
+    const r = asObj(await send({ method: "POST", url: DOCS, body: { title: need(op, "Note.title") } }));
+    const id = str(r.documentId, "documentId"); const token = JSON.stringify({ id });
+    // The text goes in as plain text (insertText), never as markup: a passage cannot add links, styles or anything else.
+    try { await send({ method: "POST", url: `${DOCS}/${seg(id)}:batchUpdate`, body: { requests: [{ insertText: { location: { index: 1 }, text: need(op, "Note.body") } }] } }); }
+    catch (e) {
+      if (e instanceof OutcomeUnknownError) throw new OutcomeUnknownError(`${e.message}; the document was created, its text may be missing`, token);
+      // An empty document is not what the person reviewed: take it back out, then report the failure.
+      try { await trash(id, send); } catch { throw new DestinationError("the document was created but its text could not be added, and it could not be removed: look in Google Drive"); }
+      throw e;
+    }
+    return token;
+  },
+  async undo(token, _t, send) { await trash((JSON.parse(token) as { id: string }).id, send); },
+};
+
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
 export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
 const NOTION = "https://api.notion.com/v1/pages";

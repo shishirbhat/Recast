@@ -27,6 +27,12 @@ export const hasGmail = (t: StoredToken | null) => !!t && t.scope.split(" ").inc
  */
 export const TASKS_SCOPE = "https://www.googleapis.com/auth/tasks";
 export const hasTasks = (t: StoredToken | null) => !!t && t.scope.split(" ").includes(TASKS_SCOPE);
+/**
+ * Optional: Google Docs. drive.file is the narrowest Google offers: Recast can see and change only the documents it
+ * created (a note as a new document; Undo moves that document to the Drive trash). Nothing else in Drive is visible to it.
+ */
+export const DOCS_SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const hasDocs = (t: StoredToken | null) => !!t && t.scope.split(" ").includes(DOCS_SCOPE);
 export interface LinkConfig {
   clientId: string; clientSecret: string; port: number;
   /** Where the tokens are kept on this computer. */
@@ -102,9 +108,10 @@ ${paired.map((o) => `<p class="muted">Allowed: <code>${esc(o.replace("chrome-ext
       return send(res, 200, page("Recast: connect Google Calendar", `<h1>Connect Google Calendar</h1>
 <p class="muted">This page runs only on your computer. It lets Recast add events to, and remove its own events from, one Google account's calendar.</p>
 <div class="box">${t
-        ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create and delete calendar events.${hasGmail(t) ? " Create and delete Gmail drafts (never sends mail)." : ""}${hasTasks(t) ? " Add tasks to your default Google Tasks list, and remove the ones Recast added." : ""}${t.refresh_token ? "" : " (No long-lived permission was granted: connect again if it stops working.)"}</p>
+        ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create and delete calendar events.${hasGmail(t) ? " Create and delete Gmail drafts (never sends mail)." : ""}${hasTasks(t) ? " Add tasks to your default Google Tasks list, and remove the ones Recast added." : ""}${hasDocs(t) ? " Create Google Docs, and move the ones Recast created to the trash (it sees no other files)." : ""}${t.refresh_token ? "" : " (No long-lived permission was granted: connect again if it stops working.)"}</p>
 ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them, <a href="/oauth/start">sign in again</a> and tick the Gmail box.</p>`}
 ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
+${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Google Drive box (only the files Recast creates).</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
         : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}`));
     }
@@ -114,7 +121,7 @@ ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <
       for (const [k, v] of pending) if (now() - v.at > STATE_TTL_MS) pending.delete(k);
       pending.set(state, { verifier, at: now() });
       const q = new URLSearchParams({
-        client_id: c.clientId, redirect_uri: redirectUri, response_type: "code", scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE}`, state,
+        client_id: c.clientId, redirect_uri: redirectUri, response_type: "code", scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE} ${DOCS_SCOPE}`, state,
         code_challenge: b64url(createHash("sha256").update(verifier).digest()), code_challenge_method: "S256",
         access_type: "offline", prompt: "consent", include_granted_scopes: "false",
       });

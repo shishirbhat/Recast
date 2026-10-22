@@ -14,8 +14,13 @@ The repository's own records stay authoritative for what they cover; this file p
 - Before calling a test failure real, check it against committed code (`git stash`, run the package, `git stash pop`).
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
-## Current state (2026-10-21)
-- Last full run: **877 tests, 0 failures** (after the time-zone fix; see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+## Current state (2026-10-22)
+- Last full run: **910 tests, 0 failures** (see `docs/ENGINEERING_STATUS.md`, "Latest full run").
+- **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
+  - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
+  - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
+  - **Passages → a Note → Google Docs** (D31): select sentences on pages, press them together; each keeps its page. A new optional `drive.file` permission in `apps/calendar-link` (only files Recast creates). Try-it page has a stand-in Docs tab.
+  - Fixed: in the extension, letting go over empty page space pressed the object into a date on the page.
 - **Newest: outside-person readiness** (`docs/23-user-validation.md`). Audit found no outsider could try Recast (everything needs the repo, a build and developer mode; real Google also needs the tester's own OAuth app). The try-it page is now published: **https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN** (private until the owner shares it). Stand-in Calendar and Mail, said so on every review. A moderated protocol for 3 to 5 testers is in section 4 of that doc. **No tester session has happened yet** (nothing at P).
 - **One capability at R (real provider):** Google Calendar event creation from `apps/calendar-link`, run by hand by the owner on a throwaway Google account. Nothing else has touched real Google, Notion, Supabase or Vercel. No users yet (nothing at P).
 - **Earlier this session: a whole page → real Google Tasks.** "This page" in the extension's Recast pill takes the page (title and canonical link) as a Document; the module opens on it with Tasks in the wheel; Google Tasks is a third optional permission in `apps/calendar-link`; Undo deletes the task. Tested in real Chromium against a Google stand-in. The owner's real run is `docs/REAL_TEST_PLAN.md` section E (needs the Google Tasks API enabled in Google Cloud and a re-sign-in ticking Tasks).
@@ -39,6 +44,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
+0a. **Owner's real-Google runs:** `docs/REAL_TEST_PLAN.md` B, C, E, plus new **F** (Google Docs: enable Docs API and Drive API, sign in again ticking Drive) and **G** (Google Maps: no setup).
 0. **Run the tester protocol** (`docs/23-user-validation.md` section 4): owner shares the try-it link with 3 to 5 outsiders, one moderated session each; results in `docs/user-validation/`. Then the next milestone (section 5): a real-Google tester kit.
 1. Recover the uncommitted edits (thread 1) and fix whatever breaks the two extension tests.
 2. Owner runs `docs/REAL_TEST_PLAN.md` B1–B12 (extension → real Calendar), C1–C6 (Gmail drafts), D (confirmation setting), E1–E9 (page → Google Tasks). Record results in `docs/ENGINEERING_STATUS.md`; passing B and C moves those rows to R and strengthens the deck.
@@ -55,6 +61,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-22, session_01Bdx3pBhgmXK4WtvwEoTnHb (cont.):** owner's integration direction: declared abilities (D30), Google/Apple Maps open-and-prefill, passages → Note → Google Docs (D31), extension drop-on-empty-page fix; full run 910/0; try-it page republished (Maps live, Docs stand-in).
 - **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb (later):** time-zone fix (`setTimezone`), full run 877/0; audit for outside users (no code changed during it); published the try-it page as a private artifact; wrote `docs/23-user-validation.md` (audit, journey table, run steps, tester protocol, next milestone).
 - **2026-10-21, session_01Bdx3pBhgmXK4WtvwEoTnHb:** reconstructed context; re-ran `apps/extension` on committed code (28/28 pass); created this file and `CLAUDE.md`; built a whole page → real Google Tasks ("This page", Document clumps, Tasks permission, REAL_TEST_PLAN E); full run 862/0. Then a page + a date → a task due that day (D29, new relation and contract); fixed the extension's stuck "Combine" merge; fixed a time-zone race in the extension tests; full run 873/0 twice.
 - **2026-10-21, earlier session (other account):** built the investor deck, filled market, prices, pilot and cover; owner removed the Ask slide.

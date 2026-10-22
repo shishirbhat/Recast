@@ -21,7 +21,7 @@ const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode =
 
 // ---- destinations: the registry's own contracts, performed by in-page stand-ins that really change what you see --------
 // The calendar and the drafts are the Google Calendar and Gmail contracts from the bridge registry; what runs them here is a
-// local stand-in, never Google. Tasks and Documents are in the registry but not connected on this page.
+// local stand-in, never Google. So is the Docs tab (Google Docs' contract). Tasks are in the registry but not connected here.
 const calendarContract: CapabilityContract = CONTRACTS.googleCalendarEvent;
 const draftsContract: CapabilityContract = CONTRACTS.gmailMessageDraft;
 
@@ -36,7 +36,7 @@ function slots(): NonNullable<DestinationSpec["slots"]> {
   return out;
 }
 // Google Maps is not a stand-in: it opens the real Google Maps with directions (open and prefill; nothing is written).
-const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: calendarContract, slots: slots(), standIn: true }, { id: "mail", label: "Mail", contract: draftsContract, standIn: true }, { id: "gmaps", label: "Google Maps", contract: CONTRACTS.googleMaps }];
+const DESTS: DestinationSpec[] = [{ id: "cal", label: "Calendar", contract: calendarContract, slots: slots(), standIn: true }, { id: "mail", label: "Mail", contract: draftsContract, standIn: true }, { id: "docs", label: "Docs", contract: CONTRACTS.googleDocs, standIn: true }, { id: "gmaps", label: "Google Maps", contract: CONTRACTS.googleMaps }];
 // The review's link opens the map from the person's own click; this bridge only records what was opened.
 const maps = new LinkBridge(googleMapsDirections);
 
@@ -70,7 +70,7 @@ class StandIn implements Bridge {
     this.entries.delete(r.bridgeRef ?? ""); this.onChange();
   }
 }
-const bridges: Record<string, StandIn> = { cal: new StandIn(calendarContract, () => renderDestinations()), mail: new StandIn(draftsContract, () => renderDestinations()) };
+const bridges: Record<string, StandIn> = { cal: new StandIn(calendarContract, () => renderDestinations()), mail: new StandIn(draftsContract, () => renderDestinations()), docs: new StandIn(CONTRACTS.googleDocs, () => renderDestinations()) };
 const log = new InMemoryEventLog();
 
 // ---- state ------------------------------------------------------------------------------------------------------
@@ -300,6 +300,7 @@ function renderDestinations() {
   $("#cal-other").innerHTML = other.map((e) => `<li data-placed="event">${esc(e["title"] ?? "")} · ${esc(fmt(e["start"] ?? ""))}${e["location"] ? ` · ${esc(e["location"])}` : ""}</li>`).join("");
   $("#cal-other-wrap").hidden = !other.length;
   $("#drafts-list").innerHTML = [...bridges["mail"]!.entries.values()].map((e) => `<li data-placed="draft"><strong>To ${esc(e["to"] ?? "")}</strong><span>${esc(e["snippet"] ?? "")}</span></li>`).join("") || `<li class="none">No drafts yet</li>`;
+  $("#docs-list").innerHTML = [...bridges["docs"]!.entries.values()].map((e) => `<li data-placed="doc"><strong>${esc(e["title"] ?? "")}</strong><span class="doc-body">${esc(e["body"] ?? "")}</span></li>`).join("") || `<li class="none">No documents yet</li>`;
 }
 
 // ---- tabs ----------------------------------------------------------------------------------------------------------

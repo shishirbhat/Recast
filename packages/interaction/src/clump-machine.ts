@@ -161,7 +161,7 @@ function route(s: ClumpState, objectId: string, destinationId: string, now: numb
 }
 
 /** What a destination takes, in words: from the relation it accepts (the grammar), not from a hard-coded list. */
-const NOUN: Record<string, string> = { Event: "events", Message: "messages", Document: "documents (a page or a file)", Task: "tasks (a page with a date)", Person: "people", Location: "places", Product: "products", ResearchPaper: "papers", Image: "images" };
+const NOUN: Record<string, string> = { Event: "events", Message: "messages", Document: "documents (a page or a file)", Task: "tasks (a page with a date)", Person: "people", Location: "places", Product: "products", ResearchPaper: "papers", Image: "images", Note: "notes (passages you collected)" };
 export function unfit(label: string, contract: CapabilityContract, type: ClumpType): string {
   const from = [...new Set(contract.accepts.map((a) => RELATIONS.find((r) => r.id === a.relationId)?.from).filter(Boolean))] as string[];
   const takes = from.map((k) => NOUN[k] ?? k.toLowerCase()).join(" or ") || "other things";

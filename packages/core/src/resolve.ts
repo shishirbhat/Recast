@@ -8,10 +8,14 @@ const collapse = (s: string) => s.normalize("NFC").replace(/\s+/g, " ").trim();
 const normDoi = (s: string) => s.trim().replace(/^(https?:\/\/(dx\.)?doi\.org\/|doi:\s*)/i, "").toLowerCase();
 
 /** Normalise property values. Pure: returns a new object. */
+const MULTILINE: Partial<Record<ObjectType, readonly string[]>> = { Note: ["body"] };
+const collapseLines = (v: string) => v.normalize("NFC").split(/\r\n?|\n/).map((l) => l.replace(/[^\S\n]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
 export function normalizeProps(type: ObjectType, input: Props): Props {
   const out: Props = {};
   for (const [k, v] of Object.entries(input)) {
-    if (typeof v === "string") { const s = collapse(v); if (s) out[k] = s; }
+    // A note's body is lines (each passage, then its source): spaces are tidied within each line, the line breaks kept.
+    if (typeof v === "string") { const s = MULTILINE[type]?.includes(k) ? collapseLines(v) : collapse(v); if (s) out[k] = s; }
     else if (Array.isArray(v)) {
       const items = v.map((x) => (typeof x === "string" ? collapse(x) : x)).filter((x) => x !== "");
       if (items.length) out[k] = items;

@@ -64,11 +64,10 @@ describe("pressing pieces together", () => {
 });
 
 describe("what does not merge silently", () => {
-  it("a product cannot join a plan; two bare sentences do not make an object; an object cannot merge with itself", () => {
+  it("a product cannot join a plan; an object cannot merge with itself", () => {
     const plan = merged(one("place", "Dakshin"), one("person", "Maya Rao"));
     const kettle = one("thing", "Stagg EKG Kettle");
     expect(mergeClumps(plan, kettle)).toMatchObject({ ok: false, code: "incompatible", reason: expect.stringMatching(/cannot be combined/) });
-    expect(mergeClumps(one("text", "hello"), one("text", "world"))).toMatchObject({ ok: false, code: "incompatible" });
     expect(mergeClumps(plan, plan)).toMatchObject({ ok: false, code: "same_object" });
   });
   it("a message that gains a time would become an event: the person has to confirm that", () => {
@@ -175,5 +174,34 @@ describe("a page and a date are a task", () => {
   it("a time piece with no readable date asks for the date", () => {
     const v = viewClump(merged(page(), one("time", "sometime soon"), true), CTX);
     expect(v.candidate).toBeNull(); expect(v.missing.map((m) => m.field)).toEqual(["due"]);
+  });
+});
+
+describe("passages → a note that keeps its sources (D31)", () => {
+  const quote = (text: string, url: string, title: string) => one("text", text, { source: { app: "chrome", url, title } });
+  it("two passages from two pages are one note; each keeps its page; the title is suggested, not assumed", () => {
+    const c = merged(quote("Interfaces should disappear.", "https://a.example/essay", "On tools"), quote("Make the common case fast.", "https://b.example/notes", "Notes"));
+    const v = viewClump(c, CTX);
+    expect(v).toMatchObject({ type: "Note", label: "On tools", proposed: true, placeableAs: ["Docs"], candidate: null, summary: ["2 passages", "from 2 pages"] });
+    expect(v.missing).toEqual([{ field: "title", reason: "a note needs a title", suggestions: ["On tools"] }]);
+    expect(v.note!.fields.body!.value).toBe("“Interfaces should disappear.”\n— On tools, https://a.example/essay\n\n“Make the common case fast.”\n— Notes, https://b.example/notes");
+    expect(v.note!.sources).toEqual(["https://a.example/essay", "https://b.example/notes"]);
+  });
+  it("with a title it is a complete Note object; every passage's evidence and source come along", () => {
+    const c = answerClump(merged(quote("Interfaces should disappear.", "https://a.example/essay", "On tools"), quote("Make the common case fast.", "https://b.example/notes", "Notes")), "title", "Design reading");
+    const v = viewClump(c, CTX);
+    expect(v).toMatchObject({ type: "Note", label: "Design reading", proposed: false, missing: [] });
+    const o = resolve(v.candidate!);
+    expect(o.type).toBe("Note");
+    expect(o.properties).toMatchObject({ title: "Design reading", sources: ["https://a.example/essay", "https://b.example/notes"] });
+    expect(o.fields["body"]!.evidence.map((e) => e.source?.url)).toEqual(["https://a.example/essay", "https://b.example/notes"]);
+    expect(o.fields["title"]!.evidence[0]!.origin).toBe("user");
+    expect(o.properties["body"]).toBe(v.note!.fields.body!.value);   // line breaks survive: the document reads as the review did
+  });
+  it("a single passage can be placed on its own as a note; a person turns a note into a message, after asking", () => {
+    const v = viewClump(answerClump(quote("Make the common case fast.", "https://b.example/notes", "Notes"), "title", "One line"), CTX);
+    expect(v).toMatchObject({ type: "Fragment", placeableAs: ["Docs"] }); expect(v.candidate!.type).toBe("Note");
+    const note = merged(quote("a", "https://a.example", "A"), quote("b", "https://b.example", "B"));
+    expect(canMerge(note, one("person", "Maya Rao"))).toMatchObject({ ok: true, becomes: "Message", change: { from: "Note", to: "Message" } });
   });
 });

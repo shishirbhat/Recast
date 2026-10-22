@@ -9,18 +9,24 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLinkServer, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../../calendar-link/src/server.js";
+import { createLinkServer, DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../../calendar-link/src/server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ext = path.join(root, "dist-test");
 const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") && !existsSync("/opt/pw-browsers/chromium/chrome") ? "/opt/pw-browsers/chromium" : undefined);
 
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
-const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const seenByGoogle: string[] = [];
+const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = [];
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fakeGoogle: typeof fetch = async (u, init) => {
   const url = String(u), method = init?.method ?? "GET"; seenByGoogle.push(`${method} ${url}`);
   if ((init?.headers as Record<string, string>)?.authorization !== "Bearer AT-1") return json(401, {});
+  if (url.startsWith("https://docs.googleapis.com/") || url.startsWith("https://www.googleapis.com/drive/")) {
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (method === "POST" && url === "https://docs.googleapis.com/v1/documents") { const id = `doc${docs.size + 1}`; docs.set(id, { title: body.title }); return json(200, { documentId: id }); }
+    if (method === "POST" && url.endsWith(":batchUpdate")) { docs.get(url.split("/").pop()!.replace(":batchUpdate", ""))!.text = body.requests[0].insertText.text; return json(200, {}); }
+    if (method === "PATCH") { docs.get(url.split("/").pop()!)!.trashed = body.trashed; return json(200, {}); }
+  }
   if (url.startsWith("https://tasks.googleapis.com/")) {
     if (method === "POST") { const id = `t${tasks.size + 1}`; tasks.set(id, JSON.parse(String(init!.body))); return json(200, { id }); }
     if (method === "DELETE") { tasks.delete(url.split("/tasks/").pop()!); return json(204, null); }
@@ -45,7 +51,7 @@ beforeAll(async () => {
   await new Promise<void>((r) => pages.listen(0, "127.0.0.1", r)); base = `http://127.0.0.1:${(pages.address() as { port: number }).port}`;
   // Already signed in (the sign-in itself is tested in apps/calendar-link).
   mkdirSync(path.dirname(tokenFile), { recursive: true });
-  writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE}`, token_type: "Bearer", connected_at: "test" }));
+  writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE} ${DOCS_SCOPE}`, token_type: "Bearer", connected_at: "test" }));
   link = createLinkServer({ clientId: "abc.apps.googleusercontent.com", clientSecret: "SECRET-x", port: 8787, tokenFile, fetch: fakeGoogle, tokenUrl: "https://google.test/token" });
   await new Promise<void>((r) => link.listen(8787, "127.0.0.1", r));
   const profile = path.join(root, "dist-test/.profile-link"); rmSync(profile, { recursive: true, force: true });
@@ -64,7 +70,7 @@ async function openTab(fixture: string) { const p = await ctx.newPage(); await p
 const stored = () => sw.evaluate(async () => (await chrome.storage.session.get("clay"))["clay"]) as Promise<any>;
 const centre = async (p: Page, sel: string) => { const b = (await p.locator(sel).first().boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 const item = (id: string) => `recast-clay >> .clay-item[data-id="${id}"]`;
-async function until(fn: () => Promise<boolean>, ms = 8000) { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return; await new Promise((r) => setTimeout(r, 100)); } throw new Error("timed out"); }
+async function until(fn: () => Promise<boolean>, ms = 8000) { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return; await new Promise((r) => setTimeout(r, 100)); } const x = await stored().catch(() => undefined); throw new Error(`timed out (phase ${x?.phase}, desk ${JSON.stringify(x?.desk)}, carried ${x?.carried}, last ${JSON.stringify(x?.last?.text)})`); }
 async function atRest(p: Page, sel: string) { let prev = ""; for (let i = 0; i < 40; i++) { const k = JSON.stringify(await p.locator(sel).first().boundingBox()); if (k === prev) return; prev = k; await p.waitForTimeout(60); } }
 async function drag(p: Page, from: string, to: string) {
   await atRest(p, from); const a = await centre(p, from); await p.mouse.move(a.x, a.y); await p.mouse.down(); await p.mouse.move(a.x + 10, a.y + 10, { steps: 3 });
@@ -99,7 +105,7 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await home.getByRole("button", { name: "Allow" }).click();
     await popup.getByRole("button", { name: "I allowed it" }).click();
     await until(async () => /Connected\. Placing in Calendar adds a real event/.test(await popup.locator("#link-text").innerText()));
-    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false], ["link:google-tasks-due", "Google Tasks", false], ["open:google-maps", "Google Maps", false]]);
+    expect((await stored()).destinations.map((d: any) => [d.id, d.label, !!d.standIn])).toEqual([["link:google-calendar", "Google Calendar", false], ["link:gmail-drafts", "Gmail drafts", false], ["link:google-tasks", "Google Tasks", false], ["link:google-tasks-due", "Google Tasks", false], ["link:google-docs", "Google Docs", false], ["open:google-maps", "Google Maps", false]]);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Mail saves a real Gmail draft \(never sent\)/);
     expect(await popup.locator("#link-text").innerText()).toMatch(/Tasks adds a page to Google Tasks/);
     await popup.close(); await home.close();
@@ -268,5 +274,41 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(r.status).toBe(403);
     const r2 = await fetch("http://localhost:8787/ext/commit", { method: "POST", headers: { origin: `chrome-extension://${"b".repeat(32)}`, "content-type": "application/json" }, body: "{}" });
     expect(r2.status).toBe(403);
+  });
+
+  // Last: it clears the desk, which the tests above build on.
+  it("two passages from two pages are one note; Documents creates a Google Doc with each passage and its page; Undo moves it to the trash", async () => {
+    const select = (p: Page, sel: string) => p.evaluate((sel) => { const r = document.createRange(); r.selectNodeContents(document.querySelector(sel)!); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); }, sel);
+    // Passage 1, on the wiki page: selected, Alt-pressed and put down on empty page.
+    const wiki = await openTab("article.html");
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });   // close what the tests above left open
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle"; });
+    await select(wiki, "p"); const a = await centre(wiki, "p");
+    await wiki.mouse.move(a.x, a.y); await wiki.keyboard.down("Alt"); await wiki.mouse.down(); await wiki.keyboard.up("Alt");
+    await wiki.mouse.move(1100, 600, { steps: 5 }); await wiki.mouse.up();
+    await until(async () => { const x = await stored(); return !x.carried && x.desk.length === 1; });
+    const id = (await stored()).desk[0] as string;
+    // Passage 2, on another page: Alt-dragged onto the first; the two make one note.
+    const other = await openTab("empty.html");
+    await select(other, "p"); await altDrag(other, "p", item(id));
+    await until(async () => { const s = await stored(); return s.phase === "composed" && s.objects[id]?.ingredients.length === 2; });
+    expect((await stored()).objects[id].ingredients.map((f: any) => [f.kind, f.text])).toEqual([["text", "Goals, owners and dates for the quarter."], ["text", "No structured data."]]);
+    await other.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    // A note fits only Documents, so the drum rests on it.
+    await until(async () => (await other.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-documents");
+    await other.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await stored()).phase === "previewing");
+    expect(docs.size).toBe(0);                                                // reviewing writes nothing
+    // No title yet: the review suggests the first page's title, and the person accepts it.
+    await other.locator("recast-clay >> button", { hasText: "Use “Q3 planning notes · Team wiki”" }).click();
+    await other.locator("recast-clay >> button", { hasText: "Create a document" }).click();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect([...docs.values()]).toEqual([{ title: "Q3 planning notes · Team wiki", text: `“Goals, owners and dates for the quarter.”\n— Q3 planning notes · Team wiki, ${base}/article.html\n\n“No structured data.”\n— Nothing here, ${base}/empty.html` }]);
+    await other.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect([...docs.values()][0]!.trashed).toBe(true);
+    await wiki.close(); await other.close();
   });
 });

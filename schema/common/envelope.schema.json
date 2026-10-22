@@ -8,7 +8,7 @@
   "unevaluatedProperties": false,
   "properties": {
     "id": { "type": "string", "pattern": "^rc_[0-9a-f]{32}$" },
-    "type": { "enum": ["Person", "Document", "Event", "Location", "Image", "Message", "Task", "Product", "ResearchPaper"] },
+    "type": { "enum": ["Person", "Document", "Event", "Location", "Image", "Message", "Task", "Product", "ResearchPaper", "Note"] },
     "schemaVersion": { "const": "1.0.0" },
     "properties": { "type": "object" },
     "fields": {
@@ -33,6 +33,7 @@
     { "if": { "properties": { "type": { "const": "Image" } } },         "then": { "properties": { "properties": { "$ref": "../objects/image.schema.json" } } } },
     { "if": { "properties": { "type": { "const": "Message" } } },       "then": { "properties": { "properties": { "$ref": "../objects/message.schema.json" } } } },
     { "if": { "properties": { "type": { "const": "Task" } } },          "then": { "properties": { "properties": { "$ref": "../objects/task.schema.json" } } } },
+    { "if": { "properties": { "type": { "const": "Note" } } },          "then": { "properties": { "properties": { "$ref": "../objects/note.schema.json" } } } },
     { "if": { "properties": { "type": { "const": "Product" } } },       "then": { "properties": { "properties": { "$ref": "../objects/product.schema.json" } } } },
     { "if": { "properties": { "type": { "const": "ResearchPaper" } } }, "then": { "properties": { "properties": { "$ref": "../objects/research-paper.schema.json" } } } }
   ]

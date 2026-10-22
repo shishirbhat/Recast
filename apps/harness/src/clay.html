@@ -9,6 +9,7 @@
       <button type="button" role="tab" id="tab-restaurant" data-for="restaurant" aria-controls="page-restaurant"><span class="fav" aria-hidden="true">D</span><span class="tname">Dakshin</span></button>
       <button type="button" role="tab" id="tab-calendar" data-for="calendar" aria-controls="page-calendar"><span class="fav" aria-hidden="true">31</span><span class="tname">Calendar</span></button>
       <button type="button" role="tab" id="tab-mail" data-for="mail" aria-controls="page-mail"><span class="fav" aria-hidden="true">@</span><span class="tname">Mail</span></button>
+      <button type="button" role="tab" id="tab-docs" data-for="docs" aria-controls="page-docs"><span class="fav" aria-hidden="true">¶</span><span class="tname">Docs</span></button>
     </div>
     <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span>
       <button type="button" id="recast-trigger" class="trigger" aria-pressed="false" aria-description="Or press Control twice"><span class="trigger-dot" aria-hidden="true"></span><span class="trigger-label">Recast</span><kbd class="trigger-kbd">Ctrl Ctrl</kbd></button></div>
@@ -30,6 +31,7 @@
       <p class="sub">South Indian · 12 MG Road, Bengaluru · ₹₹</p>
       <div class="avail"><p class="label">Next free table</p><p class="big"><span class="grab" id="dakshin-time" data-kind="time">Friday, 7:30 PM</span></p></div>
       <p>Dosa, appam and a long filter-coffee list. Tables for four or fewer.</p>
+      <blockquote class="review"><span class="grab" id="dakshin-review" data-kind="text">The filter coffee alone is worth the trip.</span><cite>From a review</cite></blockquote>
       <p class="muted">Gift a meal: <span class="grab" id="giftcard" data-kind="thing">Gift card · ₹2,000</span></p>
       <figure class="photo" data-photo-slot="restaurant-front">
         <div class="photo-frame">
@@ -75,6 +77,14 @@
       <p class="note">A stand-in mailbox inside this page. Saving a draft sends nothing.</p>
       <div class="drop" data-dest="mail" tabindex="0" role="button" aria-label="Mail drafts"><span class="drop-label">Drop a message here to save it as a draft</span></div>
       <ul id="drafts-list" class="drafts"></ul>
+    </article>
+
+    <article id="page-docs" data-tab="docs" role="tabpanel" aria-labelledby="tab-docs" data-url="docs.example" data-title="Docs" hidden>
+      <p class="eyebrow">Documents</p>
+      <h1 class="plain">Docs</h1>
+      <p class="note">A stand-in for Google Docs inside this page. Nothing reaches Google.</p>
+      <div class="drop" data-dest="docs" tabindex="0" role="button" aria-label="Docs"><span class="drop-label">Drop a note here to make it a document</span></div>
+      <ul id="docs-list" class="drafts"></ul>
     </article>
   </main>
 

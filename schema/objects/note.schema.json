@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://recast.dev/schema/1/objects/note.schema.json",
+  "title": "NoteProperties",
+  "description": "Passages a person collected, as one note. body is exactly what the review shows: each passage in quotation marks, followed by the page it came from. sources lists those pages' addresses.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "body"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "body": { "type": "string", "minLength": 1 },
+    "sources": { "type": "array", "items": { "type": "string" } }
+  }
+}

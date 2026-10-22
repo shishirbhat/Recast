@@ -90,6 +90,11 @@ Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.
 2. Turn on the **Google Tasks API** in Google Cloud first. Then sign in again and tick the Tasks box. The steps are in `docs/REAL_TEST_PLAN.md`, section E.
 3. In the extension, **This page** (in the Recast pill) takes the whole page as one object; Tasks adds it with the page title and its link.
 
+## Part 9: Google Docs (optional)
+1. The sign-in also offers Google Drive, with the narrowest permission Google has: **only the files Recast creates** (`drive.file`). If you tick it, Recast can create a Google Doc from a note and move that document to the trash on Undo. It cannot see or change any other file in your Drive.
+2. Turn on two APIs in Google Cloud first: **Google Docs API** and **Google Drive API**. Then sign in again and tick the Drive box. The steps are in `docs/REAL_TEST_PLAN.md`, section F.
+3. In the extension, select a sentence on a page and Alt-drag it; press a second one into it. Two passages make a note, and **Documents** creates the Google Doc, each passage followed by the page it came from.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

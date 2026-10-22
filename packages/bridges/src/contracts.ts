@@ -39,6 +39,11 @@ export const CONTRACTS = {
     destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api", abilities: ["create", "undo"],
     accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],
   },
+  /** A note (passages with their sources) as a new Google Doc. Undo moves it to the Drive trash, where the person can still restore it. */
+  googleDocs: {
+    destination: "google-docs.new-document", app: "Google Docs", targetKind: "Docs", reliability: "official-api", abilities: ["create", "undo"],
+    accepts: [{ relationId: "note-docs-entry", effect: "Create a document", dataMoved: ["Note.title", "Note.body"] }],
+  },
   // Open-and-prefill: the map app opens with directions to the place. Nothing is written, so there is nothing to confirm or undo.
   googleMaps: {
     destination: "google-maps.directions", app: "Google Maps", targetKind: "Map", reliability: "deep-link", abilities: ["open"],

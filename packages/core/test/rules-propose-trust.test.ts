@@ -5,9 +5,9 @@ import { calendar, mailSend, obj, tasks } from "./helpers.js";
 const person = (extra: Record<string, unknown> = { email: ["m@example.com"] }, conf?: number) => obj("Person", { name: "Meera Iyer", ...extra }, conf);
 
 describe("grammar and contracts", () => {
-  it("loads all fourteen relations from data", () => {
+  it("loads all fifteen relations from data", () => {
     expect(RELATIONS.map((r) => `${r.from}>${r.to}=${r.relation}`).sort()).toEqual([
-      "Document>Project=source", "Document>Task=reference", "Event>Calendar=entry", "Image>Project=asset", "Location>Event=location", "Location>Map=directions", "Message>Drafts=draft", "Message>Task=source",
+      "Document>Project=source", "Document>Task=reference", "Event>Calendar=entry", "Image>Project=asset", "Location>Event=location", "Location>Map=directions", "Message>Drafts=draft", "Message>Task=source", "Note>Docs=entry",
       "Person>Event=attendee", "Person>Message=recipient", "Product>Product=compare", "ResearchPaper>Claim=evidence", "ResearchPaper>ResearchPaper=compare", "Task>TaskList=entry",
     ]);
   });
