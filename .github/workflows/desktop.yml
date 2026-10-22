@@ -66,6 +66,13 @@ jobs:
           set +e; timeout 90 xvfb-run -a apps/desktop/release/linux-unpacked/recast --no-sandbox --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
           grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' /tmp/smoke.log
+      # One small download per kind of Mac, holding just its disk image (Safari unpacks GitHub's wrapper zip).
+      - if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with: { name: Recast-for-Mac-Apple-silicon, path: apps/desktop/release/*-arm64.dmg, if-no-files-found: error, compression-level: 0 }
+      - if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with: { name: Recast-for-Mac-Intel, path: apps/desktop/release/*-x64.dmg, if-no-files-found: error, compression-level: 0 }
       - uses: actions/upload-artifact@v4
         with:
           name: recast-${{ runner.os }}
