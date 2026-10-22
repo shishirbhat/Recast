@@ -149,6 +149,16 @@ export function splice(a: string, b: string): { index: number; remove: number; i
   return { index: start, remove: endA - start, insert: b.slice(start, endB) };
 }
 
+/**
+ * A fingerprint of a text (FNV-1a over UTF-16 code units, plus length), identical to the client's. Used to tell whether
+ * a client's copy of a document differs from the server's; not a security hash.
+ */
+export function textFingerprint(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return `${text.length}:${h.toString(16)}`;
+}
+
 export interface SearchHit {
   path: string;
   line: number;

@@ -76,16 +76,23 @@ export function useProject() {
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
+    let lastSeq = 0;
     const connect = () => {
-      ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/events`);
+      // After a drop, resume from the last event seen so nothing that happened meanwhile is missed.
+      ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/events${lastSeq ? `?since=${lastSeq}` : ""}`);
       ws.onopen = () => setLive(true);
       ws.onmessage = (m) => {
         const msg = JSON.parse(String(m.data)) as { type: string; events: RelayEvent[]; run?: TestRunView } & Presence;
+        // The newest event when this connection opened: where to resume from after a drop.
+        if (msg.type === "hello") return void (lastSeq = Math.max(lastSeq, (msg as unknown as { seq: number }).seq));
         if (msg.type === "tests") return setTestRun(msg.run ?? null);
         if (msg.type === "presence") return setPresence({ online: msg.online, participants: msg.participants });
         if (msg.type !== "events") return;
-        setEvents((prev) => [...prev, ...msg.events].slice(-400));
-        if (msg.events.some((e) => ["file.created", "file.renamed", "file.deleted", "folder.created"].includes(e.type))) void refreshFiles();
+        const fresh = msg.events.filter((e) => e.seq > lastSeq);
+        if (!fresh.length) return;
+        lastSeq = fresh.at(-1)!.seq;
+        setEvents((prev) => [...prev, ...fresh].slice(-400));
+        if (fresh.some((e) => ["file.created", "file.renamed", "file.deleted", "folder.created"].includes(e.type))) void refreshFiles();
         soon();
       };
       ws.onclose = () => {

@@ -207,6 +207,23 @@ interface Note {
    Menu bar (driven by the command registry)
    =================================================================================================== */
 
+/**
+ * A fingerprint of a text, identical to the server's `textFingerprint` (FNV-1a over UTF-16 code units, plus length).
+ * Only used to tell whether two copies differ; works without a secure context, unlike crypto.subtle.
+ */
+function fingerprint(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+  return `${text.length}:${h.toString(16)}`;
+}
+
+/** Where a kept copy of a deleted file goes: next to it, marked as recovered, extension kept. */
+function recoveredName(path: string): string {
+  const slash = path.lastIndexOf("/");
+  const dot = path.lastIndexOf(".");
+  return dot > slash + 1 ? `${path.slice(0, dot)}.recovered${path.slice(dot)}` : `${path}.recovered`;
+}
+
 const NO_DEBUG = "Debugging needs a debug adapter, which Relay doesn't have yet";
 
 /** How Run Active File runs a file, by extension. */
@@ -560,9 +577,32 @@ export function Workbench() {
       const gone = e.type === "file.deleted" ? ((e.data.files as string[]) ?? []) : [];
       const affected = [...moves.map((m) => m.from), ...gone].filter((p) => groupsRef.current.some((x) => x.tabs.includes(p)));
       if (!affected.length) continue;
-      for (const p of affected) {
-        sessions.current.get(p)?.destroy();
+      // A renamed file keeps its session: the same document reconnects under the new name, so the editor, caret,
+      // focus, undo history and any keys typed meanwhile carry over. A deleted file's session ends.
+      for (const m of moves) {
+        const sess = sessions.current.get(m.from);
+        if (!sess) continue;
+        sessions.current.delete(m.from);
+        sess.retarget(m.to);
+        sessions.current.set(m.to, sess);
+      }
+      const finalHash = (e.data.finalHash as Record<string, string> | undefined) ?? {};
+      for (const p of gone) {
+        const sess = sessions.current.get(p);
         sessions.current.delete(p);
+        if (!sess) continue;
+        const mine = sess.text.toString();
+        sess.destroy();
+        // If this copy differs from what the server had when the file was deleted, it holds text nobody else has
+        // (keys in flight, or typed offline). Keep it on request instead of dropping it.
+        {
+          if (finalHash[p] === undefined || fingerprint(mine) === finalHash[p]) continue;
+          const copy = recoveredName(p);
+          notify(`${who(e.actor)} deleted ${p} while you had changes the server never received.`, "danger", {
+            label: `Save my copy as ${copy.split("/").pop()}`,
+            run: () => void api("POST", "/files", { path: copy, content: mine }).then(() => (void refreshFiles(), open(copy)), (err) => notify(err instanceof ApiError ? err.message : String(err), "danger")),
+          });
+        }
       }
       const map = new Map(moves.map((m) => [m.from, m.to]));
       const swap = (p: string) => map.get(p) ?? p;
@@ -1259,7 +1299,7 @@ export function Workbench() {
             </div>
             <div className="min-h-0 flex-1">
               <Editor
-                key={gSession.path}
+                key={gSession.id}
                 session={gSession}
                 readOnly={me!.role === "viewer"}
                 onCursor={focused ? onCursor : undefined}

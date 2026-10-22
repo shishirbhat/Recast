@@ -7,8 +7,13 @@ import type { Member } from "./types";
 export type SyncStatus = "connecting" | "synced" | "offline" | "gone";
 
 /** One shared file: its Yjs document, the connection, and this user's presence in it. */
+let nextId = 0;
+
 export class DocSession {
-  readonly path: string;
+  /** Stable for the life of the session, across renames; editors are keyed by it so they never remount on a rename. */
+  readonly id = `doc-${++nextId}`;
+  /** The file this document is, now. Changes when someone renames it (see `retarget`). */
+  path: string;
   readonly doc: Y.Doc;
   readonly text: Y.Text;
   readonly provider: WebsocketProvider;
@@ -68,6 +73,20 @@ export class DocSession {
   private set(s: SyncStatus): void {
     this.status = s;
     for (const l of this.listeners) l();
+  }
+
+  /**
+   * The file was renamed: keep this document (its text, undo history, awareness and anything typed but not yet sent)
+   * and connect it to the file's new name. The server carried the document's history to the new name, so syncing
+   * sends exactly what the server doesn't have yet; nothing typed during the rename is lost.
+   */
+  retarget(path: string): void {
+    if (path === this.path) return;
+    this.path = path;
+    this.provider.disconnect();
+    this.provider.roomname = encodeURIComponent(`file:${path}`);
+    this.provider.connect();
+    this.set("connecting");
   }
 
   subscribe(fn: () => void): () => void {

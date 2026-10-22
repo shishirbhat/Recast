@@ -24,7 +24,7 @@ import { ENTRY_KINDS, Records } from "../knowledge/records.ts";
 import type { EntryKind, Source } from "../knowledge/records.ts";
 import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
-import { expandReplacement, findMatches, writeAtomic, gitStatus, listEmptyFolders, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
+import { expandReplacement, findMatches, textFingerprint, writeAtomic, gitStatus, listEmptyFolders, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
 import type { SearchOptions } from "./files.ts";
 import { AgentRuns } from "./runs.ts";
 import { TerminalService } from "./terminal.ts";
@@ -718,6 +718,19 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const st = statSync(abs, { throwIfNoEntry: false });
       if (!st) throw new HttpError(404, "not_found", `${path} doesn't exist`);
       const removed = st.isDirectory() ? listProjectFiles(root).filter((p) => p.startsWith(`${path}/`)) : [path];
+      // What the server had last, per file: a client whose copy differs (keys still in flight, or typed offline) knows
+      // it holds text nobody else has and can keep it, instead of losing it silently.
+      const finalHash: Record<string, string> = {};
+      for (const p of removed) {
+        const text = docs.get(p)?.text.toString() ?? (() => {
+          try {
+            return readText(root, p);
+          } catch {
+            return null;
+          }
+        })();
+        if (text !== null) finalHash[p] = textFingerprint(text);
+      }
       for (const p of removed) {
         collab.closeDocument(p, "deleted");
         docs.unload(p);
@@ -725,7 +738,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         docs.moveHistory(p, `deleted:${Date.now()}:${DocStore.docName(p)}`);
       }
       rmSync(abs, { recursive: st.isDirectory() });
-      relay.record("file.deleted", actorFor(m), { path, files: removed });
+      relay.record("file.deleted", actorFor(m), { path, files: removed, finalHash });
       return json(res, 200, { path, files: removed });
     }
     if (method === "POST" && parts[0] === "folders") {
@@ -746,6 +759,12 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       // isn't in the file list (or in git) until someone types in it.
       writeAtomic(root, path, "");
       docs.open(path);
+      // Optional initial text (e.g. a copy kept after its file was deleted), credited to the person who saved it.
+      if (typeof body.content === "string" && body.content) {
+        if (Buffer.byteLength(body.content) > 2 * 1024 * 1024) throw new HttpError(413, "too_large", "Initial content is limited to 2 MB");
+        docs.applyEdits(path, [{ from: 0, to: 0, insert: body.content }], `member:${m.id}`);
+        docs.flush(docs.get(path)!);
+      }
       relay.record("file.created", actorFor(m), { path });
       return json(res, 201, { path });
     }
@@ -994,6 +1013,14 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       }
       if (url.pathname === "/events") {
         return wss.handleUpgrade(req, socket, head, (ws) => {
+          // A reconnecting client says the last event it saw; it gets what it missed first, so a rename or delete
+          // that happened while it was away still reaches its open editors.
+          const since = Number(url.searchParams.get("since"));
+          if (Number.isInteger(since) && since > 0) {
+            const missed = relay.eventsSince(since);
+            if (missed.length) ws.send(JSON.stringify({ type: "events", events: missed }));
+          }
+          ws.send(JSON.stringify({ type: "hello", seq: (relay.db.prepare("SELECT MAX(seq) AS s FROM events").get() as { s: number | null }).s ?? 0 }));
           eventClients.add(ws);
           eventMembers.set(ws, member.id);
           ws.on("close", () => (eventClients.delete(ws), eventMembers.delete(ws), pushPresence()));

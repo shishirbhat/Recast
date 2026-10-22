@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { EditorView, GutterMarker, gutter, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightWhitespace, highlightTrailingWhitespace, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
 import { Compartment, EditorState, RangeSet, StateEffect, StateField } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
-import { defaultKeymap, indentWithTab, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { bracketMatching, foldGutter, indentOnInput, syntaxHighlighting, HighlightStyle, foldKeymap } from "@codemirror/language";
@@ -205,6 +205,12 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
   const prefsC = useRef(new Compartment());
   const authorC = useRef(new Compartment());
   const langC = useRef(new Compartment());
+  const labelC = useRef(new Compartment());
+  // The session keeps its path up to date across renames; the view stays, only its label follows.
+  const path = session.path;
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: labelC.current.reconfigure(EditorView.contentAttributes.of({ "aria-label": `Editor for ${path}` })) });
+  }, [path]);
   const initialPrefs = useRef(prefs);
   const langId = language ?? languageIdFor(session.path);
   const initialLang = useRef(langId);
@@ -259,8 +265,10 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
           crosshairCursor(),
           highlightActiveLine(),
           highlightSelectionMatches(),
-          history(),
-          keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...yUndoManagerKeymap, indentWithTab]),
+          // Undo is the shared document's (Y.UndoManager): it reverts only this person's edits. CodeMirror's own history
+          // would also record the initial load and collaborators' changes, so Ctrl+Z could undo other people's work
+          // or empty the file for everyone; it is deliberately absent, and the Yjs bindings come first.
+          keymap.of([...yUndoManagerKeymap, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...foldKeymap, ...completionKeymap, indentWithTab]),
           langC.current.of(languageById(initialLang.current).mode()),
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
@@ -272,7 +280,7 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
             const line = u.state.doc.lineAt(head);
             onCursor(line.number, head - line.from + 1);
           }),
-          EditorView.contentAttributes.of({ "aria-label": `Editor for ${session.path}` }),
+          labelC.current.of(EditorView.contentAttributes.of({ "aria-label": `Editor for ${session.path}` })),
         ],
       }),
     });
