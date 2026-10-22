@@ -66,6 +66,15 @@ jobs:
           set +e; timeout 90 xvfb-run -a apps/desktop/release/linux-unpacked/recast --no-sandbox --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
           grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' /tmp/smoke.log
+      - name: launch check (Windows, the packaged app)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          ls apps/desktop/release/*.exe
+          export RECAST_SMOKE_OUT="$RUNNER_TEMP/smoke.log"
+          set +e; timeout 90 apps/desktop/release/win-unpacked/recast.exe --recast-smoke; code=$?; set -e
+          echo "exit code $code"; cat "$RECAST_SMOKE_OUT" || true
+          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' "$RECAST_SMOKE_OUT"
       # One small download per kind of Mac, holding just its disk image (Safari unpacks GitHub's wrapper zip).
       - if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
@@ -76,5 +85,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: recast-${{ runner.os }}
+          compression-level: 0
           path: ${{ matrix.files }}
           if-no-files-found: error

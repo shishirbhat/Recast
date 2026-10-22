@@ -6,8 +6,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 mkdirSync(path.join(root, "dist"), { recursive: true });
-const bin = path.join(root, "node_modules/.bin/tailwindcss");
-execFileSync(bin, ["-i", path.join(root, "src/overlay.css"), "-o", path.join(root, "dist/tw.css"), "--minify"], { stdio: "inherit", cwd: root });
+// The CLI's own script, run with this Node: the .bin shim is a shell script here and a .cmd on Windows.
+const cli = path.join(root, "node_modules/@tailwindcss/cli/dist/index.mjs");
+execFileSync(process.execPath, [cli, "-i", path.join(root, "src/overlay.css"), "-o", path.join(root, "dist/tw.css"), "--minify"], { stdio: "inherit", cwd: root });
 const tokens = readFileSync(path.join(root, "../../design/tokens.css"), "utf8")
   .replace(/:root:not\(\[data-theme="light"\]\)/g, ':host(:not([data-theme="light"]))')
   .replace(/:root\[data-theme="(light|dark)"\]/g, ':host([data-theme="$1"])')

@@ -30,7 +30,8 @@ dmg:
   background: null
   contents: [{ x: 140, y: 190 }, { x: 400, y: 190, type: link, path: /Applications }]
 win:
-  target: [{ target: nsis, arch: [x64, arm64] }]
+  # x64 only: one installer for both would be twice the size; Windows on Arm runs it too.
+  target: [{ target: nsis, arch: [x64] }]
   icon: build/icon.png
 nsis:
   oneClick: false

@@ -103,7 +103,10 @@ function createMain() {
     // Opened by the person (from Applications, the Dock, the menu): the panel, in front. The pill is for grabs.
     if (!test || process.env["RECAST_SHOW"] !== "0") { main?.show(); main?.webContents.send("recast:expand"); }
     if (smoke) setTimeout(() => {
-      console.log(`RECAST_SMOKE ${JSON.stringify({ visible: !!main?.isVisible(), bounds: main?.getBounds(), tray: !!tray, link: !serverNote })}`);
+      const report = `RECAST_SMOKE ${JSON.stringify({ visible: !!main?.isVisible(), bounds: main?.getBounds(), tray: !!tray, link: !serverNote })}`;
+      console.log(report);
+      // Windows gives a windowed app no console, so the report can also go to a file the check names.
+      if (process.env["RECAST_SMOKE_OUT"]) writeFileSync(process.env["RECAST_SMOKE_OUT"], report + "\n");
       quitting = true; app.quit();
     }, 1500);
   });

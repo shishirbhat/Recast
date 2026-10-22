@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-execFileSync("node", [path.join(root, "../../packages/overlay/scripts/build-css.mjs")], { stdio: "inherit" });
+execFileSync(process.execPath, [path.join(root, "../../packages/overlay/scripts/build-css.mjs")], { stdio: "inherit" });
 const out = path.join(root, "dist");
 rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
 await build({ entryPoints: [path.join(root, "src/main.ts")], bundle: true, format: "iife", target: "es2022", platform: "browser", outfile: path.join(out, "main.js"), jsx: "automatic", define: { "process.env.NODE_ENV": '"production"' }, legalComments: "none", logLevel: "warning" });
