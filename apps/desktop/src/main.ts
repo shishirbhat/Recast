@@ -239,7 +239,6 @@ app.whenReady().then(async () => {
   settings = { ...DEFAULTS, ...readJson<Partial<Settings>>(settingsFile(), {}), shortcuts: { ...DEFAULTS.shortcuts, ...(readJson<Partial<Settings>>(settingsFile(), {}).shortcuts ?? {}) } };
   nativeTheme.themeSource = settings.theme;
   nativeTheme.on("updated", applyTheme);
-  if (process.platform === "darwin") app.dock?.hide();   // a tray app on the Mac: no Dock icon, like other menu-bar tools
   ipc(); await startLink(); registerShortcuts(); buildTray(); createMain();
 });
 app.on("second-instance", showMain);
