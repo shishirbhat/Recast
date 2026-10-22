@@ -211,3 +211,7 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Connection:** GitHub is separate from Google. It uses a fine-grained token for one repository (Issues read and write), checked against that repository before it is saved, and kept in a 0600 file on the person's computer. Requests go to api.github.com only, and path segments are encoded so a repository name cannot change the target.
 - **Where it shows:** the Tasks place in the wheel (tracked work). The try-it page has a Build tab with a stand-in issue list.
 - **Change if:** Linear or Jira is added (same relation, new contracts), or people want labels or assignees (fields to review, and assignees notify).
+
+### D33. Linear, on the same issue relation; a place with several choices asks which one (2026-10-22)
+- **Decision:** contract `linearIssue` on `issue-tracker-entry` (create, delete, undo; confirm first, since it notifies). It uses Linear's GraphQL, with values sent only as variables, never in the query text. An `errors` array in a 200 answer is a failure. Undo deletes the issue (Linear keeps it in its trash). The connection is separate: a personal API key and a team key, and the team is looked up before anything is saved (0600 file).
+- **Choosing between connected destinations:** a wheel place with more than one connected destination of the same kind (GitHub and Linear under Tasks) opens into a short list, "Tasks: which one?", the way "More" does. Recast no longer picks the first one silently.

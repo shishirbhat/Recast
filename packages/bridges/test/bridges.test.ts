@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryEventLog, OutcomeUnknownError, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, githubIssue, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { HttpBridge, DestinationError, rfc822Draft, githubIssue, linearIssue, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,7 +26,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
 });
@@ -34,7 +34,7 @@ describe("every contract passes the real schema and grammar checks", () => {
 // The abilities a contract declares are what the picker and the review promise. They must match what the bridge's
 // operations declare about themselves, so a destination never offers an Undo or a check it cannot perform.
 describe("declared abilities match what each bridge actually does", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
     it(name, () => {
       const caps = spec.contract.accepts.map((row) => spec.capabilities[row.relationId]);
       expect(caps.every(Boolean), "every accepted row declares its operation").toBe(true);
@@ -210,7 +210,7 @@ describe("shared behaviour", () => {
 
 describe("the registry", () => {
   it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
-    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "github.issues", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "notion.database"]);
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "github.issues", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "linear.issues", "notion.database"]);
     expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
     expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
     expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);
@@ -300,5 +300,25 @@ describe("GitHub: an issue opened in one repository", () => {
     const { calls, t } = fake(() => ok({ number: 1 }));
     await place(githubIssue, { owner: "acme", repo: "app/../../orgs/x" }, t, issue(), "issue-tracker-entry");
     expect(calls[0]!.url).toBe("https://api.github.com/repos/acme/app%2F..%2F..%2Forgs%2Fx/issues");
+  });
+});
+
+describe("Linear: the same issue on one team (GraphQL)", () => {
+  const issue = () => obj("Issue", { title: "Sign-in crash", body: "**Error**\n```text\nTypeError: x\n```" });
+  it("creates it with values as variables (never in the query text); Undo deletes it", async () => {
+    const { calls, t } = fake((r) => {
+      const q = String((r.body as { query: string }).query);
+      return q.includes("issueCreate") ? ok({ data: { issueCreate: { success: true, issue: { id: "lin-1", identifier: "ENG-7", url: "https://linear.app/x/issue/ENG-7" } } } }) : ok({ data: { issueDelete: { success: true } } });
+    });
+    const { receipt, undo: u } = await place(linearIssue, { teamId: "team-1" }, t, issue(), "issue-tracker-entry");
+    expect(calls[0]).toMatchObject({ method: "POST", url: "https://api.linear.app/graphql", body: { variables: { input: { teamId: "team-1", title: "Sign-in crash", description: "**Error**\n```text\nTypeError: x\n```" } } } });
+    expect(String((calls[0]!.body as { query: string }).query)).not.toContain("Sign-in crash");
+    expect(JSON.parse(receipt.bridgeRef!)).toEqual({ id: "lin-1", identifier: "ENG-7" });
+    await u();
+    expect(calls[1]!.body).toMatchObject({ variables: { id: "lin-1" } });
+  });
+  it("a GraphQL error in a 200 answer is a failure, not a success", async () => {
+    const { t } = fake(() => ok({ errors: [{ message: "Entity not found: Team" }] }));
+    await expect(place(linearIssue, { teamId: "nope" }, t, issue(), "issue-tracker-entry")).rejects.toThrow(/Linear refused it: Entity not found: Team/);
   });
 });

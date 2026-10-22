@@ -139,3 +139,14 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | H7 | **Undo** | The issue is closed as "not planned" (it is not deleted: GitHub does not allow that without admin rights) | real undo |
 | H8 | Disconnect GitHub on the local page | GitHub is no longer offered in Tasks | optional |
 
+## I. An error to a Linear issue (needs a Linear API key)
+**Setup, once:** `apps/calendar-link/README.md` Part 11.
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| I1 | Open http://localhost:8787/ | "Connected to the … team" under Linear issues | connection |
+| I2 | Capture an error as in H3, then **Choose where it goes** | Tasks reads "Linear" (or "GitHub or Linear" if both are connected) | offered |
+| I3 | **Open** (if both: pick **Linear** in "Tasks: which one?") | The review, as in H5 | choice |
+| I4 | **Confirm: Create an issue** | In Linear, a new issue on that team, with the quoted body | real issue |
+| I5 | **Undo** | The issue is deleted (in Linear's trash) | real undo |
+

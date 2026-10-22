@@ -100,6 +100,11 @@ Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.
 2. On http://localhost:8787/, under **GitHub issues**, enter the repository as `owner/name` and paste the token, then **Connect GitHub**. Recast checks that the token can see the repository before saving it. The token stays in `.secrets/github.json` on this computer (readable only by you).
 3. In the extension, select an error message on a page (a build log, a console) and Alt-drag it. Notes (selected text) can be pressed into it. **Tasks** opens the issue after you confirm. Everything captured is quoted as text, so a copied `@name` notifies nobody. Undo closes the issue as "not planned" (GitHub does not let ordinary accounts delete issues). The steps are in `docs/REAL_TEST_PLAN.md`, section H.
 
+## Part 11: Linear issues (optional, separate from Google)
+1. In Linear: **Settings → Security & access → Personal API keys → New key**, with access to one team and permission to create issues.
+2. On http://localhost:8787/, under **Linear issues**, enter the team's key (as in `ENG-12`) and paste the API key, then **Connect Linear**. Recast finds the team before saving anything. The key stays in `.secrets/linear.json` on this computer (readable only by you).
+3. An error (with notes) placed in **Tasks** goes to Linear. If GitHub is connected too, Tasks asks which one. Undo deletes the issue (Linear keeps it in its trash for a while). Steps: `docs/REAL_TEST_PLAN.md`, section I.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

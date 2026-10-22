@@ -167,6 +167,32 @@ export const githubIssue: Spec<GithubTarget> = {
   },
 };
 
+// ---- Linear (GraphQL: issueCreate / issueDelete) -----------------------------------------------------------------------
+// Values travel as GraphQL variables, never inside the query text. GraphQL reports failures in the body with HTTP 200,
+// so `errors` (or success: false) is a failure, never a success.
+export interface LinearTarget { teamId: string }
+const LINEAR = "https://api.linear.app/graphql";
+async function gql(send: Send, query: string, variables: Record<string, unknown>) {
+  const r = asObj(await send({ method: "POST", url: LINEAR, body: { query, variables } }));
+  if (Array.isArray(r.errors) && r.errors.length) throw new DestinationError(`Linear refused it: ${String(asObj(r.errors[0]).message ?? "error")}`);
+  return asObj(r.data);
+}
+export const linearIssue: Spec<LinearTarget> = {
+  contract: CONTRACTS.linearIssue,
+  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:create", "delete-created") },
+  async execute(op, t, send) {
+    const d = asObj((await gql(send, "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }",
+      { input: { teamId: t.teamId, title: need(op, "Issue.title"), description: need(op, "Issue.body") } })).issueCreate);
+    const issue = asObj(d.issue);
+    if (d.success !== true) throw new DestinationError("Linear did not create the issue");
+    return JSON.stringify({ id: str(issue.id, "issue id"), ...(typeof issue.identifier === "string" ? { identifier: issue.identifier } : {}) });
+  },
+  async undo(token, _t, send) {
+    const d = asObj((await gql(send, "mutation($id: String!) { issueDelete(id: $id) { success } }", { id: (JSON.parse(token) as { id: string }).id })).issueDelete);
+    if (d.success !== true) throw new DestinationError("Linear did not delete the issue");
+  },
+};
+
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
 export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
 const NOTION = "https://api.notion.com/v1/pages";

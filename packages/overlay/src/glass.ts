@@ -118,7 +118,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   root.appendChild(el);
   const q = <T extends HTMLElement = HTMLElement>(s: string) => el.querySelector<T>(s)!;
   let model: ModuleModel = { mode: "off" };
-  let drill: "more" | null = null;          // the "More" ring is turned into view inside the wheel
+  // A place opened into its own list: "More" (the rest of the registry), or a place with several connected choices
+  // (for example GitHub and Linear under Tasks), so the person picks one instead of Recast picking for them.
+  let drill: WheelKey | null = null;
   let blocked: string | null = null;        // an open-and-prefill link the browser refused to open in a new tab
   let holdStart = 0;
   const emit = (i: GlassIntent) => opts.onIntent(i);
@@ -137,14 +139,15 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   /** The rows the wheel shows now: the five places, or the registry entries under "More". */
   function rows(m: Extract<ModuleModel, { entries: WheelEntry[] }>): Row[] {
-    if (drill === "more") {
-      const more = m.entries.find((e) => e.key === "more")!;
-      return [...more.options.map((o, i) => ({ key: `more:${i}`, label: o.app, sub: o.effect, available: o.available, ...(o.reason ? { reason: o.reason } : {}), ...(o.destinationId ? { destinationId: o.destinationId } : {}), icon: "more" as WheelKey })),
-        { key: "more:back", label: "Back", sub: "to the five places", available: true, icon: "more" as WheelKey }];
+    if (drill) {
+      const entry = m.entries.find((e) => e.key === drill)!;
+      const shown = drill === "more" ? entry.options : entry.options.filter((o) => o.available);
+      return [...shown.map((o) => ({ key: `${drill}:${entry.options.indexOf(o)}`, label: o.app, sub: o.effect, available: o.available, ...(o.reason ? { reason: o.reason } : {}), ...(o.destinationId ? { destinationId: o.destinationId } : {}), icon: drill! })),
+        { key: `${drill}:back`, label: "Back", sub: "to the five places", available: true, icon: drill }];
     }
     return m.entries.map((e) => {
-      const live = e.options.find((o) => o.available);
-      const sub = e.available ? `${live?.app ?? ""}${e.standIn ? " · stand-in" : ""}` : "Unavailable";
+      const live = e.options.filter((o) => o.available);
+      const sub = e.available ? `${live.map((o) => o.app).join(" or ")}${e.standIn ? " · stand-in" : ""}` : "Unavailable";
       return { key: e.key, label: e.label, sub, available: e.available, ...(e.reason ? { reason: e.reason } : {}), ...(e.destinationId ? { destinationId: e.destinationId } : {}), icon: e.key };
     });
   }
@@ -191,14 +194,14 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   }
   function reason() {
     const r = wRows[target]; const line = el.querySelector(".rg-reason"); if (!r || !line) return;
-    line.textContent = r.available ? (r.key === "more" ? "Other destinations Recast connects to" : r.key === "more:back" ? "" : `${rowEffect(r.key)}${r.sub.includes("stand-in") ? ". A local stand-in: nothing reaches the real service" : ""}`) : (r.reason ?? "");
+    line.textContent = r.available ? (r.key === "more" ? "Other destinations Recast connects to" : r.key.endsWith(":back") ? "" : `${rowEffect(r.key)}${r.sub.includes("stand-in") ? ". A local stand-in: nothing reaches the real service" : ""}`) : (r.reason ?? "");
     const drum = el.querySelector(".rg-drum"); drum?.setAttribute("aria-activedescendant", `rg-opt-${r.key.replace(":", "-")}`);
     el.querySelectorAll<HTMLElement>(".rg-opt").forEach((o, j) => o.setAttribute("aria-selected", String(j === target)));
     const open = el.querySelector<HTMLButtonElement>(".rg-actions [data-act=open]"); if (open) open.disabled = !r.available;
   }
   function rowEffect(key: string): string {
     if (model.mode !== "choosing") return "";
-    if (drill === "more") { const more = model.entries.find((x) => x.key === "more")!; const m = more.options[Number(key.split(":")[1])]; return m ? `${m.app}: ${m.effect.toLowerCase()}` : ""; }
+    if (drill) { const entry = model.entries.find((x) => x.key === drill)!; const m = entry.options[Number(key.split(":")[1])]; return m ? `${m.app}: ${m.effect.toLowerCase()}` : ""; }
     const o = model.entries.find((x) => x.key === key)?.options.find((x) => x.available);
     return o ? `${o.app}: ${o.effect.toLowerCase()}` : "";
   }
@@ -207,7 +210,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     const r = wRows[target]; if (!r) return;
     // "More" opens even when nothing in it fits: the person can still see what is there and why not.
     if (r.key === "more") { drill = "more"; update(model); return; }
-    if (r.key === "more:back") { drill = null; update(model); return; }
+    if (r.key.endsWith(":back")) { drill = null; update(model); return; }
+    const entry = model.entries.find((x) => x.key === r.key);
+    if (entry && entry.options.filter((o) => o.available).length > 1) { drill = entry.key; update(model); return; }
     if (!r.available || !r.destinationId) { const line = el.querySelector(".rg-reason"); line?.classList.remove("nudge"); void (line as HTMLElement | null)?.offsetWidth; line?.classList.add("nudge"); return; }
     emit({ type: "pick", destinationId: r.destinationId });
   }
@@ -217,10 +222,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode !== "choosing") { if (sig) { side.innerHTML = ""; sig = ""; } return; }
     const list = rows(m); const s = JSON.stringify([drill, list.map((r) => [r.key, r.available, r.sub, r.reason])]);
     // Into "More": land on the first place that takes this object, not on the first in the list.
-    const want = drill === "more" ? (sig.startsWith('["more"') ? target : Math.max(0, list.findIndex((r) => r.available && r.key !== "more:back"))) : Math.max(0, m.entries.findIndex((e) => e.key === m.choice));
+    const want = drill ? (sig.startsWith(`["${drill}"`) ? target : Math.max(0, list.findIndex((r) => r.available && !r.key.endsWith(":back")))) : Math.max(0, m.entries.findIndex((e) => e.key === m.choice));
     if (s !== sig) {
       const fresh = !sig || JSON.parse(sig)[0] !== drill; sig = s; wRows = list;
-      side.innerHTML = `<div class="rg-drum" role="listbox" tabindex="0" aria-label="${drill === "more" ? "More destinations" : "Where it goes"}" style="height:${DRUM_H}px">
+      side.innerHTML = `<div class="rg-drum" role="listbox" tabindex="0" aria-label="${drill === "more" ? "More destinations" : drill ? "Which one" : "Where it goes"}" style="height:${DRUM_H}px">
         <div class="rg-lens" aria-hidden="true"></div><div class="rg-cyl">${list.map((r) =>
         `<div class="rg-opt${r.available ? "" : " off"}" role="option" id="rg-opt-${esc(r.key.replace(":", "-"))}" data-key="${esc(r.key)}" aria-disabled="${!r.available}"><span class="rg-ico">${svg(r.icon)}</span><span class="rg-name"><span class="rg-label">${esc(r.label)}</span><span class="rg-sub">${esc(r.sub)}</span></span><kbd class="rg-enter" aria-hidden="true">↵</kbd></div>`).join("")}</div></div>`;
       wire(q(".rg-drum"));
@@ -295,7 +300,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         ? { title: "Add to it?", head: "", facts: "", body: `<p class="rg-hint">${esc(m.text)}</p>`, actions: "" }
         : { title: "Ready to place", head: `${iconBtn("inspect", "Look inside", LAYERS)}${close}`, facts: "", body: err,
             actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>` };
-      case "choosing": return { title: drill === "more" ? "More places" : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
+      case "choosing": return { title: drill === "more" ? "More places" : drill ? `${esc(m.entries.find((e) => e.key === drill)?.label ?? "")}: which one?` : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
         actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button><button type="button" class="rg-btn ghost" data-act="back">Back</button>` };
       case "inspecting": return { title: "Inside this object", head: close, facts: "",
         body: `${err}<ul class="rg-ingredients">${m.object.ingredients.map((f) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${m.object.ingredients.length > 1 ? `<button type="button" class="rg-link" data-remove="${esc(f.id)}" aria-label="Take ${esc(f.text)} out">Take out</button>` : ""}</li>`).join("")}</ul>${detail(m)}`,

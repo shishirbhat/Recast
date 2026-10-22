@@ -52,6 +52,11 @@ export const CONTRACTS = {
     destination: "github.issues", app: "GitHub", targetKind: "Issues", reliability: "official-api", abilities: ["create", "undo"],
     accepts: [{ relationId: "issue-tracker-entry", effect: "Open an issue", effectFlags: ["notifies-third-party"], dataMoved: ["Issue.title", "Issue.body"] }],
   },
+  /** The same issue in Linear, on one team. Undo deletes it (Linear keeps deleted issues in its trash for a while). */
+  linearIssue: {
+    destination: "linear.issues", app: "Linear", targetKind: "Issues", reliability: "official-api", abilities: ["create", "delete", "undo"],
+    accepts: [{ relationId: "issue-tracker-entry", effect: "Create an issue", effectFlags: ["notifies-third-party"], dataMoved: ["Issue.title", "Issue.body"] }],
+  },
   // Open-and-prefill: the map app opens with directions to the place. Nothing is written, so there is nothing to confirm or undo.
   googleMaps: {
     destination: "google-maps.directions", app: "Google Maps", targetKind: "Map", reliability: "deep-link", abilities: ["open"],

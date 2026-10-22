@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createExtensionApi } from "../src/extension-api.js";
 import { connectGithub, githubFile, readGithub } from "../src/github.js";
+import { connectLinear, linearFile } from "../src/linear.js";
 import { statSync } from "node:fs";
 import { DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
 import { answerClump, mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
@@ -184,5 +185,47 @@ describe("GitHub issues through the same door (its own connection, not Google's)
     const u = await a.api.handle("undo", EXT, { destination: "github", receipt: r.body.receipt });
     expect(u.body).toEqual({ outcome: "undone" }); expect(issues.get(1)).toMatchObject({ state: "closed", state_reason: "not_planned" });
     expect((await a.api.handle("reconcile", EXT, { destination: "github", op: op() })).body).toMatchObject({ checkable: false });
+  });
+});
+
+describe("Linear issues through the same door (its own connection)", () => {
+  const KEY = "lin_api_" + "b".repeat(32);
+  const op = () => {
+    const e = newClump("e", { id: "err", kind: "error", text: "panic: index out of range", confidence: 0.9, evidence: [{ locator: { kind: "user", value: "selection" } }], source: { app: "ci", url: "https://ci.example/7" } });
+    const v = viewClump(answerClump(e, "title", "Index panic"), { now: "2026-10-22T09:00:00Z", timezone: "UTC" });
+    return plan(propose(resolve(v.candidate!), CONTRACTS.linearIssue)[0]!, { now: () => "2026-10-22T09:00:00Z" });
+  };
+  const created: Record<string, unknown>[] = []; let deleted = "";
+  const linear = (url: string, init: RequestInit) => {
+    if (url !== "https://api.linear.app/graphql" || (init.headers as Record<string, string>).authorization !== KEY) return new Response("{}", { status: 401 });
+    const b = JSON.parse(String(init.body));
+    if (b.query.includes("teams")) return new Response(JSON.stringify({ data: { teams: { nodes: b.variables.key === "ENG" ? [{ id: "team-1", key: "ENG", name: "Engineering" }] : [] } } }), { status: 200 });
+    if (b.query.includes("issueCreate")) { created.push(b.variables.input); return new Response(JSON.stringify({ data: { issueCreate: { success: true, issue: { id: "lin-1", identifier: "ENG-1" } } } }), { status: 200 }); }
+    if (b.query.includes("issueDelete")) { deleted = b.variables.id; return new Response(JSON.stringify({ data: { issueDelete: { success: true } } }), { status: 200 }); }
+    return new Response("{}", { status: 400 });
+  };
+  const asFetch = (async (u: string, i: RequestInit) => linear(String(u), i)) as unknown as typeof fetch;
+  it("connecting finds the team by its key first, and saves nothing otherwise", async () => {
+    const a = setup(SCOPE);
+    expect(await connectLinear(a.dir, "nope", "ENG", asFetch, 0)).toMatchObject({ ok: false, message: /lin_api_/ });
+    expect(await connectLinear(a.dir, KEY, "eng-1", asFetch, 0)).toMatchObject({ ok: false, message: /team's key/ });
+    expect(await connectLinear(a.dir, KEY, "OPS", asFetch, 0)).toMatchObject({ ok: false, message: /No team with the key OPS/ });
+    expect(await connectLinear(a.dir, "lin_api_" + "z".repeat(32), "ENG", asFetch, 0)).toMatchObject({ ok: false, message: /did not accept/ });
+    expect(await connectLinear(a.dir, KEY, "eng", asFetch, 0)).toMatchObject({ ok: true, link: { teamId: "team-1", teamName: "Engineering" } });
+    expect(statSync(linearFile(a.dir)).mode & 0o777).toBe(0o600);
+  });
+  it("refused until connected; then one issue on that team, Undo deletes it, a lost answer cannot be checked", async () => {
+    const a = setup(SCOPE, linear); await pair(a.api);
+    const before = await a.api.handle("commit", EXT, { destination: "linear", op: op(), consent: { kind: "confirm" } });
+    expect(before.status).toBe(409); expect(String(before.body.message)).toMatch(/Linear is not connected/);
+    expect((await connectLinear(a.dir, KEY, "ENG", asFetch, 0)).ok).toBe(true);
+    expect((await a.api.handle("status", EXT, {})).body).toMatchObject({ linear: "Engineering" });
+    const r = await a.api.handle("commit", EXT, { destination: "linear", op: op(), consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "done", receipt: { destination: "linear.issues", reversible: true } });
+    expect(created.at(-1)).toMatchObject({ teamId: "team-1", title: "Index panic" });
+    expect(String(created.at(-1)!["description"])).toContain("```text\npanic: index out of range\n```");
+    expect((await a.api.handle("undo", EXT, { destination: "linear", receipt: r.body.receipt })).body).toEqual({ outcome: "undone" });
+    expect(deleted).toBe("lin-1");
+    expect((await a.api.handle("reconcile", EXT, { destination: "linear", op: op() })).body).toMatchObject({ checkable: false });
   });
 });
