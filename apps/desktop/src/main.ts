@@ -23,6 +23,8 @@ const DARK_BG = "#141311", LIGHT_BG = "#faf9f6";
 const test = !app.isPackaged && process.env["RECAST_TEST"] === "1";
 if (test && process.env["RECAST_USER_DATA"]) app.setPath("userData", process.env["RECAST_USER_DATA"]);
 if (!app.requestSingleInstanceLock()) app.quit();
+// A launch check for the built app (CI, on each system): open as a person would, report what is on screen, then quit.
+const smoke = process.argv.includes("--recast-smoke");
 
 const data = () => app.getPath("userData");
 const secrets = () => path.join(data(), "secrets");
@@ -97,7 +99,13 @@ function createMain() {
   main.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   harden(main);
   void main.loadFile(page("index.html"));
-  main.once("ready-to-show", () => { if (!test || process.env["RECAST_SHOW"] !== "0") main?.show(); });
+  main.once("ready-to-show", () => {
+    if (!test || process.env["RECAST_SHOW"] !== "0") main?.show();
+    if (smoke) setTimeout(() => {
+      console.log(`RECAST_SMOKE ${JSON.stringify({ visible: !!main?.isVisible(), bounds: main?.getBounds(), tray: !!tray, link: !serverNote })}`);
+      quitting = true; app.quit();
+    }, 1500);
+  });
   // Closing hides: Recast keeps running in the tray, with its objects. Quit from the tray.
   main.on("close", (e) => { if (!quitting) { e.preventDefault(); main?.hide(); } });
 }
