@@ -659,18 +659,26 @@ export function Workbench() {
   );
 
   // Syntax diagnostics and line authorship follow the shared document: refetched shortly after it changes.
-  const memberColors = useMemo(() => new Map((load.kind === "ready" ? load.state.members : []).map((m) => [m.id, m])), [load]);
+  // Keyed by the members' content, not the state object: every project refresh makes a new state, and rebuilding this
+  // map each time would clear and refetch the authorship gutter on every event.
+  const membersKey = load.kind === "ready" ? load.state.members.map((m) => `${m.id}:${m.name}:${m.color}`).join("|") : "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const memberColors = useMemo(() => new Map((load.kind === "ready" ? load.state.members : []).map((m) => [m.id, m])), [membersKey]);
   useEffect(() => {
     setSyntax(null);
     setAuthors(null);
     if (!session || !activePath) return;
     let t: ReturnType<typeof setTimeout> | null = null;
     let live = true;
+    // Requests can finish out of order; only the newest answer is applied, so an older one never overwrites it.
+    let asked = 0;
     const fetchAll = () => {
-      void api<{ problems: SyntaxProblem[] }>("GET", `/diagnostics?path=${encodeURIComponent(activePath)}`).then((r) => live && setSyntax(r.problems), () => {});
+      const n = ++asked;
+      const current = () => live && n === asked;
+      void api<{ problems: SyntaxProblem[] }>("GET", `/diagnostics?path=${encodeURIComponent(activePath)}`).then((r) => current() && setSyntax(r.problems), () => {});
       if (showAuthors)
         void api<{ lines: { line: number; kind: string; authors: string[] }[] }>("GET", `/attribution?path=${encodeURIComponent(activePath)}`).then((r) => {
-          if (!live) return;
+          if (!current()) return;
           const m = new Map<number, LineMark>();
           for (const l of r.lines) {
             if (l.kind === "member") {

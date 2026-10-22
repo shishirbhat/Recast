@@ -28,6 +28,7 @@ const FILES: Record<string, string> = {
   "src/multi-a.js": "// a\n",
   "src/multi-b.js": "// b\n",
   "src/presence.js": "// presence\n",
+  "src/gutter.js": "// gutter\n",
 };
 let server: RelayServer;
 let browser: Browser;
@@ -178,6 +179,44 @@ test("edits in two files at once each go to their own file", { skip }, async () 
   await p.keyboard.type(" in-b");
   await until(() => shared("src/multi-a.js").includes("in-a") && shared("src/multi-b.js").includes("in-b"), 5000, "each edit in its file");
   assert.ok(!shared("src/multi-a.js").includes("in-b") && !shared("src/multi-b.js").includes("in-a"));
+});
+
+test("line authorship in the gutter: a slow, older answer never overwrites a newer one", { skip }, async () => {
+  const { p } = await signIn("Ada");
+  let delayNext = false;
+  let slowDelivered = false;
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  await p.route(/\/api\/attribution\?/, async (route) => {
+    if (slowDelivered) {
+      // Later refreshes wait, so what the page shows now is exactly what the slow answer left it with.
+      await held;
+      return route.abort().catch(() => {});
+    }
+    // Capture the server's answer now, deliver it late: exactly what a slow response to an earlier request looks like.
+    const slow = delayNext;
+    delayNext = false;
+    const res = await route.fetch();
+    if (slow) await new Promise((r) => setTimeout(r, 2500));
+    await route.fulfill({ response: res });
+    if (slow) slowDelivered = true;
+  });
+  try {
+    await open(p, "src/gutter.js");
+    await caretAtEnd(p);
+    delayNext = true;
+    await p.keyboard.type("\nconst one = 1;");
+    // Wait until the (delayed) request for the first edit has been sent, then edit again.
+    await until(() => !delayNext, 5000, "the first authorship request");
+    await p.keyboard.type("\nconst two = 2;");
+    await until(() => shared("src/gutter.js").includes("two = 2"), 5000, "both edits on the server");
+    await until(() => slowDelivered, 6000, "the slow answer to arrive after the fresh one");
+    await p.waitForTimeout(300);
+    const marks = await p.locator(".relay-author-gutter .relay-author").evaluateAll((els) => els.map((e) => (e as HTMLElement).title));
+    assert.equal(marks.length, 2, `both new lines are still marked as Ada's (got ${JSON.stringify(marks)})`);
+  } finally {
+    release();
+  }
 });
 
 test("presence: someone whose browser disappears without saying goodbye drops out of everyone's avatars", { skip }, async () => {
