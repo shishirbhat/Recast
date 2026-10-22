@@ -1,0 +1,45 @@
+# Packages the built app (dist/) only: everything is bundled, so no node_modules ship. One config, three systems.
+appId: dev.recast.desktop
+productName: Recast
+executableName: recast
+artifactName: Recast-${version}-${arch}.${ext}
+copyright: Recast
+directories: { output: release, buildResources: build }
+files: ["dist/**", "package.json", "!**/*.map"]
+asar: true
+# No auto-update: the app never fetches or installs anything by itself.
+publish: null
+electronLanguages: [en-US, en-GB]
+extraMetadata: { main: dist/main.js }
+mac:
+  category: public.app-category.productivity
+  target: [{ target: dmg, arch: [universal] }]
+  icon: build/icon.png
+  darkModeSupport: true
+  # Signing and notarisation run only when the Apple credentials are present (CSC_LINK, APPLE_ID, ...); without them the
+  # .dmg is unsigned and macOS asks the person to confirm the first launch.
+  hardenedRuntime: true
+  notarize: false
+dmg:
+  title: Recast
+  background: null
+  contents: [{ x: 140, y: 190 }, { x: 400, y: 190, type: link, path: /Applications }]
+win:
+  target: [{ target: nsis, arch: [x64, arm64] }]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Recast
+linux:
+  target: [rpm, deb, AppImage]
+  executableName: recast
+  syncDesktopName: true
+  icon: build/icon.png
+  category: Utility
+  synopsis: Turn what you see into things done.
+  maintainer: Recast
+rpm: { packageName: recast, fpm: ["--rpm-rpmbuild-define=_build_id_links none"] }
+deb: { packageName: recast }

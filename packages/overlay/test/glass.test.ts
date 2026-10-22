@@ -31,3 +31,13 @@ describe("glass contrast", () => {
     expect(GLASS_CSS).toMatch(/prefers-reduced-motion: reduce/);
   });
 });
+
+describe("why a review asks for more, in words", () => {
+  it("turns the trust model's reasons into sentences, without internal labels", async () => {
+    const { riskWords } = await import("../src/glass.js");
+    expect(riskWords(["relation base risk: low", "confidence 0.60 is below 0.75"])).toBe("Recast is not sure of part of this reading: check it before you confirm.");
+    expect(riskWords(["relation base risk: low", "notifies someone else", "cannot be undone"])).toBe("Someone else will be notified. It cannot be undone from Recast.");
+    expect(riskWords(["relation base risk: medium", "effect is send, delete"])).toBe("It sends something. It deletes something.");
+    expect(riskWords(["relation base risk: high"])).toBe("Check it before you confirm.");
+  });
+});

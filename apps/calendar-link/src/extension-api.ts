@@ -69,6 +69,16 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         return { status: 202, body: { paired: false, code } };
       }
       if (!pairing().allowed.includes(origin)) return { status: 403, body: { error: "not paired: allow this extension on the Recast page first" } };
+      return act(route, body);
+    },
+    /**
+     * The same operations for a caller in this process (the Recast desktop app), which needs no pairing: it is this
+     * program. Never exposed over HTTP.
+     */
+    direct: (route: string, body: Record<string, unknown>) => act(route, body),
+  };
+
+  async function act(route: string, body: Record<string, unknown>): Promise<ExtReply> {
       if (route === "status") return { status: 200, body: statusBody() };
       const dest: Dest = body.destination === "gmail" ? "gmail" : body.destination === "tasks" ? "tasks" : body.destination === "docs" ? "docs" : body.destination === "github" ? "github" : body.destination === "linear" ? "linear" : "calendar";
       // GitHub stands alone: it needs its own connection, not Google's.
@@ -122,6 +132,5 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         return { status: 200, body: { outcome: "undone" } };
       }
       return { status: 404, body: { error: "unknown route" } };
-    },
-  };
+  }
 }

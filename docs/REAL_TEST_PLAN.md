@@ -161,3 +161,14 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | J6 | Turn Recast off and select text | No blob: selecting is just selecting | off means off |
 | J7 | Type in a search box and select what you typed | No blob | fields left alone |
 
+## K. The desktop app (macOS first, then Windows and Linux)
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| K1 | Install from the desktop workflow's artifact; open it (Mac: right-click → Open the first time) | A small Recast window, dark if your system is dark, and a capsule icon in the menu bar or tray | installs, no white flash |
+| K2 | Copy "Friday 7:30 PM" in any app, then press ⌘⌥Space (Ctrl+Alt+Space) | Recast comes forward with a "Friday 7:30 PM" time object | clipboard capture |
+| K3 | Click the box, press Fn twice (Mac) or Win+H, say "Dinner with Maya" | The words appear; Enter adds an object | voice via the OS |
+| K4 | Drag one onto the other → Choose where it goes → Google Calendar → Add | A real event (after Connections and sign-in); Undo removes it | real Google |
+| K5 | Run "Plan and prepare" on another event | Both steps done, each listed; the task in Google Tasks | recipe on real accounts |
+| K6 | Quit from the tray and open again | The objects you left are still there | inbox |
+| K7 | Settings: switch Dark / Light / Match the system | The whole window changes, with no white panels in dark | themes |
+

@@ -55,7 +55,10 @@ export function readToken(file: string): StoredToken | null {
   try { return JSON.parse(readFileSync(file, "utf8")) as StoredToken; } catch { return null; }
 }
 
-export function createLinkServer(c: LinkConfig): Server {
+export function createLinkServer(c: LinkConfig): Server { return createLink(c).server; }
+
+/** The sign-in server and the in-process door to the same connections (for the desktop app). */
+export function createLink(c: LinkConfig): { server: Server; direct: (route: string, body: Record<string, unknown>) => Promise<{ status: number; body: Record<string, unknown> }> } {
   const authUrl = c.authUrl ?? "https://accounts.google.com/o/oauth2/v2/auth";
   const tokenUrl = c.tokenUrl ?? "https://oauth2.googleapis.com/token";
   const revokeUrl = c.revokeUrl ?? "https://oauth2.googleapis.com/revoke";
@@ -140,6 +143,10 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
         : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${githubBox()}${linearBox()}`));
     }
 
+    if (req.method === "GET" && url.pathname === "/oauth/start" && !c.clientId) {
+      // The desktop app starts this page before Google is set up: say what to do instead of sending a broken request.
+      return send(res, 200, page("Google is not set up", `<h1>Google is not set up yet</h1><p>Add your Google Client ID and Client secret in Recast's Connections first, then come back here.</p><p><a href="/">Back</a></p>`));
+    }
     if (req.method === "GET" && url.pathname === "/oauth/start") {
       const state = b64url(randomBytes(24)); const verifier = b64url(randomBytes(48));
       for (const [k, v] of pending) if (now() - v.at > STATE_TTL_MS) pending.delete(k);
@@ -246,5 +253,6 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
     return send(res, 404, page("Not found", "<p>Not found. <a href=\"/\">Home</a></p>"));
   }
 
-  return createServer((req, res) => { handle(req, res).catch(() => { if (!res.headersSent) send(res, 500, page("Error", "<p>Something went wrong. Nothing was saved.</p>")); }); });
+  const server = createServer((req, res) => { handle(req, res).catch(() => { if (!res.headersSent) send(res, 500, page("Error", "<p>Something went wrong. Nothing was saved.</p>")); }); });
+  return { server, direct: ext.direct };
 }

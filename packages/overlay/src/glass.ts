@@ -90,6 +90,20 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link", due: "Due", body: "Text" };
 const ORIGIN: Record<string, string> = { extracted: "from the page", inferred: "Recast's reading", default: "a default", user: "you" };
+const EFFECT_WORDS: Record<string, string> = { send: "It sends something", delete: "It deletes something", publish: "It publishes", financial: "It involves money", "modifies-important": "It changes something important" };
+/** Why a review asks for more than a click, in words (the trust model's reasons are written for logs and tests). */
+export function riskWords(reasons: readonly string[]): string {
+  const out = reasons.flatMap((r) => {
+    if (r.startsWith("relation base risk") || r.startsWith("opens the app")) return [];
+    if (r.startsWith("confidence")) return ["Recast is not sure of part of this reading: check it before you confirm"];
+    if (r === "notifies someone else") return ["Someone else will be notified"];
+    if (r === "cannot be undone") return ["It cannot be undone from Recast"];
+    if (r.startsWith("effect is ")) return r.slice(10).split(", ").map((f) => EFFECT_WORDS[f] ?? r);
+    if (r.includes("UI automation")) return ["The destination is driven through its screen, which can break"];
+    return [r];
+  });
+  return out.length ? `${[...new Set(out)].join(". ")}.` : "Check it before you confirm.";
+}
 const INPUT_HINT: Record<string, string> = { start: "2026-10-23T19:30", end: "2026-10-23T21:00", title: "Dinner with Maya", to: "maya@example.com", due: "2026-10-23" };
 function fmt(field: string, v: unknown): string {
   if (Array.isArray(v)) return v.join(", ");
@@ -112,7 +126,11 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   takePage?: string;
   /** For open-and-prefill destinations: the address the reviewed operation opens. The confirm button is then a real link,
    *  so the browser opens it from the person's own click. Absent, or undefined for an operation: that destination is not offered here. */
-  linkFor?: (op: Operation) => string | undefined }): Glass {
+  linkFor?: (op: Operation) => string | undefined;
+  /** How this host opens a link (the desktop app: the person's default browser). Returns false when it could not. */
+  openLink?: (url: string) => boolean;
+  /** How this host names a value taken from what the person captured (the browser: "from the page"). */
+  capturedLabel?: string }): Glass {
   const reduced = opts.reducedMotion ?? (() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const el = document.createElement("div"); el.className = "rg"; el.dataset["mode"] = "off"; el.hidden = true;
   el.setAttribute("role", "region"); el.setAttribute("aria-label", "Recast");
@@ -313,7 +331,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
 
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
     const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? v.issue?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
-    const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${ORIGIN[f!.origin] ?? f!.origin}</span></dd></div>`).join("");
+    const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${(f!.origin === "extracted" && opts.capturedLabel) || (ORIGIN[f!.origin] ?? f!.origin)}</span></dd></div>`).join("");
     const missing = v.missing.map((x) => {
       const id = `rg-in-${x.field}`;
       return `<div class="rg-missing"><label for="${id}">${FIELD_LABEL[x.field] ?? x.field}</label><p class="rg-why">${esc(x.reason)}</p>${(x.suggestions ?? []).map((s) => `<button type="button" class="rg-chip" data-answer="${x.field}" data-value="${esc(s)}">Use “${esc(s)}”</button>`).join("")}<div class="rg-answer"><input id="${id}" data-field="${x.field}" placeholder="${INPUT_HINT[x.field] ?? ""}" autocomplete="off"><button type="button" class="rg-btn small ghost" data-submit="${x.field}">Set</button></div></div>`;
@@ -351,7 +369,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         actions: `<button type="button" class="rg-btn" data-act="mergeYes">Combine</button><button type="button" class="rg-btn ghost" data-act="mergeNo">Keep apart</button>` };
       case "preview": {
         const op = m.placement?.op;
-        const risk = op ? `<p class="rg-risk">${op.risk.tier === "low" ? "Low risk: adds an entry only you see, and it can be undone." : esc(op.risk.reasons.join("; "))}</p>` : "";
+        const risk = op ? `<p class="rg-risk">${op.risk.tier === "low" ? "Low risk: adds an entry only you see, and it can be undone." : esc(riskWords(op.risk.reasons))}</p>` : "";
         const link = op && d?.opensOnly ? opts.linkFor?.(op) : undefined;
         if (op && d?.opensOnly) {
           // Open and prefill: nothing is written by Recast, so the review says so instead of a risk line.
@@ -429,9 +447,12 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (b instanceof HTMLAnchorElement && b.dataset["act"] === "place") {
       // Opened here, from the person's click, so the result is known: a refused tab is reported, not called "opened".
       e.preventDefault();
-      const w = window.open(b.href, "_blank");
-      if (!w) { blocked = b.getAttribute("href"); update(model); return; }
-      try { w.opener = null; } catch { /* another origin already */ }
+      if (opts.openLink) { if (!opts.openLink(b.href)) { blocked = b.getAttribute("href"); update(model); return; } }
+      else {
+        const w = window.open(b.href, "_blank");
+        if (!w) { blocked = b.getAttribute("href"); update(model); return; }
+        try { w.opener = null; } catch { /* another origin already */ }
+      }
       return emit({ type: "place" });
     }
     if (b.dataset["copy"] !== undefined) {

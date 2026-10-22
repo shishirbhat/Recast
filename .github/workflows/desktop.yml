@@ -1,0 +1,47 @@
+# Builds the Recast desktop app on each system's own runner: .dmg (macOS, Apple silicon and Intel), .exe (Windows
+# installer), .rpm, .deb and AppImage (Linux). Without signing secrets the macOS app is ad-hoc signed (macOS asks the
+# person to confirm the first launch) and the Windows installer is unsigned (SmartScreen asks once).
+name: desktop
+on:
+  workflow_dispatch:
+  push:
+    paths: ["apps/desktop/**", "packages/**", "apps/calendar-link/**", ".github/workflows/desktop.yml"]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: --mac, files: "apps/desktop/release/*.dmg" }
+          - { os: windows-latest, target: --win, files: "apps/desktop/release/*.exe" }
+          - { os: ubuntu-latest, target: --linux, files: "apps/desktop/release/*.rpm\napps/desktop/release/*.deb\napps/desktop/release/*.AppImage" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y rpm
+      - run: pnpm install --frozen-lockfile
+        env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" }
+      - run: pnpm gen
+      - run: pnpm --filter @recast/harness build
+      - run: pnpm --filter @recast/desktop build
+      - name: package
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          extra=""
+          # No Apple certificate: sign ad hoc so the app still opens on Apple silicon (after the person confirms it).
+          if [ "${{ runner.os }}" = "macOS" ] && [ -z "$CSC_LINK" ]; then extra="-c.mac.identity=-"; unset CSC_LINK CSC_KEY_PASSWORD; fi
+          npx electron-builder ${{ matrix.target }} --publish never $extra
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recast-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error

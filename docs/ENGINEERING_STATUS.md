@@ -84,6 +84,8 @@ The previously reported harness failures (two capitalisation assertions in Layer
 ## 2. Implemented but not fully verified
 | Requirement | Implementation | What exists | Missing to verify |
 |---|---|---|---|
+| Desktop app (Electron) | `apps/desktop` | the real app launched on a virtual screen: dark and light, typed pieces → event → Google Calendar (Google stand-in in the main process) → Undo, clipboard capture, a recipe to Calendar and Tasks, inbox across restart, no Node in pages and only https links (6 tests). Linux .rpm/.deb/AppImage packaged and the packaged binary launched here (D36) | **macOS and Windows builds** come from CI and have not been opened by a person; real Google from the app (REAL_TEST_PLAN K); signing |
+| Recipes (multi-destination) | `packages/core/src/recipes.ts`, `packages/interaction/src/recipe-run.ts` | two first-party recipes; per-step outcomes, partial success, unknown never resent, per-step Undo; try-it page, extension through the real local program (Google stand-in), desktop (D35) | **R** with real Google |
 | **Phase two:** any selected text → a movable blob | `packages/core/src/clump.ts` (`pieceOfSelection`), `apps/harness/src/clay.ts`, `apps/extension/src/clay-content.ts` | real mouse selection in real Chromium: blob, drag into an object (note), tap to desk, keyboard lift (try-it page), email → person, date → time, none while off, in fields or with the module open (D34) | **P**: whether people find the blob without being told; touch selection on real phones |
 | Linear issues | `packages/bridges/src/specs.ts` (`linearIssue`), `apps/calendar-link/src/linear.ts` | GraphQL with variables only; errors in a 200 answer fail; Undo deletes; "Tasks: which one?" when GitHub is also connected (D33) | **R**: `docs/REAL_TEST_PLAN.md` I |
 | An error (with notes) → a GitHub issue | `packages/core/src/clump.ts` (error piece, Issue), `packages/bridges/src/specs.ts` (`githubIssue`), `apps/calendar-link/src/github.ts`, extension | everything captured quoted literally; confirm first (watchers notified); Undo closes as not planned; token for one repository checked before saving, 0600; F through the local program and the extension (GitHub stand-in), stand-in issues on the try-it page (D32) | **R**: `docs/REAL_TEST_PLAN.md` H (needs a fine-grained token for one test repository) |
@@ -97,7 +99,10 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Audit-chain claims | `packages/agent-runtime/src/audit.ts` | detects edit, delete, reorder and fork without the signing key | stated in `docs/DECISIONS.md` D7; not externally reviewed |
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
-## Latest full run (2026-10-22, after Linear and phase two)
+## Latest full run (2026-10-22, after recipes and the desktop app)
+`pnpm -r typecheck` passes; `pnpm -r test`: **21 packages, 967 tests, 0 failures** (desktop 6 on Xvfb, interaction 130, core 138, harness 62, extension 38). Before: 944.
+
+## Earlier full run (2026-10-22, after Linear and phase two)
 `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 944 tests, 0 failures** (core 133, bridges 67, calendar-link 27, extension 37, harness 60). Before: 922.
 - Try-it page errors found and fixed: on phones the tab strip ran off screen with no visible way to reach Mail, Docs and Build (now the open tab scrolls into view and a fade marks more tabs); axe flagged every page panel (`aria-allowed-role`: an `article` cannot be a tab panel), now `section`. axe: 0 violations on every tab, light and dark, desktop and phone.
 
