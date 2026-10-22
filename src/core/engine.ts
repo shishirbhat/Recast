@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { openDb, tx } from "./db.ts";
@@ -33,6 +33,52 @@ import { ACTIVE_STATES, RelayError, TASK_STATES } from "./types.ts";
 
 type Row = Record<string, unknown>;
 const OUTPUT_LIMIT = 16_000;
+
+/** One verification command's outcome. exitCode null means it timed out. */
+interface CommandResult {
+  command: string;
+  exitCode: number | null;
+  output: string;
+}
+
+function runSync(command: string, cwd: string, timeoutMs: number): CommandResult {
+  const r = spawnSync(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, env: verificationEnv() });
+  const timedOut = r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
+  return { command, exitCode: timedOut ? null : (r.status ?? null), output: (timedOut ? "[timed out]\n" : "") + (r.stdout ?? "") + (r.stderr ?? "") };
+}
+
+/**
+ * The same as runSync without blocking the process: the server keeps serving collaboration (edits, cursors, presence)
+ * while a task's tests run. On timeout the command's whole process group is killed.
+ */
+export function runAsync(command: string, cwd: string, timeoutMs: number): Promise<CommandResult> {
+  return new Promise((ok) => {
+    const child = spawn(command, { cwd, shell: true, env: verificationEnv(), detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    // Keep a bounded amount; the evidence record keeps OUTPUT_LIMIT of it.
+    const keep = (cur: string, c: Buffer) => (cur.length > OUTPUT_LIMIT * 4 ? cur : cur + c.toString("utf8"));
+    child.stdout!.on("data", (c: Buffer) => (out = keep(out, c)));
+    child.stderr!.on("data", (c: Buffer) => (err = keep(err, c)));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    }, timeoutMs);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      ok({ command, exitCode: 127, output: `${e.message}\n` });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      ok({ command, exitCode: timedOut ? null : code, output: (timedOut ? "[timed out]\n" : "") + out + err });
+    });
+  });
+}
 
 const actorString = (a: Actor) => `${a.kind}:${a.id}`;
 const now = () => new Date().toISOString();
@@ -483,6 +529,19 @@ export class Relay {
    * Relay runs every task's verification plus the integration commands itself, on this exact tree.
    */
   checkIntegration(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: { rebasedOnto?: string } = {}): Integration {
+    const prep = this.prepareIntegration(taskIds, cwd, integrationVerify, opts);
+    return this.recordIntegration(prep, cwd, prep.commands.map((c) => runSync(c, cwd, timeoutMs)));
+  }
+
+  /** checkIntegration for the server: the commands run without blocking it. */
+  async checkIntegrationAsync(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: { rebasedOnto?: string } = {}): Promise<Integration> {
+    const prep = this.prepareIntegration(taskIds, cwd, integrationVerify, opts);
+    const results: CommandResult[] = [];
+    for (const c of prep.commands) results.push(await runAsync(c, cwd, timeoutMs));
+    return this.recordIntegration(prep, cwd, results);
+  }
+
+  private prepareIntegration(taskIds: string[], cwd: string, integrationVerify: string[], opts: { rebasedOnto?: string }) {
     if (!taskIds.length) throw new RelayError("invalid", "An integration needs at least one task");
     const tasks = [...new Set(taskIds)].map((id) => this.requireTask(id));
     const gaps: string[] = [];
@@ -521,12 +580,12 @@ export class Relay {
 
     const tree = workspaceFingerprint(cwd, own);
     const commands = [...new Set([...tasks.flatMap((t) => t.verify), ...integrationVerify])];
-    const results = commands.map((command) => {
-      const r = spawnSync(command, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, env: verificationEnv() });
-      const timedOut = r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
-      const output = (timedOut ? "[timed out]\n" : "") + (r.stdout ?? "") + (r.stderr ?? "");
-      return { command, exitCode: timedOut ? null : (r.status ?? null), output: output.slice(0, OUTPUT_LIMIT) };
-    });
+    return { tasks, gaps, agreed, base, own, tree, commands, rebasedOnto: opts.rebasedOnto };
+  }
+
+  private recordIntegration(prep: ReturnType<Relay["prepareIntegration"]>, cwd: string, ran: CommandResult[]): Integration {
+    const { tasks, gaps, agreed, base, own, tree, commands } = prep;
+    const results = ran.map((r) => ({ ...r, output: r.output.slice(0, OUTPUT_LIMIT) }));
     for (const r of results) if (r.exitCode !== 0) gaps.push(`verification failed: ${r.command} (exit ${r.exitCode ?? "timeout"})`);
     if (!commands.length) gaps.push("no verification commands: an integration needs at least one");
     if (workspaceFingerprint(cwd, own) !== tree) gaps.push("workspace changed while verification ran (commands must not modify tracked or untracked files)");
@@ -547,7 +606,7 @@ export class Relay {
     this.db
       .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), integration.createdAt);
-    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree, ...(opts.rebasedOnto ? { rebasedOnto: opts.rebasedOnto, originalBases: Object.fromEntries(tasks.map((t) => [t.id, t.baseCommit])) } : {}) } });
+    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree, ...(prep.rebasedOnto ? { rebasedOnto: prep.rebasedOnto, originalBases: Object.fromEntries(tasks.map((t) => [t.id, t.baseCommit])) } : {}) } });
     return integration;
   }
 
@@ -633,18 +692,35 @@ export class Relay {
   runVerification(taskId: string, cwd: string, timeoutMs = 300_000): Evidence[] {
     const task = this.requireTask(taskId);
     const tree = workspaceFingerprint(cwd, this.ownFiles(cwd));
-    return task.verify.map((cmd) => {
-      const r = spawnSync(cmd, { cwd, shell: true, encoding: "utf8", timeout: timeoutMs, env: verificationEnv() });
-      const timedOut = r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT";
-      return this.recordEvidence({
+    return this.recordVerification(taskId, cwd, tree, task.verify.map((cmd) => runSync(cmd, cwd, timeoutMs)));
+  }
+
+  /** runVerification for the server: the commands run without blocking it. */
+  async runVerificationAsync(taskId: string, cwd: string, timeoutMs = 300_000): Promise<Evidence[]> {
+    const task = this.requireTask(taskId);
+    const tree = workspaceFingerprint(cwd, this.ownFiles(cwd));
+    const results: CommandResult[] = [];
+    for (const cmd of task.verify) results.push(await runAsync(cmd, cwd, timeoutMs));
+    return this.recordVerification(taskId, cwd, tree, results);
+  }
+
+  /**
+   * Record results against the tree they started on. If the workspace changed while they ran (people kept editing), the
+   * results describe neither tree, so they are recorded as such and can never satisfy the completion gate.
+   */
+  private recordVerification(taskId: string, cwd: string, tree: string, results: CommandResult[]): Evidence[] {
+    const changed = workspaceFingerprint(cwd, this.ownFiles(cwd)) !== tree;
+    return results.map((r) =>
+      this.recordEvidence({
         taskId,
         kind: "command",
-        command: cmd,
-        exitCode: timedOut ? null : (r.status ?? null),
-        output: (timedOut ? "[timed out]\n" : "") + (r.stdout ?? "") + (r.stderr ?? ""),
+        command: r.command,
+        exitCode: r.exitCode,
+        output: (changed ? "[the workspace changed while this ran; run it again to verify the current state]\n" : "") + r.output,
         source: "system",
-        environment: { cwd, tree, node: process.version, platform: process.platform },
-      });
-    });
+        environment: { cwd, tree: changed ? `changed-during-run:${tree}` : tree, node: process.version, platform: process.platform },
+      }),
+    );
   }
+
 }

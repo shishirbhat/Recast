@@ -833,8 +833,10 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       }
       if (method === "POST" && parts[2] === "check") {
         requireMember(req, "edit");
+        // Check what's on disk now: the shared documents are written out first, as for integration checks.
+        docs.flushAll();
         const check = relay.diffCheck(id, root);
-        const verification = relay.runVerification(id, root);
+        const verification = await relay.runVerificationAsync(id, root);
         return json(res, 200, { files: check.files, diffCheck: check.evidence, verification });
       }
       if (method === "POST" && parts[2] === "run") {
@@ -847,7 +849,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       }
       if (method === "POST" && parts[2] === "apply") {
         const m = requireMember(req, "approve");
-        return json(res, 200, runs.apply(id, m));
+        return json(res, 200, await runs.apply(id, m));
       }
     }
     if (parts[0] === "agent" && method === "POST") {
@@ -901,9 +903,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         if (extra.length && !can(m.role, "approve")) throw new HttpError(403, "forbidden", "Only owners can add verification commands");
         const ids = strList(b.tasks, "tasks");
         // Agent tasks are checked in a combined worktree of their changes; human tasks in the shared workspace.
-        if (ids.length && ids.every((id) => runs.hasRuns(id))) return json(res, 200, runs.checkTogether(ids, extra));
+        if (ids.length && ids.every((id) => runs.hasRuns(id))) return json(res, 200, await runs.checkTogether(ids, extra));
         docs.flushAll();
-        return json(res, 200, relay.checkIntegration(ids, root, extra));
+        return json(res, 200, await relay.checkIntegrationAsync(ids, root, extra));
       }
       if (parts[2] === "approve") {
         const m = requireMember(req, "approve");

@@ -28,7 +28,8 @@ async function setup(edits: Record<string, Record<string, [string, string][]>>, 
 }
 
 function finished(server: RelayServer, taskId: string) {
-  return until(() => ["finished", "failed"].includes(server.runs.forTask(taskId).at(-1)?.status ?? ""), 15000, `${taskId} run to end`);
+  // Ended, and Relay's own checks on it (which run asynchronously) are done.
+  return until(() => ["finished", "failed"].includes(server.runs.forTask(taskId).at(-1)?.status ?? "") && !server.runs.forTask(taskId).at(-1)!.checking, 15000, `${taskId} run to end`);
 }
 
 test("simulated agent: works in its own worktree; the shared file is untouched until a person approves", async () => {
@@ -48,7 +49,7 @@ test("simulated agent: works in its own worktree; the shared file is untouched u
     // Relay ran its own checks in the worktree after the run.
     assert.ok(server.relay.evidence("T-ui").some((e) => e.kind === "diff_check" && e.source === "system" && e.exitCode === 0));
     assert.ok(server.relay.evidence("T-ui").some((e) => e.kind === "command" && e.exitCode === 0));
-    const applied = server.runs.apply("T-ui", owner);
+    const applied = await server.runs.apply("T-ui", owner);
     assert.deepEqual(applied.applied, ["src/ui.js"]);
     assert.equal(server.relay.requireTask("T-ui").state, "completed");
     await until(() => readFileSync(join(repo, "src/ui.js"), "utf8").includes("'Welcome, '"), 3000, "applied to disk");
@@ -72,7 +73,7 @@ test("a human edit during the run is flagged as stale input, and both edits surv
     assert.equal(server.runs.forTask("T-ui").at(-1)!.staleInputs[0]!.by, "Kai");
     assert.ok(server.relay.events("T-ui").some((e) => e.type === "task.input_changed"));
     await finished(server, "T-ui");
-    const res = server.runs.apply("T-ui", owner);
+    const res = await server.runs.apply("T-ui", owner);
     assert.deepEqual(res.conflicts, []);
     await until(() => ck.text.toString().includes("'Welcome, '") && ck.text.toString().includes("see you, bye"), 3000, "both edits");
     ck.close();
@@ -90,7 +91,7 @@ test("a conflicting human edit: apply refuses, applies nothing, and leaves the t
     await server.runs.start("T-ui", owner);
     await finished(server, "T-ui");
     server.docs.applyText("src/ui.js", server.docs.open("src/ui.js").text.toString().replace("'Hello '", "'Hi there '"), "restore");
-    const res = server.runs.apply("T-ui", owner);
+    const res = await server.runs.apply("T-ui", owner);
     assert.equal(res.conflicts.length, 1);
     assert.match(res.conflicts[0]!.text, /<<<<<<< shared/);
     assert.deepEqual(res.applied, []);
@@ -119,8 +120,8 @@ test("coupled agent tasks: approving one alone is refused; the combined gate tes
     await server.runs.start(["T-api", "T-ui"], owner);
     await finished(server, "T-api");
     await finished(server, "T-ui");
-    assert.throws(() => server.runs.apply("T-ui", owner), /shares a contract with unfinished task\(s\) T-api/);
-    const integ = server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
+    await assert.rejects(() => server.runs.apply("T-ui", owner), /shares a contract with unfinished task\(s\) T-api/);
+    const integ = await server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
     assert.equal(integ.status, "passed", integ.gaps.join("\n"));
     const done = server.runs.approveTogether(integ.id, owner);
     assert.deepEqual(done.applied.sort(), ["src/server.js", "src/ui.js"]);
@@ -196,7 +197,7 @@ test("recovery: after the combined gate blocks, rerunning only the broken task i
     await server.runs.start(["T-api", "T-ui"], owner);
     await finished(server, "T-api");
     await finished(server, "T-ui");
-    const blocked = server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
+    const blocked = await server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
     assert.equal(blocked.status, "blocked");
 
     // Only T-ui reruns, from a newer snapshot; T-api's finished work is kept and rebased onto it.
@@ -207,9 +208,9 @@ test("recovery: after the combined gate blocks, rerunning only the broken task i
     // snapshot. Without a content change the snapshot commit is only "newer" if the clock crossed a second.
     writeFileSync(join(repo, "NOTES.md"), "Rerun T-ui after the gate found the rename.\n");
     await server.runs.start("T-ui", owner);
-    await until(() => server.runs.forTask("T-ui").length === 2 && server.runs.forTask("T-ui").at(-1)!.status === "finished", 15000, "rerun");
+    await until(() => server.runs.forTask("T-ui").length === 2 && server.runs.forTask("T-ui").at(-1)!.status === "finished" && !server.runs.forTask("T-ui").at(-1)!.checking, 15000, "rerun");
     assert.notEqual(server.runs.forTask("T-ui").at(-1)!.snapshot, server.runs.forTask("T-api").at(-1)!.snapshot);
-    const passed = server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
+    const passed = await server.runs.checkTogether(["T-ui", "T-api"], [INTEGRATION]);
     assert.equal(passed.status, "passed", passed.gaps.join("\n"));
     assert.ok(r.events().some((e) => e.type === "integration.checked" && (e.data as { rebasedOnto?: string }).rebasedOnto), "the rebase is recorded");
 

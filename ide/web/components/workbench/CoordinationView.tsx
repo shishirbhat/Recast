@@ -144,9 +144,9 @@ export function CoordinationView({ tick, members, role, onOpenTask, onOpenFile, 
     setBusy(`int:${t.id}`);
     try {
       if (t.run && t.run.status === "finished") {
-        const r = await api<{ applied: string[]; conflicts: { path: string }[] }>("POST", `/tasks/${encodeURIComponent(t.id)}/apply`);
+        const r = await api<{ applied: string[]; conflicts: { path: string }[]; reverified: boolean }>("POST", `/tasks/${encodeURIComponent(t.id)}/apply`);
         if (r.conflicts.length) notify(`Not applied: ${r.conflicts.map((c) => c.path).join(", ")} changed in the shared project in a way that conflicts. Nothing was merged; review the diff and rerun the agent or resolve by hand.`, "danger");
-        else notify(`Applied ${r.applied.length} ${r.applied.length === 1 ? "file" : "files"} from ${t.id}. The task is completed.`);
+        else notify(`Applied ${r.applied.length} ${r.applied.length === 1 ? "file" : "files"} from ${t.id}${r.reverified ? ", after checking it against the project as it is now" : ""}. The task is completed.`);
       } else {
         await api("POST", `/tasks/${encodeURIComponent(t.id)}/transition`, { to: "completed" });
         notify(`${t.id} is completed.`);

@@ -47,6 +47,8 @@ export interface AgentRun {
   changedFiles: string[];
   staleInputs: { path: string; by: string; at: string }[];
   activity: Activity[];
+  /** Relay is running its own checks (diff check, verification) on the finished run; it can't be applied yet. */
+  checking?: boolean;
 }
 
 function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
@@ -66,6 +68,11 @@ export function snapshotCommit(root: string): string {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** The tree a commit records: two commits with the same tree hold exactly the same files. */
+function treeOf(root: string, commit: string): string {
+  return git(root, ["rev-parse", `${commit}^{tree}`]).trim();
 }
 
 /** Content of `path` at `commit`, or null if it does not exist there. */
@@ -89,6 +96,8 @@ export class AgentRuns {
   private context: ((taskId: string) => string) | null = null;
   /** Set on shutdown: output and exits that arrive afterwards must not touch the (closed) database. */
   private closed = false;
+  /** Runs being applied right now: a second apply of the same run is refused instead of racing the first. */
+  private applying = new Set<string>();
 
   constructor(relay: Relay, root: string, dbPath: string, adapter: ProviderAdapter | string) {
     this.relay = relay;
@@ -195,7 +204,7 @@ export class AgentRuns {
       if (run.status === "cancelled") return;
       run.status = code === 0 ? "finished" : "failed";
       if (code !== 0 && stderr) this.push(run, { kind: "error", detail: stderr.slice(-500) });
-      this.afterRun(run);
+      void this.afterRun(run);
     });
   }
 
@@ -215,18 +224,25 @@ export class AgentRuns {
     if (a.kind !== "text") this.relay.record(`agent.${a.kind}`, `agent:${this.adapter.id}`, { runId: run.id, ...a }, run.taskId);
   }
 
-  /** Relay's own checks on what the agent produced, in its worktree. Never the agent's word. */
-  private afterRun(run: AgentRun): void {
+  /**
+   * Relay's own checks on what the agent produced, in its worktree. Never the agent's word. The verification commands
+   * run without blocking the server, so people keep editing together while an agent's tests run.
+   */
+  private async afterRun(run: AgentRun): Promise<void> {
+    run.checking = true;
     try {
       run.changedFiles = changedFiles(run.worktree, run.snapshot);
       const task = this.relay.requireTask(run.taskId);
       if (task.state === "review_required") {
         this.relay.diffCheck(run.taskId, run.worktree);
-        this.relay.runVerification(run.taskId, run.worktree);
+        await this.relay.runVerificationAsync(run.taskId, run.worktree);
       }
+      if (this.closed) return;
       this.relay.record("agent.run_ended", "system:runner", { runId: run.id, status: run.status, exitCode: run.exitCode, changedFiles: run.changedFiles, costUsd: run.costUsd, taskState: task.state }, run.taskId);
     } catch (err) {
-      this.push(run, { kind: "error", detail: `post-run checks failed: ${(err as Error).message}` });
+      if (!this.closed) this.push(run, { kind: "error", detail: `post-run checks failed: ${(err as Error).message}` });
+    } finally {
+      run.checking = false;
     }
   }
 
@@ -288,19 +304,73 @@ export class AgentRuns {
 
   /**
    * Approve one agent task and bring its changes into the shared project.
-   * Order: dry-run merge (refuse on conflict) → engine completion gate in the agent's worktree → apply.
+   * Order: refuse if a file it changed was renamed or deleted meanwhile → dry-run merge (refuse on conflict) → engine
+   * gate → apply. If the shared project is exactly as the agent's snapshot, the gate is judged in the agent's worktree.
+   * If people changed anything since (in any file), the agent's verification no longer describes the result, so Relay
+   * rebuilds the change on the project as it is now, in a temporary worktree, and runs the engine's integration check
+   * there (every verify command, recorded); the task completes only if that exact tree passed.
    */
-  apply(taskId: string, by: Member): { applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[] } {
+  async apply(taskId: string, by: Member): Promise<{ applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[]; reverified: boolean; integrationId: string | null }> {
     const run = this.latest(taskId);
     if (run.status !== "finished") throw new RelayError("illegal_transition", `The agent run on ${taskId} is ${run.status}`);
-    const files = changedFiles(run.worktree, run.snapshot);
-    const dry = this.dryRun(run.worktree, run.snapshot, files);
-    if (dry.length) return { applied: [], conflicts: dry, skipped: [] };
-    this.relay.transition(taskId, "completed", actorFor(by), { expectedFrom: "review_required", cwd: run.worktree });
-    const result = this.mergeInto(run.worktree, run.snapshot, files, `${run.provider}:${run.taskId}`);
-    run.status = "applied";
-    this.relay.record("agent.changes_applied", actorFor(by), { runId: run.id, ...result, conflicts: result.conflicts.map((c) => c.path) }, taskId);
-    return result;
+    if (run.checking) throw new RelayError("illegal_transition", `Relay is still checking the agent's work on ${taskId}; apply once its verification has run`);
+    if (this.applying.has(run.id)) throw new RelayError("illegal_transition", `${taskId} is already being applied`);
+    this.applying.add(run.id);
+    try {
+      const files = changedFiles(run.worktree, run.snapshot);
+      const gone = files.filter((f) => showAt(this.root, run.snapshot, f) !== null && !existsSync(join(this.root, resolveProjectPath(this.root, f))));
+      if (gone.length) throw new RelayError("stale_state", `${gone.join(", ")} ${gone.length === 1 ? "was" : "were"} renamed or deleted in the project while the agent worked; nothing was applied. Rerun the task on the current files.`);
+      const dry = this.dryRun(run.worktree, run.snapshot, files);
+      if (dry.length) return { applied: [], conflicts: dry, skipped: [], reverified: false, integrationId: null };
+      this.docs!.flushAll();
+      const now = snapshotCommit(this.root);
+      let integrationId: string | null = null;
+      // Nothing to re-run without verify commands; the gate in the worktree (diff check) is all there is.
+      if (!this.relay.requireTask(taskId).verify.length || treeOf(this.root, now) === treeOf(this.root, run.snapshot)) {
+        this.relay.transition(taskId, "completed", actorFor(by), { expectedFrom: "review_required", cwd: run.worktree });
+      } else {
+        integrationId = await this.verifyOnCurrent(run, taskId, files, now, by);
+      }
+      const result = this.mergeInto(run.worktree, run.snapshot, files, `${run.provider}:${run.taskId}`);
+      run.status = "applied";
+      this.relay.record("agent.changes_applied", actorFor(by), { runId: run.id, ...result, conflicts: result.conflicts.map((c) => c.path), integrationId }, taskId);
+      return { ...result, reverified: integrationId !== null, integrationId };
+    } finally {
+      this.applying.delete(run.id);
+    }
+  }
+
+  /**
+   * The project changed since the agent's snapshot: build what applying would produce (the project at `base` with the
+   * agent's change merged 3-way into it) in a temporary worktree, run the integration check there, and complete the task
+   * by approving that check. Refuses if the check fails or the project moved again while it ran. Returns the
+   * integration id.
+   */
+  private async verifyOnCurrent(run: AgentRun, taskId: string, files: string[], base: string, by: Member): Promise<string> {
+    const dir = join(this.root, ".relay", "worktrees", `verify-${taskId}-${randomUUID().slice(0, 8)}`);
+    git(this.root, ["worktree", "add", "--detach", dir, base]);
+    try {
+      for (const f of files) {
+        const path = resolveProjectPath(this.root, f);
+        if (!existsSync(join(run.worktree, path))) continue;
+        const m = merge3(showAt(this.root, run.snapshot, path) ?? "", showAt(this.root, base, path) ?? "", readFileSync(join(run.worktree, path), "utf8"));
+        mkdirSync(dirname(join(dir, path)), { recursive: true });
+        writeFileSync(join(dir, path), m.text);
+      }
+      const integ = await this.relay.checkIntegrationAsync([taskId], dir, [], undefined, { rebasedOnto: base });
+      if (integ.status !== "passed") throw new RelayError("unverified", `The project changed since the agent's snapshot, and its change merged with the project as it is now didn't pass: ${integ.gaps.join("; ")}. Nothing was applied.`);
+      // People may have kept editing while the check ran: apply only what was checked.
+      this.docs!.flushAll();
+      if (treeOf(this.root, snapshotCommit(this.root)) !== treeOf(this.root, base)) throw new RelayError("stale_state", "The project changed again while Relay checked the merged result; nothing was applied. Apply again to check the current state.");
+      this.relay.approveIntegration(integ.id, actorFor(by), dir);
+      return integ.id;
+    } finally {
+      try {
+        git(this.root, ["worktree", "remove", "--force", dir]);
+      } catch {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
   }
 
   private dryRun(worktree: string, snapshot: string, files: string[]): { path: string; text: string }[] {
@@ -319,7 +389,7 @@ export class AgentRuns {
    * Check coupled agent tasks together: build one worktree from their shared snapshot with every task's
    * changes, then run the engine's integration gate there.
    */
-  checkTogether(taskIds: string[], verify: string[]): Integration {
+  async checkTogether(taskIds: string[], verify: string[]): Promise<Integration> {
     const runs = taskIds.map((id) => this.latest(id));
     // Runs started together share a snapshot. After one task is rerun (e.g. to fix a mismatch the gate found), its
     // partners' work is rebased 3-way onto the newest snapshot instead of being thrown away; a real conflict refuses.
@@ -343,7 +413,7 @@ export class AgentRuns {
         writeFileSync(join(dir, u), readFileSync(join(r.worktree, u)));
       }
     }
-    const integ = this.relay.checkIntegration(taskIds, dir, verify, undefined, rebased ? { rebasedOnto: snapshot } : {});
+    const integ = await this.relay.checkIntegrationAsync(taskIds, dir, verify, undefined, rebased ? { rebasedOnto: snapshot } : {});
     this.combined.set(integ.id, dir);
     return integ;
   }

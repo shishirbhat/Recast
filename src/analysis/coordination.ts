@@ -105,6 +105,7 @@ export function statusOf(task: Task, run: AgentRun | null, rec: Pick<ChangeRecor
     case "blocked":
       return { status: "blocked", why: rec?.blockers[0] ?? "Blocked; the task shows why" };
     case "review_required": {
+      if (run?.checking) return { status: "checking", why: "The agent finished; Relay is running its verification" };
       const tested = stage("tested");
       const contracts = stage("contracts");
       if (tested?.state === "failed") return { status: "verification_failed", why: tested.detail ?? "Verification failed" };

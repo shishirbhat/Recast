@@ -65,7 +65,7 @@ test("a verified agent change with no partners is ready: the completion gate is 
     server.relay.createTask({ id: "T-readme", objective: "Describe the shop", scope: ["README.md"], verify: ["node --test"] }, HUMAN);
     server.relay.transition("T-readme", "queued", HUMAN);
     await server.runs.start("T-readme", server.members.invite("Olu", "owner").member);
-    await until(() => server.runs.forTask("T-readme").at(-1)?.status === "finished", 30_000, "the simulated run to finish");
+    await until(() => server.runs.forTask("T-readme").at(-1)?.status === "finished" && !server.runs.forTask("T-readme").at(-1)!.checking, 30_000, "the simulated run to finish and Relay's checks to complete");
     const ada = await joinAs(server, "Ada", "owner");
     const t = (await api(server, ada.cookie, "GET", "/api/coordination")).body.tasks.find((x: { id: string }) => x.id === "T-readme");
     assert.deepEqual(t.blockers, [], "the shared workspace's state doesn't block work that lives in the worktree");

@@ -101,7 +101,7 @@ Consequences:
 | `POST /api/folders` `{path}` | edit | New folder. Event `folder.created` |
 | WebSocket `/collab/file:<path>` close **4410** | — | The file was renamed or deleted (or never existed and isn't loaded). Clients stop reconnecting: reconnecting would send the stale copy back and recreate the file |
 | `GET /api/capabilities` | read | terminal policy, agent provider and its declared capabilities, extension host status |
-| `POST /api/tasks` · `/tasks/:id/transition` · `/check` · `/run` · `/cancel-run` · `/apply` | edit (consequential transitions and apply: approve) | task lifecycle through the engine's state machine and gates |
+| `POST /api/tasks` · `/tasks/:id/transition` · `/check` · `/run` · `/cancel-run` · `/apply` | edit (consequential transitions and apply: approve) | task lifecycle through the engine's state machine and gates. Verification runs without blocking the server. `/apply` re-checks the agent's change merged into the project as it is now when the project changed since the agent's snapshot, and refuses while Relay is still checking, during another apply, or when a changed file was renamed or deleted |
 | `GET /api/tasks/:id` · `/why` · `/change` | read | task, evidence, events; completion gaps; the change record (six stages) |
 | `POST /api/agent` | edit | agent composer: a prompt becomes a scoped task (owners run it, editors propose) |
 | `POST /api/runs` | edit | start agents on several tasks from one snapshot |
