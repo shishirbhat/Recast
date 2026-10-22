@@ -322,7 +322,9 @@ export class FileSync {
   private async externalChange(): Promise<void> {
     this.held = true;
     try {
+      this.choices.log(`${this.path}: rewritten on disk by another program; asking`);
       const choice = await this.choices.externalChange(this.path);
+      this.choices.log(`${this.path}: outside rewrite → ${choice}`);
       if (choice === "share") {
         if (this.me.role === "viewer") throw new Error("Viewers can't change shared files");
         const r = replacement(this.viewText.toString(), this.document.getText());

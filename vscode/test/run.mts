@@ -34,6 +34,7 @@ const FILES = {
   "src/u3.js": "// three\n",
   "src/u4.js": "// four\n",
   "src/u5.js": "aaa bbb\n",
+  "src/gen.js": "// generated\n",
 };
 const STATIC = resolve(root, "../ide/web/out");
 const SHOTS = resolve(root, "../docs/evidence/vscode-extension-2026-10-22");

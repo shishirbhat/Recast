@@ -527,10 +527,13 @@ test("an open shared file rewritten on disk by another program: shared only if c
   writeFileSync(join(CHECKOUT, "src/interop.js"), "// rewritten by a generator\n");
   await until(() => ed.document.getText() === before, 8000, `the shared text back in the editor (editor: ${JSON.stringify(ed.document.getText())})`);
   assert.equal(await shared("src/interop.js"), before, "Relay unchanged");
-  await ed.document.save();
+  // (The editor now holds the shared text and the disk the other program's: saving would hit VS Code's own "file is
+  // newer on disk" conflict, which is VS Code's protection and left to the person. The next case uses a fresh file.)
   await setting("externalChanges", "share");
-  writeFileSync(join(CHECKOUT, "src/interop.js"), "// rewritten again, and shared\n");
-  await untilShared("src/interop.js", "// rewritten again, and shared\n");
+  const gen = await openShared("src/gen.js");
+  await gen.document.save();
+  writeFileSync(join(CHECKOUT, "src/gen.js"), "// rewritten by a generator, and shared\n");
+  await untilShared("src/gen.js", "// rewritten by a generator, and shared\n");
   await setting("externalChanges", undefined);
 });
 

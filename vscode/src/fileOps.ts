@@ -490,10 +490,13 @@ export class FileMirror implements vscode.Disposable {
     const missing: string[] = [];
     const differ: string[] = [];
     for (const [p, fp] of Object.entries(fingerprints)) {
+      // The checkout is what's on disk: a file only open in an editor (deleted underneath it) is still missing here.
+      if ((await this.exists(p)) === null) {
+        missing.push(p);
+        continue;
+      }
       const local = await this.readLocal(p);
-      if (local === null) {
-        if ((await this.exists(p)) === null) missing.push(p);
-      } else if (fingerprint(local) !== fp) differ.push(p);
+      if (local !== null && fingerprint(local) !== fp) differ.push(p);
     }
     return { missing, differ };
   }
