@@ -99,6 +99,19 @@ test("a person's edit since the agent's verification: the result as it would be 
     assert.equal(checkedEv.data.status, "blocked");
     const integ = server.relay.getIntegration(checkedEv.data.integrationId as string)!;
     assert.match(integ.results[0]!.output, /got Welcome, Ada L\./, "the check ran on the merged, current project");
+    // The row stops calling it ready while the project is as the check judged it.
+    const owner2 = await joinAs(server, "Ola", "owner");
+    const row = async () => (await api(server, owner2.cookie, "GET", "/api/coordination")).body.tasks.find((t: { id: string }) => t.id === "T-ui");
+    server.docs.flushAll();
+    const after = await row();
+    assert.notEqual(after.status, "ready", JSON.stringify(after));
+    assert.ok(after.blockers.some((b: string) => /merged with the project as it is now, it didn't pass/.test(b)), JSON.stringify(after.blockers));
+    // Kai undoes the breaking edit: the project moved, so Apply is offered again (and would check again).
+    const s2 = ck.text.toString();
+    ck.text.delete(s2.indexOf(" L."), 3);
+    await until(() => !server.docs.open("src/server.js").text.toString().includes("Ada L."), 3000, "Kai's undo");
+    server.docs.flushAll();
+    assert.equal((await row()).status, "ready");
     const leftovers = git(repo, "worktree", "list").split("\n").filter((l) => l.includes("verify-T-ui-"));
     assert.deepEqual(leftovers, [], "the temporary worktree is removed");
   } finally {

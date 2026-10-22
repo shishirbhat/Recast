@@ -96,7 +96,7 @@ const ago = (iso: string) => {
 /** Lanes group statuses by what a person does next. */
 const LANES: { id: string; title: string; hint: string; statuses: CoordStatus[] }[] = [
   { id: "need", title: "Needs you", hint: "Decisions, failures and checks that are waiting on a person", statuses: ["verification_failed", "blocked", "stopped", "failed", "verification_required", "review", "proposed"] },
-  { id: "ready", title: "Ready to integrate", hint: "Verified on the current workspace with nothing blocking", statuses: ["ready"] },
+  { id: "ready", title: "Ready to integrate", hint: "Verified, with nothing blocking; agent work is re-checked against the project when applied", statuses: ["ready"] },
   { id: "moving", title: "Running", hint: "Agents and people working now", statuses: ["running", "checking"] },
   { id: "later", title: "Up next", hint: "Queued, or waiting on other tasks", statuses: ["queued", "waiting"] },
   { id: "done", title: "Done", hint: "Completed tasks", statuses: ["done"] },

@@ -162,6 +162,11 @@ export function changeRecord(relay: Relay, root: string, dbPath: string, taskId:
     else if (!lastInteg) blockers.push(`check together with ${partners.map((p) => p.id).join(", ")} (relay integrate check)`);
     else if (lastInteg.status !== "passed") blockers.push(...lastInteg.gaps);
     else if (!integFresh) blockers.push(`the changes moved on since integration ${lastInteg.id.slice(0, 8)} passed; check again`);
+    // Apply re-checks agent work on the project as it is now when the project has moved since the agent's snapshot.
+    // If that check failed and the project is still in the state it judged, the failure stands.
+    const merged = pending ? events.filter((e) => e.type === "agent.merged_check" && (e.data as { runId?: string }).runId === pending.id).at(-1) : undefined;
+    const md = merged?.data as { status?: string; gaps?: string[]; projectTree?: string } | undefined;
+    if (md && md.status !== "passed" && md.projectTree === tree) blockers.push(`merged with the project as it is now, it didn't pass: ${(md.gaps ?? []).join("; ")}`);
   }
   for (const f of files) if (!f.inScope) blockers.push(`${f.path} is outside the task's scope`);
   for (const c of opts.impact?.consumers ?? []) for (const b of c.breaks) if (inScope(task.scope, c.file)) blockers.push(`${c.file}:${b.line} ${b.reason}`);

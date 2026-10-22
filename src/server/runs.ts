@@ -10,7 +10,7 @@ import type { Relay } from "../core/engine.ts";
 import { inScope } from "../core/conflicts.ts";
 import { RelayError } from "../core/types.ts";
 import type { Integration } from "../core/types.ts";
-import { changedFiles } from "../git.ts";
+import { changedFiles, relayOwnFiles, workspaceFingerprint } from "../git.ts";
 import { claudeCode } from "../providers/claude-code.ts";
 import type { ProviderAdapter } from "../providers/types.ts";
 import type { Member } from "./auth.ts";
@@ -358,6 +358,8 @@ export class AgentRuns {
         writeFileSync(join(dir, path), m.text);
       }
       const integ = await this.relay.checkIntegrationAsync([taskId], dir, [], undefined, { rebasedOnto: base });
+      // Which project state this judged, so the task's row can show a failure for as long as the project stays so.
+      this.relay.record("agent.merged_check", "system:runner", { runId: run.id, integrationId: integ.id, status: integ.status, gaps: integ.gaps, projectTree: workspaceFingerprint(this.root, relayOwnFiles(this.root, this.dbPath)) }, taskId);
       if (integ.status !== "passed") throw new RelayError("unverified", `The project changed since the agent's snapshot, and its change merged with the project as it is now didn't pass: ${integ.gaps.join("; ")}. Nothing was applied.`);
       // People may have kept editing while the check ran: apply only what was checked.
       this.docs!.flushAll();

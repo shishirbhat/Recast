@@ -110,7 +110,10 @@ export function statusOf(task: Task, run: AgentRun | null, rec: Pick<ChangeRecor
       const contracts = stage("contracts");
       if (tested?.state === "failed") return { status: "verification_failed", why: tested.detail ?? "Verification failed" };
       if (contracts?.state === "failed") return { status: "verification_failed", why: contracts.detail ?? "Contract check failed" };
-      if (rec?.safeToIntegrate) return { status: "ready", why: "Verified on the current workspace; nothing blocks integration" };
+      if (rec?.safeToIntegrate)
+        return run && run.status === "finished"
+          ? { status: "ready", why: "Verified in the agent's worktree; nothing blocks integration. If the project changed since, Apply checks the merged result first" }
+          : { status: "ready", why: "Verified on the current workspace; nothing blocks integration" };
       if (tested && ["missing", "stale"].includes(tested.state)) return { status: "verification_required", why: tested.detail ?? "Verification hasn't run on the current changes" };
       if (contracts && ["missing", "stale"].includes(contracts.state)) return { status: "verification_required", why: contracts.detail ?? "Contract partners haven't been checked together" };
       return { status: "review", why: rec?.blockers[0] ?? "Needs a person's review" };
