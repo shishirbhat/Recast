@@ -9,7 +9,9 @@ files: ["dist/**", "package.json", "!**/*.map"]
 asar: true
 # The keyboard hook (uiohook-napi) ships prebuilt for every system and uses Node's stable API: use those, never recompile.
 npmRebuild: false
-asarUnpack: ["node_modules/uiohook-napi/**"]
+# Native and worker-thread code (the keyboard hook; OCR's engine, model and the small libraries its worker requires)
+# must sit outside the archive, where a worker thread can open it. Recast's own code stays bundled in dist/.
+asarUnpack: ["node_modules/**"]
 # No auto-update: the app never fetches or installs anything by itself.
 publish: null
 electronLanguages: [en-US, en-GB]

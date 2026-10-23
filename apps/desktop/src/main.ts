@@ -16,7 +16,9 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import path from "node:path";
 import { createLink } from "../../calendar-link/src/server.js";
-import { canGrab, grabSelection } from "./grab.js";
+import { canGrab, frontSource, grabSelection } from "./grab.js";
+import { capture, read, screenAccess, stopReading } from "./screen.js";
+import { findSpots } from "./spots.js";
 import { createHook, TRIGGER_LABEL } from "./hook.js";
 
 type Theme = "system" | "dark" | "light";
@@ -97,8 +99,11 @@ function createLibrary() {
   void library.loadFile(page("library.html"));
   library.once("ready-to-show", () => {
     if (!test || process.env["RECAST_SHOW"] !== "0") library?.show();
-    if (smoke) setTimeout(() => {
-      const report = `RECAST_SMOKE ${JSON.stringify({ visible: !!library?.isVisible(), overlay: !!overlay && !overlay.isDestroyed(), hook: hook.started, hookProblem: hook.problem, tray: !!tray, link: !serverNote })}`;
+    if (smoke) setTimeout(async () => {
+      // The highlights' reader, run once on this screen from the installed app (its engine and English model must load).
+      let ocr = "no-image";
+      try { const shot = await capture(screen.getPrimaryDisplay()); if (shot) ocr = `ok:${(await read(shot)).length}`; } catch (e) { ocr = `error:${e instanceof Error ? e.message : String(e)}`; }
+      const report = `RECAST_SMOKE ${JSON.stringify({ visible: !!library?.isVisible(), overlay: !!overlay && !overlay.isDestroyed(), hook: hook.started, ocr, hookProblem: hook.problem, tray: !!tray, link: !serverNote })}`;
       console.log(report);
       // Windows gives a windowed app no console, so the report can also go to a file the check names.
       if (process.env["RECAST_SMOKE_OUT"]) writeFileSync(process.env["RECAST_SMOKE_OUT"], report + "\n");
@@ -120,6 +125,7 @@ function toggleLibrary() { if (library?.isVisible() && library.isFocused()) libr
 // blobs, the wheel): on a Mac and Windows by ignoring the mouse everywhere else (and being told when the pointer is over
 // a blob); on Linux by shaping the window to exactly those rectangles.
 let interactive = false;
+let ownRects: Rectangle[] = [];   // where Recast itself draws (blobs, the wheel), in overlay coordinates
 function createOverlay() {
   overlay = new BrowserWindow({
     show: false, frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
@@ -136,13 +142,13 @@ function createOverlay() {
 }
 function setInteractive(next: boolean, rects: Rectangle[]) {
   if (!overlay || overlay.isDestroyed()) return;
+  const was = interactive; interactive = next;   // the pointer is on Recast: its clicks are Recast's, not the app's
   if (process.platform === "linux") {
     // A shaped window: only Recast's own rectangles take the mouse; everything else goes to the app underneath.
     overlay.setShape(rects.length ? rects : [{ x: 0, y: 0, width: 1, height: 1 }]);
     return;
   }
-  if (next === interactive) return;
-  interactive = next;
+  if (next === was) return;
   overlay.setIgnoreMouseEvents(!next, { forward: true });
 }
 /** Covers the display the pointer is on (Recast comes up where the person is looking). */
@@ -154,14 +160,47 @@ function placeOverlay() {
 }
 const toOverlay = (p: { x: number; y: number }) => { const b = overlay!.getBounds(); return { x: p.x - b.x, y: p.y - b.y }; };
 
-function turnOn(grab = true) {
+async function turnOn(grab = true) {
   if (!overlay || overlay.isDestroyed()) createOverlay();
-  if (!on) { on = true; placeOverlay(); overlay!.showInactive(); overlay!.webContents.send("recast:on", true); }
+  if (!on) {
+    on = true; placeOverlay();
+    // The screen as it is, read before Recast draws anything on it.
+    const shot = await capture(screen.getDisplayNearestPoint(screen.getCursorScreenPoint())).catch(() => null);
+    if (!on) return;
+    overlay!.showInactive(); overlay!.moveTop(); overlay!.webContents.send("recast:on", true);
+    void spot(shot);
+  }
   if (grab) void grabAt(screen.getCursorScreenPoint(), true);
 }
+
+// ---- highlights: what on the screen a person is likely to pick up --------------------------------------------------------
+let scanSeq = 0, rescanTimer: NodeJS.Timeout | null = null, spotsNote = "";
+/** Reads the shot and sends the overlay the spots to highlight; anything under Recast's own blobs or wheel is left out. */
+async function spot(shot: Awaited<ReturnType<typeof capture>>) {
+  const mine = ++scanSeq;
+  if (!shot) { spotsNote = screenAccess() === "granted" ? "Recast could not see the screen" : "Allow Screen Recording to see highlights"; overlay?.webContents.send("recast:spots", { spots: [], note: spotsNote }); broadcastSettings(); return; }
+  try {
+    if (test && process.env["RECAST_SHOT_OUT"]) writeFileSync(process.env["RECAST_SHOT_OUT"], shot.image.toPNG());
+    const [lines, source] = await Promise.all([read(shot), frontSource().catch(() => ({}))]);
+    if (test) (globalThis as unknown as { __recastLines: unknown }).__recastLines = lines.map((l) => l.words.map((w) => w.text).join(" "));
+    if (mine !== scanSeq || !on) return;
+    const overlaps = (r: { x: number; y: number; width: number; height: number }) => ownRects.some((o) => r.x < o.x + o.width && o.x < r.x + r.width && r.y < o.y + o.height && o.y < r.y + r.height);
+    const spots = findSpots(lines, { now: new Date().toISOString(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }).filter((x) => !overlaps(x)).slice(0, 60);
+    spotsNote = "";
+    overlay?.webContents.send("recast:spots", { spots, source });
+  } catch (e) { spotsNote = `Highlights are not available: ${e instanceof Error ? e.message : String(e)}`; overlay?.webContents.send("recast:spots", { spots: [], note: spotsNote }); }
+}
+/** The app underneath changed (a scroll, a click): highlights go at once and come back for what is there now. */
+function rescanSoon() {
+  if (!on) return;
+  ++scanSeq; overlay?.webContents.send("recast:spots", { spots: [], scanning: true });
+  if (rescanTimer) clearTimeout(rescanTimer);
+  rescanTimer = setTimeout(async () => { rescanTimer = null; if (!on) return; const shot = await capture(screen.getDisplayNearestPoint(screen.getCursorScreenPoint())).catch(() => null); if (on) void spot(shot); }, 700);
+}
+
 function turnOff() {
   if (!on) return;
-  on = false; setInteractive(false, []);
+  on = false; ++scanSeq; setInteractive(false, []);
   overlay?.webContents.send("recast:on", false);
   overlay?.hide();
 }
@@ -178,7 +217,8 @@ async function grabAt(point: { x: number; y: number }, fromTrigger: boolean) {
       if (process.platform === "linux" && r.grabbed.text === lastGrab) return { ok: false as const, reason: "empty" as const, message: "Select some text first" };
       lastGrab = r.grabbed.text;
       overlay.webContents.send("recast:capture", { ...r.grabbed, from: "selection", at: toOverlay(point) });
-    } else if (fromTrigger) overlay.webContents.send("recast:grab-problem", { reason: r.reason, message: r.message, at: toOverlay(point) });
+    } else if (fromTrigger && r.reason !== "empty") overlay.webContents.send("recast:grab-problem", { reason: r.reason, message: r.message, at: toOverlay(point) });
+    // Nothing selected when Recast turned on is fine: the highlights and a selection are both ways to start.
     if (!r.ok && r.reason === "permission") showLibrary();   // the library explains the permission
     return r;
   } finally { grabbing = false; }
@@ -186,9 +226,10 @@ async function grabAt(point: { x: number; y: number }, fromTrigger: boolean) {
 
 // ---- the trigger -----------------------------------------------------------------------------------------------------
 const hook = createHook({
-  onTrigger: (next) => (next === "on" ? turnOn(true) : turnOff()),
+  onTrigger: (next) => (next === "on" ? void turnOn(true) : turnOff()),
   onEscape: () => overlay?.webContents.send("recast:escape"),
   onSelectionEnd: () => { if (!interactive) void grabAt(screen.getCursorScreenPoint(), false); },
+  onScreenChanged: () => { if (!interactive) rescanSoon(); },
 }, () => on);
 /** Starts the keyboard listener once it may (a Mac asks for Accessibility first); checks again until it can. */
 let hookTimer: NodeJS.Timeout | null = null;
@@ -198,7 +239,8 @@ function startHook() {
 }
 if (test) Object.assign(globalThis as object, {
   __recastKey: (name: string, type: "keydown" | "keyup") => hook.feedKey(name, type),
-  __recastGrab: () => (on ? grabAt(screen.getCursorScreenPoint(), true) : (turnOn(true), null)),
+  __recastGrab: () => (on ? grabAt(screen.getCursorScreenPoint(), true) : (void turnOn(true), null)),
+  __recastRescan: () => rescanSoon(),
   __recastOn: () => on,
   __recastOverlayInteractive: () => interactive,
 });
@@ -211,7 +253,7 @@ function registerShortcuts() {
   };
   reg(settings.shortcuts.open, toggleLibrary, "open the Recast library");
   // The same as the trigger, for keyboards or setups where tapping a key twice is awkward.
-  reg(settings.shortcuts.capture, () => (on ? void grabAt(screen.getCursorScreenPoint(), true) : turnOn(true)), "turn Recast on and grab");
+  reg(settings.shortcuts.capture, () => void (on ? grabAt(screen.getCursorScreenPoint(), true) : turnOn(true)), "turn Recast on and grab");
 }
 
 function openConnections() {
@@ -239,7 +281,7 @@ function trayIcon() {
 function buildTray() {
   if (!tray) { tray = new Tray(trayIcon()); tray.setToolTip("Recast"); tray.on("click", showLibrary); }
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: `Turn Recast on    ${TRIGGER_LABEL} twice`, click: () => turnOn(false) },
+    { label: `Turn Recast on    ${TRIGGER_LABEL} twice`, click: () => void turnOn(false) },
     { label: `Open the library    ${pretty(settings.shortcuts.open)}`, click: showLibrary },
     { type: "separator" },
     { label: "Try the playground (sample data)", click: openPlayground },
@@ -257,7 +299,7 @@ function setSettings(p: Partial<Settings>) {
   buildTray(); broadcastSettings();
 }
 const publicSettings = () => ({ ...settings, platform: process.platform, trigger: TRIGGER_LABEL, shortcutProblems: [...shortcutProblems], serverNote, version: app.getVersion(),
-  grabReady: canGrab(false), listening: hook.started, hookProblem: hook.problem });
+  grabReady: canGrab(false), listening: hook.started, hookProblem: hook.problem, screen: screenAccess(), spotsNote });
 function broadcastSettings() { for (const w of [library, overlay]) if (w && !w.isDestroyed()) w.webContents.send("recast:settings", publicSettings()); }
 
 // ---- the library's record --------------------------------------------------------------------------------------------
@@ -286,10 +328,11 @@ function ipc() {
     void shell.openExternal(u.toString()); return true;
   });
   // The overlay says where its blobs and wheel are; only there does it take the mouse.
-  ipcMain.handle("recast:interactive", (e, over: unknown, rects: unknown) => {
+  const rectList = (rects: unknown): Rectangle[] => (Array.isArray(rects) ? (rects as Rectangle[]).filter((r) => r && [r.x, r.y, r.width, r.height].every(Number.isFinite)).slice(0, 96)
+    .map((r) => ({ x: Math.max(0, Math.floor(r.x)), y: Math.max(0, Math.floor(r.y)), width: Math.ceil(r.width), height: Math.ceil(r.height) })) : []);
+  ipcMain.handle("recast:interactive", (e, over: unknown, rects: unknown, own: unknown) => {
     if (!overlay || e.sender !== overlay.webContents) return false;
-    const list = Array.isArray(rects) ? (rects as Rectangle[]).filter((r) => r && [r.x, r.y, r.width, r.height].every(Number.isFinite)).slice(0, 64).map((r) => ({ x: Math.max(0, Math.floor(r.x)), y: Math.max(0, Math.floor(r.y)), width: Math.ceil(r.width), height: Math.ceil(r.height) })) : [];
-    setInteractive(!!over, list);
+    setInteractive(!!over, rectList(rects)); ownRects = rectList(own);
     // Typing in the wheel (a question to answer) needs the keyboard: the overlay takes it only while the pointer is on it.
     if (over && !overlay.isFocused() && process.platform !== "linux") overlay.focus();
     return true;
@@ -340,7 +383,8 @@ function ipc() {
     const w = BrowserWindow.fromWebContents(e.sender);
     if (what === "hide") w?.hide(); else if (what === "minimize") w?.minimize();
     else if (what === "connections") openConnections(); else if (what === "playground") openPlayground();
-    else if (what === "library") showLibrary(); else if (what === "on") turnOn(false);
+    else if (what === "library") showLibrary(); else if (what === "on") void turnOn(false);
+    else if (what === "screen-permission" && process.platform === "darwin") void shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
     else if (what === "signin") void shell.openExternal(`http://localhost:${PORT}/`);
     return true;
   });
@@ -358,5 +402,5 @@ app.whenReady().then(async () => {
 app.on("second-instance", showLibrary);
 app.on("activate", showLibrary);
 app.on("before-quit", () => { quitting = true; });
-app.on("will-quit", () => { globalShortcut.unregisterAll(); hook.stop(); server?.close(); });
+app.on("will-quit", () => { globalShortcut.unregisterAll(); hook.stop(); server?.close(); void stopReading(); });
 app.on("window-all-closed", () => { /* keeps running: the trigger works with no window open */ });

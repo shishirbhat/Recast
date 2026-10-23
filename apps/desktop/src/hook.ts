@@ -16,6 +16,8 @@ export interface HookEvents {
   onEscape(): void;
   /** A text selection just ended at this screen point (the mouse let go after a drag, or a double or triple click). */
   onSelectionEnd(x: number, y: number): void;
+  /** While on: the app underneath may have changed what it shows (a scroll, or a plain click in it). */
+  onScreenChanged(): void;
 }
 
 /** The trigger key's name, as the tap rule calls it: Option (Alt) on a Mac, where Control twice is the system's Dictation. */
@@ -28,6 +30,7 @@ export function createHook(events: HookEvents, isOn: () => boolean) {
   let started = false, problem = "";
   const down = new Set<number>();                 // keys held now, to tell a fresh press from auto-repeat
   let press: { x: number; y: number } | null = null;
+  let settle: NodeJS.Timeout | null = null;      // a selection that may still grow with another click
 
   /** One key event in the tap rule's terms. Exported through feedKey for tests that cannot press keys. */
   function feedKey(name: string, type: "keydown" | "keyup", repeat = false) {
@@ -48,6 +51,7 @@ export function createHook(events: HookEvents, isOn: () => boolean) {
     feedKey(keyName(hook!, e.keycode), type, repeat);
   }
   function onMouseDown(e: UiohookMouseEvent) {
+    if (settle) { clearTimeout(settle); settle = null; }
     trigger({ type: "pointerdown", at: Date.now() }, isOn());   // the trigger key used with the mouse is not a tap
     press = { x: e.x, y: e.y };
   }
@@ -55,7 +59,9 @@ export function createHook(events: HookEvents, isOn: () => boolean) {
     const p = press; press = null;
     if (!isOn() || !p) return;
     const dragged = Math.hypot(e.x - p.x, e.y - p.y) > 6;
-    if (dragged || e.clicks >= 2) events.onSelectionEnd(e.x, e.y);
+    // A double click may become a triple click (word → line): wait for the clicking to stop, then grab once.
+    if (dragged || e.clicks >= 2) { if (settle) clearTimeout(settle); settle = setTimeout(() => { settle = null; if (isOn()) events.onSelectionEnd(e.x, e.y); }, 320); }
+    else events.onScreenChanged();
   }
 
   return {
@@ -69,6 +75,7 @@ export function createHook(events: HookEvents, isOn: () => boolean) {
         hook.uIOhook.on("keyup", (e) => onKey(e, "keyup"));
         hook.uIOhook.on("mousedown", onMouseDown);
         hook.uIOhook.on("mouseup", onMouseUp);
+        hook.uIOhook.on("wheel", () => { if (isOn()) events.onScreenChanged(); });
         hook.uIOhook.start();
         started = true; problem = "";
       } catch (e) { problem = `The keyboard listener could not start: ${e instanceof Error ? e.message : String(e)}`; }

@@ -85,6 +85,14 @@ async function dragOnto(overlay: Page, from: string, to: string) {
   await overlay.mouse.move(a.x, a.y); await overlay.mouse.down(); await overlay.mouse.move(a.x + 12, a.y + 12, { steps: 3 });
   await overlay.mouse.move(b.x, b.y, { steps: 10 }); await overlay.mouse.move(b.x + 1, b.y, { steps: 1 }); await overlay.mouse.up();
 }
+/** The whole screen as a person sees it (the other app with Recast on top), taken by the system, not by a page. */
+async function screenShot(name: string) {
+  const png = await app!.evaluate(async ({ desktopCapturer, screen }) => {
+    const d = screen.getPrimaryDisplay(); const [src] = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: d.size });
+    return src!.thumbnail.toPNG().toString("base64");
+  });
+  writeFileSync(path.join(root, "test", "shots", `${name}.png`), Buffer.from(png, "base64"));
+}
 async function shot(p: Page, name: string) {
   await p.waitForFunction(() => !document.querySelector(".rg")?.getAnimations().length).catch(() => {}); await p.waitForTimeout(500);
   await p.screenshot({ path: path.join(root, "test", "shots", `${name}.png`) });
@@ -103,8 +111,8 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
     await selectWithMouse(other, "#when");
     expect((await other.evaluate(() => getSelection()!.toString())).trim()).toBe("Friday 1:00 PM");
     await tapTwice();
-    await expect.poll(isOn).toBe(true);
-    await expect.poll(() => blobs(overlay).count()).toBe(1);
+    await expect.poll(isOn, { timeout: 5000 }).toBe(true);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
     expect(await blobs(overlay).first().innerText()).toContain("Friday 1:00 PM");
     expect(await blobs(overlay).first().getAttribute("data-kind")).toBe("time");
     // Nothing else opened: no library, no panel; the other app still has the keyboard.
@@ -124,11 +132,11 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
   it("while on, each selection is a blob; pressed together they are an event; the wheel opens beside it; Google Calendar gets it; Undo; the library keeps both", async () => {
     const { overlay, library, errors } = await launch(profile("dark"), false);
     const other = await otherApp(PAGE);
-    await tapTwice(); await expect.poll(isOn).toBe(true);
+    await tapTwice(); await expect.poll(isOn, { timeout: 5000 }).toBe(true);
     await selectWithMouse(other, "#what");
-    await expect.poll(() => blobs(overlay).count()).toBe(1);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
     await selectWithMouse(other, "#when");
-    await expect.poll(() => blobs(overlay).count()).toBe(2);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(2);
     await dragOnto(overlay, "Friday 1:00 PM", "Lunch with Arjun");
     await overlay.getByRole("button", { name: /Choose where it goes/ }).click();
     await expect.poll(() => overlay.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-calendar");
@@ -154,19 +162,56 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
     expect(errors).toEqual([]);
   });
 
+  it("on: what is likely to be picked up is highlighted in place (a time, an email address, an error); a click makes it a blob, a drag presses it into one", async () => {
+    const { overlay, errors } = await launch(profile("dark"), false);
+    const other = await otherApp(`<h1 style="margin:30px 40px;font-size:30px">Team notes</h1>
+      <p style="margin:24px 40px;font-size:34px">Lunch with Arjun on Friday 1:00 PM if that works</p>
+      <p style="margin:24px 40px;font-size:34px">Write to arjun.mehta@example.com</p>
+      <p style="margin:24px 40px;font-size:30px;font-family:monospace">TypeError: Cannot read properties of undefined</p>
+      <p style="margin:24px 40px;font-size:34px">The quick brown fox jumps over the lazy dog</p>`);
+    await tapTwice();
+    await expect.poll(isOn, { timeout: 5000 }).toBe(true);
+    // Read off the screen (OCR), here on the machine: highlights fade in a moment after Recast turns on.
+    await expect.poll(() => overlay.locator(".spot").count(), { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
+    const spots = await overlay.locator(".spot").evaluateAll((els) => els.map((e) => ({ kind: (e as HTMLElement).dataset["kind"], label: e.getAttribute("aria-label") })));
+    expect(spots.map((x) => x.kind).sort()).toEqual(expect.arrayContaining(["error", "person", "time"]));
+    expect(spots.find((x) => x.kind === "time")!.label).toMatch(/Friday 1:00 PM/);
+    expect(spots.find((x) => x.kind === "person")!.label).toMatch(/arjun\.mehta@example\.com/);
+    expect(spots.every((x) => !/quick brown fox/.test(x.label ?? ""))).toBe(true);   // prose is not highlighted
+    // The highlight sits on the words themselves, on the screen.
+    const t = (await overlay.locator(".spot[data-kind=time]").boundingBox())!;
+    const line = await other.evaluate(() => { const p = [...document.querySelectorAll("p")][0]!.getBoundingClientRect(); return { top: window.screenY + window.outerHeight - window.innerHeight + p.top, bottom: window.screenY + window.outerHeight - window.innerHeight + p.bottom }; });
+    expect(t.y + t.height / 2).toBeGreaterThan(line.top - 6); expect(t.y + t.height / 2).toBeLessThan(line.bottom + 6);
+    await shot(overlay, "overlay-highlights-dark");
+    await screenShot("screen-highlights");
+    // A real click on the time's highlight: it becomes a blob beside it (the overlay takes this click, not the page).
+    xdo("mousemove", String(Math.round(t.x + t.width / 2)), String(Math.round(t.y + t.height / 2))); await sleep(200); xdo("click", "1");
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
+    expect(await blobs(overlay).first().getAttribute("data-kind")).toBe("time");
+    expect(await blobs(overlay).first().innerText()).toContain("Friday 1:00 PM");
+    // Dragging the email address's highlight onto the blob presses them together.
+    const p = (await overlay.locator(".spot[data-kind=person]").boundingBox())!; const b = (await blobs(overlay).first().boundingBox())!;
+    await overlay.mouse.move(p.x + p.width / 2, p.y + p.height / 2); await overlay.mouse.down();
+    await overlay.mouse.move(p.x + p.width / 2 + 14, p.y + p.height / 2 + 10, { steps: 3 });
+    await overlay.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 }); await overlay.mouse.move(b.x + b.width / 2 + 1, b.y + b.height / 2); await overlay.mouse.up();
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
+    await expect.poll(() => blobs(overlay).first().getAttribute("data-kind")).toBe("event");
+    expect(errors).toEqual([]);
+  });
+
   it("Esc turns Recast off (the overlay goes away, clicks reach the app); the blobs come back when it is on again", async () => {
     const { overlay } = await launch(profile("dark"), false);
     const other = await otherApp(PAGE);
     await selectWithMouse(other, "#who");
     await tapTwice();
-    await expect.poll(() => blobs(overlay).count()).toBe(1);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
     expect(await blobs(overlay).first().getAttribute("data-kind")).toBe("person");
     xdo("key", "Escape");
     await expect.poll(isOn).toBe(false);
     expect(await visible("overlay.html")).toBe(false);
     await tapTwice();
-    await expect.poll(isOn).toBe(true);
-    await expect.poll(() => blobs(overlay).count()).toBe(1);   // the same selection is not lifted twice
+    await expect.poll(isOn, { timeout: 5000 }).toBe(true);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);   // the same selection is not lifted twice
   });
 
   it("Ctrl twice with nothing selected: Recast is on and says so; no blob, no window", async () => {
@@ -174,8 +219,8 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
     await a.evaluate(({ clipboard }) => clipboard.selection?.writeText(""));
     await otherApp(PAGE);
     await tapTwice();
-    await expect.poll(isOn).toBe(true);
-    await expect.poll(() => overlay.locator("#toast").innerText()).toMatch(/Select some text first|Recast is on/);
+    await expect.poll(isOn, { timeout: 5000 }).toBe(true);
+    await expect.poll(() => overlay.locator("#toast").innerText()).toMatch(/^Recast is on/);
     expect(await blobs(overlay).count()).toBe(0);
     expect(await visible("library.html")).toBe(false);
   });
@@ -201,14 +246,14 @@ describe("the Recast app (the library)", () => {
     let { app: a, library, overlay } = await launch(dir);
     await a.evaluate(({ clipboard }) => clipboard.selection?.writeText("maya.rao@example.com"));
     await a.evaluate(() => (globalThis as any).__recastGrab());
-    await expect.poll(() => blobs(overlay).count()).toBe(1);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
     await expect.poll(() => library.locator(".entry").count()).toBe(1);
     await library.waitForTimeout(400);
     await app!.close(); app = null;
     ({ library, overlay } = await launch(dir));
     await expect.poll(() => library.locator(".entry").count()).toBe(1);
     expect(await library.locator(".entry .text").innerText()).toBe("maya.rao@example.com");
-    await expect.poll(() => blobs(overlay).count()).toBe(1);               // and the blob is still in hand
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);               // and the blob is still in hand
     await shot(library, "library-dark");
     await library.getByRole("button", { name: "Remove" }).click();
     await expect.poll(() => library.locator(".entry").count()).toBe(0);
@@ -217,7 +262,7 @@ describe("the Recast app (the library)", () => {
   it("a recipe runs both steps against the person's own Google (Calendar and Tasks), each with its own result", async () => {
     const { app: a, overlay, errors } = await launch(profile("dark"));
     for (const t of ["Dinner at Dakshin", "Friday 7:30 PM"]) { await a.evaluate(({ clipboard }, x) => clipboard.selection?.writeText(x), t); await a.evaluate(() => (globalThis as any).__recastGrab()); await sleep(300); }
-    await expect.poll(() => blobs(overlay).count()).toBe(2);
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(2);
     await dragOnto(overlay, "Friday 7:30 PM", "Dinner at Dakshin");
     await overlay.locator(".rg-recipe[data-recipe='plan-and-prepare']").click();
     await expect.poll(() => overlay.locator(".rg-title").innerText()).toBe("Recipe: Plan and prepare");

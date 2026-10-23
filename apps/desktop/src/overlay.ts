@@ -20,7 +20,7 @@ interface OverlayApi {
   act(route: "commit" | "reconcile" | "undo", body: unknown): Promise<{ status: number; body: Record<string, unknown> }>;
   openExternal(url: string): Promise<boolean>;
   saveInbox(state: unknown): Promise<boolean>;
-  interactive(over: boolean, rects: { x: number; y: number; width: number; height: number }[]): Promise<boolean>;
+  interactive(over: boolean, rects: { x: number; y: number; width: number; height: number }[], own: { x: number; y: number; width: number; height: number }[]): Promise<boolean>;
   off(): Promise<boolean>;
   historyAdd(entry: unknown): Promise<boolean>;
   historyPlaced(ids: string[], where: string, link?: string): Promise<boolean>;
@@ -132,14 +132,14 @@ async function perform(eff: ClumpEffect) {
 // ---- grabbing ----------------------------------------------------------------------------------------------------------
 let seq = 0;
 /** A selection from the app in front, as a piece where it was grabbed: read as a time, a person, an error or text. */
-function capture(text: string, origin: Origin, at: Point) {
+function capture(text: string, origin: Origin, at: Point, how: { carry?: boolean; from?: "selection" | "highlight" } = {}) {
   const t = text.replace(/\s+/g, " ").trim(); if (!t) return;
   const { kind, value } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: TZ });
   const source = { app: origin.app ?? "Another app", ...(origin.url && /^https?:/.test(origin.url) ? { url: origin.url } : {}), ...(origin.title ? { title: origin.title.slice(0, 200) } : {}) };
   const f: Fragment = { id: `g${Date.now()}-${++seq}`, kind, text: t.slice(0, 1000), confidence: 0.9, ...(value ? { value } : {}),
-    evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: t.slice(0, 200) }], source };
-  lastAt = spotNear(at);
-  const r = dispatch({ type: "capture", fragment: f });
+    evidence: [{ locator: { kind: "user", value: how.from ?? "selection" }, excerpt: t.slice(0, 200) }], source };
+  lastAt = how.carry ? { ...at } : spotNear(at);
+  const r = dispatch({ type: "capture", fragment: f, ...(how.carry ? { carry: true } : {}) });
   if (r.captured && !r.error) { pos.set(r.captured, { ...lastAt }); render(); }
   void api.historyAdd({ id: f.id, text: f.text, kind, source });
 }
@@ -153,11 +153,44 @@ api.on("recast:capture", (v: { text: string; at?: Point } & Origin) => { if (v.t
 api.on("recast:grab-problem", (v: { reason: string; message: string; at?: Point }) => toast(v.message, v.at));
 api.on("recast:on", (next: boolean) => {
   on = next;
-  if (next) { state = { ...state, armed: true }; void destinations().then((d) => { state = { ...state, destinations: d }; render(); }); toast(`Recast is on. Select text to grab it. Esc or ${settings?.trigger ?? "the trigger"} once to turn off`); }
-  else { pressCleanup(); for (const ev of closeAll()) dispatch(ev); }
+  if (next) { state = { ...state, armed: true }; void destinations().then((d) => { state = { ...state, destinations: d }; render(); }); toast(idleLine()); }
+  else { pressCleanup(); spots = []; spotPress = null; renderSpots(); $("#toast").hidden = true; for (const ev of closeAll()) dispatch(ev); }
   render();
 });
 api.on("recast:escape", () => escape());
+
+// ---- highlights: what on the screen Recast reads as likely pieces (a time, an email address, an error, a link) -------------
+// Click one and it is a blob beside it; drag one and it is a blob in hand (drop it on another to press them together).
+// Anything not highlighted can still be selected by hand.
+interface Spot { kind: string; text: string; x: number; y: number; width: number; height: number }
+let spots: Spot[] = [];
+let spotSource: Origin = {};
+let spotPress: { spot: Spot; x: number; y: number } | null = null;
+const SPOT_WORD: Record<string, string> = { time: "Time", person: "Person", error: "Error", link: "Link" };
+api.on("recast:spots", (v: { spots: Spot[]; source?: Origin; note?: string }) => {
+  spots = on ? v.spots ?? [] : []; spotSource = v.source ?? {};
+  if (v.note && on) toast(v.note);
+  renderSpots(); report(true);
+});
+function renderSpots() {
+  const host = $("#spots"); host.replaceChildren();
+  for (const sp of spots) {
+    const el = document.createElement("button"); el.type = "button"; el.className = "spot"; el.dataset["kind"] = sp.kind;
+    // A little room around the words, in proportion to their size (OCR boxes sit tight, and a little inside, on some fonts).
+    const px = Math.max(3, Math.round(sp.height * 0.3)), py = Math.max(2, Math.round(sp.height * 0.12));
+    el.style.left = `${sp.x - px}px`; el.style.top = `${sp.y - py}px`; el.style.width = `${sp.width + 2 * px}px`; el.style.height = `${sp.height + 2 * py}px`;
+    el.setAttribute("aria-label", `${SPOT_WORD[sp.kind] ?? "Piece"}: ${sp.text}. Click to grab it`); el.title = `${SPOT_WORD[sp.kind] ?? "Piece"}: click to grab, or drag onto a blob`;
+    el.addEventListener("pointerdown", (e) => { e.preventDefault(); pointer = { x: e.clientX, y: e.clientY }; spotPress = { spot: sp, x: e.clientX, y: e.clientY }; report(true); });
+    el.addEventListener("click", (e) => { if (e.detail === 0) take(sp, false); });   // keyboard
+    host.append(el);
+  }
+}
+/** A highlight becomes a blob: beside it (a click), or in hand (a drag). It is no longer highlighted. */
+function take(sp: Spot, carry: boolean) {
+  spots = spots.filter((x) => x !== sp); renderSpots();
+  const origin = { ...spotSource };
+  capture(sp.text, origin, carry ? pointer : { x: sp.x + sp.width, y: sp.y }, { carry, from: "highlight" });
+}
 function escape() {
   const ev = escapeEvent(state);
   if (ev && ev.type !== "disarm") dispatch(ev); else void api.off();
@@ -176,6 +209,7 @@ function startObjectPress(id: string, e: PointerEvent) {
 function pressCleanup() { press = null; if (state.carried) dispatch({ type: "drop" }); }
 addEventListener("pointermove", (e) => {
   pointer = { x: e.clientX, y: e.clientY };
+  if (spotPress && Math.hypot(e.clientX - spotPress.x, e.clientY - spotPress.y) > 6) { const sp = spotPress.spot; spotPress = null; take(sp, true); }
   if (press && !press.started && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) {
     press.started = true;
     if (!["idle", "inspecting", "succeeded", "failed", "composed", "choosing"].includes(state.phase)) for (const ev of intentEvents({ type: "close" }, state)) dispatch(ev);
@@ -184,7 +218,11 @@ addEventListener("pointermove", (e) => {
   if (state.carried) { hitTest(); renderPass(); }
   report();
 }, { passive: true });
+// The pointer left Recast's shapes (on Linux the window is only those shapes): it is over the app underneath again.
+document.documentElement.addEventListener("pointerleave", () => { if (!press && !state.carried && !spotPress) { pointer = { x: -1, y: -1 }; report(); } });
+addEventListener("blur", () => { if (!press && !state.carried && !spotPress) { pointer = { x: -1, y: -1 }; report(); } });
 addEventListener("pointerup", () => {
+  if (spotPress) { const sp = spotPress.spot; spotPress = null; take(sp, false); report(); return; }
   if (press && !press.started) { const id = press.id; press = null; lastAt = pos.get(id) ?? lastAt; dispatch({ type: "inspect", id }); report(); return; }
   press = null;
   if (state.carried) {
@@ -205,21 +243,25 @@ function hitTest() {
 
 // ---- where the overlay takes the mouse ---------------------------------------------------------------------------------
 /** Recast's own rectangles: every blob and the wheel. Everywhere else, clicks go to the app underneath. */
-function rects() {
+function rects(withToast = true, withSpots = true) {
   const out: DOMRect[] = [];
   for (const id of [...state.desk, ...(state.carried ? [state.carried] : [])]) { const el = clay.label(id); if (el) out.push(el.getBoundingClientRect()); }
   if (!glass.el.hidden && !["off", "pill"].includes(glass.el.dataset["mode"] ?? "off")) out.push(glass.el.getBoundingClientRect());
+  if (withSpots) for (const el of document.querySelectorAll<HTMLElement>(".spot")) out.push(el.getBoundingClientRect());
+  // The quiet line is drawn too (on Linux the window is only these shapes), though it never takes a click on a Mac or Windows.
+  const toastEl = $("#toast"); if (withToast && !toastEl.hidden) out.push(toastEl.getBoundingClientRect());
   return out.filter((r) => r.width > 0 && r.height > 0).map((r) => ({ x: r.x - 4, y: r.y - 4, width: r.width + 8, height: r.height + 8 }));
 }
 let reported = "";
 /** Tells the app whether the pointer is on Recast (so the window takes the click) and where Recast's shapes are. */
 function report(force = false) {
-  const rs = rects(); const busy = !!press || !!state.carried;
-  const over = busy || rs.some((r) => pointer.x >= r.x && pointer.x <= r.x + r.width && pointer.y >= r.y && pointer.y <= r.y + r.height);
+  const rs = rects(); const busy = !!press || !!state.carried || !!spotPress;
+  const over = busy || rects(false).some((r) => pointer.x >= r.x && pointer.x <= r.x + r.width && pointer.y >= r.y && pointer.y <= r.y + r.height);
   const shapes = busy ? [{ x: 0, y: 0, width: innerWidth, height: innerHeight }] : rs;
-  const key = `${over}|${JSON.stringify(shapes)}`;
+  const own = rects(false, false);   // the blobs and the wheel: what a fresh look at the screen must not mistake for the app's words
+  const key = `${over}|${JSON.stringify(shapes)}|${JSON.stringify(own)}`;
   if (key === reported && !force) return;
-  reported = key; void api.interactive(over, shapes);
+  reported = key; void api.interactive(over, shapes, own);
 }
 
 // ---- drawing ------------------------------------------------------------------------------------------------------------
@@ -266,12 +308,14 @@ function renderPass() {
   for (const it of items) { const el = clay.label(it.id); if (el) { el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-description", "Click to choose where it goes; drag onto another to press them together; Delete to remove"); } }
 }
 let toastTimer = 0;
-/** One quiet line by the pointer (or the last blob): never takes the mouse. */
-function toast(t: string, at?: Point) {
+/** The status pill, at the bottom centre while Recast is on (like a dictation app's): how to use it, or what just
+ *  happened. Never next to the pointer, so it never covers what the person is about to select or click. */
+const idleLine = () => `Recast is on · click a highlight or select text · Esc to turn off`;
+function toast(t: string, _at?: Point) {
   const el = $("#toast"); el.textContent = t; el.hidden = false;
-  const p = at ?? lastAt;
-  el.style.left = `${Math.min(Math.max(12, p.x + 16), innerWidth - 360)}px`; el.style.top = `${Math.min(Math.max(12, p.y - 44), innerHeight - 44)}px`;
-  clearTimeout(toastTimer); toastTimer = window.setTimeout(() => { el.hidden = true; }, 3200);
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { if (on) el.textContent = idleLine(); else el.hidden = true; report(); }, 3200);
+  report();
 }
 
 addEventListener("keydown", (e) => {

@@ -49,6 +49,13 @@ async function linuxSource(): Promise<Omit<Grabbed, "text">> {
   return { ...(cls ? { app: cls } : {}), ...(title ? { title } : {}) };
 }
 
+/** The app in front, and its page for a browser: what a highlight read off the screen came from. */
+export async function frontSource(): Promise<Omit<Grabbed, "text">> {
+  if (process.platform === "darwin") return canGrab(false) ? macSource() : {};
+  if (process.platform === "linux") return linuxSource();
+  return {};
+}
+
 /** Whether Recast may read selections here. On a Mac, asking shows the system prompt (once). */
 export function canGrab(ask = false): boolean {
   if (process.platform === "darwin") return systemPreferences.isTrustedAccessibilityClient(ask);

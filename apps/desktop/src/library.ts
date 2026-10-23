@@ -1,7 +1,7 @@
 // The library: the Recast app proper. Every blob you have grabbed, newest first, with the app (and page) it came from and
 // where it went. It never opens by itself when you grab; you open it from Applications, the Dock or the tray.
 interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string }[] }
-interface Settings { theme: "system" | "dark" | "light"; shortcuts: { open: string; capture: string }; platform: string; trigger: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean; listening: boolean; hookProblem: string }
+interface Settings { theme: "system" | "dark" | "light"; shortcuts: { open: string; capture: string }; platform: string; trigger: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean; listening: boolean; hookProblem: string; screen: string; spotsNote: string }
 interface Api {
   boot(): Promise<{ settings: Settings; theme: "dark" | "light" }>;
   history(): Promise<Entry[]>;
@@ -55,7 +55,8 @@ function renderSettings() {
   $("#version").textContent = `Recast ${settings.version}. Also: ${pretty(settings.shortcuts.capture)} turns Recast on and grabs; ${pretty(settings.shortcuts.open)} opens this library.`;
   for (const k of document.querySelectorAll(".trigger")) k.textContent = settings.trigger;
   $("#permission").hidden = !(settings.platform === "darwin" && (!settings.grabReady || !settings.listening));
-  $("#hook-problem").textContent = settings.hookProblem;
+  $("#hook-problem").textContent = [settings.hookProblem, settings.spotsNote].filter(Boolean).join(" ");
+  $("#screen-permission").hidden = !(settings.platform === "darwin" && settings.screen !== "granted");
 }
 for (const r of document.querySelectorAll<HTMLInputElement>("input[name=theme]")) r.addEventListener("change", () => void api.settings({ theme: r.value }).then((s) => { settings = s; renderSettings(); }));
 $("#shortcuts-form").addEventListener("submit", (e) => {
@@ -63,6 +64,7 @@ $("#shortcuts-form").addEventListener("submit", (e) => {
   void api.settings({ shortcuts: { open: $<HTMLInputElement>("#sc-open").value.trim(), capture: $<HTMLInputElement>("#sc-capture").value.trim() } }).then((s) => { settings = s; renderSettings(); });
 });
 $("#btn-permission").addEventListener("click", () => void api.permission());
+$("#btn-screen").addEventListener("click", () => void api.window("screen-permission"));
 $("#btn-on").addEventListener("click", () => void api.window("on"));
 for (const id of ["#btn-connections", "#btn-connections-2"]) $(id).addEventListener("click", () => void api.window("connections"));
 $("#btn-playground").addEventListener("click", () => void api.window("playground"));

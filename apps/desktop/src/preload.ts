@@ -1,14 +1,14 @@
 // The only door between Recast's pages and the app. Each call is narrow; the app checks every argument again.
 import { contextBridge, ipcRenderer } from "electron";
 
-const CHANNELS = ["recast:capture", "recast:theme", "recast:settings", "recast:grab-problem", "recast:on", "recast:escape", "recast:history"];
+const CHANNELS = ["recast:capture", "recast:spots", "recast:theme", "recast:settings", "recast:grab-problem", "recast:on", "recast:escape", "recast:history"];
 contextBridge.exposeInMainWorld("recastDesktop", {
   boot: () => ipcRenderer.invoke("recast:boot"),
   status: () => ipcRenderer.invoke("recast:status"),
   act: (route: "commit" | "reconcile" | "undo", body: unknown) => ipcRenderer.invoke("recast:act", route, body),
   openExternal: (url: string) => ipcRenderer.invoke("recast:open-external", url),
   saveInbox: (state: unknown) => ipcRenderer.invoke("recast:save-inbox", state),
-  interactive: (over: boolean, rects: unknown) => ipcRenderer.invoke("recast:interactive", over, rects),
+  interactive: (over: boolean, rects: unknown, own: unknown) => ipcRenderer.invoke("recast:interactive", over, rects, own),
   off: () => ipcRenderer.invoke("recast:off"),
   history: () => ipcRenderer.invoke("recast:history"),
   historyAdd: (entry: unknown) => ipcRenderer.invoke("recast:history-add", entry),

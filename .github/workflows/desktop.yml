@@ -73,6 +73,7 @@ jobs:
           set +e; timeout 90 xvfb-run -a apps/desktop/release/linux-unpacked/recast --no-sandbox --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
           grep -q 'RECAST_SMOKE {"visible":true,"overlay":true,"hook":true' /tmp/smoke.log
+          grep -q '"ocr":"ok' /tmp/smoke.log   # the highlights' reader runs from the installed app
       - name: launch check (Windows, the packaged app)
         if: runner.os == 'Windows'
         shell: bash
@@ -82,6 +83,7 @@ jobs:
           set +e; timeout 90 apps/desktop/release/win-unpacked/recast.exe --recast-smoke; code=$?; set -e
           echo "exit code $code"; cat "$RECAST_SMOKE_OUT" || true
           grep -q 'RECAST_SMOKE {"visible":true,"overlay":true,"hook":true' "$RECAST_SMOKE_OUT"
+          grep -q '"ocr":"ok' "$RECAST_SMOKE_OUT"
       # The person's path, not a terminal shortcut: what macOS says about a browser-downloaded copy, then the install
       # command run on the downloaded disk image while an old copy of Recast is running (as on a Mac that tried earlier
       # builds), then opening it the way Finder and the Dock do (Launch Services), requiring its window on screen.

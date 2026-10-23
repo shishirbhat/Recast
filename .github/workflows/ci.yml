@@ -14,8 +14,10 @@ jobs:
         env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" }
       - name: install the browser matching the locked playwright-core (not whatever is latest)
         run: pnpm --filter @recast/conformance exec playwright-core install --with-deps chromium
-      - name: real keys and mouse for the desktop tests (xdotool), on the virtual screen
-        run: sudo apt-get install -y xdotool xvfb
+      - name: the Electron binary for the desktop tests (its install script can be skipped by a restored cache; this is a no-op when present)
+        run: cd apps/desktop && node node_modules/electron/install.js && test -x node_modules/electron/dist/electron
+      - name: real keys and mouse for the desktop tests (xdotool), on a virtual screen with a window manager and compositor, as on a desktop
+        run: sudo apt-get install -y xdotool xvfb openbox xcompmgr
       - run: pnpm gen
       - name: generated files are committed and current
         run: git diff --exit-code -- packages/core/src/generated
