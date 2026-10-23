@@ -425,7 +425,8 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(live().length).toBe(before.events + 1);
     expect(tasks.size).toBe(before.tasks + 1);
     expect([...tasks.values()].at(-1)).toMatchObject({ title: "Prepare: Dinner at Dakshin", due: "2026-10-23T00:00:00.000Z" });
-    expect(await page.locator("recast-clay >> .rg-title").innerText()).toBe("Plan and prepare: all 2 done");
+    // The page draws the result a moment after the background holds it: wait for it, the same words.
+    await expect.poll(() => page.locator("recast-clay >> .rg-title").innerText()).toBe("Plan and prepare: all 2 done");
     await page.locator("recast-clay >> .rg-steps li[data-step-id='prepare'] [data-undo-step]").click();
     await until(async () => (await stored()).run.steps[1].status === "undone");
     expect(tasks.size).toBe(before.tasks);
