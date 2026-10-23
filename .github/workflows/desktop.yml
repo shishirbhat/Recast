@@ -75,6 +75,32 @@ jobs:
           set +e; timeout 90 apps/desktop/release/win-unpacked/recast.exe --recast-smoke; code=$?; set -e
           echo "exit code $code"; cat "$RECAST_SMOKE_OUT" || true
           grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' "$RECAST_SMOKE_OUT"
+      # The person's path, not a terminal shortcut: what macOS says about a browser-downloaded copy, then the install
+      # command run on the downloaded disk image while an old copy of Recast is running (as on a Mac that tried earlier
+      # builds), then opening it the way Finder and the Dock do (Launch Services), requiring its window on screen.
+      - name: install check (macOS, the install command, opened like an app)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          arch=$( [ "$(uname -m)" = arm64 ] && echo arm64 || echo x64 )
+          echo "--- Gatekeeper on a browser-downloaded copy (no Apple Developer ID yet):"
+          spctl --status || true
+          ditto /tmp/Recast.app /tmp/Downloaded.app && xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" /tmp/Downloaded.app
+          spctl -a -vv -t exec /tmp/Downloaded.app 2>&1 || true
+          echo "--- an old copy is running:"
+          open -n /tmp/Recast.app; sleep 6; pgrep -lx recast
+          echo "--- the install command, on the downloaded disk image:"
+          mkdir -p "$HOME/Downloads" && cp apps/desktop/release/*-$arch.dmg "$HOME/Downloads/"
+          xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" "$HOME"/Downloads/*-$arch.dmg
+          RECAST_NO_OPEN=1 bash apps/desktop/scripts/install-mac.sh
+          if pgrep -x recast >/dev/null; then echo "the old copy is still running"; exit 1; fi
+          if xattr -l /Applications/Recast.app | grep -q quarantine; then echo "still marked as downloaded"; exit 1; fi
+          echo "--- opened like an app:"
+          out="$RUNNER_TEMP/open.log"; rm -f "$out"
+          open --env RECAST_SMOKE_OUT="$out" /Applications/Recast.app --args --recast-smoke
+          for _ in $(seq 1 60); do [ -s "$out" ] && break; sleep 1; done
+          cat "$out"
+          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' "$out"
       # One small download per kind of Mac, holding just its disk image (Safari unpacks GitHub's wrapper zip).
       - if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4

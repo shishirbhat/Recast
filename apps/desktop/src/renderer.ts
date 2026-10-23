@@ -28,7 +28,7 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySele
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const MAC = navigator.userAgent.includes("Mac");
-const pretty = (a: string) => (MAC ? a.replace("CommandOrControl", "⌘").replace("Alt", "⌥").replace("Shift", "⇧").replace(/\+/g, "") : a.replace("CommandOrControl", "Ctrl"));
+const pretty = (a: string) => (MAC ? a.replace("CommandOrControl", "⌘").replace("Control", "⌃").replace("Alt", "⌥").replace("Shift", "⇧").replace(/\+/g, "") : a.replace("CommandOrControl", "Ctrl"));
 
 // ---- destinations: the person's connections, as the bridge registry's contracts --------------------------------------------
 const LINK: Record<string, string> = { "link:google-calendar": "calendar", "link:gmail-drafts": "gmail", "link:google-tasks": "tasks", "link:google-tasks-due": "tasks", "link:google-docs": "docs", "link:github": "github", "link:linear": "linear" };

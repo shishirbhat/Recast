@@ -15,7 +15,9 @@ import { canGrab, grabSelection } from "./grab.js";
 type Theme = "system" | "dark" | "light";
 interface Settings { theme: Theme; keepOnTop: boolean; shortcuts: { open: string; capture: string } }
 interface GoogleConfig { clientId: string; clientSecret: string }
-const DEFAULTS: Settings = { theme: "system", keepOnTop: true, shortcuts: { capture: "CommandOrControl+Shift+Space", open: "CommandOrControl+Alt+Space" } };
+// On a Mac, ⌘⌥Space belongs to Finder (its search window) and never reaches Recast, so opening uses ⌃⌥Space there.
+const OLD_MAC_OPEN = "CommandOrControl+Alt+Space";
+const DEFAULTS: Settings = { theme: "system", keepOnTop: true, shortcuts: { capture: "CommandOrControl+Shift+Space", open: process.platform === "darwin" ? "Control+Alt+Space" : "CommandOrControl+Alt+Space" } };
 const PORT = 8787;
 const DARK_BG = "#141311", LIGHT_BG = "#faf9f6";
 
@@ -165,7 +167,7 @@ function trayIcon() {
 }
 function buildTray() {
   if (!tray) { tray = new Tray(trayIcon()); tray.setToolTip("Recast"); tray.on("click", toggleMain); }
-  const pretty = (a: string) => a.replace("CommandOrControl", process.platform === "darwin" ? "⌘" : "Ctrl").replace("Alt", process.platform === "darwin" ? "⌥" : "Alt").replace(/\+/g, process.platform === "darwin" ? "" : "+");
+  const pretty = (a: string) => a.replace("CommandOrControl", process.platform === "darwin" ? "⌘" : "Ctrl").replace("Control", process.platform === "darwin" ? "⌃" : "Ctrl").replace("Alt", process.platform === "darwin" ? "⌥" : "Alt").replace(/\+/g, process.platform === "darwin" ? "" : "+");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Open Recast    ${pretty(settings.shortcuts.open)}`, click: showMain },
     { label: `Grab what you selected    ${pretty(settings.shortcuts.capture)}`, click: () => void grabNow() },
@@ -245,6 +247,7 @@ function ipc() {
 
 app.whenReady().then(async () => {
   settings = { ...DEFAULTS, ...readJson<Partial<Settings>>(settingsFile(), {}), shortcuts: { ...DEFAULTS.shortcuts, ...(readJson<Partial<Settings>>(settingsFile(), {}).shortcuts ?? {}) } };
+  if (process.platform === "darwin" && settings.shortcuts.open === OLD_MAC_OPEN) settings.shortcuts.open = DEFAULTS.shortcuts.open;
   nativeTheme.themeSource = settings.theme;
   nativeTheme.on("updated", applyTheme);
   ipc(); await startLink(); registerShortcuts(); buildTray(); createMain();
