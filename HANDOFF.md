@@ -14,7 +14,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - Before calling a test failure real, check it against committed code (`git stash`, run the package, `git stash pop`).
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
-## Current state (2026-10-22)
+## Current state (2026-10-23)
 - Last full run (2026-10-23, after desktop highlights): **975 tests, 0 failures**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
@@ -22,8 +22,6 @@ The repository's own records stay authoritative for what they cover; this file p
   - **Passages → a Note → Google Docs** (D31): select sentences on pages, press them together; each keeps its page. A new optional `drive.file` permission in `apps/calendar-link` (only files Recast creates). Try-it page has a stand-in Docs tab.
   - Fixed: in the extension, letting go over empty page space pressed the object into a date on the page.
   - **An error → a GitHub issue** (D32): select an error message, optionally press notes into it; Tasks opens an issue (confirm first; everything quoted literally; Undo closes it). GitHub is its own connection in `apps/calendar-link` (fine-grained token for one repository). Try-it page has a Build tab with stand-in issues.
-  - **Desktop: Recast on top of any app** (D38, replaces the floating capsule of D37): double tap Option (Mac) / Ctrl (Windows, Linux) in any app; selections become blobs where they are; click one and the wheel opens beside it; place there. The Recast window is a library of every grab. Tested on Linux with real keys and mouse; the owner's Mac still to confirm.
-  - **Desktop app** (`apps/desktop`, D36): Electron, tray, global shortcuts (open; capture what you copied), typed or dictated pieces (Fn on Mac / Win+H), the local program built in, recipes, dark/light, inbox kept across restarts. Linux `.rpm`/`.deb`/AppImage built and the packaged app launched here; `.dmg` and `.exe` are built by the `desktop` GitHub Actions workflow (unsigned until the owner adds certificates). Owner to run REAL_TEST_PLAN K on a Mac.
   - **Recipes** (D35) and capture-stack dedupe.
   - **Linear** issues (D33); a wheel place with two connected choices asks "which one?".
   - **Phase two started (owner's request): any selected text becomes a movable blob** (D34), on the try-it page and in the extension. Next for phase two: places from free text (needs confirmation), touch selection on real phones, and a person's name from free text.
@@ -36,6 +34,29 @@ The repository's own records stay authoritative for what they cover; this file p
 - **Bug fixed on the way:** in the extension, a merge that needs confirmation (Combine) never settled and stayed "merging" forever. Now fixed and covered by the page + date test.
 - Earlier: local Google sign-in (`apps/calendar-link`); extension places in real Google Calendar and saves Gmail drafts through that local program (tested only against a Google stand-in); "How much Recast asks" setting (D24, D28).
 - Nothing is deployed (API, agent server, control center, database).
+
+## Desktop app (`apps/desktop`): where it stands (the owner's current focus)
+**What it is now** (D36 → D37 → D38 → D39; the floating panel of D37 is gone):
+- **Overlay over any app:** double tap **Option** (Mac; Control twice is the Mac's Dictation) / **Ctrl** (Windows, Linux) → a transparent, always-on-top window covers the display under the pointer. Nothing opens; the app underneath keeps the keyboard and gets every click except on Recast's own shapes (macOS/Windows: ignore mouse + forward; Linux: shaped window).
+- **Highlights (D39):** on turning on, the screen is captured and read by OCR on the machine (tesseract.js, bundled English model, nothing sent or kept) → spots: times/dates, emails, error lines, links (`src/spots.ts`, unit-tested). Click a highlight → blob beside it; drag → blob in hand. Rescan after scroll/click.
+- **Selections:** while on, any selection (drag, double/triple click; waits ~320 ms for clicking to stop) → blob where you let go. Mac/Windows read it by pressing copy through the hook and restoring the clipboard; Linux reads PRIMARY.
+- **Blobs → wheel:** drag one onto another to press together; click one → the wheel opens beside it; review; place (Calendar, Tasks, Gmail drafts, Docs, GitHub, Linear, Maps). Esc or one tap = off. Status pill bottom centre.
+- **Library = the Recast app window:** every grab (history.json) with source and "→ where it went"; opens only from Applications/Dock/tray, never on a grab. Settings, Connections, permission cards (Accessibility, Screen Recording) live there.
+- **Files:** `src/main.ts` (windows, overlay, trigger, scans, IPC), `src/hook.ts` (uiohook-napi keyboard/mouse hook, tap rule from `@recast/interaction`), `src/grab.ts` (selection + source app), `src/screen.ts` (capture + OCR, time-limited), `src/spots.ts`, `src/overlay.*`, `src/library.*`, `src/preload.ts`, `scripts/install-mac.sh`.
+
+**Install on the owner's Mac (MacBook Neo, Apple silicon, macOS 26.5.1):** download artifact **Recast-for-Mac-Apple-silicon** from the latest successful `desktop` workflow run (Actions → desktop → Artifacts; needs GitHub sign-in), then in Terminal: `curl -fsSL https://raw.githubusercontent.com/shishirbhat/Recast/claude/clever-heisenberg-s3taqj/apps/desktop/scripts/install-mac.sh | bash` (finds the download in ~/Downloads, quits old copies, installs, clears quarantine, re-signs old hardened copies, opens). Do **not** send installers through chat: files of ~115 MB arrived truncated twice ("disk image is corrupted", zip error 94).
+
+**Lessons that cost time (don't repeat):**
+- Ad-hoc signing + hardened runtime = crash at launch on real Macs ("different Team IDs"); GitHub's mac runner tolerates it. `hardenedRuntime: false` unless a Developer ID; CI fails an ad-hoc build carrying it.
+- Gatekeeper rejects browser-downloaded unsigned apps → the install script. The real fix is the owner's Apple Developer ID + notarisation (not done; owner's decision, $99/yr).
+- ⌘⌥Space is Finder's; the open-library shortcut on Mac is ⌃⌥Space.
+- Packaging: `npmRebuild: false` (uiohook prebuilt), `asarUnpack: node_modules/**` (OCR worker can't read the archive).
+- Linux tests need a window manager + compositor (openbox, xcompmgr) or "always on top"/transparency are meaningless and click-through tests pass for the wrong reason. `scripts/test.mjs` starts them; CI installs them. `xdotool` drives real keys/mouse.
+- A public GitHub Release (sign-in-free downloads) was blocked by the permission system as a public surface: needs the owner's explicit go-ahead.
+
+**Status of evidence:** Linux: real keys, real mouse, highlights, click-through, Calendar via stand-in, all tested (desktop 14/14). Packaged Linux/Windows launch checks run OCR from the installed app; packaged Mac install check runs the install script on a quarantined download with an old copy running, then opens via Launch Services. **Never yet confirmed on the owner's Mac:** Option twice, Accessibility/Screen Recording prompts, highlights, click-through. Last owner report was the hardened-runtime crash (fixed after); no report since the D38/D39 builds.
+
+**Desktop next steps:** (1) owner tries the latest build on the Mac and reports (crash report if any; what Terminal printed); (2) fix what that shows; (3) places and names as highlights; (4) source app name on Windows; (5) multiple displays; (6) Wayland; (7) signing with the owner's Developer ID when available; (8) a public release page if the owner approves.
 
 ## Published pages (claude.ai artifacts, owner's account, private until shared)
 - **Recast try-it page:** https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN. Source: `apps/harness/dist/clay-artifact.html` (`pnpm --filter @recast/harness build`). Republish to the same link after any change to the harness, overlay, interaction or core.
@@ -52,6 +73,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
+00. **Desktop app on the owner's Mac** (see "Desktop app" above): the owner's current priority; respond to their report first.
 0a. **Owner's real-Google runs:** `docs/REAL_TEST_PLAN.md` B, C, E, plus new **F** (Google Docs: enable Docs API and Drive API, sign in again ticking Drive), **G** (Google Maps: no setup) and **H** (GitHub: a fine-grained token for one test repository) and **I** (Linear: an API key).
 0. **Run the tester protocol** (`docs/23-user-validation.md` section 4): owner shares the try-it link with 3 to 5 outsiders, one moderated session each; results in `docs/user-validation/`. Then the next milestone (section 5): a real-Google tester kit.
 1. Recover the uncommitted edits (thread 1) and fix whatever breaks the two extension tests.
