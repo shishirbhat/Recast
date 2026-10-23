@@ -56,7 +56,14 @@ async function otherApp(html: string) {
   browser = await chromium.launch({ headless: false, ...(otherBrowser ? { executablePath: otherBrowser } : {}), args: ["--no-sandbox", "--window-position=0,0", "--window-size=1100,760"] });
   const p = await browser.newPage();
   await p.setContent(`<body style="margin:0;font-family:sans-serif">${html}</body>`);
-  await p.bringToFront(); await sleep(400);
+  await p.bringToFront();
+  // The window manager may still be placing and decorating the window: wait until it stops moving.
+  let last = "";
+  for (let i = 0; i < 30; i++) {
+    await sleep(200);
+    const g = JSON.stringify(await p.evaluate(() => [window.screenX, window.screenY, window.outerWidth, window.outerHeight, window.innerWidth, window.innerHeight]));
+    if (g === last) break; last = g;
+  }
   return p;
 }
 /** Where an element of the other app is on the screen (the page's origin is below the browser's own bars). */
@@ -74,9 +81,16 @@ async function tapTwice() {
 }
 /** Selects a paragraph of the other app with the real mouse (a triple click), as a person does. */
 async function selectWithMouse(p: Page, selector: string) {
-  const c = await onScreen(p, selector);
-  xdo("mousemove", String(c.x), String(c.y)); await sleep(80);
-  xdo("click", "--repeat", "3", "--delay", "70", "1"); await sleep(250);
+  // As a person does: triple click, and look. If the page did not take the clicks (the machine was busy), click again.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const c = await onScreen(p, selector);
+    xdo("mousemove", String(c.x), String(c.y)); await sleep(120);
+    xdo("click", "--repeat", "3", "--delay", "70", "1"); await sleep(350);
+    const want = await p.evaluate((s) => document.querySelector(s)!.textContent!.trim(), selector);
+    if ((await p.evaluate(() => getSelection()!.toString())).trim() === want) return;
+    // A highlight over the words takes the click instead (that is Recast working): the page then has no selection.
+    if (await p.evaluate(() => !getSelection()!.toString())) await sleep(400);
+  }
 }
 async function dragOnto(overlay: Page, from: string, to: string) {
   const box = async (t: string) => { const b = (await overlay.locator(".clay-item", { hasText: t }).first().boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
