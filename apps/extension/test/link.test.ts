@@ -347,7 +347,8 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect((await stored()).objects[id].ingredients[0]).toMatchObject({ kind: "error", text: "TypeError: Cannot read properties of undefined (reading 'id')" });
     await atRest(page, item(id)); await page.locator(item(id)).click();
     await page.locator("recast-clay >> .rg-actions [data-act=placeIt]").click();
-    await page.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    // The button that opens the wheel, not the one before it (which has the same words and stays until the module redraws).
+    await page.locator("recast-clay >> [data-act=openWheel]").click();
     await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-tasks");
     await page.locator("recast-clay >> button[data-act=open]").click();
     await until(async () => (await stored()).phase === "previewing");
@@ -380,7 +381,8 @@ describe("the extension places in the real Google Calendar through the Recast pr
     const id = (await stored()).desk[0] as string;
     await atRest(page, item(id)); await page.locator(item(id)).click();
     await page.locator("recast-clay >> .rg-actions [data-act=placeIt]").click();
-    await page.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
+    // The button that opens the wheel, not the one before it (which has the same words and stays until the module redraws).
+    await page.locator("recast-clay >> [data-act=openWheel]").click();
     await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-tasks");
     expect(await page.locator("recast-clay >> #rg-opt-tasks .rg-sub").innerText()).toBe("GitHub or Linear");
     await page.locator("recast-clay >> button[data-act=open]").click();

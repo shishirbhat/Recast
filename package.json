@@ -9,7 +9,7 @@
     "gen": "pnpm --filter @recast/schema run build",
     "build": "pnpm gen && pnpm --filter @recast/core run build",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test",
+    "test": "pnpm -r --filter '!@recast/harness' --filter '!@recast/extension' --filter '!@recast/desktop' run test && pnpm --filter @recast/harness test && pnpm --filter @recast/extension test && pnpm --filter @recast/desktop test",
     "conformance": "pnpm --filter @recast/conformance run test"
   },
   "devDependencies": {
