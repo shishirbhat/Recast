@@ -7,6 +7,9 @@ copyright: Recast
 directories: { output: release, buildResources: build }
 files: ["dist/**", "package.json", "!**/*.map"]
 asar: true
+# The keyboard hook (uiohook-napi) ships prebuilt for every system and uses Node's stable API: use those, never recompile.
+npmRebuild: false
+asarUnpack: ["node_modules/uiohook-napi/**"]
 # No auto-update: the app never fetches or installs anything by itself.
 publish: null
 electronLanguages: [en-US, en-GB]

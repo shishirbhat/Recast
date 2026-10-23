@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Recast</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="library.css">
+</head>
+<body>
+  <header id="top">
+    <span class="mark" aria-hidden="true"></span><h1>Recast</h1>
+    <span class="grow"></span>
+    <input id="search" type="search" placeholder="Search your blobs" aria-label="Search your blobs">
+    <button type="button" class="pill ghost" id="btn-connections">Connections</button>
+    <button type="button" class="pill" id="btn-on">Turn on</button>
+  </header>
+  <main>
+    <p class="how" id="how">Anywhere: <b>tap <kbd class="trigger">⌥ Option</kbd> twice</b>, then select text. It becomes a blob right there; click it to choose where it goes.</p>
+    <div id="permission" class="card" hidden>
+      <p><b>Allow Recast to see the trigger key and what you select.</b> macOS asks once: System Settings → Privacy &amp; Security → Accessibility → turn on Recast. Then quit Recast and open it again.</p>
+      <button type="button" class="pill" id="btn-permission">Open System Settings</button>
+    </div>
+    <p id="hook-problem" class="warn"></p>
+    <section id="empty" hidden>
+      <p class="lead">Nothing grabbed yet.</p>
+      <ol>
+        <li>In any app (a browser, a chat, a document), tap <kbd class="trigger">⌥ Option</kbd> twice. Recast is on, right there; nothing opens.</li>
+        <li>Select some text: a time, an email address, an error, a sentence. It lifts into a blob beside it.</li>
+        <li>Drag one blob onto another to press them together. Click a blob and the wheel opens beside it: choose where it goes, review, place.</li>
+        <li>Press Esc (or the trigger key once) to turn Recast off. Everything you grabbed is kept here.</li>
+      </ol>
+      <p class="quiet"><button type="button" class="linkish" id="btn-playground">Try it with sample data first</button> · <button type="button" class="linkish" id="btn-connections-2">Connect your accounts</button></p>
+    </section>
+    <section id="list" aria-label="Everything you grabbed"></section>
+    <section id="settings" aria-label="Settings">
+      <h2>Settings</h2>
+      <fieldset><legend>Appearance</legend>
+        <label><input type="radio" name="theme" value="system"> Match the system</label>
+        <label><input type="radio" name="theme" value="dark"> Dark</label>
+        <label><input type="radio" name="theme" value="light"> Light</label>
+      </fieldset>
+      <form id="shortcuts-form">
+        <fieldset><legend>Shortcuts (work from any app)</legend>
+          <label>Open this library<input id="sc-open" spellcheck="false"></label>
+          <label>Turn Recast on and grab (the same as the trigger)<input id="sc-capture" spellcheck="false"></label>
+          <p class="quiet">Written like CommandOrControl+Shift+Space.</p>
+          <p id="sc-problems" class="warn"></p>
+          <button type="submit" class="pill">Save shortcuts</button>
+        </fieldset>
+      </form>
+      <p id="server-note" class="warn"></p>
+      <p class="quiet">Everything you grab is kept on this computer only. <span id="version"></span></p>
+    </section>
+  </main>
+  <script src="library.js"></script>
+</body>
+</html>

@@ -19,3 +19,5 @@ api.on("recast:theme", (t: "dark" | "light") => { document.documentElement.datas
 void api.boot().then((b) => { document.documentElement.dataset["theme"] = b.theme; });
 addEventListener("focus", () => void refresh());
 void refresh();
+
+export {};

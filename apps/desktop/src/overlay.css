@@ -1,0 +1,20 @@
+/* The overlay: nothing of its own but the blobs, the wheel beside them, and one quiet line. The page is see-through. */
+:root {
+  --ink: #1a1a1a; --bg: #faf9f6; --accent: #b83d12;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; --font-display: "Instrument Serif", ui-serif, Georgia, serif; --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --clay-fill: #fffaf6; --clay-fill-composed: #ffe5dc; --clay-fill-carried: #ffffff; --clay-ink: #1a1a1a; --clay-muted: #625f5a; --clay-accent: #b83d12; --clay-focus: #1a1a1a;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --ink: #f3f1ec; --bg: #141311; --accent: #ff8a5c;
+  --clay-fill: #2a2522; --clay-fill-composed: #3d1f14; --clay-fill-carried: #33302d; --clay-ink: #f3f1ec; --clay-muted: #b5b0a8; --clay-accent: #ff8a5c; --clay-focus: #f3f1ec;
+  color-scheme: dark;
+}
+html, body { margin: 0; height: 100%; background: transparent !important; overflow: hidden; user-select: none; font: 400 14px/1.45 var(--font-ui); -webkit-font-smoothing: antialiased; }
+/* Blobs lift off the app underneath: a firmer shadow than on Recast's own pages, so they read on any background. */
+.clay-item { box-shadow: 0 0 0 1.5px var(--clay-accent), 0 10px 28px rgba(0,0,0,.28) !important; }
+/* The wheel beside its blob, not docked: the page sets where. */
+.rg { left: var(--ov-left, 50%) !important; top: var(--ov-top, auto) !important; bottom: auto !important; translate: none !important; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+.rg[data-mode="pill"] { display: none !important; }
+#toast { position: fixed; margin: 0; max-width: 340px; padding: 7px 12px; border-radius: 999px; background: var(--ink); color: var(--bg); font-size: 12.5px; pointer-events: none; z-index: 2147483600; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

@@ -1,6 +1,6 @@
 # Recast for the desktop (macOS, Windows, Linux)
 
-The capsule in a small window of its own, always a shortcut away. Same objects, same module, same recipes as the browser.
+Recast on top of whatever app you are in, and a library of everything you grabbed. Same objects, same module, same recipes as the browser.
 
 ## Install
 Download the installer from the **desktop** workflow's latest run on GitHub (Actions → desktop → Artifacts):
@@ -8,16 +8,22 @@ Download the installer from the **desktop** workflow's latest run on GitHub (Act
 - **Windows:** `Recast-<version>-x64.exe` (or `-arm64.exe`). Not signed yet: if SmartScreen says "Windows protected your PC", click **More info → Run anyway**.
 - **Linux:** `.rpm` (Fedora, RHEL, openSUSE), `.deb` (Ubuntu, Debian), or the AppImage (make it executable and run it).
 
-Opening Recast (from Applications, the Dock or the start menu) shows the panel. It also lives in the tray (the menu bar on a Mac). Closing the window hides it; **Quit** is in the tray menu.
+Recast is two things, like a dictation app:
+- **Recast on top of any app (the overlay).** Nothing opens. It draws only blobs and the wheel, over whatever you are in.
+- **The Recast app (the library).** Every blob you have grabbed, newest first, with where it came from and where it went. It opens only when you open it (Applications, the Dock, the start menu, the tray); closing it hides it, and Recast keeps running. **Quit** is in the tray menu.
 
 ## Use
-- **Grab: select text in any app** (Mail, Slack, a browser, a PDF, a terminal), then press **⌘⇧Space** (Mac) or **Ctrl+Shift+Space** (Linux). It lifts into Recast as an object, read as a time, a person (an email address), an error or text, and it keeps the app it came from (and the page's address when it is a browser). Recast appears without taking the keyboard from the app you are in.
-  - **Mac:** the first grab asks for the **Accessibility** permission (System Settings → Privacy & Security → Accessibility → Recast). Recast uses it to ask the front app to copy your selection, then puts your clipboard back as it was. Browsers may also ask once whether Recast may read the page address; saying no only leaves the address out.
-  - **Linux:** the highlighted text is read directly; nothing is copied. This works on X11 desktops; on Wayland it depends on the desktop.
-- **The capsule** floats above your windows: the panel when you open Recast; after you hide it, a grab brings it back as a small pill that opens into the panel once there is something on it. Drag one object onto another to press them together, then **Choose where it goes**, or run a recipe. Open or hide it with ⌃⌥Space on a Mac (⌘⌥Space is Finder's), Ctrl+Alt+Space elsewhere.
-- **Type or dictate** a piece with the **+** on the pill. Voice: on a Mac press **Fn (🌐) twice** in the box and speak; on Windows, Win+H.
-- **The Fn key cannot be a Recast shortcut** (the keyboard keeps it to itself); on a Mac it is how you dictate into Recast's box.
-- Shortcuts, appearance (match the system, dark, light) and "keep on top" are in Settings (the gear) and the tray menu.
+1. In any app (YouTube, Slack, Mail, a PDF, a terminal), **tap ⌥ Option twice** on a Mac, **Ctrl twice** on Windows and Linux. Recast is on, right there. If you had text selected, it is already a blob beside it.
+2. **Select text.** While Recast is on, each selection (drag across it, or double or triple click) lifts into a blob where you let go: a time, a person (an email address), an error or text, with the app it came from (and the page's address in a browser on a Mac).
+3. **Drag one blob onto another** to press them together (a name and a time become an event).
+4. **Click a blob**: the wheel opens beside it, on the same screen. Choose where it goes (Calendar, Tasks, Gmail drafts, Docs, GitHub, Linear, Maps), review, place. Undo where the place allows it.
+5. **Esc**, or the trigger key once, turns Recast off. Blobs you did not place come back next time; everything is in the library.
+
+Everywhere else on the screen, clicks go straight to the app underneath: the overlay takes the mouse only on its own blobs and wheel.
+- **Mac:** Recast needs the **Accessibility** permission (System Settings → Privacy & Security → Accessibility → Recast), to notice the trigger key and to copy your selection (it puts your clipboard back as it was). The library shows a button for it. Option twice is the trigger because Control twice is the Mac's own Dictation shortcut.
+- **Linux:** the highlighted text is read directly; nothing is copied. X11 desktops; on Wayland, global keys and window shapes depend on the desktop.
+- **Windows:** Recast presses Ctrl+C in the app in front and puts your clipboard back. The source app is not named yet.
+- Also: **⌘⇧Space / Ctrl+Shift+Space** does what the trigger does; **⌃⌥Space / Ctrl+Alt+Space** opens the library. Both can be changed in the library's settings.
 
 ## Connect your accounts
 Tray → **Connections…**: paste your Google OAuth client (from Google Cloud), then sign in with Google **in your browser**. GitHub and Linear connect on the same sign-in page. Tokens stay on this computer, readable only by your user. Maps needs nothing.

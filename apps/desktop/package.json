@@ -3,7 +3,10 @@
   "productName": "Recast",
   "version": "0.1.0",
   "description": "Recast: turn what you see into things done.",
-  "author": { "name": "Recast", "email": "hello@recast.dev" },
+  "author": {
+    "name": "Recast",
+    "email": "hello@recast.dev"
+  },
   "homepage": "https://github.com/shishirbhat/Recast",
   "repository": "github:shishirbhat/Recast",
   "desktopName": "recast.desktop",
@@ -31,5 +34,8 @@
     "esbuild": "^0.25.0",
     "playwright-core": "^1.56.1",
     "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
   }
 }

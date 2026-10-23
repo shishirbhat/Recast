@@ -11,11 +11,11 @@ const out = path.join(root, "dist");
 execFileSync(process.execPath, [path.join(repo, "packages/overlay/scripts/build-css.mjs")], { stdio: "inherit" });
 rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
 const common = { bundle: true, target: "es2022", legalComments: "none", logLevel: "warning", define: { "process.env.NODE_ENV": '"production"' } };
-await build({ ...common, entryPoints: [path.join(root, "src/main.ts")], platform: "node", format: "cjs", outfile: path.join(out, "main.js"), external: ["electron"], target: "node22" });
+await build({ ...common, entryPoints: [path.join(root, "src/main.ts")], platform: "node", format: "cjs", outfile: path.join(out, "main.js"), external: ["electron", "uiohook-napi"], target: "node22" });
 await build({ ...common, entryPoints: [path.join(root, "src/preload.ts")], platform: "node", format: "cjs", outfile: path.join(out, "preload.js"), external: ["electron"], target: "node22" });
-for (const name of ["renderer", "connections"]) await build({ ...common, entryPoints: [path.join(root, `src/${name}.ts`)], platform: "browser", format: "iife", outfile: path.join(out, `${name}.js`) });
+for (const name of ["overlay", "library", "connections"]) await build({ ...common, entryPoints: [path.join(root, `src/${name}.ts`)], platform: "browser", format: "iife", outfile: path.join(out, `${name}.js`) });
 await build({ entryPoints: [path.join(repo, "design/fonts.css")], bundle: true, outfile: path.join(out, "fonts.css"), loader: { ".woff2": "file", ".woff": "file" }, nodePaths: [path.join(repo, "apps/harness/node_modules")], logLevel: "warning" });
-for (const f of ["index.html", "connections.html", "app.css"]) cpSync(path.join(root, "src", f), path.join(out, f));
+for (const f of ["overlay.html", "overlay.css", "library.html", "library.css", "connections.html"]) cpSync(path.join(root, "src", f), path.join(out, f));
 for (const f of readdirSync(path.join(root, "build"))) if (/^tray/.test(f)) cpSync(path.join(root, "build", f), path.join(out, f));
 // The playground: the try-it page (sample data, stand-in destinations, said so on every review), built if needed.
 const harness = path.join(repo, "apps/harness/dist");

@@ -64,7 +64,7 @@ jobs:
           exe=/tmp/Recast.app/Contents/MacOS/$(defaults read /tmp/Recast.app/Contents/Info.plist CFBundleExecutable)
           set +e; perl -e 'alarm 90; exec @ARGV' "$exe" --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
-          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' /tmp/smoke.log
+          grep -q 'RECAST_SMOKE {"visible":true,"overlay":true' /tmp/smoke.log
       - name: launch check (Linux, the packaged app)
         if: runner.os == 'Linux'
         shell: bash
@@ -72,7 +72,7 @@ jobs:
           sudo apt-get install -y xvfb >/dev/null
           set +e; timeout 90 xvfb-run -a apps/desktop/release/linux-unpacked/recast --no-sandbox --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
-          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' /tmp/smoke.log
+          grep -q 'RECAST_SMOKE {"visible":true,"overlay":true,"hook":true' /tmp/smoke.log
       - name: launch check (Windows, the packaged app)
         if: runner.os == 'Windows'
         shell: bash
@@ -81,7 +81,7 @@ jobs:
           export RECAST_SMOKE_OUT="$RUNNER_TEMP/smoke.log"
           set +e; timeout 90 apps/desktop/release/win-unpacked/recast.exe --recast-smoke; code=$?; set -e
           echo "exit code $code"; cat "$RECAST_SMOKE_OUT" || true
-          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' "$RECAST_SMOKE_OUT"
+          grep -q 'RECAST_SMOKE {"visible":true,"overlay":true,"hook":true' "$RECAST_SMOKE_OUT"
       # The person's path, not a terminal shortcut: what macOS says about a browser-downloaded copy, then the install
       # command run on the downloaded disk image while an old copy of Recast is running (as on a Mac that tried earlier
       # builds), then opening it the way Finder and the Dock do (Launch Services), requiring its window on screen.
@@ -107,7 +107,7 @@ jobs:
           open --env RECAST_SMOKE_OUT="$out" /Applications/Recast.app --args --recast-smoke
           for _ in $(seq 1 60); do [ -s "$out" ] && break; sleep 1; done
           cat "$out"
-          grep -q 'RECAST_SMOKE {"visible":true.*"width":440,"height":640' "$out"
+          grep -q 'RECAST_SMOKE {"visible":true,"overlay":true' "$out"
       # One small download per kind of Mac, holding just its disk image (Safari unpacks GitHub's wrapper zip).
       - if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4

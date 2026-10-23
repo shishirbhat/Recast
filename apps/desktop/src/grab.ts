@@ -1,7 +1,7 @@
 // Grab: what the person has selected in whichever app is in front, without them copying it, and where it came from.
 //   Linux (X11): the highlighted text is the PRIMARY selection, readable directly; nothing is copied or changed.
-//   macOS: Recast asks the front app to copy (⌘C, through System Events), reads it, then puts the person's clipboard back.
-//          That needs the Accessibility permission, which macOS asks for once; without it nothing is sent to any app.
+//   macOS and Windows: Recast presses copy (⌘C / Ctrl+C) in the front app, reads it, then puts the person's clipboard back.
+//          On a Mac that needs the Accessibility permission, which macOS asks for once; without it nothing is sent.
 // The source is what the system can say: the app's name, its window title, and for a browser the page's address.
 // Nothing is read that the person did not select.
 import { clipboard, systemPreferences } from "electron";
@@ -52,30 +52,42 @@ async function linuxSource(): Promise<Omit<Grabbed, "text">> {
 /** Whether Recast may read selections here. On a Mac, asking shows the system prompt (once). */
 export function canGrab(ask = false): boolean {
   if (process.platform === "darwin") return systemPreferences.isTrustedAccessibilityClient(ask);
-  return process.platform === "linux";
+  return process.platform === "linux" || process.platform === "win32";
 }
 
-export async function grabSelection(): Promise<GrabResult> {
+/** Presses copy in the app in front (the keyboard hook's key tap); falls back to System Events on a Mac. */
+export type CopyKeys = () => void;
+
+/** Copy in the front app, read it, put the person's clipboard back. A copy that changes nothing means no selection. */
+async function copyAndRead(copyKeys: CopyKeys): Promise<string> {
+  const before = await clipboard.read().catch(() => null);   // every format the person had, to put back as it was
+  const mark = `recast-grab-${Date.now()}-${Math.random()}`;
+  await clipboard.writeText(mark);
+  await sleep(120);   // the trigger's own keys are released first, so the app sees copy alone
+  copyKeys();
+  let text = "";
+  for (let i = 0; i < 12; i++) { await sleep(40); const t = await clipboard.readText(); if (t !== mark) { text = t; break; } }
+  if (before && before.length) await clipboard.write(before).catch(() => clipboard.clear()); else clipboard.clear();
+  return text.trim();
+}
+
+export async function grabSelection(copyKeys?: CopyKeys): Promise<GrabResult> {
   if (process.platform === "linux") {
     const text = ((await clipboard.selection?.readText().catch(() => "")) ?? "").trim();
-    if (!text) return { ok: false, reason: "empty", message: "Select some text first, then press the shortcut" };
+    if (!text) return { ok: false, reason: "empty", message: "Select some text first" };
     return { ok: true, grabbed: { text: text.slice(0, 2000), ...(await linuxSource()) } };
   }
   if (process.platform === "darwin") {
     if (!canGrab(false)) { canGrab(true); return { ok: false, reason: "permission", message: "Recast needs the Accessibility permission to read what you select" }; }
     const source = await macSource();
-    // Keep the person's clipboard: remember it, mark it, copy, read, put it back. A copy that changes nothing means no selection.
-    const before = await clipboard.read().catch(() => null);   // every format the person had, to put back as it was
-    const mark = `recast-grab-${Date.now()}-${Math.random()}`;
-    await clipboard.writeText(mark);
-    await sleep(120);   // the shortcut's own keys are released first, so the app sees ⌘C alone
-    await osa('tell application "System Events" to keystroke "c" using command down');
-    let text = "";
-    for (let i = 0; i < 12; i++) { await sleep(40); const t = await clipboard.readText(); if (t !== mark) { text = t; break; } }
-    if (before && before.length) await clipboard.write(before).catch(() => clipboard.clear()); else clipboard.clear();
-    text = text.trim();
-    if (!text) return { ok: false, reason: "empty", message: "Select some text first, then press the shortcut" };
+    const text = await copyAndRead(copyKeys ?? (() => void osa('tell application "System Events" to keystroke "c" using command down')));
+    if (!text) return { ok: false, reason: "empty", message: "Select some text first" };
     return { ok: true, grabbed: { text: text.slice(0, 2000), ...source } };
   }
-  return { ok: false, reason: "unsupported", message: "Grabbing a selection is not available on this system yet: copy it, then use Paste copied" };
+  if (process.platform === "win32" && copyKeys) {
+    const text = await copyAndRead(copyKeys);
+    if (!text) return { ok: false, reason: "empty", message: "Select some text first" };
+    return { ok: true, grabbed: { text: text.slice(0, 2000) } };
+  }
+  return { ok: false, reason: "unsupported", message: "Grabbing a selection is not available on this system yet" };
 }

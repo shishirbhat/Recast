@@ -70,5 +70,5 @@ if codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc" && codesign -dv "$APP" 2
   codesign --force --deep --sign - "$APP" 2>/dev/null || sudo codesign --force --deep --sign - "$APP"
 fi
 
-if [ -z "${RECAST_NO_OPEN:-}" ]; then open "$APP"; say "Recast is open. It is in Applications and in the Dock."; else say "installed."; fi
-say "select text in any app and press ⌘⇧Space to grab it; ⌃⌥Space opens or hides Recast."
+if [ -z "${RECAST_NO_OPEN:-}" ]; then open "$APP"; say "Recast is open (its library). Allow Accessibility when it asks: that is how it hears Option twice."; else say "installed."; fi
+say "in any app, tap Option twice, then select text: it becomes a blob right there. Esc turns Recast off."
