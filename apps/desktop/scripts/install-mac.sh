@@ -63,6 +63,12 @@ if [ "$app" != "$APP" ]; then
   else sudo rm -rf "$APP"; sudo ditto "$app" "$APP"; fi
 fi
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || sudo xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+# Builds before 2026-10-23 were ad-hoc signed WITH the hardened runtime, which macOS 26 kills at launch ("different Team
+# IDs" for Electron's framework). Re-sign such a copy ad hoc without it; a Developer ID signed copy is left alone.
+if codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc" && codesign -dv "$APP" 2>&1 | grep -q "flags=.*runtime"; then
+  say "re-signing for this Mac…"
+  codesign --force --deep --sign - "$APP" 2>/dev/null || sudo codesign --force --deep --sign - "$APP"
+fi
 
 if [ -z "${RECAST_NO_OPEN:-}" ]; then open "$APP"; say "Recast is open. It is in Applications and in the Dock."; else say "installed."; fi
 say "select text in any app and press ⌘⇧Space to grab it; ⌃⌥Space opens or hides Recast."

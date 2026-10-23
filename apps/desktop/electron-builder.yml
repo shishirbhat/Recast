@@ -19,7 +19,9 @@ mac:
   darkModeSupport: true
   # Signing and notarisation run only when the Apple credentials are present (CSC_LINK, APPLE_ID, ...); without them the
   # .dmg is unsigned and macOS asks the person to confirm the first launch.
-  hardenedRuntime: true
+  # Off for ad-hoc signed builds: macOS 26 kills an ad-hoc app with the hardened runtime at launch ("different Team
+  # IDs" for Electron's framework). CI turns it on when it signs with a Developer ID.
+  hardenedRuntime: false
   notarize: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist

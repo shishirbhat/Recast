@@ -37,8 +37,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           extra=""
-          # No Apple certificate: sign ad hoc so the app still opens on Apple silicon (after the person confirms it).
+          # No Apple certificate: sign ad hoc so the app still opens on Apple silicon (after the person confirms it), and
+          # without the hardened runtime: with it, macOS 26 refuses to load Electron's framework into an ad-hoc signed app
+          # ("different Team IDs") and the app dies at launch. The hardened runtime comes back with a Developer ID.
           if [ "${{ runner.os }}" = "macOS" ] && [ -z "$CSC_LINK" ]; then extra="-c.mac.identity=-"; unset CSC_LINK CSC_KEY_PASSWORD; fi
+          # With a Developer ID the hardened runtime is on (notarisation needs it); it is off in electron-builder.yml.
+          if [ "${{ runner.os }}" = "macOS" ] && [ -n "${CSC_LINK:-}" ]; then extra="-c.mac.hardenedRuntime=true"; fi
           npx electron-builder ${{ matrix.target }} --publish never $extra
       # Open the packaged app the way a person would and check its window is on screen. Building is not launching:
       # a Mac app can package fine and still be stopped by macOS the moment it starts.
@@ -54,6 +58,9 @@ jobs:
           ditto /tmp/recast-dmg/Recast.app /tmp/Recast.app && hdiutil detach /tmp/recast-dmg
           codesign -dv --verbose=2 /tmp/Recast.app 2>&1 | grep -E "^(Executable|Signature|TeamIdentifier|CodeDirectory)" || true
           codesign --verify --deep --strict /tmp/Recast.app && echo "signature verifies"
+          # An ad-hoc signed app must not carry the hardened runtime (see package): GitHub's Mac tolerates it, people's do not.
+          if codesign -dv /tmp/Recast.app 2>&1 | grep -q "Signature=adhoc" && codesign -dv /tmp/Recast.app 2>&1 | grep -q "flags=.*runtime"; then
+            echo "ad-hoc signed with the hardened runtime: macOS 26 kills this at launch"; exit 1; fi
           exe=/tmp/Recast.app/Contents/MacOS/$(defaults read /tmp/Recast.app/Contents/Info.plist CFBundleExecutable)
           set +e; perl -e 'alarm 90; exec @ARGV' "$exe" --recast-smoke > /tmp/smoke.log 2>&1; code=$?; set -e
           echo "exit code $code"; tail -40 /tmp/smoke.log
