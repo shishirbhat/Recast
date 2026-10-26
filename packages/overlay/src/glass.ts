@@ -332,11 +332,13 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   /** The destination's read-back after placing: checking, all fields match, or exactly which differ and what it now holds. */
   function checked(v: unknown, where: string): string {
     if (v === "checking") return `<p class="rg-hint rg-verify" role="status">Checking ${esc(where)}…</p>`;
-    const r = v as { ok: boolean; fields: { path: string; expected: string; actual: string | null; match: boolean }[]; note?: string } | undefined;
+    const r = v as { ok: boolean; fields: { path: string; expected: string; actual: string | null; match: boolean }[]; note?: string; link?: string } | undefined;
     if (!r) return "";
-    if (r.ok) return `<p class="rg-hint rg-verify ok" role="status">Read back from ${esc(where)}: ${r.fields.length} of ${r.fields.length} fields match.</p>`;
+    // The destination's own link, read back with the item; only https, opened in a new tab.
+    const open = r.link && /^https:\/\//.test(r.link) ? ` <a class="rg-open" href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">Open in ${esc(where)}</a>` : "";
+    if (r.ok) return `<p class="rg-hint rg-verify ok" role="status">Read back from ${esc(where)}: ${r.fields.length} of ${r.fields.length} fields match.${open}</p>`;
     const bad = r.fields.filter((f) => !f.match);
-    return `<div class="rg-verify bad" role="alert"><p>${esc(r.note ? `Not confirmed: ${r.note}` : `${where} differs from what was planned`)}.</p>${bad.length && !r.note ? `<ul>${bad.map((f) => `<li>${FIELD_LABEL[f.path.split(".")[1]!] ?? f.path}: planned “${esc(f.expected)}”, now “${esc(f.actual ?? "missing")}”</li>`).join("")}</ul>` : ""}</div>`;
+    return `<div class="rg-verify bad" role="alert"><p>${esc(r.note ? `Not confirmed: ${r.note}` : `${where} differs from what was planned`)}.</p>${bad.length && !r.note ? `<ul>${bad.map((f) => `<li>${FIELD_LABEL[f.path.split(".")[1]!] ?? f.path}: planned “${esc(f.expected)}”, now “${esc(f.actual ?? "missing")}”</li>`).join("")}</ul>` : ""}${open ? `<p>${open.trim()}</p>` : ""}</div>`;
   }
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
     const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? v.issue?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
@@ -683,6 +685,7 @@ export const GLASS_CSS = `
 .rg-resolved { margin: 6px 0 0; }
 .rg-verify { margin: 6px 0 0; font-size: 12px; }
 .rg-verify.ok { color: var(--g-ink); }
+.rg-open { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
 .rg-verify.bad { color: var(--g-ink); padding: 8px 10px; border-radius: 12px; box-shadow: inset 0 0 0 0.5px var(--g-line); }
 .rg-verify.bad p { margin: 0; font-weight: 600; }
 .rg-verify.bad ul { margin: 4px 0 0; padding-left: 16px; }

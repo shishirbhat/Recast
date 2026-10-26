@@ -166,6 +166,10 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
     await expect.poll(() => overlay.locator(".rg-title").innerText()).toBe("Added to Google Calendar");
     const ev = Object.values((await fake()).events)[0] as Record<string, any>;
     expect(ev.summary).toBe("Lunch with Arjun"); expect(ev.start.dateTime).toMatch(/T13:00:00$/);
+    // Read back from Google through the program, with the event's link; the event is still there afterwards
+    // (a read-back must never be mistaken for anything else, such as an undo).
+    await expect.poll(() => overlay.locator(".rg-verify").innerText().catch(() => "")).toMatch(/^Read back from Google Calendar: (\d+) of \1 fields match\. Open in Google Calendar$/);
+    expect((Object.values((await fake()).events)[0] as any).status).toBe("confirmed");
     await overlay.getByRole("button", { name: "Undo" }).click();
     await expect.poll(async () => (Object.values((await fake()).events)[0] as any).status).toBe("cancelled");
     // The library (still closed) has both pieces, with where they went.

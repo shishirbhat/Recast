@@ -7,8 +7,8 @@
 import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { randomInt } from "node:crypto";
-import { commit, InMemoryEventLog, OutcomeUnknownError, undo, type Consent, type Operation, type Receipt } from "@recast/core";
-import { calendarEventId, DuplicateError, githubIssue, linearIssue, gmailMessageDraft, googleCalendarEvent, googleDocs, googleTasks, googleTasksEntry, HttpBridge } from "@recast/bridges";
+import { commit, InMemoryEventLog, OutcomeUnknownError, undo, verify, type Consent, type Operation, type Receipt, type Verification } from "@recast/core";
+import { calendarEventId, DestinationError, DuplicateError, githubIssue, linearIssue, gmailMessageDraft, googleCalendarEvent, googleDocs, googleTasks, googleTasksEntry, HttpBridge } from "@recast/bridges";
 import { type CalendarAccess, googleTransport } from "./test-event.js";
 import { hasDocs, hasGmail, hasTasks, readToken } from "./server.js";
 import { githubTransport, readGithub } from "./github.js";
@@ -46,6 +46,17 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
   const destOf = (destination: string): Dest => destination === linearIssue.contract.destination ? "linear" : destination === githubIssue.contract.destination ? "github" : destination === googleDocs.contract.destination ? "docs" : destination === gmailMessageDraft.contract.destination ? "gmail" : destination === googleTasks.contract.destination || destination === googleTasksEntry.contract.destination ? "tasks" : "calendar";
   const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t), tasks: hasTasks(t), docs: hasDocs(t), github: (() => { const g = readGithub(a.dir); return g ? `${g.owner}/${g.repo}` : false; })(), linear: (() => { const l = readLinear(a.dir); return l ? l.teamName : false; })() }; };
   const iso = () => new Date(a.now()).toISOString();
+  const APP: Record<Dest, string> = { calendar: "Google Calendar", gmail: "Gmail", tasks: "Google Tasks", docs: "Google Docs", github: "GitHub", linear: "Linear" };
+  /** A provider's refusal in words a person can act on. Never echoes a token or a response body. */
+  const explain = (e: unknown, dest: Dest): string => {
+    const where = APP[dest]; const google = dest !== "github" && dest !== "linear";
+    if (e instanceof DestinationError && e.status === 401) return google ? "Google no longer accepts this sign-in (expired or revoked). Sign in again on the Recast page" : `${where} no longer accepts the saved key. Connect it again on the Recast page`;
+    if (e instanceof DestinationError && e.status === 403) return google ? `Google refused: this sign-in does not allow ${where}. Sign in again on the Recast page and tick it` : `${where} refused: the saved key does not allow this`;
+    if (e instanceof DestinationError && e.status === 404) return `${where} could not find it`;
+    if (e instanceof DestinationError && e.status === 429) return `${where} asked Recast to slow down. Try again in a minute`;
+    if (e instanceof TypeError) return `${where} could not be reached. Check the internet connection`;
+    return e instanceof Error ? e.message : String(e);
+  };
 
   return {
     isAllowed: (origin: string | undefined) => !!origin && pairing().allowed.includes(origin),
@@ -99,7 +110,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         } catch (e) {
           if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: dest === "gmail" ? "Gmail did not answer; the draft may have been saved" : dest === "docs" ? "Google Docs did not answer; the document may have been created" : dest === "github" ? "GitHub did not answer; the issue may have been opened" : dest === "linear" ? "Linear did not answer; the issue may have been created" : dest === "tasks" ? "Google Tasks did not answer; the task may have been added" : "Google Calendar did not answer; it may have been added" } };
           if (e instanceof DuplicateError) return { status: 200, body: { outcome: "failed", message: "It is already in your Google Calendar, so it was not added a second time" } };
-          return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } };
+          return { status: 200, body: { outcome: "failed", message: explain(e, dest) } };
         }
       }
       if (route === "reconcile") {
@@ -127,9 +138,20 @@ export function createExtensionApi(a: CalendarAccess & { dir: string }) {
         if (!stored) return { status: 200, body: { outcome: "failed", message: "That placement is not one this computer made" } };
         const log = new InMemoryEventLog(); await log.append({ at: stored.at, kind: "commit", receipt: stored });
         try { await undo(stored, { bridge: bridge(destOf(stored.destination), stored.destination), log, now: iso }); }
-        catch (e) { return { status: 200, body: { outcome: "failed", message: e instanceof Error ? e.message : String(e) } }; }
+        catch (e) { return { status: 200, body: { outcome: "failed", message: explain(e, destOf(stored.destination)) } }; }
         writePrivate(receiptFile, receipts().filter((r) => r.receiptId !== id));
         return { status: 200, body: { outcome: "undone" } };
+      }
+      if (route === "verify") {
+        // Read a placement back from the provider and compare it with the plan. Only a receipt this program issued, for
+        // the same operation; the stored copy is used. "Verified" is the provider's own answer, never assumed.
+        const op = body.op as Operation | undefined; const id = (body.receipt as Receipt | undefined)?.receiptId;
+        const stored = receipts().find((r) => r.receiptId === id);
+        const notChecked = (note: string): ExtReply => ({ status: 200, body: { verification: { ok: false, at: iso(), fields: [], note } satisfies Verification } });
+        if (!stored || !op || op.opId !== stored.opId) return notChecked("that placement is not one this computer made");
+        const log = new InMemoryEventLog(); await log.append({ at: stored.at, kind: "commit", receipt: stored });
+        try { return { status: 200, body: { verification: await verify(stored, op, { bridge: bridge(destOf(stored.destination), stored.destination), log, now: iso }) } }; }
+        catch (e) { return notChecked(`it could not be read back: ${explain(e, destOf(stored.destination))}`); }
       }
       return { status: 404, body: { error: "unknown route" } };
   }

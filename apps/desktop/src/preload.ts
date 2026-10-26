@@ -5,7 +5,7 @@ const CHANNELS = ["recast:capture", "recast:spots", "recast:theme", "recast:sett
 contextBridge.exposeInMainWorld("recastDesktop", {
   boot: () => ipcRenderer.invoke("recast:boot"),
   status: () => ipcRenderer.invoke("recast:status"),
-  act: (route: "commit" | "reconcile" | "undo", body: unknown) => ipcRenderer.invoke("recast:act", route, body),
+  act: (route: "commit" | "reconcile" | "undo" | "verify", body: unknown) => ipcRenderer.invoke("recast:act", route, body),
   openExternal: (url: string) => ipcRenderer.invoke("recast:open-external", url),
   saveInbox: (state: unknown) => ipcRenderer.invoke("recast:save-inbox", state),
   interactive: (over: boolean, rects: unknown, own: unknown) => ipcRenderer.invoke("recast:interactive", over, rects, own),

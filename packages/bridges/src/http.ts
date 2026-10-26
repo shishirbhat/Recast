@@ -49,7 +49,13 @@ export class HttpBridge<Target> implements Bridge {
     return this.spec.reconcile(token, this.target, this.send);
   }
   private send: Send = async (req) => {
-    const r = await this.transport(req);
+    let r: HttpResponse;
+    try { r = await this.transport(req); }
+    catch (e) {
+      // The connection failed: a write may have reached the provider before it did. Unknown, so it is checked, never resent.
+      if (req.method !== "GET" && !(e instanceof DestinationError) && !(e instanceof OutcomeUnknownError)) throw new OutcomeUnknownError(`${new URL(req.url).hostname} could not be reached during the change; it may or may not have been made`);
+      throw e;
+    }
     // A gateway timeout on a write means the provider may have applied it: unknown, not failed.
     if (r.status === 504 && req.method !== "GET") throw new OutcomeUnknownError(`${new URL(req.url).hostname} timed out behind its gateway; the change may have been made`);
     if (r.status < 200 || r.status >= 300) throw new DestinationError(`${req.method} ${new URL(req.url).hostname} answered ${r.status}`, r.status);

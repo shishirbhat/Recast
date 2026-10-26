@@ -92,6 +92,9 @@ describe("cross-tab carry in the browser extension", () => {
     await cal.locator("recast-clay >> button", { hasText: "Add to calendar" }).click();
     await until(async () => (await stored()).phase === "succeeded");
     expect(await cal.locator("#events li").innerText()).toBe("Meet Maya at Dakshin · 2026-10-23T19:30 · Dakshin, 12 MG Road, Bengaluru 560001");
+    // The stand-in calendar page is read back, too: the receipt never stays on "checking".
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect((await stored()).placement.verification).toMatchObject({ ok: true });
     s = await stored(); expect(s.placement.destinationId).toMatch(/^\d+:week$/);
     await cal.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await cal.locator("#events li").count()) === 0);

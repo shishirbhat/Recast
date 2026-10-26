@@ -69,6 +69,8 @@ export interface Verification {
   fields: { path: string; expected: string; actual: string | null; match: boolean }[];
   /** Why it could not be fully checked, when it could not. */
   note?: string;
+  /** The destination's own address for the item, read back with it (https only), for "Open in …". */
+  link?: string;
 }
 export interface Env { now(): string }
 export interface CommitEnv extends Env { bridge: Bridge; log: EventLog }

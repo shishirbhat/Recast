@@ -314,8 +314,8 @@ function ipc() {
   ipcMain.handle("recast:boot", () => ({ settings: publicSettings(), inbox: readJson<unknown>(inboxFile(), null), theme: themeName(), on }));
   ipcMain.handle("recast:status", async () => (link ? (await link.direct("status", {})).body : {}));
   ipcMain.handle("recast:act", async (_e, route: unknown, body: unknown) => {
-    // Only the three operations, only to the destinations this program serves; the program checks the rest.
-    if (!link || (route !== "commit" && route !== "reconcile" && route !== "undo") || !body || typeof body !== "object") return { status: 400, body: { error: "not allowed" } };
+    // Only these operations, only to the destinations this program serves; the program checks the rest.
+    if (!link || (route !== "commit" && route !== "reconcile" && route !== "undo" && route !== "verify") || !body || typeof body !== "object") return { status: 400, body: { error: "not allowed" } };
     const b = body as Record<string, unknown>;
     if (!DESTS.has(String(b["destination"]))) return { status: 400, body: { error: "unknown destination" } };
     return link.direct(route, b);

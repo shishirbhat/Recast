@@ -260,7 +260,7 @@ export const googleCalendarEvent: Spec<CalendarListTarget> = {
   // ("2026-10-22T16:00:00+05:30") and its own time zone field, so the local time and the zone are compared separately.
   async verify(token, op, t, send) {
     const id = (JSON.parse(token) as { id: string }).id;
-    let cur: { status?: string; summary?: string; location?: string; start?: { dateTime?: string; date?: string; timeZone?: string }; end?: { dateTime?: string; date?: string; timeZone?: string } } | null;
+    let cur: { status?: string; summary?: string; location?: string; htmlLink?: string; start?: { dateTime?: string; date?: string; timeZone?: string }; end?: { dateTime?: string; date?: string; timeZone?: string } } | null;
     try { cur = (await send({ method: "GET", url: `${GCAL}/calendars/${seg(t.calendarId)}/events/${seg(id)}` })) as typeof cur; }
     catch (e) { if (e instanceof DestinationError && (e.status === 404 || e.status === 410)) cur = null; else throw e; }
     const want = eventBody(op, id);
@@ -274,7 +274,8 @@ export const googleCalendarEvent: Spec<CalendarListTarget> = {
     if (want.location) rows.push({ path: "Event.location", expected: want.location, actual: cur?.location ?? null });
     const fields = rows.map((r) => ({ ...r, match: r.actual === r.expected }));
     if (!cur || cur.status === "cancelled") return { ok: false, fields: fields.map((f) => ({ ...f, actual: null, match: false })), note: "the event is not in the calendar" };
-    return { ok: fields.every((f) => f.match), fields };
+    const link = typeof cur.htmlLink === "string" && /^https:\/\//.test(cur.htmlLink) ? cur.htmlLink : undefined;
+    return { ok: fields.every((f) => f.match), fields, ...(link ? { link } : {}) };
   },
   async undo(token, t, send) {
     await send({ method: "DELETE", url: `${GCAL}/calendars/${seg(t.calendarId)}/events/${seg((JSON.parse(token) as { id: string }).id)}?sendUpdates=none` });

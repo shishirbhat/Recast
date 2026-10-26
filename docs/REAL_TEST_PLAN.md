@@ -172,3 +172,15 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | K6 | Quit from the tray and open again | The objects you left are still there | inbox |
 | K7 | Settings: switch Dark / Light / Match the system | The whole window changes, with no white panels in dark | themes |
 
+
+## L. Verify and Confirm on the real path (Google Calendar; no new setup beyond section B)
+**Checks:** after a placement, Recast reads the event back from your Google Calendar and says so; the link opens the event; failures are stated, never shown as success. (The read-back runs once, right after placing.)
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| L1 | Place an event in Google Calendar from the extension (as in B4–B6), or from the desktop app | "Added to Google Calendar", then within a second or two "Read back from Google Calendar: 5 of 5 fields match. Open in Google Calendar" | real read-back |
+| L2 | Click **Open in Google Calendar** | The event opens in Google Calendar in a new tab | link to the created item |
+| L3 | Place the same composition again | "It is already in your Google Calendar, so it was not added a second time"; still one event | no duplicate |
+| L4 | In Google Account → Security → Third-party access, remove Recast's access; then place something | "Google no longer accepts this sign-in (expired or revoked). Sign in again on the Recast page" — and nothing claims it was added | auth failure stated |
+| L5 | Sign in again ticking only Tasks (untick Calendar), then place an event | A refusal naming the missing Google Calendar permission | permission failure stated |
+| L6 | Turn Wi-Fi off, place an event, turn Wi-Fi on | "did not answer… it may or may not have been made", then **Check** asks Google; never a second write | uncertain outcome |

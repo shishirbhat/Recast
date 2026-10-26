@@ -117,6 +117,13 @@ async function viaLink(e: ClumpEffect) {
       if (r.status === 200 && r.body["checkable"] === false) await apply((s) => ({ state: { ...s, ...(s.placement ? { placement: { ...s.placement, message: String(r.body["message"]) } } : {}), last: { kind: "unknown", text: String(r.body["message"]), at: at() } } }));
       else if (r.status === 200) await apply((s) => reduceClump(s, { type: "reconciled", opId: e.op.opId, found: !!r.body["found"], ...(r.body["receipt"] ? { receipt: r.body["receipt"] as never } : {}), now: at() }));
     } catch { /* stays unknown */ }
+  } else if (e.type === "verify") {
+    // Read it back through the program: "verified" is the provider's own answer, never the write's success.
+    const failed = (note: string) => ({ ok: false, at: new Date().toISOString(), fields: [], note });
+    let verification;
+    try { const r = await link("verify", { destination, op: e.op, receipt: e.receipt }); verification = (r.body["verification"] as never) ?? failed(String(r.body["error"] ?? `answered ${r.status}`)); }
+    catch { verification = failed("the Recast program on this computer did not answer, so this was not checked"); }
+    await apply((s) => reduceClump(s, { type: "verified", opId: e.op.opId, verification, now: at() }));
   } else if (e.type === "undo") {
     const opId = e.receipt.opId;
     try {

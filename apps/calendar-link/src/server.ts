@@ -189,7 +189,7 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
     }
 
     // The Recast extension: JSON in, JSON out; only an extension the person allowed here (see extension-api.ts).
-    const extRoute = /^\/ext\/(pair|status|commit|reconcile|undo)$/.exec(url.pathname)?.[1];
+    const extRoute = /^\/ext\/(pair|status|commit|reconcile|undo|verify)$/.exec(url.pathname)?.[1];
     if (req.method === "POST" && extRoute) {
       let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 256_000) return json(res, 413, { error: "too large" }); }
       let body: Record<string, unknown> = {}; try { body = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return json(res, 400, { error: "not JSON" }); }

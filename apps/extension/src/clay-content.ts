@@ -5,7 +5,7 @@
 // in any tab you bring Recast into it is "in hand" on the shelf, ready to be dragged onto something there.
 // A tab cannot follow the pointer while another tab is in front, so carrying across tabs is: switch tabs, then pick the
 // object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
-import { commit, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, pieceOfSelection, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt } from "@recast/core";
+import { commit, verify as coreVerify, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, pieceOfSelection, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt, type Verification } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { createControlTrigger, doubtNote, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
@@ -306,11 +306,20 @@ async function main() {
         const delay = Number(el.dataset["recastDelay"] ?? 0); if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         const li = document.createElement("li"); li.dataset["placed"] = op.proposal.relationId; li.id = `recast-${op.opId}`;
         li.textContent = op.dataMoved.filter((d) => ["Event.title", "Event.start", "Event.location", "Message.to", "Message.snippet", "Document.title", "Document.url"].includes(d.path)).map((d) => d.value).join(" · ");
+        // What was written, kept on the entry, so a read-back compares with what the page now holds.
+        li.dataset["recastFields"] = JSON.stringify(Object.fromEntries(op.dataMoved.map((d) => [d.path, d.value])));
         list().appendChild(li);
         if (el.dataset["recastSilent"] === "true") throw new OutcomeUnknownError(`${el.dataset["recastLabel"] ?? "The page"} did not answer in time`, li.id);
         return { ref: li.id };
       },
       async undo(r: Receipt) { document.getElementById(r.bridgeRef ?? "")?.remove(); },
+      /** Read the entry back from the page and compare every moved field with the plan. */
+      async verify(r: Receipt, op: Operation): Promise<Verification> {
+        const li = document.getElementById(r.bridgeRef ?? ""); let held: Record<string, string> = {};
+        try { held = li ? JSON.parse(li.dataset["recastFields"] ?? "{}") as Record<string, string> : {}; } catch { /* unreadable: nothing matches */ }
+        const fields = op.dataMoved.map((d) => { const actual = li ? (held[d.path] ?? null) : null; return { path: d.path, expected: d.value, actual, match: actual === d.value }; });
+        return { ok: !!li && fields.every((f) => f.match), at: new Date().toISOString(), fields, ...(li ? {} : { note: `it is not on ${el.dataset["recastLabel"] ?? "the page"} any more` }) };
+      },
     };
   };
   async function perform(eff: ClumpEffect) {
@@ -325,6 +334,9 @@ async function main() {
         const receipt: Receipt = { receiptId: `rc-${eff.op.opId}`, opId: eff.op.opId, at: now(), status: "done", objectId: eff.op.proposal.object.id, destination: eff.op.proposal.destination.destination, relationId: eff.op.proposal.relationId, effect: eff.op.proposal.effect, reversible: eff.op.proposal.reversible, bridgeRef: ref };
         await log.append({ kind: "commit", at: receipt.at, receipt }); await dispatch({ type: "reconciled", opId: eff.op.opId, found: true, receipt });
       } else await dispatch({ type: "reconciled", opId: eff.op.opId, found: false });
+    } else if (eff.type === "verify") {
+      try { await dispatch({ type: "verified", opId: eff.op.opId, verification: await coreVerify(eff.receipt, eff.op, { bridge, log, now }) }); }
+      catch (e) { await dispatch({ type: "verified", opId: eff.op.opId, verification: { ok: false, at: now(), fields: [], note: e instanceof Error ? e.message : String(e) } }); }
     } else if (eff.type === "undo") {
       // Only a confirmed reversal is "undone"; anything else is a failed undo, and the placement stands.
       try { await coreUndo(eff.receipt, { bridge, log, now }); await dispatch({ type: "undone", opId: eff.receipt.opId }); }

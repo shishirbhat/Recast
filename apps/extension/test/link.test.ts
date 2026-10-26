@@ -53,7 +53,7 @@ const fakeGoogle: typeof fetch = async (u, init) => {
     if (method === "DELETE") { drafts.delete(url.split("/drafts/")[1]!); return json(204, null); }
   }
   const id = decodeURIComponent(url.split("/events/")[1]?.split("?")[0] ?? "");
-  if (method === "POST") { const b = JSON.parse(String(init!.body)); if (events.has(b.id)) return json(409, {}); events.set(b.id, { ...b, status: "confirmed" }); if (dropNext) { dropNext = false; return json(504, {}); } return json(200, events.get(b.id)); }
+  if (method === "POST") { const b = JSON.parse(String(init!.body)); if (events.has(b.id)) return json(409, {}); events.set(b.id, { ...b, status: "confirmed", htmlLink: `https://www.google.com/calendar/event?eid=${b.id}` }); if (dropNext) { dropNext = false; return json(504, {}); } return json(200, events.get(b.id)); }
   if (method === "GET") return events.has(id) ? json(200, events.get(id)) : json(404, {});
   if (method === "PUT") { events.set(id, JSON.parse(String(init!.body))); if (dropNext) { dropNext = false; return json(504, {}); } return json(200, events.get(id)); }
   if (method === "DELETE") { events.set(id, { ...events.get(id)!, status: "cancelled" }); return json(204, null); }
@@ -149,6 +149,13 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await until(async () => (await stored()).phase === "succeeded");
     expect(live()).toHaveLength(1);
     expect(live()[0]).toMatchObject({ summary: "Meet Maya at Dakshin", start: { dateTime: "2026-10-23T19:30:00", timeZone: expect.stringMatching(/^Asia\/(Kolkata|Calcutta)$/) }, end: { dateTime: "2026-10-23T20:30:00" } });
+    // Then read back from Google through the program: verified only on Google's answer, with the event's own link.
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect((await stored()).placement.verification).toMatchObject({ ok: true, link: expect.stringMatching(/^https:\/\/www\.google\.com\/calendar\/event\?eid=/) });
+    const verifyLine = restaurant.locator("recast-clay >> .rg-verify");
+    expect(await verifyLine.innerText()).toMatch(/^Read back from Google Calendar: (\d+) of \1 fields match\. Open in Google Calendar$/);
+    expect(await restaurant.locator("recast-clay >> .rg-open").getAttribute("href")).toMatch(/^https:\/\/www\.google\.com\/calendar\/event\?eid=/);
+    expect(seenByGoogle.filter((x) => x.startsWith("GET"))).not.toHaveLength(0);
     // The Google token stays in the program: nothing the extension holds contains it.
     expect(JSON.stringify(await stored())).not.toContain("AT-1");
     await restaurant.locator("recast-clay >> button", { hasText: "Undo" }).click();

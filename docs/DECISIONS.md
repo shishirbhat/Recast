@@ -272,3 +272,13 @@ Consequential architecture and product decisions, so that separate workstreams d
   - the year is shown as Recast's reading;
   - a weekday that fits neither year is reported ("check the date").
 - **Not yet:** the extension's and the desktop app's real Google path do not run the read-back (the try-it page and the bridge do). Only Google Calendar can be read back so far.
+
+### D41. Verify and Confirm run on the real path, not only on the try-it page (2026-10-26)
+- **Context:** the owner's engineering brief: Capture → Compose → Preview → Approve → Execute → Verify → Confirm. Tracing it through the extension, the local program and the desktop app showed the real path ended at Execute. "Placed in Google Calendar" rested on the write's own success; there was no link to the event; an expired sign-in read "GET www.googleapis.com answered 401". D40 had added a read-back request that those hosts ignored (the receipt would sit on "checking"), and the desktop app treated any request other than commit or check as an undo, so a read-back request there would have deleted the new event.
+- **Decision:**
+  - The local program has a `verify` route. It reads only receipts it issued, for the same operation, and returns the provider's own field-by-field answer plus the item's https link.
+  - The extension's worker, its in-page stand-ins and the desktop app all perform the read-back. Every effect branch is explicit (no catch-all "else").
+  - The receipt shows "Read back from Google Calendar: N of N fields match. Open in Google Calendar", or what differs, or "Not confirmed: <reason>".
+  - Sign-in and permission refusals (401, 403), rate limits and network failures are said in words a person can act on, on commit, verify and undo.
+  - A connection failure during a write is an unknown outcome (checked, never resent), because the write may have landed.
+- **Not covered:** only Google Calendar can be read back. Gmail drafts, Tasks, Docs, GitHub and Linear say "not checked" rather than pretend. Real Google has not run this yet (REAL_TEST_PLAN L).

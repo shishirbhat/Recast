@@ -21,7 +21,12 @@ The repository's own records stay authoritative for what they cover; this file p
   - a compounding personal workflow system (saved workflows, never data held hostage).
 
   Proof built (D40): try-it page tabs **Invite, Chat, Plan** → one event. The conflicting times show their sources, the person's choice is kept with what it overruled, every value names its source, and after placing the calendar is **read back** field by field. A "someone edits it" switch shows a caught mismatch. Stand-in calendar on that page; Google Calendar's read-back exists in the bridge (tested against a stand-in only).
-- **Next (owner's engineering brief, 26 Oct):** Capture → Compose → Preview → Approve → Execute → Verify → Confirm. Highest-value gap found: the *real* path (extension → `apps/calendar-link` → Google) never runs Verify and gives no link to the created event.
+- **Owner's engineering brief (26 Oct), Capture → Compose → Preview → Approve → Execute → Verify → Confirm: done for Google Calendar (D41).**
+  - The real path (extension or desktop → `apps/calendar-link` → Google) now reads the event back and shows "N of N fields match · Open in Google Calendar".
+  - Sign-in, permission and network failures are stated in plain words.
+  - A lost connection mid-write is unknown and is checked, never resent.
+  - Bug fixed on the way: the desktop app treated any unknown effect as an undo.
+  - Tested only against Google stand-ins. **Owner's real run: REAL_TEST_PLAN L.**
 - Fixed: "Friday 23 October" was silently read as the next Friday once the 23rd had passed (dates with a day and month but no year were not read). Extension tests had gone red for this reason alone once the real date passed 23 Oct.
 - Last full run (2026-10-23, after desktop highlights): **975 tests, 0 failures**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
@@ -67,7 +72,7 @@ The repository's own records stay authoritative for what they cover; this file p
 **Desktop next steps:** (1) owner tries the latest build on the Mac and reports (crash report if any; what Terminal printed); (2) fix what that shows; (3) places and names as highlights; (4) source app name on Windows; (5) multiple displays; (6) Wayland; (7) signing with the owner's Developer ID when available; (8) a public release page if the owner approves.
 
 ## Published pages (claude.ai artifacts, owner's account, private until shared)
-- **Recast try-it page:** https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN. Source: `apps/harness/dist/clay-artifact.html` (`pnpm --filter @recast/harness build`). Republish to the same link after any change to the harness, overlay, interaction or core.
+- **Recast try-it page:** https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN (other account); a copy with the Invite/Chat/Plan scene in this session's account: https://claude.ai/artifact/VxW75bXhvrgjoXUXmSiFwF. Source: `apps/harness/dist/clay-artifact.html` (`pnpm --filter @recast/harness build`). Republish to the same link after any change to the harness, overlay, interaction or core.
 - **Recast Engineering Status** (claude.ai artifact, owner's account): https://claude.ai/artifact/D1J6XJs7ieV4a9crCUX4jc. Built from this repository's own figures. Update it by republishing from a session that has its source, or rebuild from `docs/ENGINEERING_STATUS.md`.
 
 ## Open threads
@@ -101,6 +106,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-26 (cont.):** engineering brief → D41: `verify` route in the local program, read-back in extension worker, in-page stand-ins and desktop; link to the event; plain errors; network loss mid-write = unknown; desktop catch-all-undo bug fixed (its test shown to fail with the old code). 994/0/0 with xdotool installed. New private try-it page in this account: https://claude.ai/artifact/VxW75bXhvrgjoXUXmSiFwF (the old link is in the other account).
 - **2026-10-26, session_01DBSr5JyLYdTt34JZYgfya1:** owner's context-layer thesis → D40: conflict sources, resolutions, `provenanceOf`, read-back verification (core `verify`, `Bridge.verify`, Calendar `verify`, machine `verify` effect + `verified`), glass shows sources/choices/read-back, try-it Invite/Chat/Plan tabs + drift switch; fixed day-month dates. Full run 988 passed, 0 failed, 5 skipped (no xdotool here). Electron binary must be fetched after install (`node node_modules/electron/install.js` in apps/desktop).
 - **2026-10-23 (cont.):** CI was red on test races, fixed at the cause: an extension test clicked "Choose where it goes" by label and, under load, hit the previous screen's button with the same words (now clicks `[data-act=openWheel]`); a try-it test read the hint once (now waits); the desktop test waits for the browser window to settle and confirms its selection. Browser suites run sequentially in `pnpm test`. Full run 975/0.
 - **2026-10-23 (cont.):** owner: highlight likely pieces when Recast is on, as on the try-it page (D39). Screen capture + OCR (tesseract.js, bundled English model) → spots (time, email, error, link) highlighted in place; click or drag one into a blob. Status pill at bottom centre. Found on the way: on Xvfb with no window manager the overlay sat under the browser, so the earlier click-through test passed for the wrong reason; tests now run openbox + xcompmgr. Packaged OCR needed `asarUnpack: node_modules/**` (its worker could not open archived dependencies) and time limits. Desktop 14/14 twice; packaged Linux launch check reads the screen (`ocr: ok`). CI: Electron binary now fetched explicitly (ci was red because it was missing).

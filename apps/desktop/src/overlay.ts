@@ -3,7 +3,7 @@
 // trigger key, it shows each grabbed selection as a blob where it was grabbed; click a blob and the wheel opens right
 // beside it (choose a place, review, place); drag a blob onto another to press them together. Nothing else opens.
 // The same clay objects, glass module and state machine as the browser and the try-it page.
-import { commit, InMemoryEventLog, pieceOfSelection, type Fragment, type Receipt } from "@recast/core";
+import { commit, InMemoryEventLog, pieceOfSelection, type Fragment, type Receipt, type Verification } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { appleMapsDirections, googleMapsDirections, LinkBridge, linkFor } from "@recast/bridges/src/links";
 import { doubtNote, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
@@ -17,7 +17,7 @@ interface SavedInbox { state: ClumpState; pos: Record<string, Point> }
 interface OverlayApi {
   boot(): Promise<{ settings: Settings; inbox: SavedInbox | ClumpState | null; theme: "dark" | "light"; on: boolean }>;
   status(): Promise<Record<string, unknown>>;
-  act(route: "commit" | "reconcile" | "undo", body: unknown): Promise<{ status: number; body: Record<string, unknown> }>;
+  act(route: "commit" | "reconcile" | "undo" | "verify", body: unknown): Promise<{ status: number; body: Record<string, unknown> }>;
   openExternal(url: string): Promise<boolean>;
   saveInbox(state: unknown): Promise<boolean>;
   interactive(over: boolean, rects: { x: number; y: number; width: number; height: number }[], own: { x: number; y: number; width: number; height: number }[]): Promise<boolean>;
@@ -122,7 +122,12 @@ async function perform(eff: ClumpEffect) {
     if (!r) return;
     if (r.body["checkable"] === false) { lastError = String(r.body["message"]); render(); return; }
     dispatch({ type: "reconciled", opId: eff.op.opId, found: !!r.body["found"], ...(r.body["receipt"] ? { receipt: r.body["receipt"] as Receipt } : {}) });
-  } else {
+  } else if (eff.type === "verify") {
+    // Read it back through the program: "verified" is the provider's own answer, never the write's success.
+    const r = await api.act("verify", { destination, op: eff.op, receipt: eff.receipt }).catch(() => null);
+    const v = r?.body["verification"] as Verification | undefined;
+    dispatch({ type: "verified", opId: eff.op.opId, verification: v ?? { ok: false, at: new Date().toISOString(), fields: [], note: "Recast lost the answer, so this was not checked" } });
+  } else if (eff.type === "undo") {
     const opId = eff.receipt.opId;
     const r = await api.act("undo", { destination, receipt: eff.receipt }).catch(() => null);
     dispatch(r?.body["outcome"] === "undone" ? { type: "undone", opId } : { type: "undoFailed", opId, message: String(r?.body["message"] ?? "Recast lost the answer; it may still be there") });

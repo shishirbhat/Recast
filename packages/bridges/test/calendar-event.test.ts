@@ -105,6 +105,11 @@ describe("Google Calendar: verifying a placement by reading it back", () => {
     const id = calendarEventId(o.id, "primary"); const ev = g.events.get(id)!;
     g.events.set(id, { ...ev, start: { dateTime: "2026-11-14T19:30:00+05:30", timeZone: "Asia/Kolkata" } });
     expect((await bridge.verify(receipt, op)).ok).toBe(true);
+    // The calendar's own link to the event comes back with it; anything but https is dropped.
+    g.events.set(id, { ...g.events.get(id)!, htmlLink: "https://www.google.com/calendar/event?eid=abc" });
+    expect((await bridge.verify(receipt, op)).link).toBe("https://www.google.com/calendar/event?eid=abc");
+    g.events.set(id, { ...g.events.get(id)!, htmlLink: "javascript:alert(1)" });
+    expect((await bridge.verify(receipt, op)).link).toBeUndefined();
     // Someone edits the title in the calendar: the check says which field differs and what it now holds.
     g.events.set(id, { ...g.events.get(id)!, summary: "Dinner (moved?)" });
     const edited = await bridge.verify(receipt, op);
@@ -120,5 +125,17 @@ describe("Google Calendar: verifying a placement by reading it back", () => {
     const b = new HttpBridge(gmailMessageDraft, {}, async () => ({ status: 200, json: {} }));
     const v = await b.verify({ receiptId: "r", opId: "o", at: "x", status: "done", objectId: "x", destination: "gmail.drafts", relationId: "message-draft-entry", effect: "", reversible: true, bridgeRef: "{}" }, {} as never);
     expect(v).toMatchObject({ ok: false, fields: [], note: "Gmail cannot be read back, so this was not checked" });
+  });
+});
+
+describe("a connection failure during a write", () => {
+  it("is an unknown outcome (checked, never resent); a failed read stays an error", async () => {
+    let fail = true; const g = fakeCalendar();
+    const t: Transport = async (r) => { if (fail) throw new TypeError("fetch failed"); return g.t(r); };
+    const { run } = await placeEvent(event(), t);
+    await expect(run()).rejects.toBeInstanceOf(OutcomeUnknownError);
+    const b = new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, t);
+    await expect(b.reconcile(JSON.stringify({ id: "x" }))).rejects.toBeInstanceOf(TypeError);
+    fail = false; expect(await b.reconcile(JSON.stringify({ id: "x" }))).toBe("absent");
   });
 });

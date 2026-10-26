@@ -11,7 +11,7 @@ export default async function fakeFetch(u, init = {}) {
   }
   if (url.startsWith("https://www.googleapis.com/calendar/v3/")) {
     const id = decodeURIComponent(url.split("/events/")[1]?.split("?")[0] ?? "");
-    if (method === "POST") { const b = JSON.parse(String(init.body)); if (s.events[b.id]) return json(409, {}); s.events[b.id] = { ...b, status: "confirmed" }; return json(200, s.events[b.id]); }
+    if (method === "POST") { const b = JSON.parse(String(init.body)); if (s.events[b.id]) return json(409, {}); s.events[b.id] = { ...b, status: "confirmed", htmlLink: `https://www.google.com/calendar/event?eid=${b.id}` }; return json(200, s.events[b.id]); }
     if (method === "GET") return s.events[id] ? json(200, s.events[id]) : json(404, {});
     if (method === "DELETE") { if (s.events[id]) s.events[id].status = "cancelled"; return json(204, null); }
   }
