@@ -74,7 +74,7 @@ try {
 
   // ---- B. With Relay: rehearse the combined change before anything reaches the project.
   const t0 = Date.now();
-  const integ = server.runs.checkTogether(["T-api", "T-ui"], [PROJECT_TESTS]);
+  const integ = await server.runs.checkTogether(["T-api", "T-ui"], [PROJECT_TESTS]);
   const rehearsalMs = Date.now() - t0;
   const shared = readFileSync(join(repo, "src/server.js"), "utf8");
   const untouched = shared.includes("name: 'Ada'");

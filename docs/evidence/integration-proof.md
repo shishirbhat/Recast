@@ -1,6 +1,6 @@
 # Integration proof: individually green, combined red
 
-Generated 2026-10-26T14:12:38.267Z by `node scripts/prove-integration.ts`. Agents are simulated (deterministic edits); git, tests and Relay are real.
+Generated 2026-10-26T14:14:13.226Z by `node scripts/prove-integration.ts`. Agents are simulated (deterministic edits); git, tests and Relay are real.
 
 **Scenario.** `T-api` renames `name` to `fullName` in `src/server.js` (the accepted `user-api` contract). `T-ui` makes an unrelated change to `src/ui.js`, whose `greet()` still reads `.name`. Different files: Git sees no conflict.
 
@@ -19,7 +19,7 @@ Both tasks were green, the merge was clean, and the shared project is now broken
 
 | Step | Result | Evidence |
 | --- | --- | --- |
-| Integration rehearsal | **blocked** | combined worktree at tree `5443af290f`, 358 ms |
+| Integration rehearsal | **blocked** | combined worktree at tree `5443af290f`, 482 ms |
 | `node --check src/server.js` on the combined change | pass |  |
 | `node --test` on the combined change | FAIL | `not ok 1 - greets the user by name` |
 | Gap reported | — | verification failed: node --test (exit 1) |
