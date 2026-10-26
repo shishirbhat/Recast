@@ -64,6 +64,59 @@ async function makeDinner(p: Page) {
   return id as string;
 }
 
+describe("context reconciliation: three sources, one conflict, a verified placement", () => {
+  it("the invite, the chat and the planning doc become one event; the time conflict names its sources; the person settles it; the calendar is read back", async () => {
+    const { page, ctx, errors } = await open();
+    // 1. Invite: the title pressed into the invite's time.
+    await page.locator("#tab-invite").click();
+    await drag(page, "#invite-title", "#invite-time");
+    let s = await st(page); expect(s.desk).toHaveLength(1);
+    // 2. Chat: the object carried over and pressed into Maya's time. 3. Plan: pressed into the venue.
+    // (Pressed into a piece on a page, the piece is the base, so the object's id is read again after each press.)
+    await drag(page, objectSel((await st(page)).desk[0]), "#chat-time", "#tab-chat");
+    await drag(page, objectSel((await st(page)).desk[0]), "#plan-venue", "#tab-plan");
+    s = await st(page); expect(s.desk).toHaveLength(1); const id = s.desk[0] as string;
+    expect(s.objects[id].ingredients.map((f: any) => `${f.kind} from ${f.source.title}`).sort()).toEqual(["place from Design review · planning doc", "time from Invitation: Design review", "time from Maya Rao · Chat", "title from Invitation: Design review"]);
+    // 4. To the calendar: the review will not guess. It shows both times and says where each came from.
+    if ((await st(page)).phase !== "composed") await page.locator("#recast-trigger").click();
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await expect.poll(async () => page.locator("#rg-opt-calendar").getAttribute("aria-disabled")).toBe("false");
+    await page.locator(".rg-actions [data-act=open]").click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "previewing");
+    const chips = page.locator("[data-choose=start]");
+    expect((await chips.allInnerTexts()).sort()).toEqual(["Thursday, 3:00 PM\nInvitation: Design review", "Thursday, 4:00 PM\nMaya Rao · Chat"]);
+    expect(await page.locator(".rg-actions button", { hasText: "Add to calendar" }).count()).toBe(0);   // nothing to place until settled
+    expect((await st(page)).placement.op).toBeUndefined();
+    // 5. The person picks the chat's time. Every value now says where it came from, and the choice says what it overruled.
+    await chips.filter({ hasText: "Maya Rao · Chat" }).click();
+    const body = await page.locator(".rg-body").innerText();
+    expect(body).toMatch(/Title\s*Design review\s*from Invitation: Design review/);
+    expect(body).toMatch(/Where\s*Dakshin, 12 MG Road, Bengaluru\s*from Design review · planning doc/);
+    expect(body).toMatch(/When\s*Thu, Oct 22, 4:00 PM\s*read from (Maya Rao · Chat \+ Invitation: Design review|Invitation: Design review \+ Maya Rao · Chat)/);   // both said Thursday
+    expect(body).toMatch(/you chose “Thursday, 4:00 PM” from Maya Rao · Chat over “Thursday, 3:00 PM” from Invitation: Design review/);
+    // 6. Placed, then read back from the calendar: verified only on the calendar's own answer.
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => { const p = (globalThis as any).recast.state.placement; return p?.verification && p.verification !== "checking"; });
+    expect((await st(page)).placement.verification).toMatchObject({ ok: true });
+    expect(await page.locator(".rg-verify").innerText()).toMatch(/^Read back from Calendar: (\d+) of \1 fields match\.$/);
+    expect(await page.locator("#cal-other [data-placed=event]").innerText()).toMatch(/^Design review · Thu, (Oct 22|22 Oct), 4:00 PM · Dakshin, 12 MG Road, Bengaluru$/);
+    // 7. Undo; then someone edits the event right after it lands: the read-back says exactly what differs.
+    await page.getByRole("button", { name: "Undo" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
+    await page.locator("#tab-calendar").click(); await page.locator("#drift").check();
+    await page.locator("#recast-trigger").click(); if ((await st(page)).phase !== "composed") await page.locator("#recast-trigger").click();
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await expect.poll(async () => page.locator("#rg-opt-calendar").getAttribute("aria-disabled")).toBe("false");
+    await page.locator(".rg-actions [data-act=open]").click();
+    await page.getByRole("button", { name: "Add to calendar" }).click();
+    await page.waitForFunction(() => { const p = (globalThis as any).recast.state.placement; return p?.verification && p.verification !== "checking"; });
+    expect((await st(page)).placement.verification.ok).toBe(false);
+    expect((await page.locator(".rg-verify").innerText()).replace(/\s+/g, " ")).toBe("Calendar differs from what was planned. Title: planned “Design review”, now “Design review (edited)”");
+    expect(errors).toEqual([]);
+    await ctx.close();
+  }, 60_000);
+});
+
 describe("pressing pieces into one object (mouse)", () => {
   it("Maya, carried to another tab and pressed into the restaurant, becomes one object; a time joins it", async () => {
     const { page, ctx, errors } = await open();
@@ -94,7 +147,7 @@ describe("pressing pieces into one object (mouse)", () => {
     expect(await page.locator(".rg-body").innerText()).toMatch(/Title[\s\S]*nothing captured reads as a title/);
     await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
     const body = await page.locator(".rg-body").innerText();
-    expect(body).toMatch(/Where\s*Dakshin, 12 MG Road, Bengaluru\s*from the page/); expect(body).toMatch(/Notes\s*With Maya Rao\s*from the page/); expect(body).toMatch(/Title\s*Meet Maya at Dakshin\s*you/);
+    expect(body).toMatch(/Where\s*Dakshin, 12 MG Road, Bengaluru\s*from Dakshin · Restaurant/); expect(body).toMatch(/Notes\s*With Maya Rao\s*from Maya Rao · Profile/); expect(body).toMatch(/Title\s*Meet Maya at Dakshin\s*you/);
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
     expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
@@ -320,7 +373,7 @@ describe("the glass module and the destination selector", () => {
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
     expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
-    expect(await page.locator(".rg-body").innerText()).toBe("Calendar confirmed it (stand-in).");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/^Calendar confirmed it \(stand-in\)\.\s+(Checking Calendar…|Read back from Calendar: (\d+) of \2 fields match\.)$/);
     expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Maya at Dakshin · Dakshin");
     await page.getByRole("button", { name: "Undo" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");

@@ -4,8 +4,8 @@
 // contracts, the clay renderer and the glass module.
 // The "browser" (tabs and pages) and the destinations are stand-ins inside this page; the browser extension does the same
 // across real tabs (apps/extension).
-import { commit, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, pieceOfSelection, undo as coreUndo } from "@recast/core";
-import type { Bridge, CapabilityContract, Fragment, Operation, Receipt } from "@recast/core";
+import { commit, verify as coreVerify, InMemoryEventLog, newClump, canMerge, OutcomeUnknownError, pieceOfSelection, undo as coreUndo } from "@recast/core";
+import type { Bridge, CapabilityContract, Fragment, Operation, Receipt, Verification } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { googleMapsDirections, LinkBridge, linkFor } from "@recast/bridges/src/links";
 import { commandEvents, createControlTrigger, doubtNote, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
@@ -51,6 +51,8 @@ class StandIn implements Bridge {
   undoFails = false;
   /** Hold every answer until released, to act while a write or undo is in flight. */
   gate: Promise<void> | null = null;
+  /** Someone edits the entry right after it is written (its title changes), so the read-back has something to catch. */
+  drift = false;
   constructor(private contract: CapabilityContract, private onChange: () => void) {}
   describe() { return this.contract; }
   async execute(op: Operation) {
@@ -60,9 +62,17 @@ class StandIn implements Bridge {
     // stand-in is idempotent the way a provider with a client-chosen id is.
     const ref = `${this.contract.targetKind.toLowerCase()}-${op.opId}`;
     this.entries.set(ref, Object.fromEntries(op.dataMoved.map((d) => [d.path.split(".")[1]!, d.value])));
+    if (this.drift) { const e = this.entries.get(ref)!; if (e["title"]) e["title"] = `${e["title"]} (edited)`; }
     this.onChange();
     if (this.silent) throw new OutcomeUnknownError(`${this.contract.app} did not answer in time`, ref);
     return { ref };
+  }
+  /** Read the entry back and compare every moved field with the plan: what a destination's read-back does. */
+  async verify(r: Receipt, op: Operation): Promise<Verification> {
+    await sleep(reducedMotion() ? 20 : 180);
+    const e = this.entries.get(r.bridgeRef ?? "");
+    const fields = op.dataMoved.map((d) => { const actual = e ? (e[d.path.split(".")[1]!] ?? null) : null; return { path: d.path, expected: d.value, actual, match: actual === d.value }; });
+    return { ok: !!e && fields.every((f) => f.match), at: new Date(NOW()).toISOString(), fields, ...(e ? {} : { note: `it is not in ${this.contract.app}` }) };
   }
   async undo(r: Receipt) {
     await sleep(reducedMotion() ? 20 : 200); if (this.gate) await this.gate;
@@ -146,6 +156,10 @@ async function perform(eff: ClumpEffect) {
       await log.append({ kind: "commit", at: receipt.at, receipt });
       dispatch({ type: "reconciled", opId: eff.op.opId, found: true, receipt });
     } else dispatch({ type: "reconciled", opId: eff.op.opId, found: false });
+  } else if (eff.type === "verify") {
+    // Read it back: "verified" is the destination's own answer, never the write's success.
+    try { const verification = await coreVerify(eff.receipt, eff.op, { bridge, log, now }); dispatch({ type: "verified", opId: eff.op.opId, verification }); }
+    catch (e) { dispatch({ type: "verified", opId: eff.op.opId, verification: { ok: false, at: now(), fields: [], note: e instanceof Error ? e.message : String(e) } }); }
   } else if (eff.type === "undo") {
     // Only a confirmed reversal is "undone"; anything else is reported as a failed undo, and the placement stands.
     try { await coreUndo(eff.receipt, { bridge, log, now }); dispatch({ type: "undone", opId: eff.receipt.opId }); }
@@ -514,6 +528,7 @@ for (const el of $$(".grab")) {
 for (const b of $$("[role=tab]")) b.addEventListener("click", () => { if (!state.carried) showTab(b.dataset["for"]!); });
 $("#recast-trigger").addEventListener("click", (e) => invoke((e as PointerEvent).detail === 0));
 $<HTMLInputElement>("#silent").addEventListener("change", (e) => { bridges["cal"]!.silent = (e.target as HTMLInputElement).checked; });
+$<HTMLInputElement>("#drift").addEventListener("change", (e) => { bridges["cal"]!.drift = (e.target as HTMLInputElement).checked; });
 addEventListener("resize", () => render()); addEventListener("scroll", () => render(), { passive: true, capture: true });
 const style = document.createElement("style"); style.textContent = CLAY_CSS + GLASS_CSS; document.head.appendChild(style);
 function renderCalendarGrid() {

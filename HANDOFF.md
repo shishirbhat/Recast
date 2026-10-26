@@ -14,7 +14,15 @@ The repository's own records stay authoritative for what they cover; this file p
 - Before calling a test failure real, check it against committed code (`git stash`, run the package, `git stash pop`).
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
-## Current state (2026-10-23)
+## Current state (2026-10-26)
+- **Owner's thesis (26 Oct): Recast is the context layer**, not a shortcut. Selection-first, context-preserving, between apps: I choose what matters, I see what will happen, I know what actually happened. Three innovations:
+  - universal context objects;
+  - context reconciliation;
+  - a compounding personal workflow system (saved workflows, never data held hostage).
+
+  Proof built (D40): try-it page tabs **Invite, Chat, Plan** → one event. The conflicting times show their sources, the person's choice is kept with what it overruled, every value names its source, and after placing the calendar is **read back** field by field. A "someone edits it" switch shows a caught mismatch. Stand-in calendar on that page; Google Calendar's read-back exists in the bridge (tested against a stand-in only).
+- **Next (owner's engineering brief, 26 Oct):** Capture → Compose → Preview → Approve → Execute → Verify → Confirm. Highest-value gap found: the *real* path (extension → `apps/calendar-link` → Google) never runs Verify and gives no link to the created event.
+- Fixed: "Friday 23 October" was silently read as the next Friday once the 23rd had passed (dates with a day and month but no year were not read). Extension tests had gone red for this reason alone once the real date passed 23 Oct.
 - Last full run (2026-10-23, after desktop highlights): **975 tests, 0 failures**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
@@ -93,6 +101,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-26, session_01DBSr5JyLYdTt34JZYgfya1:** owner's context-layer thesis → D40: conflict sources, resolutions, `provenanceOf`, read-back verification (core `verify`, `Bridge.verify`, Calendar `verify`, machine `verify` effect + `verified`), glass shows sources/choices/read-back, try-it Invite/Chat/Plan tabs + drift switch; fixed day-month dates. Full run 988 passed, 0 failed, 5 skipped (no xdotool here). Electron binary must be fetched after install (`node node_modules/electron/install.js` in apps/desktop).
 - **2026-10-23 (cont.):** CI was red on test races, fixed at the cause: an extension test clicked "Choose where it goes" by label and, under load, hit the previous screen's button with the same words (now clicks `[data-act=openWheel]`); a try-it test read the hint once (now waits); the desktop test waits for the browser window to settle and confirms its selection. Browser suites run sequentially in `pnpm test`. Full run 975/0.
 - **2026-10-23 (cont.):** owner: highlight likely pieces when Recast is on, as on the try-it page (D39). Screen capture + OCR (tesseract.js, bundled English model) → spots (time, email, error, link) highlighted in place; click or drag one into a blob. Status pill at bottom centre. Found on the way: on Xvfb with no window manager the overlay sat under the browser, so the earlier click-through test passed for the wrong reason; tests now run openbox + xcompmgr. Packaged OCR needed `asarUnpack: node_modules/**` (its worker could not open archived dependencies) and time limits. Desktop 14/14 twice; packaged Linux launch check reads the screen (`ocr: ok`). CI: Electron binary now fetched explicitly (ci was red because it was missing).
 - **2026-10-23 (cont.):** owner's redesign (D38): Recast works on top of any app. Double tap Option (Mac) / Ctrl (Win, Linux) → overlay over the current display; selections become blobs where they were made; click a blob → wheel beside it; place there. The Recast window is now a library of every grab (history.json). Keyboard hook: `uiohook-napi` (prebuilt, `npmRebuild: false`). Desktop tests 8/8 with real keys and mouse (xdotool) in a real browser window, including a click passing through the overlay. Owner's Mac (macOS 26) still to confirm: Accessibility, Option twice, click-through.

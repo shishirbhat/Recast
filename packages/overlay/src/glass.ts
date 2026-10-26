@@ -329,16 +329,36 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     return { title, head: planning ? close : "", facts: "", body: `${err}${intro}${finish}<ul class="rg-steps">${items}</ul>`, actions };
   }
 
+  /** The destination's read-back after placing: checking, all fields match, or exactly which differ and what it now holds. */
+  function checked(v: unknown, where: string): string {
+    if (v === "checking") return `<p class="rg-hint rg-verify" role="status">Checking ${esc(where)}…</p>`;
+    const r = v as { ok: boolean; fields: { path: string; expected: string; actual: string | null; match: boolean }[]; note?: string } | undefined;
+    if (!r) return "";
+    if (r.ok) return `<p class="rg-hint rg-verify ok" role="status">Read back from ${esc(where)}: ${r.fields.length} of ${r.fields.length} fields match.</p>`;
+    const bad = r.fields.filter((f) => !f.match);
+    return `<div class="rg-verify bad" role="alert"><p>${esc(r.note ? `Not confirmed: ${r.note}` : `${where} differs from what was planned`)}.</p>${bad.length && !r.note ? `<ul>${bad.map((f) => `<li>${FIELD_LABEL[f.path.split(".")[1]!] ?? f.path}: planned “${esc(f.expected)}”, now “${esc(f.actual ?? "missing")}”</li>`).join("")}</ul>` : ""}</div>`;
+  }
   function detail(m: Extract<ModuleModel, { object: unknown }>): string {
     const v = m.object.view; const fields = (v.event?.fields ?? v.message?.fields ?? v.document?.fields ?? v.task?.fields ?? v.note?.fields ?? v.issue?.fields ?? {}) as Record<string, { value: unknown; origin: string } | undefined>;
-    const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${(f!.origin === "extracted" && opts.capturedLabel) || (ORIGIN[f!.origin] ?? f!.origin)}</span></dd></div>`).join("");
+    // Where each value came from, by name: "from Maya Rao · Chat", not just "from the page".
+    const frags = new Map(((v.event as { fragments?: { id: string; source?: { app: string; title?: string } }[] } | undefined)?.fragments ?? []).map((f) => [f.id, f]));
+    const namesOf = (ids: string[] = []) => [...new Set(ids.map((id) => frags.get(id)?.source).filter(Boolean).map((x) => x!.title ?? x!.app))];
+    const originOf = (f: { origin: string; fragments?: string[] }) => {
+      const names = namesOf(f.fragments);
+      if (names.length && f.origin === "extracted") return `from ${names.join(" + ")}`;
+      if (names.length && f.origin === "inferred") return `read from ${names.join(" + ")}`;
+      return (f.origin === "extracted" && opts.capturedLabel) || (ORIGIN[f.origin] ?? f.origin);
+    };
+    const rowsHtml = Object.entries(fields).filter(([, f]) => f).map(([k, f]) => `<div class="rg-row"><dt>${FIELD_LABEL[k] ?? k}</dt><dd>${esc(fmt(k, f!.value))} <span class="rg-origin">${esc(originOf(f as { origin: string; fragments?: string[] }))}</span></dd></div>`).join("");
+    const resolved = ((v.event as { resolutions?: { field: string; chosen: { original: string; source?: { app: string; title?: string } }; overruled: { original: string; source?: { app: string; title?: string } }[] }[] } | undefined)?.resolutions ?? [])
+      .map((r) => `<p class="rg-hint rg-resolved">${FIELD_LABEL[r.field] ?? r.field}: you chose “${esc(r.chosen.original)}” from ${esc(r.chosen.source?.title ?? r.chosen.source?.app ?? "a piece")} over ${r.overruled.map((o) => `“${esc(o.original)}” from ${esc(o.source?.title ?? o.source?.app ?? "a piece")}`).join(" and ")}.</p>`).join("");
     const missing = v.missing.map((x) => {
       const id = `rg-in-${x.field}`;
       return `<div class="rg-missing"><label for="${id}">${FIELD_LABEL[x.field] ?? x.field}</label><p class="rg-why">${esc(x.reason)}</p>${(x.suggestions ?? []).map((s) => `<button type="button" class="rg-chip" data-answer="${x.field}" data-value="${esc(s)}">Use “${esc(s)}”</button>`).join("")}<div class="rg-answer"><input id="${id}" data-field="${x.field}" placeholder="${INPUT_HINT[x.field] ?? ""}" autocomplete="off"><button type="button" class="rg-btn small ghost" data-submit="${x.field}">Set</button></div></div>`;
     }).join("");
-    const conflicts = v.conflicts.map((c) => `<div class="rg-missing"><p class="rg-why">${FIELD_LABEL[c.field] ?? c.field}: the pieces disagree. Which one is right?</p>${c.options.map((o) => `<button type="button" class="rg-chip" data-choose="${c.field}" data-ingredient="${esc(o.fragmentId)}">${esc(o.original)}</button>`).join("")}</div>`).join("");
+    const conflicts = v.conflicts.map((c) => `<div class="rg-missing"><p class="rg-why">${FIELD_LABEL[c.field] ?? c.field}: the pieces disagree. Which one is right?</p>${c.options.map((o) => `<button type="button" class="rg-chip" data-choose="${c.field}" data-ingredient="${esc(o.fragmentId)}">${esc(o.original)}${(o as { source?: { app: string; title?: string } }).source ? ` <span class="rg-src">${esc((o as { source: { app: string; title?: string } }).source.title ?? (o as { source: { app: string } }).source.app)}</span>` : ""}</button>`).join("")}</div>`).join("");
     const assumptions = v.assumptions.length ? `<ul class="rg-assume">${v.assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : "";
-    return `${rowsHtml ? `<dl class="rg-fields">${rowsHtml}</dl>` : ""}${missing || conflicts ? `<div class="rg-needs"><h3>Still needed</h3>${conflicts}${missing}</div>` : ""}${assumptions}`;
+    return `${rowsHtml ? `<dl class="rg-fields">${rowsHtml}</dl>` : ""}${resolved}${missing || conflicts ? `<div class="rg-needs"><h3>Still needed</h3>${conflicts}${missing}</div>` : ""}${assumptions}`;
   }
   const iconBtn = (act: string, label: string, path: string) => `<button type="button" class="rg-x" data-act="${act}" aria-label="${esc(label)}" title="${esc(label)}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></button>`;
   const X = "<path d='m4 4 8 8M12 4l-8 8'/>", LAYERS = "<path d='m8 2.5 5.5 3L8 8.5l-5.5-3z'/><path d='m2.5 8.5 5.5 3 5.5-3' opacity='.6'/>";
@@ -388,7 +408,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           body: `<p class="rg-hint">${esc(where)} opened in a new tab with this filled in. Recast cannot see what you do there, so it does not say it was added.</p>${/^https:\/\//.test(m.placement?.receipt?.bridgeRef ?? "") ? `<p class="rg-hint">Did it not open, or open blank? Copy the address into a new tab:</p>${copyBox(m.placement!.receipt!.bridgeRef!, d.app)}` : ""}`,
           actions: `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
         return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
-        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>`,
+        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>${checked(m.placement?.verification, where)}`,
         actions: `${m.placement?.undoable ? `<button type="button" class="rg-btn ghost" data-act="undo">Undo</button>` : ""}<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
       case "unknown": return { title: `${dIcon}No answer from ${esc(where)}`, head: "", facts: "",
         body: `${err}<p>${esc(m.placement?.message ?? "")}. It may or may not have been added. Recast does not send it again; it asks ${esc(where)} instead.</p>`,
@@ -659,6 +679,13 @@ export const GLASS_CSS = `
 .rg-row { display: grid; grid-template-columns: 72px 1fr; gap: 8px; }
 .rg-row dt { color: var(--g-muted); font-size: 12px; }
 .rg-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.rg-src { display: block; font-size: 10.5px; font-weight: 500; color: var(--g-muted); margin-top: 1px; }
+.rg-resolved { margin: 6px 0 0; }
+.rg-verify { margin: 6px 0 0; font-size: 12px; }
+.rg-verify.ok { color: var(--g-ink); }
+.rg-verify.bad { color: var(--g-ink); padding: 8px 10px; border-radius: 12px; box-shadow: inset 0 0 0 0.5px var(--g-line); }
+.rg-verify.bad p { margin: 0; font-weight: 600; }
+.rg-verify.bad ul { margin: 4px 0 0; padding-left: 16px; }
 .rg-origin { font-size: 10.5px; color: var(--g-muted); border: 0.5px solid var(--g-line); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
 .rg-needs { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border-radius: 16px; background: color-mix(in srgb, var(--g-accent) 9%, transparent); box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--g-accent) 40%, transparent); }
 .rg-needs h3 { margin: 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--g-ink); }

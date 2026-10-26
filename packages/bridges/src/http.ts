@@ -1,4 +1,4 @@
-import type { Bridge, CapabilityContract, Operation, OperationCapabilities, Receipt } from "@recast/core";
+import type { Bridge, CapabilityContract, Operation, OperationCapabilities, Receipt, Verification } from "@recast/core";
 import { checkContract, OutcomeUnknownError } from "@recast/core";
 
 export interface HttpRequest { method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; url: string; headers?: Record<string, string>; body?: unknown }
@@ -17,6 +17,8 @@ export interface Spec<Target> {
   check?(op: Operation): string[];
   /** For verifiable operations: after an unknown outcome, ask the provider whether the change exists. Never re-sends the write. */
   reconcile?(token: string, target: Target, send: Send): Promise<"present" | "absent">;
+  /** After a placement: read it back and compare every moved field with what was planned (see Verification in @recast/core). */
+  verify?(token: string, op: Operation, target: Target, send: Send): Promise<Omit<Verification, "at">>;
 }
 export type Send = (req: HttpRequest) => Promise<unknown>;
 
@@ -54,6 +56,12 @@ export class HttpBridge<Target> implements Bridge {
     return r.json;
   };
   async execute(op: Operation) { return { ref: await this.spec.execute(op, this.target, this.send) }; }
+  async verify(receipt: Receipt, op: Operation): Promise<Verification> {
+    const at = new Date().toISOString();
+    if (!this.spec.verify) return { ok: false, at, fields: [], note: `${this.spec.contract.app} cannot be read back, so this was not checked` };
+    if (!receipt.bridgeRef) return { ok: false, at, fields: [], note: "no reference was stored, so this could not be checked" };
+    return { ...(await this.spec.verify(receipt.bridgeRef, op, this.target, this.send)), at };
+  }
   async undo(receipt: Receipt) {
     if (!receipt.bridgeRef) throw new DestinationError("nothing to undo: no reference was stored");
     await this.spec.undo(receipt.bridgeRef, this.target, this.send);

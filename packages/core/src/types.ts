@@ -59,6 +59,16 @@ export interface Bridge {
   capabilities?(relationId: string): import("./lifecycle.js").OperationCapabilities | undefined;
   execute(op: Operation): Promise<{ ref?: string }>;
   undo(receipt: Receipt): Promise<void>;
+  /** Read what was placed back from the destination and compare it field by field with what was planned. Optional: only destinations that can be read. */
+  verify?(receipt: Receipt, op: Operation): Promise<Verification>;
+}
+/** The destination's own answer to "is it there, exactly as planned?", read back after the write: never assumed from the write's success. */
+export interface Verification {
+  ok: boolean; at: string;
+  /** One row per field the operation moved: what Recast planned, and what the destination now holds. */
+  fields: { path: string; expected: string; actual: string | null; match: boolean }[];
+  /** Why it could not be fully checked, when it could not. */
+  note?: string;
 }
 export interface Env { now(): string }
 export interface CommitEnv extends Env { bridge: Bridge; log: EventLog }

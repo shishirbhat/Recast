@@ -4,7 +4,7 @@
 // perform the effects (commit, undo, reconcile) through the core's action lifecycle.
 import {
   RELATIONS, answerClump, canMerge, checkConsent, chooseClump, mergeClumps, newClump, plan, propose, rankProposals, removeIngredient, resolve, viewClump,
-  type AnswerField, type CapabilityContract, type Clump, type ClumpType, type ClumpView, type Consent, type EventField, type Fragment, type Operation, type Receipt,
+  type AnswerField, type CapabilityContract, type Clump, type ClumpType, type ClumpView, type Consent, type EventField, type Verification, type Fragment, type Operation, type Receipt,
 } from "@recast/core";
 import { reduceRun, type RecipeRun, type RunEvent } from "./recipe-run.js";
 
@@ -35,6 +35,8 @@ export interface Placement {
   op?: Operation;             // once the object is complete and a route exists
   receipt?: Receipt; message?: string;
   undoable?: boolean;
+  /** The destination's own read-back after the placement: "checking" until it answers. Absent where the destination cannot be read. */
+  verification?: Verification | "checking";
   /** Chosen in the action module (Escape goes back to the selector) or dropped on a destination (Escape goes back to idle). */
   via?: "module" | "drop";
 }
@@ -110,6 +112,7 @@ export type ClumpEvent =
   | { type: "reconciled"; opId: string; found: boolean; receipt?: Receipt; now: number }
   | { type: "undo"; now: number }
   | { type: "undone"; opId: string; now: number }
+  | { type: "verified"; opId: string; verification: Verification; now: number }
   | { type: "undoFailed"; opId: string; message: string; now: number }
   | { type: "cancel"; now: number }
   | { type: "dismiss"; now: number }
@@ -122,7 +125,9 @@ export type ClumpInput = ClumpEvent extends infer E ? (E extends ClumpEvent ? Om
 export type ClumpEffect =
   | { type: "commit"; op: Operation; consent: Consent; destinationId: string }
   | { type: "reconcile"; op: Operation; destinationId: string }
-  | { type: "undo"; receipt: Receipt; destinationId: string };
+  | { type: "undo"; receipt: Receipt; destinationId: string }
+  /** Read the placement back from the destination and compare it with the plan (destinations that declare "verify"). */
+  | { type: "verify"; op: Operation; receipt: Receipt; destinationId: string };
 
 export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true;
   /** After a capture: the object it is now (new, or the one already on the desk when it was the same piece). */
@@ -145,7 +150,7 @@ const LEGAL: Record<ClumpPhase, ClumpEvent["type"][]> = {
   previewing: ["answer", "choose", "remove", "place", "cancel", "arm", "disarm"],
   executing: ["committed", "commitFailed", "outcomeUnknown"],
   undoing: ["undone", "undoFailed"],
-  succeeded: ["undo", "dismiss", "capture", "pickUp", "cancel", "openModule", "arm", "disarm"],
+  succeeded: ["undo", "verified", "dismiss", "capture", "pickUp", "cancel", "openModule", "arm", "disarm"],
   failed: ["dismiss", "cancel", "capture", "pickUp", "openModule", "arm", "disarm"],
   // An unknown outcome is checked before anything else: Recast cannot be turned off over it.
   unknown: ["reconcile", "reconciled", "dismiss"],
@@ -180,6 +185,16 @@ export function unfit(label: string, contract: CapabilityContract, type: ClumpTy
 }
 /** "a message", "an event", "a single piece". */
 export const aThing = (type: ClumpType) => (type === "Fragment" ? "a single piece" : `${/^[aeiou]/i.test(type) ? "an" : "a"} ${type.toLowerCase()}`);
+
+/**
+ * A placement the destination can read back is checked right after it lands: the host reads it and answers "verified".
+ * Until then the receipt says "checking"; it never says "verified" on the write's own success.
+ */
+function verifyAfter(n: ClumpState): ClumpResult {
+  const p = n.placement!; const d = n.destinations.find((x) => x.id === p.destinationId);
+  if (!p.receipt || !p.op || !d?.contract.abilities?.includes("verify")) return { state: n, effects: [] };
+  return { state: { ...n, placement: { ...p, verification: "checking" } }, effects: [{ type: "verify", op: p.op, receipt: p.receipt, destinationId: p.destinationId }] };
+}
 
 /**
  * With confirmation "none" (D24, D28), a chosen placement goes straight to the destination when the trust model asks
@@ -231,7 +246,7 @@ export function reduceClump(state: ClumpState, ev: ClumpEvent): ClumpResult {
 const RESULT_OF: Partial<Record<ClumpEvent["type"], (e: ClumpEvent) => string | undefined>> = {
   committed: (e) => (e as Extract<ClumpEvent, { type: "committed" }>).receipt.opId,
   commitFailed: (e) => (e as { opId: string }).opId, outcomeUnknown: (e) => (e as { opId: string }).opId,
-  reconciled: (e) => (e as { opId: string }).opId, undone: (e) => (e as { opId: string }).opId, undoFailed: (e) => (e as { opId: string }).opId,
+  reconciled: (e) => (e as { opId: string }).opId, verified: (e) => (e as { opId: string }).opId, undone: (e) => (e as { opId: string }).opId, undoFailed: (e) => (e as { opId: string }).opId,
 };
 /** Phases where something is in flight: only its answer (or a check) may change them. */
 const BUSY: ClumpPhase[] = ["merging", "executing", "undoing", "unknown"];
@@ -386,7 +401,13 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
     case "committed": {
       // An open-and-prefill destination only opened: the person finishes there, so it is never called "placed".
       const opened = s.destinations.find((d) => d.id === s.placement!.destinationId)?.contract.reliability === "deep-link";
-      return ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, receipt: ev.receipt, undoable: ev.undoable && !opened } }, "placed", opened ? `Opened ${destLabel(s)}` : `Placed in ${destLabel(s)}`));
+      const n = say({ ...s, phase: "succeeded" as const, placement: { ...s.placement!, receipt: ev.receipt, undoable: ev.undoable && !opened } }, "placed", opened ? `Opened ${destLabel(s)}` : `Placed in ${destLabel(s)}`);
+      return verifyAfter(n);
+    }
+    case "verified": {
+      const v = ev.verification; const where = destLabel(s);
+      const text = v.ok ? `Checked in ${where}: all ${v.fields.length} fields match` : v.note && !v.fields.some((f) => f.actual !== null) ? `Not confirmed: ${v.note}` : `${where} differs from the plan: ${v.fields.filter((f) => !f.match).map((f) => f.path.split(".")[1]).join(", ")}`;
+      return ok(say({ ...s, placement: { ...s.placement!, verification: v } }, v.ok ? "placed" : "failed", text));
     }
     case "commitFailed": return ok(say({ ...s, phase: "failed", placement: { ...s.placement!, message: ev.message } }, "failed", `Not placed: ${ev.message}`));
     case "outcomeUnknown": return ok(say({ ...s, phase: "unknown", placement: { ...s.placement!, message: ev.message } }, "unknown", `${destLabel(s)} did not answer. It may or may not have been added; check before trying again.`));
@@ -396,7 +417,7 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       return ok(s, [{ type: "reconcile", op: s.placement!.op!, destinationId: s.placement!.destinationId }]);
     }
     case "reconciled": return ev.found
-      ? ok(say({ ...s, phase: "succeeded", placement: { ...s.placement!, ...(ev.receipt ? { receipt: ev.receipt } : {}), undoable: !!ev.receipt } }, "placed", `Checked: it is in ${destLabel(s)}`))
+      ? verifyAfter(say({ ...s, phase: "succeeded", placement: { ...s.placement!, ...(ev.receipt ? { receipt: ev.receipt } : {}), undoable: !!ev.receipt } }, "placed", `Checked: it is in ${destLabel(s)}`))
       : ok(say({ ...s, phase: "failed", placement: { ...s.placement!, message: "not found at the destination" } }, "failed", `Checked: it was not added to ${destLabel(s)}. It is safe to place again.`));
     case "undo": {
       const p = s.placement!; if (!p.receipt || !p.undoable) return refuse("this placement cannot be undone");

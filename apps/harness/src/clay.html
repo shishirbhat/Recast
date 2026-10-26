@@ -11,6 +11,9 @@
       <button type="button" role="tab" id="tab-mail" data-for="mail" aria-controls="page-mail"><span class="fav" aria-hidden="true">@</span><span class="tname">Mail</span></button>
       <button type="button" role="tab" id="tab-docs" data-for="docs" aria-controls="page-docs"><span class="fav" aria-hidden="true">¶</span><span class="tname">Docs</span></button>
       <button type="button" role="tab" id="tab-build" data-for="build" aria-controls="page-build"><span class="fav" aria-hidden="true">!</span><span class="tname">Build #42</span></button>
+      <button type="button" role="tab" id="tab-invite" data-for="invite" aria-controls="page-invite"><span class="fav" aria-hidden="true">✉</span><span class="tname">Invite</span></button>
+      <button type="button" role="tab" id="tab-chat" data-for="chat" aria-controls="page-chat"><span class="fav" aria-hidden="true">💬</span><span class="tname">Chat</span></button>
+      <button type="button" role="tab" id="tab-plan" data-for="plan" aria-controls="page-plan"><span class="fav" aria-hidden="true">≡</span><span class="tname">Plan</span></button>
     </div>
     <div class="bar"><span class="lock" aria-hidden="true">⌁</span><span id="address" class="address"></span>
       <button type="button" id="recast-trigger" class="trigger" aria-pressed="false" aria-description="Or press Control twice"><span class="trigger-dot" aria-hidden="true"></span><span class="trigger-label">Recast</span><kbd class="trigger-kbd">Ctrl Ctrl</kbd></button></div>
@@ -62,6 +65,32 @@
       </figure>
     </section>
 
+    <section class="page" id="page-invite" data-tab="invite" role="tabpanel" aria-labelledby="tab-invite" data-url="mail.example/inbox/invitation-design-review" data-title="Invitation: Design review" hidden>
+      <p class="eyebrow">Mail · Inbox</p>
+      <h1 class="plain">Invitation: <span class="grab" id="invite-title" data-kind="title">Design review</span></h1>
+      <p class="sub">From Arjun Mehta · to you, Maya Rao</p>
+      <div class="avail"><p class="label">When</p><p class="big"><span class="grab" id="invite-time" data-kind="time">Thursday, 3:00 PM</span></p></div>
+      <p>Let’s go through the clinic app screens together. Venue in the planning doc.</p>
+    </section>
+
+    <section class="page" id="page-chat" data-tab="chat" role="tabpanel" aria-labelledby="tab-chat" data-url="chat.example/maya-rao" data-title="Maya Rao · Chat" hidden>
+      <p class="eyebrow">Chat</p>
+      <h1 class="plain">Maya Rao</h1>
+      <ul class="chat">
+        <li class="them"><span class="who">Arjun</span> Sent the invite for the design review.</li>
+        <li class="me"><span class="who">Maya</span> 3 clashes with my clinic visit. Can we do <span class="grab" id="chat-time" data-kind="time">Thursday, 4:00 PM</span> instead?</li>
+        <li class="them"><span class="who">Arjun</span> 4 works. I’ll tell the others.</li>
+      </ul>
+    </section>
+
+    <section class="page" id="page-plan" data-tab="plan" role="tabpanel" aria-labelledby="tab-plan" data-url="docs.example/design-review-plan" data-title="Design review · planning doc" hidden>
+      <p class="eyebrow">Document</p>
+      <h1 class="plain">Design review · planning</h1>
+      <p><strong>Venue:</strong> <span class="grab" id="plan-venue" data-kind="place" data-name="Dakshin" data-address="12 MG Road, Bengaluru">Dakshin, 12 MG Road</span> (the back room is booked).</p>
+      <p><strong>Agenda:</strong> onboarding screens, appointment flow, open questions.</p>
+      <p class="muted">Three sources, one meeting: the invite says 3:00, the chat says 4:00, the place is only here. Press them together and Recast shows where each value came from and asks which time is right.</p>
+    </section>
+
     <section class="page" id="page-calendar" data-tab="calendar" role="tabpanel" aria-labelledby="tab-calendar" data-url="calendar.example/week" data-title="Calendar" hidden>
       <p class="eyebrow">This weekend</p>
       <h1 class="plain">Calendar</h1>
@@ -70,6 +99,7 @@
       <div class="drop any" data-dest="cal" tabindex="0" role="button" aria-label="Calendar, choose the time yourself"><span class="drop-label">Drop here to choose the time yourself</span></div>
       <div id="cal-other-wrap" hidden><h2>Also on your calendar</h2><ul id="cal-other" class="plain-list"></ul></div>
       <label class="control"><input type="checkbox" id="silent"> Make this stand-in calendar not answer, to see what Recast does when a calendar times out</label>
+      <label class="control"><input type="checkbox" id="drift"> Have someone edit the event right after it is added, to see Recast’s read-back catch it</label>
     </section>
 
     <section class="page" id="page-mail" data-tab="mail" role="tabpanel" aria-labelledby="tab-mail" data-url="mail.example/drafts" data-title="Mail" hidden>

@@ -93,3 +93,32 @@ describe("Google Calendar: creating an event", () => {
     expect(await bridge.reconcile(JSON.stringify({ id: "rcnothere000" }))).toBe("absent");
   });
 });
+
+describe("Google Calendar: verifying a placement by reading it back", () => {
+  it("every moved field is read back and compared; a later edit or a deletion is reported, never assumed", async () => {
+    const g = fakeCalendar(); const o = event(); const { run, bridge, op } = await placeEvent(o, g.t);
+    const receipt = await run();
+    const v = await bridge.verify(receipt, op);
+    expect(v.ok).toBe(true);
+    expect(v.fields.map((f) => [f.path, f.match])).toEqual([["Event.title", true], ["Event.start", true], ["Event.end", true], ["Event.timezone", true], ["Event.location", true]]);
+    // Google answers with an offset; the local time and zone still match.
+    const id = calendarEventId(o.id, "primary"); const ev = g.events.get(id)!;
+    g.events.set(id, { ...ev, start: { dateTime: "2026-11-14T19:30:00+05:30", timeZone: "Asia/Kolkata" } });
+    expect((await bridge.verify(receipt, op)).ok).toBe(true);
+    // Someone edits the title in the calendar: the check says which field differs and what it now holds.
+    g.events.set(id, { ...g.events.get(id)!, summary: "Dinner (moved?)" });
+    const edited = await bridge.verify(receipt, op);
+    expect(edited.ok).toBe(false);
+    expect(edited.fields.find((f) => f.path === "Event.title")).toEqual({ path: "Event.title", expected: "Launch dinner", actual: "Dinner (moved?)", match: false });
+    // Deleted: not there, every field unmatched.
+    g.events.set(id, { ...g.events.get(id)!, status: "cancelled" });
+    const gone = await bridge.verify(receipt, op);
+    expect(gone).toMatchObject({ ok: false, note: "the event is not in the calendar" });
+    expect(g.calls.filter((c) => c.method !== "GET")).toHaveLength(1);   // checking never writes
+  });
+  it("a destination with no read-back says it was not checked", async () => {
+    const b = new HttpBridge(gmailMessageDraft, {}, async () => ({ status: 200, json: {} }));
+    const v = await b.verify({ receiptId: "r", opId: "o", at: "x", status: "done", objectId: "x", destination: "gmail.drafts", relationId: "message-draft-entry", effect: "", reversible: true, bridgeRef: "{}" }, {} as never);
+    expect(v).toMatchObject({ ok: false, fields: [], note: "Gmail cannot be read back, so this was not checked" });
+  });
+});

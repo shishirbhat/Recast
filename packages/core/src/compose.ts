@@ -46,13 +46,20 @@ export interface ComposedField {
   note?: string;
 }
 export interface Missing { field: EventField; reason: string; suggestions?: string[] }
-export interface Conflict { field: EventField; options: { value: string; fragmentId: string; original: string }[] }
+export type Source = NonNullable<Fragment["source"]>;
+/** One candidate value in a conflict, with where it came from, so the person can weigh sources, not just values. */
+export interface ConflictOption { value: string; fragmentId: string; original: string; source?: Source }
+export interface Conflict { field: EventField; options: ConflictOption[] }
+/** A conflict the person settled: what was kept, and what it overruled. Kept with the placement as part of its history. */
+export interface Resolution { field: EventField; chosen: ConflictOption; overruled: ConflictOption[] }
 export interface Composition {
   type: "Event";
   status: "ready" | "incomplete";
   fields: Partial<Record<EventField, ComposedField>>;
   missing: Missing[];
   conflicts: Conflict[];
+  /** Conflicts the person settled (ctx.choose), with the values they overruled. */
+  resolutions: Resolution[];
   /** Everything Recast assumed (inferred or default), in words, for the preview. */
   assumptions: string[];
   fragments: Fragment[];
@@ -116,6 +123,25 @@ export function readTime(text: string, ctx: Pick<ComposeContext, "now" | "timezo
     consume(m);
   } else if (/\b\d{4}-\d{2}-\d{2}\b/.test(s)) {
     return null;   // looks like a date but is not a real one (2026-02-30): read nothing rather than guess
+  } else if ((m = /\b(?:(sunday|monday|tuesday|wednesday|thursday|friday|saturday),? )?(?:(\d{1,2})(?:st|nd|rd|th)? (?:of )?(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?|(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:st|nd|rd|th)?)\b/.exec(s))) {
+    // A day and a month with no year ("Friday 23 October", "Oct 23"): the stated day is kept, never replaced by a weekday
+    // guess. The year is Recast's reading, shown as such: the one whose weekday matches when a weekday is given, else
+    // this year unless that is more than six months past.
+    const day = +(m[2] ?? m[5]!), mon = MONTHS[(m[3] ?? m[4])!]!, wd = m[1];
+    const today = localDate(ctx.now, ctx.timezone);
+    const years = [today.y, today.y + 1].filter((y) => validDate(y, mon, day));
+    const weekdayOf = (y: number) => new Date(Date.UTC(y, mon - 1, day)).getUTCDay();
+    const daysAgo = (y: number) => (Date.UTC(today.y, today.m - 1, today.d) - Date.UTC(y, mon - 1, day)) / 86_400_000;
+    const byWeekday = wd ? years.find((y) => weekdayOf(y) === WEEKDAYS.indexOf(wd)) : undefined;
+    const y = byWeekday ?? years.find((yy) => daysAgo(yy) <= 183) ?? years[0];
+    if (y !== undefined) {
+      r.date = ymd(y, mon, day); r.dateOrigin = "inferred";
+      const said = m[0].trim();
+      r.dateNote = wd && byWeekday === undefined
+        ? `"${said}": ${r.date} is a ${WEEKDAYS[weekdayOf(y)]}, not a ${wd}; check the date`
+        : `"${said}" read as ${r.date} (no year was given)`;
+      consume(m);
+    }
   } else {
     const today = localDate(ctx.now, ctx.timezone);
     let rel: { y: number; m: number; d: number } | null = null; let word = "";
@@ -166,8 +192,9 @@ export const COMPOSED_CONFIDENCE = { extracted: 0.9, inferred: 0.6, default: 0.9
 /** Combine fragments into an Event candidate. Deterministic for the same inputs and context. */
 export function compose(fragments: Fragment[], ctx: ComposeContext): Composition {
   const fields: Composition["fields"] = {};
-  const missing: Missing[] = []; const conflicts: Conflict[] = []; const assumptions: string[] = [];
+  const missing: Missing[] = []; const conflicts: Conflict[] = []; const assumptions: string[] = []; const resolutions: Resolution[] = [];
   const answers = ctx.answers ?? {}; const choose = ctx.choose ?? {};
+  const option = (o: { value: string; f: Fragment; original: string }): ConflictOption => ({ value: o.value, fragmentId: o.f.id, original: o.original, ...(o.f.source ? { source: o.f.source } : {}) });
 
   // Sort fragments into what they can say.
   const times: { f: Fragment; r: TimeReading }[] = []; const places: Fragment[] = []; const titles: Fragment[] = []; const people: Fragment[] = [];
@@ -192,8 +219,14 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
     const distinct = [...new Map(opts.map((o) => [o.value.toLowerCase(), o])).values()];
     if (!distinct.length) return null;
     const chosen = choose[field] ? opts.find((o) => o.f.id === choose[field]) : undefined;
-    if (distinct.length > 1 && !chosen) { conflicts.push({ field, options: distinct.map((o) => ({ value: o.value, fragmentId: o.f.id, original: o.original })) }); return null; }
+    if (distinct.length > 1 && !chosen) { conflicts.push({ field, options: distinct.map(option) }); return null; }
     const o = chosen ?? distinct[0]!;
+    if (distinct.length > 1 && chosen) {
+      const prior = resolutions.find((r) => r.field === field);
+      const overruled = distinct.filter((x) => x.value.toLowerCase() !== chosen.value.toLowerCase()).map(option);
+      if (prior) prior.overruled.push(...overruled.filter((x) => !prior.overruled.some((y) => y.fragmentId === x.fragmentId)));
+      else resolutions.push({ field, chosen: option(chosen), overruled });
+    }
     const same = opts.filter((x) => x.value.toLowerCase() === o.value.toLowerCase());
     return { value: o.value, ids: same.map((x) => x.f.id), original: o.original, conf: COMPOSED_CONFIDENCE.extracted };
   };
@@ -287,7 +320,7 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
 
   for (const f of REQUIRED) if (!fields[f] && !missing.some((x) => x.field === f) && !conflicts.some((c) => c.field === f)) missing.push({ field: f, reason: "required" });
   const status = missing.length || conflicts.length ? "incomplete" : "ready";
-  return { type: "Event", status, fields, missing, conflicts, assumptions, fragments, candidate: status === "ready" ? toCandidate(fields, fragments, ctx) : null };
+  return { type: "Event", status, fields, missing, conflicts, resolutions, assumptions, fragments, candidate: status === "ready" ? toCandidate(fields, fragments, ctx) : null };
 }
 
 /** Field values with evidence that says where each came from: the fragments' own evidence for extracted values, a composition locator otherwise. */

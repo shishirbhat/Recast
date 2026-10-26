@@ -137,3 +137,9 @@ body.recast-on .grab.sel-blob.accepts { box-shadow: 0 0 0 2.5px var(--accent, #c
 .tabs.more-left.more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
 .tabs.more-left:not(.more-right) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
 @media (max-width: 520px) { [role=tab] { padding: 8px 8px; gap: 6px; font-size: 14px; } }
+
+/* Chat page (a source for the reconciliation scene) */
+.chat { list-style: none; padding: 0; margin: 16px 0; display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.chat li { padding: 10px 14px; border-radius: 16px; line-height: 1.45; background: color-mix(in srgb, currentColor 6%, transparent); }
+.chat li.me { align-self: flex-end; background: color-mix(in srgb, currentColor 11%, transparent); }
+.chat .who { display: block; font-size: 12px; font-weight: 600; opacity: .75; margin-bottom: 2px; }

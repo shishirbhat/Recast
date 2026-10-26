@@ -91,7 +91,7 @@ describe("composing a time and a place into an event", () => {
     const a = frag("time", "2026-11-14 7pm"), b = frag("time", "2026-11-15 7pm"), t = frag("title", "Dinner");
     const c = compose([a, b, t], CTX);
     expect(c.status).toBe("incomplete");
-    expect(c.conflicts).toEqual([{ field: "start", options: [{ value: "2026-11-14", fragmentId: a.id, original: a.text }, { value: "2026-11-15", fragmentId: b.id, original: b.text }] }]);
+    expect(c.conflicts).toEqual([{ field: "start", options: [expect.objectContaining({ value: "2026-11-14", fragmentId: a.id, original: a.text }), expect.objectContaining({ value: "2026-11-15", fragmentId: b.id, original: b.text })] }]);
     expect(c.missing).toEqual([]);   // the conflict is the only thing reported about start
     expect(compose([a, b, t], { ...CTX, choose: { start: b.id } }).fields.start).toMatchObject({ value: "2026-11-15T19:00", origin: "extracted" });
   });

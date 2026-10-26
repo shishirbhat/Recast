@@ -5,6 +5,7 @@ import { hash32 } from "./canonical.js";
 import { assertReady } from "./propose.js";
 import { HOLD_MS, RELIABILITY_LABEL } from "./trust.js";
 import type {
+  Verification,
   Bridge, CommitEnv, Consent, Env, EventLog, LogEntry, NewLogEntry, Operation, Preview, Proposal, Receipt, SemanticObject,
 } from "./types.js";
 
@@ -81,6 +82,18 @@ export async function commit(op: Operation, consent: Consent, env: CommitEnv): P
   };
   await env.log.append({ kind: "commit", at, receipt });
   return receipt;
+}
+
+/**
+ * After a placement: ask the destination what it now holds and compare it with what was planned. A placement is
+ * "verified" only on the destination's own answer; a destination that cannot be read says so instead of passing.
+ */
+export async function verify(receipt: Receipt, op: Operation, env: CommitEnv): Promise<Verification> {
+  if (receipt.opId !== op.opId) throw new RecastError("BRIDGE_MISMATCH", "this receipt is for another operation");
+  const committed = (await env.log.entries()).some((e) => e.kind === "commit" && e.receipt.receiptId === receipt.receiptId);
+  if (!committed) throw new RecastError("UNKNOWN_RECEIPT", "receipt is not in the history log");
+  if (!env.bridge.verify) return { ok: false, at: env.now(), fields: [], note: `${env.bridge.describe().app} cannot be read back, so this was not checked` };
+  return env.bridge.verify(receipt, op);
 }
 
 export async function undo(receipt: Receipt, env: CommitEnv): Promise<Receipt> {

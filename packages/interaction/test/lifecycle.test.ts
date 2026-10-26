@@ -85,7 +85,7 @@ describe("an unknown outcome is never a blind retry", () => {
     expect(again.s).toMatchObject({ phase: "unknown", placement: { objectId: "obj-1", op: { opId } } });
     // Found: it was there all along; success, with no second write.
     const found = run([{ type: "reconcile" }, { type: "reconciled", opId, found: true, receipt: receiptFor(again.s) }], again.s);
-    expect(found.s.phase).toBe("succeeded"); expect(found.effects.map((x) => x.type)).toEqual(["reconcile"]);
+    expect(found.s.phase).toBe("succeeded"); expect(found.effects.map((x) => x.type)).toEqual(["reconcile", "verify"]);   // found: then read back, like any placement
   });
   it("…or not found: failed, the doubt is cleared, and a fresh placement is allowed", () => {
     const u = unknown(); const opId = u.placement!.op!.opId;
@@ -169,5 +169,35 @@ describe("retirement touches only the placed object", () => {
     const done = run([{ type: "dismiss" }], succeeded()).s;
     const next = run([{ type: "capture", fragment: frag("person", "Arjun Mehta") }], done).s;
     expect(Object.keys(next.objects)).toEqual(["obj-3"]); expect(next.seq).toBe(3);
+  });
+});
+
+describe("a placement is verified by the destination's own read-back", () => {
+  const verification = (ok: boolean, opId: string) => ({ ok, at: "2026-10-19T09:00:02Z", fields: [{ path: "Event.title", expected: "Dinner with Maya", actual: ok ? "Dinner with Maya" : "Dinner?", match: ok }, { path: "Event.start", expected: "2026-10-23T19:30:00", actual: "2026-10-23T19:30:00", match: true }], ...(opId ? {} : {}) });
+  it("a confirmed write asks for a check; the receipt says 'checking' until the destination answers", () => {
+    const e = executing().s;
+    const r = run([{ type: "committed", receipt: receiptFor(e), undoable: true }], e);
+    expect(r.s.phase).toBe("succeeded"); expect(r.s.placement!.verification).toBe("checking");
+    expect(r.effects).toEqual([expect.objectContaining({ type: "verify", destinationId: "cal" })]);
+    const v = run([{ type: "verified", opId: e.placement!.op!.opId, verification: verification(true, "x") }], r.s);
+    expect(v.s.placement!.verification).toMatchObject({ ok: true }); expect(v.s.last!.text).toBe("Checked in Calendar: all 2 fields match");
+    expect(v.s.placement!.undoable).toBe(true);
+  });
+  it("a mismatch is reported with the fields that differ; it is never called placed-as-planned", () => {
+    const e = executing().s;
+    const r = run([{ type: "committed", receipt: receiptFor(e), undoable: true }, { type: "verified", opId: e.placement!.op!.opId, verification: verification(false, "x") }], e);
+    expect(r.s.last).toMatchObject({ kind: "failed", text: "Calendar differs from the plan: title" });
+  });
+  it("an answer for another operation is ignored", () => {
+    const e = executing().s;
+    const r = run([{ type: "committed", receipt: receiptFor(e), undoable: true }, { type: "verified", opId: "op-older", verification: verification(true, "x") }], e);
+    expect(r.s.placement!.verification).toBe("checking"); expect(r.stale).toHaveLength(1);
+  });
+  it("a destination that cannot be read back is not checked, and nothing claims it was", () => {
+    const s0 = initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: [{ id: "cal", label: "Calendar", contract: { ...CONTRACTS.googleCalendarEvent, abilities: ["create", "delete", "undo"] } }], armed: true });
+    const base = { ...ready(), destinations: s0.destinations };
+    const e = executing(base).s;
+    const r = run([{ type: "committed", receipt: receiptFor(e), undoable: true }], e);
+    expect(r.effects).toEqual([]); expect(r.s.placement!.verification).toBeUndefined();
   });
 });

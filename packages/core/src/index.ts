@@ -1,14 +1,15 @@
 export { perceive, displayNames } from "./perceive.js";
 export { resolve, serialize, deserialize, identityOf, normalizeProps } from "./resolve.js";
 export { propose, rankProposals } from "./propose.js";
-export { preview, plan, commit, undo, checkConsent, inspectObject, inspectOperation, InMemoryEventLog } from "./operate.js";
+export { preview, plan, commit, undo, verify, checkConsent, inspectObject, inspectOperation, InMemoryEventLog } from "./operate.js";
 export { assessRisk, RELIABILITY_LABEL, HOLD_MS, LOW_CONFIDENCE, MEDIUM_CONFIDENCE } from "./trust.js";
 export { checkContract, RELATIONS } from "./rules.js";
 export { canonicalJson, hash32 } from "./canonical.js";
 export { sha256Hex } from "./sha256.js";
 export { RecastError } from "./errors.js";
 export type * from "./types.js";
-export { compose, readTime, type Composition, type ComposeContext, type ComposedField, type Conflict, type EventField, type Fragment, type FragmentKind, type Missing, type Origin, type TimeReading } from "./compose.js";
+export { provenanceOf, sourceName, type FieldProvenance, type ProvenanceRecord } from "./provenance.js";
+export { compose, readTime, type Composition, type ComposeContext, type ComposedField, type Conflict, type ConflictOption, type Resolution, type Source, type EventField, type Fragment, type FragmentKind, type Missing, type Origin, type TimeReading } from "./compose.js";
 export { advance, isTerminal, LifecycleError, OutcomeUnknownError, startAction, TRANSITIONS, type ActionRecord, type ActionStatus, type ActionStep, type OperationCapabilities } from "./lifecycle.js";
 export { newClump, typeOf, canMerge, looksLikeError, pieceOfSelection, mergeClumps, removeIngredient, answer as answerClump, choose as chooseClump, viewClump, type Clump, type ClumpType, type ClumpView, type MergeCheck, type MergeResult, type MessageView, type DocumentView, type TaskView, type AnswerField, type MessageField } from "./clump.js";
 export { RECIPES, recipeById, planRecipe, type Recipe, type RecipeStepDef, type StepPlan } from "./recipes.js";

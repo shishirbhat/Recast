@@ -254,3 +254,21 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Decision:** on turning on, the display is captured (desktopCapturer) before Recast draws, read by OCR on the machine (tesseract.js, English model bundled, nothing downloaded or sent, nothing stored), and scanned for spots (`apps/desktop/src/spots.ts`): times and dates (core `readTime`, trimmed to the words that matter, never a lone weekday or a bare number), email addresses (a person), error lines (core `looksLikeError`, the whole line), web addresses. Highlights sit over those words; click → a blob beside it; drag → a blob in hand to press into another. Rescans after a scroll or a click in the app underneath; Recast's own blobs and wheel are left out. The status is a pill at the bottom centre (like a dictation app), never beside the pointer. OCR is time-limited, so a failure means no highlights, never a hang.
 - **Consequences:** a Mac needs Screen Recording for highlights (the library asks). Places and names are not highlighted yet (a name from free text is too unreliable; places need the address rules adapted to OCR lines). Linux test screens now run a window manager and a compositor (openbox, xcompmgr), because without them "always on top" and transparency mean nothing and click-through tests passed for the wrong reason.
 
+
+### D40. Recast is the context layer: conflicts name their sources, choices are kept, placements are read back (2026-10-26)
+- **Context:** the owner's thesis. Assistants that move data from one app to another are easy for large companies to copy. Recast owns the deliberate, selection-first step instead: I choose what matters, I see what will happen, I know what actually happened. Proof asked for: one workflow with conflicting information from three sources, provenance preserved, the conflict resolved with the user, and a verified destination action.
+- **Decision:**
+  - A conflict option carries its source (`ConflictOption.source`). The review shows "Thursday, 3:00 PM · Invitation: Design review" beside "Thursday, 4:00 PM · Maya Rao · Chat".
+  - A settled conflict is a `Resolution` (what was chosen, what it overruled).
+  - `provenanceOf(composition)` gives every field its value, origin, sources and overruled values.
+  - Each value in the review names its source ("from Dakshin · Restaurant"), not "from the page".
+  - After a confirmed placement (or a check that finds it), the machine asks for a read-back (`verify` effect). The destination is read and every moved field compared with the plan (`Verification`).
+  - The receipt says "checking", then "Read back from Calendar: N of N fields match", or which field differs and what it now holds. A destination that cannot be read says it was not checked.
+  - Google Calendar's bridge reads the event back (`googleCalendarEvent.verify`), comparing local time and zone separately because Google answers with an offset.
+- **Where the provenance lives:** in Recast's own history, not written into the user's event, so the calendar holds only the event and the destination contract is unchanged.
+- **Found on the way:** "Friday 23 October" was read as *next* Friday once the 23rd had passed. The day and month were not read at all, so the weekday alone decided the date, silently replacing the source. Day-and-month dates without a year are now read:
+  - when a weekday is also given, the year whose weekday matches;
+  - otherwise this year, unless that is more than six months past;
+  - the year is shown as Recast's reading;
+  - a weekday that fits neither year is reported ("check the date").
+- **Not yet:** the extension's and the desktop app's real Google path do not run the read-back (the try-it page and the bridge do). Only Google Calendar can be read back so far.
