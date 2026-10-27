@@ -102,7 +102,7 @@ The previously reported harness failures (two capitalisation assertions in Layer
 | Interim design system | `design/tokens.css`, overlay | computed contrast; axe clean | final identity pending Modulark/Modulus (`docs/design-direction.md`) |
 
 ## Latest full run (2026-10-27, after read-back for every readable connector, D42)
-`pnpm -r typecheck` passes. `pnpm test`: **1000 passed, 0 failed, 0 skipped** (then extension 38/38 again after its read-back assertions) (desktop 14 with real keys and mouse: `xdotool`, `openbox` and `xcompmgr` installed for the run). The repository defines no lint script; typecheck is the static check. Seen once during the work and not again in three further runs: the extension suite failing right after a full run (most likely port 8787 still held by the desktop tests' program), and one desktop theme check on Electron's first launch after its download.
+`pnpm -r typecheck` passes. `pnpm test`: **1001 passed, 0 failed, 0 skipped** (desktop 14 with real keys and mouse: `xdotool`, `openbox` and `xcompmgr` installed for the run). The repository defines no lint script; typecheck is the static check. Seen once during the work and not again in three further runs: the extension suite failing right after a full run (most likely port 8787 still held by the desktop tests' program), and one desktop theme check on Electron's first launch after its download.
 
 ## Earlier full run (2026-10-22, after Linear and phase two)
 `pnpm -r typecheck` passes; `pnpm -r test`: **20 packages, 944 tests, 0 failures** (core 133, bridges 67, calendar-link 27, extension 37, harness 60). Before: 922.

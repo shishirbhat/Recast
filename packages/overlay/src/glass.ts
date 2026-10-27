@@ -392,6 +392,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "preview": {
         const op = m.placement?.op;
         const risk = op ? `<p class="rg-risk">${op.risk.tier === "low" ? "Low risk: adds an entry only you see, and it can be undone." : esc(riskWords(op.risk.reasons))}</p>` : "";
+        // What happens after: whether Recast will check the result with the destination itself.
+        const after = op && d && !d.opensOnly ? `<p class="rg-hint rg-after">${d.verifies ? `After it is placed, Recast reads it back from ${esc(d.app)} to check it.` : `${esc(d.app)} can’t be read back, so Recast won’t be able to check it.`}</p>` : "";
         const link = op && d?.opensOnly ? opts.linkFor?.(op) : undefined;
         if (op && d?.opensOnly) {
           // Open and prefill: nothing is written by Recast, so the review says so instead of a risk line.
@@ -402,7 +404,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}<p class="rg-risk">Opens ${esc(d.app)} in a new tab with this filled in. Recast saves nothing; you finish there.</p>${refused}`, actions: `${open}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
         }
         const go = op ? (op.risk.consent === "hold" ? `<button type="button" class="rg-btn primary hold" data-act="hold">Hold to confirm: ${esc(op.proposal.effect.toLowerCase())}</button>` : `<button type="button" class="rg-btn primary" data-act="place">Confirm: ${esc(op.proposal.effect)}</button>`) : `<button type="button" class="rg-btn primary" disabled>Answer what is still needed</button>`;
-        return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${standIn}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
+        return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${after}${standIn}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
       }
       case "executing": return { title: `${dIcon}${d?.opensOnly ? "Opening" : "Adding to"} ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
       case "undoing": return { title: `${dIcon}Undoing in ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm it is removed.</p>${err}`, actions: "" };

@@ -78,3 +78,16 @@ describe("confirmation level", () => {
     expect(pick(dinner("high")).s.phase).toBe("previewing");
   });
 });
+
+describe("the review says whether the result will be checked", () => {
+  it("a destination that declares verify is marked so; one that does not is not", async () => {
+    const { moduleModel } = await import("../src/index.js");
+    const { REGISTRY } = await import("@recast/bridges");
+    const reviewOf = (contract: DestinationSpec["contract"]) => {
+      const s = pick({ ...dinner("high"), destinations: [{ id: "cal", label: "Calendar", contract }] }).s;
+      return (moduleModel(s, REGISTRY) as { destination?: { verifies?: boolean } }).destination?.verifies;
+    };
+    expect(reviewOf(CONTRACTS.googleCalendarEvent)).toBe(true);
+    expect(reviewOf({ ...CONTRACTS.googleCalendarEvent, abilities: ["create", "delete", "undo"] })).toBe(false);
+  });
+});

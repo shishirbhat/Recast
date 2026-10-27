@@ -94,6 +94,8 @@ describe("context reconciliation: three sources, one conflict, a verified placem
     expect(body).toMatch(/Where\s*Dakshin, 12 MG Road, Bengaluru\s*from Design review · planning doc/);
     expect(body).toMatch(/When\s*Thu, Oct 22, 4:00 PM\s*read from (Maya Rao · Chat \+ Invitation: Design review|Invitation: Design review \+ Maya Rao · Chat)/);   // both said Thursday
     expect(body).toMatch(/you chose “Thursday, 4:00 PM” from Maya Rao · Chat over “Thursday, 3:00 PM” from Invitation: Design review/);
+    // The review says what happens after: the calendar will be read back.
+    expect(await page.locator(".rg-after").innerText()).toBe("After it is placed, Recast reads it back from Google Calendar to check it.");
     // 6. Placed, then read back from the calendar: verified only on the calendar's own answer.
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => { const p = (globalThis as any).recast.state.placement; return p?.verification && p.verification !== "checking"; });
