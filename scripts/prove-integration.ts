@@ -10,12 +10,16 @@
  * get the same result. Everything else is real: git worktrees, real test commands, Relay's engine and server.
  *
  *   node scripts/prove-integration.ts [report.md]
+ *
+ * It rewrites only the "deterministic" section of the report; the real-agent section (scripts/prove-integration-real.ts)
+ * is left as it is. test/integration-proof.test.ts runs it as a regression test.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { testServer, until } from "../test/collab-helpers.ts";
+import { writeSection } from "./evidence-section.ts";
 import { HUMAN } from "../test/helpers.ts";
 
 const SIM = resolve(import.meta.dirname, "../test/fixtures/simulated-agent");
@@ -81,13 +85,13 @@ try {
 
   const row = (a: string, b: string, c: string) => `| ${a} | ${b} | ${c} |`;
   lines.push(
-    "# Integration proof: individually green, combined red",
+    "## Deterministic experiment (simulated agents)",
     "",
     `Generated ${new Date().toISOString()} by \`node scripts/prove-integration.ts\`. Agents are simulated (deterministic edits); git, tests and Relay are real.`,
     "",
     "**Scenario.** `T-api` renames `name` to `fullName` in `src/server.js` (the accepted `user-api` contract). `T-ui` makes an unrelated change to `src/ui.js`, whose `greet()` still reads `.name`. Different files: Git sees no conflict.",
     "",
-    "## A. Without Relay",
+    "### A. Without Relay",
     "",
     row("Step", "Result", "Evidence"),
     row("---", "---", "---"),
@@ -98,7 +102,7 @@ try {
     "",
     merged.ok ? "The combined project passed (unexpected: the scenario did not reproduce)." : "Both tasks were green, the merge was clean, and the shared project is now broken. The failure is found only after integration.",
     "",
-    "## B. With Relay",
+    "### B. With Relay",
     "",
     row("Step", "Result", "Evidence"),
     row("---", "---", "---"),
@@ -107,16 +111,16 @@ try {
     ...integ.gaps.map((g) => row("Gap reported", "—", g.replace(/\|/g, "/"))),
     row("Shared project", untouched ? "unchanged" : "CHANGED", "nothing applied until the combined check passes and a person approves"),
     "",
-    "## Measured",
+    "### Measured",
     "",
     row("", "Without Relay", "With Relay"),
     row("---", "---", "---"),
     row("Broken changes that reached the shared project", merged.ok ? "0" : "1", untouched ? "0" : "1"),
     row("When the break is found", "after merge", "before apply"),
-    row("Cause shown", "a failing test, after the fact", "the failing combined test plus the tasks and contract involved"),
+    row("Cause shown", "a failing test, after the fact", "the failing combined test, with the tasks and contract versions checked (not the cause)"),
   );
   const out = process.argv[2] ?? resolve(import.meta.dirname, "../docs/evidence/integration-proof.md");
-  writeFileSync(out, lines.join("\n") + "\n");
+  writeSection(out, "deterministic", lines.join("\n"));
   console.log(lines.join("\n"));
   console.log(`\nwrote ${out}`);
   if (merged.ok || integ.status !== "blocked" || !untouched) process.exitCode = 1;

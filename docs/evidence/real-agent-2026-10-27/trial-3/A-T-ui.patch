@@ -1,0 +1,20 @@
+diff --git a/src/footer.test.js b/src/footer.test.js
+new file mode 100644
+index 0000000..5644d9f
+--- /dev/null
++++ b/src/footer.test.js
+@@ -0,0 +1,4 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { footer } from './ui.js';
++test('footer says see you soon', () => assert.equal(footer, 'see you soon'));
+diff --git a/src/ui.js b/src/ui.js
+index 28468d1..9151d28 100644
+--- a/src/ui.js
++++ b/src/ui.js
+@@ -4,4 +4,4 @@ export function greet(id) {
+   return 'Hello ' + getUser(id).name;
+ }
+ 
+-export const footer = 'bye';
++export const footer = 'see you soon';
