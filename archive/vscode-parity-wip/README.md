@@ -7,6 +7,5 @@ Nothing here is applied to any branch. Kept only so the work isn't lost.
   commands, special editors, document symbols and their test). Paths mirror the repository layout.
 - `stash-tracked-changes.patch` — the same change set's edits to tracked files, exported from the stash entry
   "vscode-parity WIP (uncommitted)" (stash@{0} in the session that made it; 18 files, +1781 −425).
-  The base it was made on is commit a540b61's parent line of `relay` before the VS Code extension work landed;
-  the `relay` branch has since changed (including a file named ide/web/lib/editorCommands.ts), so expect
+  The stash's base commit is `3943647 Reposition Relay as the integration trust layer; reproducible integration proof`. The `relay` branch has since changed (including a file named ide/web/lib/editorCommands.ts), so expect
   conflicts if this is ever revived. Revive by hand, not by blind apply.
