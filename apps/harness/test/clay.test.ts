@@ -375,7 +375,7 @@ describe("the glass module and the destination selector", () => {
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
     expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
-    expect(await page.locator(".rg-body").innerText()).toMatch(/^Calendar confirmed it \(stand-in\)\.\s+(Checking Calendar…|Read back from Calendar: (\d+) of \2 fields match\.)$/);
+    expect(await page.locator(".rg-body").innerText()).toMatch(/^Calendar confirmed it \(stand-in\)\.\s+(Checking Calendar…|Read back from Calendar: (\d+) of \2 fields match\.)\s+Save as workflow$/);
     expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Maya at Dakshin · Dakshin");
     await page.getByRole("button", { name: "Undo" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");
@@ -664,6 +664,100 @@ describe("a recipe: one composition, several places, each with its own result", 
     await page.getByRole("button", { name: "Run 1 step" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "ran");
     expect(await page.locator(".rg-title").innerText()).toBe("Plan and prepare: all 1 done");
+    expect(errors).toEqual([]); await ctx.close();
+  });
+});
+
+describe("a personal saved workflow (stand-ins; kept in this browser's storage)", () => {
+  it("place once, save it with a name, reload, run it on new information with its own review and read-back; rename; delete", async () => {
+    const { page, ctx, errors } = await open();
+    await makeDinner(page);
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    expect(await page.locator(".rg-mine").count()).toBe(0);                 // nothing saved yet
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    await page.getByRole("button", { name: "Open" }).click();
+    expect((await st(page)).phase).toBe("previewing");
+    // Save is offered in the review; pressing it asks for a name and saves nothing yet.
+    await page.getByRole("button", { name: "Save as workflow" }).click();
+    expect(await page.evaluate(() => localStorage.getItem("recast.workflows"))).toBeNull();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    expect(await page.locator(".rg-error").innerText()).toBe("Give it a name");
+    await page.getByLabel("Name for this workflow").fill("Dinner plan");
+    await page.getByLabel("Name for this workflow").press("Enter");
+    expect(await page.locator(".rg-saved").innerText()).toMatch(/^Saved "Dinner plan"/);
+    expect((await st(page)).phase).toBe("previewing");                       // saving placed nothing
+    expect(await page.locator("[data-placed='event']").count()).toBe(0);
+    const stored = (await page.evaluate(() => localStorage.getItem("recast.workflows")))!;
+    expect(JSON.parse(stored)).toEqual([expect.objectContaining({ name: "Dinner plan", needs: "Event", steps: [expect.objectContaining({ id: "place", destination: "google-calendar.calendar" })] })]);
+    for (const secret of ["Maya", "Dakshin", "dakshin.example", "7:30", "people.example"]) expect(stored).not.toContain(secret);
+
+    // A new page (the same browser): the workflow is read back and checked; new information goes through it.
+    await page.reload(); await page.locator("#recast-trigger").click();
+    await drag(page, "#arjun", "#dakshin", "#tab-restaurant");
+    let s = await st(page); const id = s.desk[0];
+    await drag(page, "#dakshin-time", objectSel(id));
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    const chip = page.locator(".rg-mine .rg-recipe", { hasText: "Dinner plan" });
+    expect(await chip.isDisabled()).toBe(false);
+    await chip.click();
+    expect((await st(page)).phase).toBe("planning");
+    expect(await page.locator(".rg-title").innerText()).toBe("Recipe: Dinner plan");
+    expect(await page.locator("[data-placed='event']").count()).toBe(0);    // the review writes nothing
+    // What is missing is asked here, as in any review.
+    const step = page.locator(".rg-steps li[data-step-id='place']");
+    expect(await step.getAttribute("data-status")).toBe("blocked");
+    await page.getByRole("button", { name: "Use “Meet Arjun at Dakshin”" }).click();
+    await expect.poll(() => step.getAttribute("data-status")).toBe("ready");
+    expect(await step.innerText()).toMatch(/Place it in Google Calendar\s+Google Calendar · stand-in\s+Uses Arjun Mehta, Dakshin/);
+    expect(await page.getByRole("button", { name: "Save as workflow" }).count()).toBe(0);   // it already is one
+    await page.getByRole("button", { name: "Run 1 step" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "ran");
+    await expect.poll(() => step.innerText()).toMatch(/Read back from Google Calendar: \d+ of \d+ fields match/);
+    expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Arjun at Dakshin · Dakshin");
+    await page.getByRole("button", { name: "Done" }).click();
+
+    // Manage: rename (refusing a name already taken), then delete after asking once more.
+    await page.locator("#tab-profile").click();
+    await drag(page, "#maya", "#dakshin", "#tab-restaurant");
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    await page.getByRole("button", { name: "Manage" }).click();
+    expect(await page.locator(".rg-title").innerText()).toBe("Your workflows");
+    await page.getByRole("button", { name: "Rename" }).click();
+    await page.getByLabel("New name for Dinner plan").fill("Plan and invite");
+    await page.getByRole("button", { name: "Rename" }).click();
+    expect(await page.locator(".rg-error").innerText()).toMatch(/already a workflow called "Plan and invite"/);
+    await page.getByLabel("New name for Dinner plan").fill("Friday dinners");
+    await page.getByLabel("New name for Dinner plan").press("Enter");
+    await expect.poll(() => page.locator(".rg-wf .rg-step-label").innerText()).toBe("Friday dinners");
+    expect(JSON.parse((await page.evaluate(() => localStorage.getItem("recast.workflows")))!)[0].name).toBe("Friday dinners");
+    await page.getByRole("button", { name: "Delete" }).click();
+    expect(await page.locator(".rg-wf").innerText()).toMatch(/Delete “Friday dinners”\? Nothing it already placed is changed/);
+    await page.getByRole("button", { name: "Delete" }).click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("recast.workflows"))).toBe("[]");
+    expect(await page.locator(".rg-title").innerText()).toBe("Ready to place");          // nothing left to manage
+    expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").count()).toBe(1);   // what it placed stands
+    expect(errors).toEqual([]); await ctx.close();
+  });
+  it("a stored workflow that is outdated or names a destination Recast does not have is shown with the reason, never run", async () => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 }, timezoneId: "Asia/Kolkata" });
+    await ctx.addInitScript(() => { try { if (!sessionStorage.getItem("seeded")) { sessionStorage.setItem("seeded", "1"); localStorage.setItem("recast.workflows", JSON.stringify([
+      { id: "wf_old", version: 7, name: "From the future", description: "", origin: "saved", needs: "Event", steps: [{ id: "place", label: "x", targetKind: "Calendar" }], limitations: [] },
+      { id: "wf_gone", version: 1, name: "Old notes", description: "An event → Evernote", origin: "saved", needs: "Event", steps: [{ id: "place", label: "Place it in Evernote", targetKind: "Calendar", destination: "evernote.notes", app: "Evernote" }], limitations: [] },
+    ])); } } catch { /* storage blocked: nothing to seed */ } });
+    const page = await ctx.newPage(); const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(`${base}/clay.html?${Q}`); await page.locator("#recast-trigger").click();
+    await makeDinner(page);
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    expect(await page.locator(".rg-mine .rg-recipe").count()).toBe(0);         // neither is offered to run
+    await page.getByRole("button", { name: "Manage" }).click();
+    const rows = page.locator(".rg-wf");
+    expect(await rows.nth(0).innerText()).toMatch(/From the future\s+Cannot be used: it was saved by a different version of Recast/);
+    expect(await rows.nth(1).innerText()).toMatch(/Old notes\s+Cannot be used: it goes to evernote\.notes, which Recast cannot place in any more/);
+    expect(await rows.nth(0).getByRole("button", { name: "Rename" }).count()).toBe(0);
+    await rows.nth(1).getByRole("button", { name: "Delete" }).click();
+    await rows.nth(1).getByRole("button", { name: "Delete" }).click();
+    await expect.poll(async () => JSON.parse((await page.evaluate(() => localStorage.getItem("recast.workflows")))!).map((x: any) => x.id)).toEqual(["wf_old"]);
     expect(errors).toEqual([]); await ctx.close();
   });
 });

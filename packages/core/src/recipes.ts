@@ -5,6 +5,7 @@
 import { viewClump, type Clump, type ClumpType, type ClumpView } from "./clump.js";
 import type { ComposeContext } from "./compose.js";
 import type { Candidate, Evidence, FieldMeta, TargetKind } from "./types.js";
+import { hash32 } from "./canonical.js";
 
 export interface RecipeStepDef {
   id: string;
@@ -14,9 +15,15 @@ export interface RecipeStepDef {
   targetKind: TargetKind;
   /** True when Recast words part of it (a suggested task title, a draft message): the review says so. */
   worded?: boolean;
+  /** A saved workflow's step names the exact destination it was saved with (a contract's destination, e.g. "outlook-calendar.calendar"). */
+  destination?: string;
+  /** The app that destination belongs to, for the words on screen ("Outlook Calendar is not connected here"). */
+  app?: string;
 }
 export interface Recipe {
   id: string; version: number; name: string; description: string;
+  /** "saved": defined by the person (a personal workflow); absent: one of Recast's own recipes. */
+  origin?: "saved";
   /** The composition it takes. */
   needs: ClumpType;
   steps: RecipeStepDef[];
@@ -48,7 +55,64 @@ export const RECIPES: readonly Recipe[] = [
     limitations: ["The task is due on the event's day; Google Tasks keeps only the day."],
   },
 ];
-export const recipeById = (id: string) => RECIPES.find((r) => r.id === id);
+export const recipeById = (id: string, saved: readonly Recipe[] = []) => RECIPES.find((r) => r.id === id) ?? saved.find((r) => r.id === id);
+
+// ---- personal saved workflows --------------------------------------------------------------------------------------
+// A saved workflow is a recipe the person defined: a name and steps (what kind of object it takes, which steps, which
+// destination each goes to). It is a definition only, like every recipe: no captured words, no values, no accounts, no
+// tokens. It runs through the same review, approval, commit, read-back and Undo as any recipe.
+export const STEP_IDS = ["event", "invite", "prepare", "place"] as const;
+const CLUMP_TYPES: readonly ClumpType[] = ["Fragment", "Event", "Message", "People", "Document", "Task", "Note", "Issue"];
+const TARGET_KINDS: readonly string[] = ["Calendar", "Drafts", "Task", "Project", "TaskList", "Map", "Docs", "Issues"];
+export const WORKFLOW_NAME_MAX = 60;
+
+/**
+ * Read a stored workflow definition. Anything that is not exactly a workflow (an unknown step, a destination Recast has no
+ * bridge for, an extra field that could carry content) is refused with the reason: a stored file is never trusted.
+ */
+export function checkWorkflow(x: unknown, destinations: readonly string[]): { ok: true; recipe: Recipe } | { ok: false; reason: string; id?: string; name?: string } {
+  const o = x && typeof x === "object" ? (x as Record<string, unknown>) : null;
+  const id = typeof o?.id === "string" ? o.id : undefined; const name = typeof o?.name === "string" ? o.name : undefined;
+  const no = (reason: string) => ({ ok: false as const, reason, ...(id ? { id } : {}), ...(name ? { name } : {}) });
+  if (!o) return no("not a workflow");
+  const extra = Object.keys(o).filter((k) => !["id", "version", "name", "description", "origin", "needs", "steps", "limitations"].includes(k));
+  if (extra.length) return no(`unexpected ${extra.join(", ")}`);
+  if (!id || !/^wf_[a-z0-9]{1,40}$/.test(id)) return no("its id is not valid");
+  if (o.version !== 1) return no("it was saved by a different version of Recast");
+  if (!name || !name.trim() || name.length > WORKFLOW_NAME_MAX) return no("its name is missing or too long");
+  if (o.origin !== "saved") return no("it is not a saved workflow");
+  if (!CLUMP_TYPES.includes(o.needs as ClumpType)) return no("the kind of object it takes is not known");
+  if (!Array.isArray(o.steps) || !o.steps.length || o.steps.length > 5) return no("it has no steps, or too many");
+  const steps: RecipeStepDef[] = [];
+  for (const st of o.steps as unknown[]) {
+    const t = st && typeof st === "object" ? (st as Record<string, unknown>) : {};
+    if (Object.keys(t).some((k) => !["id", "label", "targetKind", "worded", "destination", "app"].includes(k))) return no("a step has unexpected fields");
+    if (!STEP_IDS.includes(t.id as never)) return no(`a step (${String(t.id)}) is not one Recast can run`);
+    if (typeof t.label !== "string" || t.label.length > 120 || !TARGET_KINDS.includes(String(t.targetKind))) return no("a step is not valid");
+    if (t.destination !== undefined && (typeof t.destination !== "string" || !destinations.includes(t.destination))) return no(`it goes to ${String(t.destination)}, which Recast cannot place in any more`);
+    if (t.app !== undefined && (typeof t.app !== "string" || t.app.length > 40)) return no("a step is not valid");
+    steps.push({ id: t.id as string, label: t.label, targetKind: t.targetKind as TargetKind, ...(t.worded ? { worded: true } : {}), ...(t.destination ? { destination: t.destination as string } : {}), ...(t.app ? { app: t.app as string } : {}) });
+  }
+  if (typeof o.description !== "string" || o.description.length > 300) return no("its description is not valid");
+  return { ok: true, recipe: { id, version: 1, name: name.trim(), description: o.description, origin: "saved", needs: o.needs as ClumpType, steps, limitations: [] } };
+}
+
+/** The workflow's own words for what it does, from its steps and their destinations (never from captured content). */
+const describe = (needs: ClumpType, steps: RecipeStepDef[], apps: Record<string, string>) =>
+  `${({ Event: "An event", Message: "A message", Document: "A page", Task: "A task", Note: "A note", Issue: "An issue", Fragment: "A piece", People: "People" } as Record<ClumpType, string>)[needs]} → ${steps.map((x) => apps[x.destination ?? ""] ?? x.targetKind).join(", then ")}`;
+
+/**
+ * A workflow from what the person just did: the kind of object, the steps they ran (or reviewed), each with the exact
+ * destination it went to. Only structure is kept: no step label comes from content, and nothing captured is copied.
+ */
+export function workflowFrom(o: { name: string; needs: ClumpType; steps: { id: string; label: string; targetKind: TargetKind; worded?: boolean; destination: string; app: string }[]; now: string }): Recipe {
+  const name = o.name.replace(/\s+/g, " ").trim().slice(0, WORKFLOW_NAME_MAX);
+  const steps: RecipeStepDef[] = o.steps.map((x) => ({ id: x.id, label: x.label, targetKind: x.targetKind, ...(x.worded ? { worded: true } : {}), destination: x.destination, app: x.app }));
+  const apps = Object.fromEntries(o.steps.map((x) => [x.destination, x.app]));
+  return { id: `wf_${hash32(`${name}|${JSON.stringify(steps)}|${o.now}`)}`, version: 1, name, description: describe(o.needs, steps, apps), origin: "saved", needs: o.needs, steps, limitations: [] };
+}
+/** The label a single-placement workflow's step carries: the destination's effect, not the content. */
+export const placeStepLabel = (effect: string, app: string) => `${effect} in ${app}`.slice(0, 120);
 
 const at = (ctx: Pick<ComposeContext, "now">) => new Date(ctx.now).toISOString().replace(/\.\d{3}Z$/, "Z");
 const composed = (field: string, why: string): FieldMeta => ({ confidence: 1, evidence: [{ locator: { kind: "composition", value: `recipe:${field}` }, origin: "inferred", excerpt: why.slice(0, 500) } as Evidence] });
@@ -79,6 +143,13 @@ export function planRecipe(recipe: Recipe, c: Clump, ctx: ComposeContext): StepP
 
   return recipe.steps.map((s): StepPlan => {
     const base = { id: s.id, label: s.label, targetKind: s.targetKind, worded: !!s.worded };
+    // A saved single placement: the composition itself, as it is, to its one destination (nothing worded by Recast).
+    if (s.id === "place") {
+      if (v.type !== recipe.needs) return { ...base, candidate: null, reason: `this workflow takes ${recipe.needs === "Event" || recipe.needs === "Issue" ? `an ${recipe.needs.toLowerCase()}` : recipe.needs === "Fragment" ? "a single piece" : `a ${recipe.needs.toLowerCase()}`}; this is ${v.type === "Fragment" ? "a single piece" : v.type === "Event" || v.type === "Issue" ? `an ${v.type.toLowerCase()}` : `a ${v.type.toLowerCase()}`}`, uses: [] };
+      if (!v.placeableAs.includes(s.targetKind as never)) return { ...base, candidate: null, reason: "this cannot go there", uses: [] };
+      if (!v.candidate) return { ...base, candidate: null, reason: `${v.type === "Event" ? "the event" : "it"} is not complete: ${v.missing.map((m) => m.field === "start" ? "a date" : m.field).join(", ") || (v.conflicts.length ? "the pieces disagree" : "something is missing")}`, uses: v.summary };
+      return { ...base, candidate: v.candidate, uses: v.summary };
+    }
     if (s.id === "event") return { ...base, candidate: needEvent ? null : v.candidate, ...(needEvent ? { reason: needEvent } : {}), uses: eventUses };
     if (needEvent) return { ...base, candidate: null, reason: needEvent, uses: [] };
     if (s.id === "invite") {

@@ -359,3 +359,25 @@ describe("phase two in the extension: select any text on a real page, move it as
   });
 });
 
+
+describe("saved workflows in the extension: kept in chrome.storage.local, checked as they are read", () => {
+  it("reads the stored list on a fresh session, sets aside an unknown destination with its reason, and stores a delete", async () => {
+    const keep = await stored();
+    const wf = { id: "wf_abc123", version: 1, name: "Dinner plan", description: "An event → Google Calendar", origin: "saved", needs: "Event", limitations: [],
+      steps: [{ id: "place", label: "Place it in Google Calendar", targetKind: "Calendar", destination: "google-calendar.calendar", app: "Google Calendar" }] };
+    const gone = { ...wf, id: "wf_gone", name: "Old notes", steps: [{ ...wf.steps[0], destination: "evernote.notes" }] };
+    await sw.evaluate(async (items) => chrome.storage.local.set({ workflows: items }), [wf, gone]);
+    // A new session: wait until the tabs from earlier tests have stopped writing the session state, then start fresh.
+    await until(async () => held(await stored()).length === 0);
+    const s = await sw.evaluate(async () => { await chrome.storage.session.remove("clay"); return (globalThis as any).recastClay.load(); });
+    expect(s.workflows.map((w: any) => w.name)).toEqual(["Dinner plan"]);
+    expect(s.workflowIssues).toEqual([{ id: "wf_gone", name: "Old notes", reason: "it goes to evernote.notes, which Recast cannot place in any more" }]);
+    await sw.evaluate(async (s) => { await chrome.storage.session.set({ clay: s }); }, s);
+    const r = await sw.evaluate(async () => (globalThis as any).recastClay.dispatch({ type: "deleteWorkflow", id: "wf_gone" }));
+    expect(r.error).toBeUndefined();
+    expect(await sw.evaluate(async () => (await chrome.storage.local.get("workflows"))["workflows"])).toEqual([wf]);
+    // Nothing else went into local storage: no objects, no page content.
+    expect(Object.keys(await sw.evaluate(async () => chrome.storage.local.get(null))).filter((k) => k !== "confirmLevel")).toEqual(["workflows"]);
+    await sw.evaluate(async (k) => { await chrome.storage.local.remove("workflows"); await chrome.storage.session.set({ clay: k }); }, keep);
+  });
+});

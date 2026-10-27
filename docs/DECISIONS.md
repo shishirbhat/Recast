@@ -315,3 +315,12 @@ Consequential architecture and product decisions, so that separate workstreams d
   - **Where it appears.** The extension and the desktop app offer it when connected. With Google Calendar also connected, Calendar asks which one (as GitHub and Linear do).
   - **Wording.** When no calendar is connected, the reason names both apps.
 - **Not done:** no real Microsoft run (REAL_TEST_PLAN M needs the owner's app registration). Calendars other than the default one are not offered, and no Outlook mail or To Do yet.
+
+### D44. Personal saved workflows are recipes the person defined (2026-10-27)
+- **Decision:** a saved workflow is a `Recipe` with `origin: "saved"`, built from what the person just reviewed, ran or placed, and named by them. It runs through the recipe engine (D35) unchanged: the same review, a single approval checked per step, a receipt per step, read-back, Undo, and "unknown" never resent. Product doc: `docs/25-saved-workflows.md`.
+- **Definitions only:** kind of object, steps, exact destination and app per step, and a name. No captured content, no ids, no accounts, no tokens. A new step id, `place`, takes the composition as it is to one destination (a single placement saved as a workflow).
+- **Exact destinations:** a saved step goes only to the destination it was saved with. It is blocked with that app's name when that destination is not connected, and never goes to another app of the same kind.
+- **Only on request, only when safe:** saving, renaming and deleting are the person's own events. The machine emits `storeWorkflows`, and each host writes the list as given: extension `chrome.storage.local` (`workflows`), desktop `workflows.json` (0600, overlay only), try-it page `localStorage`. Save is not offered for changing one existing item, for a chosen slot, or outside a review, plan or receipt.
+- **Stored data is not trusted:** every entry is checked on read (`checkWorkflow`): exact fields, known steps and kinds, a destination this build can place in, version 1. A refused entry is shown with its reason, kept as stored until deleted, and never run.
+- **Recipe runs now read back each step** whose destination declares `verify` (this applies to every recipe, not only saved ones). A setting such as the confirmation level or time zone is accepted during a run (it was refused before).
+- **Not done:** no sharing, sync, marketplace or parameters; no real-provider run of a saved workflow.

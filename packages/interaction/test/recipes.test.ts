@@ -52,7 +52,9 @@ describe("recipes in the state machine", () => {
     expect(s.phase).toBe("running"); expect(effects).toHaveLength(1); expect(effects[0]).toMatchObject({ type: "commit", destinationId: "cal" });
     const op1 = s.run!.steps[0]!.op!, op2 = s.run!.steps[1]!.op!;
     ({ s, effects } = run([{ type: "committed", receipt: receiptFor(op1, "ev-1"), undoable: true }], s));
-    expect(effects).toEqual([expect.objectContaining({ type: "commit", destinationId: "mail" })]);
+    // The calendar can be read back: it is checked at once, while the next step is sent.
+    expect(effects).toEqual([expect.objectContaining({ type: "verify", destinationId: "cal" }), expect.objectContaining({ type: "commit", destinationId: "mail" })]);
+    expect(s.run!.steps[0]!.verification).toBe("checking");
     ({ s, effects } = run([{ type: "committed", receipt: receiptFor(op2, "d-1"), undoable: true }], s));
     expect(s.phase).toBe("ran"); expect(s.last!.text).toBe("Plan and invite: all 2 done");
     ({ s, effects } = run([{ type: "undoStep", stepId: "invite" }], s));

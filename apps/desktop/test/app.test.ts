@@ -5,7 +5,7 @@
 // (test/fake-google.mjs); the real Google run is by hand (docs/REAL_TEST_PLAN.md, K).
 import { chromium, _electron as electron, type Browser, type ElectronApplication, type Page } from "playwright-core";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -289,6 +289,37 @@ describe("the Recast app (the library)", () => {
     const f = await fake();
     expect(Object.values(f.tasks)).toEqual([expect.objectContaining({ title: "Prepare: Dinner at Dakshin" })]);
     expect(Object.keys(f.events)).toHaveLength(1);
+    expect(errors).toEqual([]);
+  });
+
+  it("a saved workflow is read from its own private file and checked; it runs on new information against the stand-in Google, read back; a delete is stored", async () => {
+    const dir = profile("dark");
+    const wf = { id: "wf_dinner1", version: 1, name: "Dinner plan", description: "An event → Google Calendar", origin: "saved", needs: "Event", limitations: [],
+      steps: [{ id: "place", label: "Place it in Google Calendar", targetKind: "Calendar", destination: "google-calendar.calendar", app: "Google Calendar" }] };
+    writeFileSync(path.join(dir, "workflows.json"), JSON.stringify([wf, { ...wf, id: "wf_old", version: 3, name: "From the future" }]));
+    const { app: a, library, overlay, errors } = await launch(dir);
+    // Only the overlay may store workflows.
+    expect(await library.evaluate(() => (window as any).recastDesktop.saveWorkflows([]))).toBe(false);
+    for (const t of ["Lunch at Toit", "Saturday 1 PM"]) { await a.evaluate(({ clipboard }, x) => clipboard.selection?.writeText(x), t); await a.evaluate(() => (globalThis as any).__recastGrab()); await sleep(300); }
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(2);
+    await dragOnto(overlay, "Saturday 1 PM", "Lunch at Toit");
+    await overlay.locator(".rg-mine .rg-recipe", { hasText: "Dinner plan" }).click();
+    await expect.poll(() => overlay.locator(".rg-title").innerText()).toBe("Recipe: Dinner plan");
+    expect(Object.keys((await fake()).events)).toHaveLength(0);                // the review wrote nothing
+    await overlay.getByRole("button", { name: "Run 1 step" }).click();
+    await expect.poll(() => overlay.locator(".rg-title").innerText()).toBe("Dinner plan: all 1 done");
+    await expect.poll(() => overlay.locator(".rg-steps li").innerText()).toMatch(/Read back from Google Calendar: \d+ of \d+ fields match/);
+    expect(Object.values((await fake()).events)).toEqual([expect.objectContaining({ summary: "Lunch at Toit" })]);
+    await overlay.getByRole("button", { name: "Done" }).click();
+    // Manage: the unusable one says why; deleting it is stored, in a file only this user can read.
+    for (const t of ["Dinner at Dakshin", "Friday 7:30 PM"]) { await a.evaluate(({ clipboard }, x) => clipboard.selection?.writeText(x), t); await a.evaluate(() => (globalThis as any).__recastGrab()); await sleep(300); }
+    await dragOnto(overlay, "Friday 7:30 PM", "Dinner at Dakshin");
+    await overlay.getByRole("button", { name: "Manage" }).click();
+    const old = overlay.locator(".rg-wf", { hasText: "From the future" });
+    expect(await old.innerText()).toMatch(/Cannot be used: it was saved by a different version of Recast/);
+    await old.getByRole("button", { name: "Delete" }).click(); await old.getByRole("button", { name: "Delete" }).click();
+    await expect.poll(() => JSON.parse(readFileSync(path.join(dir, "workflows.json"), "utf8")).map((x: any) => x.id)).toEqual(["wf_dinner1"]);
+    expect(statSync(path.join(dir, "workflows.json")).mode & 0o777).toBe(0o600);
     expect(errors).toEqual([]);
   });
 

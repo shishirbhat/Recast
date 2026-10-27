@@ -14,7 +14,8 @@ The repository's own records stay authoritative for what they cover; this file p
 - Before calling a test failure real, check it against committed code (`git stash`, run the package, `git stash pop`).
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
-## Current state (2026-10-26)
+## Current state (2026-10-27)
+- **Personal saved workflows (D44, 27 Oct, owner's brief):** "Save as workflow" under a review, a recipe plan or a receipt, with a name. The workflow appears under "Your workflows" for objects of its kind and runs on new information through the recipe engine (review, one approval, a receipt per step, read-back, Undo). Manage: rename, delete (asked once more). Only definitions are stored (kind, steps, exact destination), never captured content. Each store is checked on read: extension `chrome.storage.local`, desktop `workflows.json` (0600), try-it page `localStorage`. Recipe runs now read each step back. Product doc: `docs/25-saved-workflows.md`. Stand-ins only; **no real-provider run of a saved workflow yet.**
 - **Owner's thesis (26 Oct): Recast is the context layer**, not a shortcut. Selection-first, context-preserving, between apps: I choose what matters, I see what will happen, I know what actually happened. Three innovations:
   - universal context objects;
   - context reconciliation;
@@ -31,7 +32,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - **Outlook Calendar (D43, 27 Oct):** Microsoft sign-in in the local program (no client secret), Outlook as a destination in the extension and the desktop app, same guarantees as Google Calendar (no duplicates, lost answer checked, read back with link, Undo). Needs the owner's Microsoft app registration: `apps/calendar-link/README.md` Part 12; REAL_TEST_PLAN M.
 - **Section L could not run from a cloud session (27 Oct):** no Google sign-in exists here; it lives in `apps/calendar-link/.secrets/` on the owner's Mac, and signing in needs the owner's browser to reach that machine's localhost. Owner runs L on the Mac.
 - Fixed: "Friday 23 October" was silently read as the next Friday once the 23rd had passed (dates with a day and month but no year were not read). Extension tests had gone red for this reason alone once the real date passed 23 Oct.
-- Last full run (2026-10-23, after desktop highlights): **975 tests, 0 failures**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
+- Last full run (2026-10-27, after saved workflows): **1032 passed, 0 failed**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
   - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
@@ -89,6 +90,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
+000. **Owner tries saved workflows** on the try-it page or in the extension: place something, Save as workflow, then run it on a different object. Report whether Save was easy to find (nothing at P yet).
 00. **Desktop app on the owner's Mac** (see "Desktop app" above): the owner's current priority; respond to their report first.
 0a. **Owner's real-Google runs:** `docs/REAL_TEST_PLAN.md` B, C, E, plus new **F** (Google Docs: enable Docs API and Drive API, sign in again ticking Drive), **G** (Google Maps: no setup) and **H** (GitHub: a fine-grained token for one test repository) and **I** (Linear: an API key).
 0. **Run the tester protocol** (`docs/23-user-validation.md` section 4): owner shares the try-it link with 3 to 5 outsiders, one moderated session each; results in `docs/user-validation/`. Then the next milestone (section 5): a real-Google tester kit.
@@ -109,6 +111,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-27 (cont.):** owner's brief "Personal Saved Workflows" → D44: saved workflows on the recipe engine (core `checkWorkflow`/`workflowFrom`/step `place`; interaction `workflows.ts`; glass Save/Your workflows/Manage; storage in all three hosts); recipe steps now read back; settings accepted mid-run. Tests: interaction 15, harness 2, extension 1, desktop 1. Full run 1032/0/0 (two extension assertions that read the page before the tab heard the new state now wait for it).
 - **2026-10-27:** Section L attempted and BLOCKED (no Google sign-in in this container; L is hands-on). Then D42: read-back for Gmail drafts, Tasks, Docs, GitHub, Linear; API's reconcile hint fixed; the review now says whether Recast will read the result back. Then Outlook Calendar (D43). 1014/0/0.
 - **2026-10-26 (cont.):** engineering brief → D41: `verify` route in the local program, read-back in extension worker, in-page stand-ins and desktop; link to the event; plain errors; network loss mid-write = unknown; desktop catch-all-undo bug fixed (its test shown to fail with the old code). 994/0/0 with xdotool installed. New private try-it page in this account: https://claude.ai/artifact/VxW75bXhvrgjoXUXmSiFwF (the old link is in the other account).
 - **2026-10-26, session_01DBSr5JyLYdTt34JZYgfya1:** owner's context-layer thesis → D40: conflict sources, resolutions, `provenanceOf`, read-back verification (core `verify`, `Bridge.verify`, Calendar `verify`, machine `verify` effect + `verified`), glass shows sources/choices/read-back, try-it Invite/Chat/Plan tabs + drift switch; fixed day-month dates. Full run 988 passed, 0 failed, 5 skipped (no xdotool here). Electron binary must be fetched after install (`node node_modules/electron/install.js` in apps/desktop).

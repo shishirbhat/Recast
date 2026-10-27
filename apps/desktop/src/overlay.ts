@@ -15,7 +15,8 @@ interface Origin { app?: string; title?: string; url?: string }
 interface Settings { trigger: string; platform: string; grabReady: boolean; listening: boolean }
 interface SavedInbox { state: ClumpState; pos: Record<string, Point> }
 interface OverlayApi {
-  boot(): Promise<{ settings: Settings; inbox: SavedInbox | ClumpState | null; theme: "dark" | "light"; on: boolean }>;
+  boot(): Promise<{ settings: Settings; inbox: SavedInbox | ClumpState | null; theme: "dark" | "light"; on: boolean; workflows?: unknown[] }>;
+  saveWorkflows(items: unknown[]): Promise<boolean>;
   status(): Promise<Record<string, unknown>>;
   act(route: "commit" | "reconcile" | "undo" | "verify", body: unknown): Promise<{ status: number; body: Record<string, unknown> }>;
   openExternal(url: string): Promise<boolean>;
@@ -92,6 +93,8 @@ const labelOf = (destinationId: string) => state.destinations.find((d) => d.id =
 
 /** Effects go to the person's connections through the app; a map link was already opened from their click. */
 async function perform(eff: ClumpEffect) {
+  // Saved, renamed or deleted by the person: the definitions only, into their own private file.
+  if (eff.type === "storeWorkflows") { void api.saveWorkflows(eff.items); return; }
   const now = () => new Date().toISOString();
   // The object being placed, as this page knows it (a receipt names it by the operation's own id).
   const pieces = piecesOf(state.run?.objectId ?? state.placement?.objectId ?? "");
@@ -347,6 +350,8 @@ void (async () => {
   const saved = b.inbox && typeof b.inbox === "object" ? ("state" in b.inbox ? b.inbox : { state: b.inbox as ClumpState, pos: {} }) : null;
   if (saved && Array.isArray(saved.state?.desk)) { state = recover(saved.state); for (const [k, v] of Object.entries(saved.pos ?? {})) pos.set(k, v); }
   state = { ...state, armed: true, destinations: await destinations() };
+  // The saved workflows live in their own file and are checked as they are read, every start (never trusted from the inbox).
+  state = reduceClump(state, { type: "setWorkflows", items: Array.isArray(b.workflows) ? b.workflows : [], known: REGISTRY.map((c) => c.destination), now: Date.now() }).state;
   render();
 })();
 

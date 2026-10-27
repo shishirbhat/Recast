@@ -16,6 +16,7 @@ export type GlassIntent =
   | { type: "answer"; field: AnswerField; value: string } | { type: "choose"; field: EventField; ingredientId: string }
   | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean }
   | { type: "openRecipe"; recipeId: string } | { type: "toggleStep"; stepId: string } | { type: "runRecipe"; heldMs?: number } | { type: "undoStep"; stepId: string }
+  | { type: "saveWorkflow"; name: string } | { type: "renameWorkflow"; id: string; name: string } | { type: "deleteWorkflow"; id: string }
   /** Only where the host offers it (`takePage`): the host captures the page itself, then opens the module on it. */
   | { type: "takePage" };
 
@@ -53,6 +54,9 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
     case "toggleStep": return [{ type: "toggleStep", stepId: i.stepId }];
     case "runRecipe": return [{ type: "runRecipe", consent: i.heldMs !== undefined ? { kind: "hold", heldMs: i.heldMs } : { kind: "confirm" } }];
     case "undoStep": return [{ type: "undoStep", stepId: i.stepId }];
+    case "saveWorkflow": return [{ type: "saveWorkflow", name: i.name }];
+    case "renameWorkflow": return [{ type: "renameWorkflow", id: i.id, name: i.name }];
+    case "deleteWorkflow": return [{ type: "deleteWorkflow", id: i.id }];
     case "takePage": return [];
   }
 }
@@ -146,6 +150,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   let drill: WheelKey | null = null;
   let blocked: string | null = null;        // an open-and-prefill link the browser refused to open in a new tab
   let holdStart = 0;
+  // Saved workflows: the name field is open; the list is open for managing; one entry being renamed or asked about.
+  let saving = false, managing = false, renaming: string | null = null, deleting: string | null = null, draft = "", renamePending = false;
   const emit = (i: GlassIntent) => opts.onIntent(i);
 
   // ---- the light: a soft specular highlight that drifts toward the pointer, so the surface reads as curved glass -------
@@ -295,9 +301,31 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   // ---- everything else: rebuilt only when its text changes, keeping focus where it was ---------------------------------
   /** Recipes for this object, under the one main action: small, and only the ones that fit its kind. */
   function recipeChips(m: Extract<ModuleModel, { object: unknown }>): string {
-    const offers = m.recipes ?? []; if (!offers.length) return "";
-    return `<div class="rg-recipes" role="group" aria-label="Recipes"><span class="rg-recipes-label">Or run a recipe</span>${offers.map((o) =>
-      `<button type="button" class="rg-chip rg-recipe" data-recipe="${esc(o.id)}"${o.available ? "" : ` disabled aria-describedby="rg-why-${esc(o.id)}"`} title="${esc(o.available ? o.description : o.reason ?? "")}">${esc(o.name)}</button>${o.available ? "" : `<span class="rg-why-line" id="rg-why-${esc(o.id)}">${esc(o.name)}: ${esc(o.reason ?? "")}</span>`}`).join("")}</div>`;
+    const all = m.recipes ?? [];
+    const chips = (offers: typeof all) => offers.map((o) =>
+      `<button type="button" class="rg-chip rg-recipe" data-recipe="${esc(o.id)}"${o.available ? "" : ` disabled aria-describedby="rg-why-${esc(o.id)}"`} title="${esc(o.available ? o.description : o.reason ?? "")}">${esc(o.name)}</button>${o.available ? "" : `<span class="rg-why-line" id="rg-why-${esc(o.id)}">${esc(o.name)}: ${esc(o.reason ?? "")}</span>`}`).join("");
+    const built = all.filter((o) => !o.saved), mine = all.filter((o) => o.saved);
+    const manage = m.mine?.length ? `<button type="button" class="rg-link rg-manage" data-act="manage">Manage</button>` : "";
+    return `${built.length ? `<div class="rg-recipes" role="group" aria-label="Recipes"><span class="rg-recipes-label">Or run a recipe</span>${chips(built)}</div>` : ""}${mine.length || manage ? `<div class="rg-recipes rg-mine" role="group" aria-label="Your workflows"><span class="rg-recipes-label">Your workflows</span>${chips(mine)}${manage}</div>` : ""}`;
+  }
+  /** Save what is on screen as a workflow: offered only where it can be repeated safely; the name is asked for here. */
+  function saveBlock(m: Extract<ModuleModel, { object: unknown }>): string {
+    if (!m.save?.ok) return "";
+    if (m.save.done) return `<p class="rg-hint rg-saved" role="status">${esc(m.save.done)}.</p>`;
+    if (!saving) return `<p class="rg-save"><button type="button" class="rg-link" data-act="saveStart">Save as workflow</button></p>`;
+    return `<div class="rg-save open"><div class="rg-answer"><input data-wf-name="new" value="${esc(draft)}" maxlength="60" aria-label="Name for this workflow" placeholder="Name this workflow" autocomplete="off"><button type="button" class="rg-btn small" data-act="saveConfirm">Save</button><button type="button" class="rg-btn small ghost" data-act="saveCancel">Cancel</button></div><p class="rg-hint">Keeps the steps and where each goes. Not what you captured: next time it runs on new information, and you review it before anything is written.</p></div>`;
+  }
+  /** The person's saved workflows: rename, delete (asked once more), and the ones that cannot be used, with why. */
+  function manageView(m: Extract<ModuleModel, { object: unknown }>, err: string) {
+    const items = (m.mine ?? []).map((w) => {
+      const row = renaming === w.id
+        ? `<div class="rg-answer"><input data-wf-rename="${esc(w.id)}" maxlength="60" value="${esc(w.name)}" aria-label="New name for ${esc(w.name)}" autocomplete="off"><button type="button" class="rg-btn small" data-wf-rename-ok="${esc(w.id)}">Rename</button><button type="button" class="rg-btn small ghost" data-act="renameCancel">Cancel</button></div>`
+        : deleting === w.id
+          ? `<p class="rg-hint">Delete “${esc(w.name)}”? Nothing it already placed is changed.</p><span class="rg-row-actions"><button type="button" class="rg-btn small" data-wf-delete-ok="${esc(w.id)}">Delete</button><button type="button" class="rg-btn small ghost" data-act="deleteCancel">Keep</button></span>`
+          : `<span class="rg-row-actions">${w.reason ? "" : `<button type="button" class="rg-link" data-wf-rename-start="${esc(w.id)}">Rename</button>`}<button type="button" class="rg-link" data-wf-delete="${esc(w.id)}">Delete</button></span>`;
+      return `<li class="rg-wf" data-wf="${esc(w.id)}"><span class="rg-step-label">${esc(w.name)}</span>${w.reason ? `<span class="rg-step-why">Cannot be used: ${esc(w.reason)}</span>` : `<span class="rg-step-uses">${esc(w.description)}</span>`}${row}</li>`;
+    }).join("");
+    return { title: "Your workflows", head: "", facts: "", body: `${err}<ul class="rg-steps rg-wfs">${items}</ul>`, actions: `<button type="button" class="rg-btn" data-act="manageDone">Done</button>` };
   }
   const STATUS: Record<string, string> = { ready: "", blocked: "Can't run", skipped: "Left out", waiting: "Waiting", running: "Sending…", done: "Done", failed: "Not added", unknown: "No answer", undoing: "Undoing…", undone: "Removed" };
   /** A recipe: each step, where it goes and what it uses; then each step's own outcome. */
@@ -313,6 +341,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         x.reason && x.status === "blocked" ? `<span class="rg-step-why">${esc(x.reason.charAt(0).toUpperCase() + x.reason.slice(1))}</span>` : "",
         x.message ? `<span class="rg-step-why">${esc(x.message)}</span>` : "",
         x.status === "unknown" ? `<span class="rg-step-why">Check ${esc(x.app ?? "it")} before placing it there again. Recast will not send it again.</span>` : "",
+        x.status === "done" && x.verification ? checked(x.verification, x.app ?? "it") : "",
       ].join("");
       const undo = m.mode === "ran" && x.status === "done" && x.undoable ? `<button type="button" class="rg-link" data-undo-step="${esc(x.id)}">Undo</button>` : "";
       return `<li data-step-id="${esc(x.id)}" data-status="${x.status}"><label class="rg-step">${tick}<span class="rg-step-text"><span class="rg-step-label">${esc(x.label)}</span>${lines}</span></label>${undo}</li>`;
@@ -325,8 +354,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       : m.mode === "ran" ? `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` : "";
     const intro = planning ? `<p class="rg-hint">Nothing is written until you run it. Each step goes to its own place and gets its own result.</p>` : "";
     // The event itself still needs something (a title, a date): asked here, as in a review, then the steps are worked out again.
-    const finish = planning && run.steps.some((x) => x.reason?.startsWith("the event is not complete")) ? detail(m) : "";
-    return { title, head: planning ? close : "", facts: "", body: `${err}${intro}${finish}<ul class="rg-steps">${items}</ul>`, actions };
+    const finish = planning && run.steps.some((x) => x.reason?.startsWith("the event is not complete") || x.reason?.startsWith("it is not complete")) ? detail(m) : "";
+    return { title, head: planning ? close : "", facts: "", body: `${err}${intro}${finish}<ul class="rg-steps">${items}</ul>${m.mode === "running" ? "" : saveBlock(m)}`, actions };
   }
 
   /** The destination's read-back after placing: checking, all fields match, or exactly which differ and what it now holds. */
@@ -377,7 +406,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     const dIcon = d ? `<span class="rg-dest" aria-hidden="true">${svg(d.key, 16)}</span>` : "";
     const standIn = d?.standIn ? `<p class="rg-note">Stand-in: ${esc(d.app)} here is a local stand-in. Nothing reaches the real ${esc(d.app)}.</p>` : "";
     switch (m.mode) {
-      case "composed": return m.text
+      case "composed": if (managing && m.mine?.length && !m.text) return manageView(m, err);
+        return m.text
         ? { title: "Add to it?", head: "", facts: "", body: `<p class="rg-hint">${esc(m.text)}</p>`, actions: "" }
         : { title: "Ready to place", head: `${iconBtn("inspect", "Look inside", LAYERS)}${close}`, facts: "", body: err,
             actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>${recipeChips(m)}` };
@@ -404,7 +434,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}<p class="rg-risk">Opens ${esc(d.app)} in a new tab with this filled in. Recast saves nothing; you finish there.</p>${refused}`, actions: `${open}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
         }
         const go = op ? (op.risk.consent === "hold" ? `<button type="button" class="rg-btn primary hold" data-act="hold">Hold to confirm: ${esc(op.proposal.effect.toLowerCase())}</button>` : `<button type="button" class="rg-btn primary" data-act="place">Confirm: ${esc(op.proposal.effect)}</button>`) : `<button type="button" class="rg-btn primary" disabled>Answer what is still needed</button>`;
-        return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${after}${standIn}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
+        return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${after}${standIn}${saveBlock(m)}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
       }
       case "executing": return { title: `${dIcon}${d?.opensOnly ? "Opening" : "Adding to"} ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
       case "undoing": return { title: `${dIcon}Undoing in ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm it is removed.</p>${err}`, actions: "" };
@@ -412,7 +442,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           body: `<p class="rg-hint">${esc(where)} opened in a new tab with this filled in. Recast cannot see what you do there, so it does not say it was added.</p>${/^https:\/\//.test(m.placement?.receipt?.bridgeRef ?? "") ? `<p class="rg-hint">Did it not open, or open blank? Copy the address into a new tab:</p>${copyBox(m.placement!.receipt!.bridgeRef!, d.app)}` : ""}`,
           actions: `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
         return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
-        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>${checked(m.placement?.verification, where)}`,
+        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>${checked(m.placement?.verification, where)}${saveBlock(m)}`,
         actions: `${m.placement?.undoable ? `<button type="button" class="rg-btn ghost" data-act="undo">Undo</button>` : ""}<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
       case "unknown": return { title: `${dIcon}No answer from ${esc(where)}`, head: "", facts: "",
         body: `${err}<p>${esc(m.placement?.message ?? "")}. It may or may not have been added. Recast does not send it again; it asks ${esc(where)} instead.</p>`,
@@ -430,6 +460,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode !== "preview") blocked = null;
     const before = el.dataset["mode"]!; const prev = el.getBoundingClientRect();
     if (m.mode !== "choosing") drill = null;
+    if (m.mode === "plan" || m.mode === "ran" || m.mode === "preview" || m.mode === "succeeded") { if (m.save?.done) { saving = false; draft = ""; } }
+    if (renamePending) { renamePending = false; if (!extra.error) renaming = null; }
+    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; if (m.mode !== "composed") managing = false; }
+    if (!("mine" in m) || !m.mine?.length) managing = false;
     model = m; el.dataset["mode"] = m.mode; el.hidden = m.mode === "off";
     el.dataset["drill"] = drill ?? "";
     const t = opts.theme?.(); if (t) el.dataset["theme"] = t; else delete el.dataset["theme"];
@@ -457,7 +491,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (!a || !el.contains(a)) return null;
     if (a.id) return `#${CSS.escape(a.id)}`;
     if (a.classList.contains("rg-drum")) return ".rg-drum";
-    for (const k of ["act", "answer", "submit", "remove", "choose"]) if (a.dataset[k]) return `[data-${k}="${CSS.escape(a.dataset[k]!)}"]`;
+    for (const k of ["act", "answer", "submit", "remove", "choose", "wfName", "wfRename"]) if (a.dataset[k]) return `[data-${k}="${CSS.escape(a.dataset[k]!)}"]`;
     return null;
   };
 
@@ -492,6 +526,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (b.dataset["remove"]) return emit({ type: "remove", ingredientId: b.dataset["remove"] });
     if (b.dataset["recipe"]) return emit({ type: "openRecipe", recipeId: b.dataset["recipe"] });
     if (b.dataset["undoStep"]) return emit({ type: "undoStep", stepId: b.dataset["undoStep"] });
+    if (b.dataset["wfRenameStart"]) { renaming = b.dataset["wfRenameStart"]; deleting = null; update(model); el.querySelector<HTMLInputElement>("input[data-wf-rename]")?.select(); return; }
+    if (b.dataset["wfRenameOk"]) return renameNow(b.dataset["wfRenameOk"]);
+    if (b.dataset["wfDelete"]) { deleting = b.dataset["wfDelete"]; renaming = null; update(model); el.querySelector<HTMLElement>("[data-wf-delete-ok]")?.focus(); return; }
+    if (b.dataset["wfDeleteOk"]) { const id = b.dataset["wfDeleteOk"]; deleting = null; return emit({ type: "deleteWorkflow", id }); }
     switch (b.dataset["act"]) {
       case "turnOff": return emit({ type: "turnOff" });
       case "reopen": return emit({ type: "reopen" });
@@ -509,6 +547,13 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "mergeYes": return emit({ type: "confirmMerge", yes: true });
       case "mergeNo": return emit({ type: "confirmMerge", yes: false });
       case "runRecipe": return emit({ type: "runRecipe" });
+      case "saveStart": saving = true; update(model); el.querySelector<HTMLInputElement>("input[data-wf-name]")?.focus(); return;
+      case "saveCancel": saving = false; update(model); return;
+      case "saveConfirm": return saveNow();
+      case "manage": managing = true; update(model); return;
+      case "manageDone": managing = false; renaming = null; deleting = null; update(model); return;
+      case "renameCancel": renaming = null; update(model); return;
+      case "deleteCancel": deleting = null; update(model); return;
     }
   });
   el.addEventListener("change", (e) => {
@@ -517,7 +562,15 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   el.addEventListener("keydown", (e) => {
     const t = e.target as HTMLElement;
     if (e.key === "Enter" && t.matches("input[data-field]")) { e.preventDefault(); submit(t.dataset["field"]!); }
+    if (e.key === "Enter" && t.matches("input[data-wf-name]")) { e.preventDefault(); saveNow(); }
+    if (e.key === "Enter" && t.matches("input[data-wf-rename]")) { e.preventDefault(); renameNow(t.dataset["wfRename"]!); }
+    // Escape in a name field closes the field only, not the review around it.
+    if (e.key === "Escape" && t.matches("input[data-wf-name], input[data-wf-rename]")) { e.preventDefault(); e.stopPropagation(); saving = false; renaming = null; update(model); }
   });
+  // The field stays open until the machine accepts the name (a refused name keeps it, with the reason above).
+  function saveNow() { const v = el.querySelector<HTMLInputElement>("input[data-wf-name]")?.value ?? ""; emit({ type: "saveWorkflow", name: v }); }
+  el.addEventListener("input", (e) => { const t = e.target as HTMLInputElement; if (t.matches("input[data-wf-name]")) draft = t.value; });
+  function renameNow(id: string) { renamePending = true; const v = el.querySelector<HTMLInputElement>(`input[data-wf-rename="${CSS.escape(id)}"]`)?.value ?? ""; emit({ type: "renameWorkflow", id, name: v }); }
   function submit(field: string) { const i = el.querySelector<HTMLInputElement>(`input[data-field="${CSS.escape(field)}"]`); const v = i?.value.trim(); if (v) emit({ type: "answer", field: field as AnswerField, value: v }); }
   el.addEventListener("pointerdown", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold], [data-act=holdRecipe]")) holdStart = performance.now(); });
   el.addEventListener("pointerup", (e) => {
@@ -592,6 +645,12 @@ export const GLASS_CSS = `
 .rg-step-label { font-weight: 600; font-size: 13px; }
 .rg-step-where, .rg-step-uses, .rg-step-note { font-size: 11.5px; color: var(--g-muted); overflow-wrap: anywhere; }
 .rg-step-why { font-size: 12px; color: var(--g-ink); }
+.rg-wfs li { flex-direction: column; gap: 3px; }
+.rg-row-actions { display: flex; gap: 10px; align-items: center; margin-top: 2px; }
+.rg-row-actions .rg-link, .rg-save .rg-link, .rg-manage { grid-column: auto; grid-row: auto; padding: 0; }
+.rg-save { margin: 8px 0 0; }
+.rg-save.open { display: flex; flex-direction: column; gap: 4px; }
+.rg-saved { color: var(--g-ink); }
 .rg-step-status { flex: none; min-width: 64px; font-size: 11px; font-weight: 600; color: var(--g-muted); padding-top: 2px; }
 .rg-step-status[data-status="done"] { color: var(--g-accent); }
 .rg-step-status[data-status="failed"], .rg-step-status[data-status="unknown"] { color: var(--g-ink); }

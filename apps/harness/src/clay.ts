@@ -85,6 +85,10 @@ const log = new InMemoryEventLog();
 
 // ---- state ------------------------------------------------------------------------------------------------------
 let state: ClumpState = initialClumpState({ now: NOW(), timezone: TZ, destinations: DESTS });   // off until invoked
+// The person's saved workflows, in this browser only: definitions (steps and destinations), checked as they are read.
+const WF_KEY = "recast.workflows";
+function storedWorkflows(): unknown[] { try { const v = JSON.parse(localStorage.getItem(WF_KEY) ?? "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
+state = reduceClump(state, { type: "setWorkflows", items: storedWorkflows(), known: Object.values(CONTRACTS).map((c) => c.destination), now: NOW() }).state;
 let mode: "pointer" | "keyboard" = "pointer";
 let pointer = { x: 0, y: 0, touch: false };
 /** Where an object should be drawn for a moment (where it was lifted from, or where it is being pressed into). */
@@ -132,6 +136,7 @@ function onIntent(i: GlassIntent) {
 }
 
 async function perform(eff: ClumpEffect) {
+  if (eff.type === "storeWorkflows") { try { localStorage.setItem(WF_KEY, JSON.stringify(eff.items)); } catch { lastError = "This browser would not keep the workflow; it lasts until the page is closed"; render(); } return; }
   const now = () => new Date(NOW()).toISOString();
   if (eff.destinationId === "gmaps") {
     if (eff.type !== "commit") return;   // nothing to check or undo: it was only opened

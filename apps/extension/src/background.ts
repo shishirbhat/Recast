@@ -12,6 +12,10 @@ const KEY = "clay", TABS = "clayTabs";
 /** The one thing kept across browser restarts: how much Recast asks (D24). A setting, never page content. */
 const CONFIRM = "confirmLevel";
 async function confirmLevel(): Promise<ConfirmLevel | undefined> { const v = (await chrome.storage.local.get(CONFIRM))[CONFIRM]; return v === "none" || v === "high" ? v : undefined; }
+/** And the person's saved workflows: definitions only (steps and destinations), never captured content or credentials. */
+const WORKFLOWS = "workflows";
+const KNOWN = Object.values(CONTRACTS).map((c) => c.destination);
+async function storedWorkflows(): Promise<unknown[]> { const v = (await chrome.storage.local.get(WORKFLOWS))[WORKFLOWS]; return Array.isArray(v) ? v : []; }
 
 async function load(): Promise<ClumpState> {
   const r = await chrome.storage.session.get(KEY);
@@ -19,7 +23,8 @@ async function load(): Promise<ClumpState> {
   // Dates are read where the person is now: a session started before a flight or a system change follows the new zone.
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const kept = r[KEY] as ClumpState | undefined;
-  if (!kept) return initialClumpState({ now: Date.now(), timezone, destinations: [mapsDest], ...(level ? { confirm: level } : {}) });
+  // Each stored workflow is checked as it is read: an outdated or unknown one is shown with the reason, never run.
+  if (!kept) return reduceClump(initialClumpState({ now: Date.now(), timezone, destinations: [mapsDest], ...(level ? { confirm: level } : {}) }), { type: "setWorkflows", items: await storedWorkflows(), known: KNOWN, now: Date.now() }).state;
   return kept.timezone === timezone ? kept : reduceClump(kept, { type: "setTimezone", timezone, now: Date.now() }).state;
 }
 const save = (s: ClumpState) => chrome.storage.session.set({ [KEY]: s });
@@ -39,6 +44,8 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
     // The real Google Calendar is not a tab: its effects go to the Recast program on this computer (not awaited here,
     // since the answer comes back through this same queue).
     for (const e of r.effects ?? []) {
+      // Saved only because the person pressed Save, Rename or Delete: the list the machine handed over, as it is.
+      if (e.type === "storeWorkflows") { await chrome.storage.local.set({ [WORKFLOWS]: e.items }); continue; }
       if (isLink(e.destinationId)) { void viaLink(e); continue; }
       if (e.destinationId === MAPS) { void opened(e); continue; }
       const [tabId] = e.destinationId.split(":"); await tell(Number(tabId), { type: "effect", effect: e });
@@ -99,6 +106,7 @@ async function syncLink() {
   return st;
 }
 async function viaLink(e: ClumpEffect) {
+  if (e.type === "storeWorkflows") return;   // kept by the worker itself, never sent anywhere
   const at = () => Date.now(); const destination = linkName(e.destinationId);
   if (e.type === "commit") {
     const opId = e.op.opId;

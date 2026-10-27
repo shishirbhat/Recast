@@ -7,6 +7,7 @@
 import type { CapabilityContract, ClumpView, Fragment } from "@recast/core";
 import { aThing, unfit, viewOf, type ClumpState, type Placement } from "./clump-machine.js";
 import { recipeOffers, type RecipeOffer, type RecipeRun } from "./recipe-run.js";
+import { saveable } from "./workflows.js";
 
 export type WheelKey = "calendar" | "mail" | "tasks" | "documents" | "more";
 export const WHEEL_SLOTS: readonly { key: WheelKey; label: string; kinds: readonly string[] }[] = [
@@ -54,7 +55,11 @@ export type ModuleModel =
       /** Recipes for this kind of object (composed), or the run being reviewed, running or reported. */
       recipes?: RecipeOffer[]; run?: RecipeRun;
       placement?: Placement; destination?: { key: WheelKey; label: string; app: string; effect: string; standIn: boolean; opensOnly?: boolean; verifies?: boolean };
-      confirm?: string; text?: string };
+      confirm?: string; text?: string;
+      /** Whether what is on screen can be saved as a personal workflow; Save is offered only when it can. */
+      save?: { ok: boolean; reason?: string; done?: string };
+      /** The person's saved workflows (composed), with the ones that cannot be used and why: for rename and delete. */
+      mine?: { id: string; name: string; description: string; reason?: string }[] };
 
 /** What the action module shows for this state. One model, one module: there is never a second panel. */
 export function moduleModel(s: ClumpState, registry: readonly CapabilityContract[]): ModuleModel {
@@ -65,18 +70,24 @@ export function moduleModel(s: ClumpState, registry: readonly CapabilityContract
     const p = s.placement!; const d = s.destinations.find((x) => x.id === p.destinationId);
     return { ...around(p.objectId), placement: p, ...(d ? { destination: { key: WHEEL_SLOTS.find((w) => w.kinds.includes(d.contract.targetKind))?.key ?? "more", label: d.label, app: d.contract.app, effect: p.op?.proposal.effect ?? d.contract.accepts[0]?.effect ?? "", standIn: !!d.standIn, verifies: !!d.contract.abilities?.includes("verify"), ...(d.contract.reliability === "deep-link" ? { opensOnly: true } : {}) } } : {}), ...(s.last ? { text: s.last.text } : {}) };
   };
+  const sv = () => { const r = saveable(s); const done = s.last?.kind === "saved" ? { done: s.last.text } : {}; return { save: r.ok ? { ok: true, ...done } : { ok: false, reason: r.reason } }; };
+  const mine = () => {
+    const list = [...(s.workflows ?? []).map((w) => ({ id: w.id, name: w.name, description: w.description })),
+      ...(s.workflowIssues ?? []).map((x, i) => ({ id: x.id ?? `#${i}`, name: x.name ?? "A saved workflow", description: "", reason: x.reason }))];
+    return list.length ? { mine: list } : {};
+  };
   switch (s.phase) {
-    case "composed": return { mode: "composed", ...around(s.focus!), recipes: recipeOffers(s, s.focus!) };
-    case "planning": return { mode: "plan", ...around(s.run!.objectId), run: s.run! };
+    case "composed": return { mode: "composed", ...around(s.focus!), recipes: recipeOffers(s, s.focus!), ...mine() };
+    case "planning": return { mode: "plan", ...around(s.run!.objectId), run: s.run!, ...(s.run!.saved ? {} : sv()) };
     case "running": return { mode: "running", ...around(s.run!.objectId), run: s.run! };
-    case "ran": return { mode: "ran", ...around(s.run!.objectId), run: s.run!, ...(s.last ? { text: s.last.text } : {}) };
+    case "ran": return { mode: "ran", ...around(s.run!.objectId), run: s.run!, ...(s.last ? { text: s.last.text } : {}), ...(s.run!.saved ? {} : sv()) };
     case "choosing": return { mode: "choosing", ...around(s.focus!) };
     case "inspecting": return { mode: "inspecting", ...around(s.inspecting!) };
     case "confirmingMerge": return { mode: "confirm", ...around(s.pendingMerge!.targetId), confirm: `Pressing these together ${s.pendingMerge!.reason}.` };
-    case "previewing": return { mode: "preview", ...place() };
+    case "previewing": return { mode: "preview", ...place(), ...sv() };
     case "executing": return { mode: "executing", ...place() };
     case "undoing": return { mode: "undoing", ...place() };
-    case "succeeded": return { mode: "succeeded", ...place() };
+    case "succeeded": return { mode: "succeeded", ...place(), ...sv() };
     case "failed": return { mode: "failed", ...place() };
     case "unknown": return { mode: "unknown", ...place() };
     default: {

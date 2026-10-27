@@ -7,6 +7,8 @@ import {
   type AnswerField, type CapabilityContract, type Clump, type ClumpType, type ClumpView, type Consent, type EventField, type Verification, type Fragment, type Operation, type Receipt,
 } from "@recast/core";
 import { reduceRun, type RecipeRun, type RunEvent } from "./recipe-run.js";
+import { reduceWorkflows, type WorkflowEvent, type WorkflowIssue } from "./workflows.js";
+import type { Recipe } from "@recast/core";
 
 export type ClumpPhase =
   | "idle"             // objects rest on the desk; nothing in hand. With `armed` false, Recast is off and picks nothing up
@@ -67,7 +69,7 @@ export interface ClumpState {
   placement: Placement | null;
   destinations: DestinationSpec[];
   /** One short sentence about the last thing that happened, for a live region and a toast. */
-  last: { kind: "captured" | "merged" | "put-down" | "refused" | "cancelled" | "removed" | "placed" | "failed" | "unknown" | "undone" | "on" | "off" | "closed"; text: string; at: number } | null;
+  last: { kind: "captured" | "merged" | "put-down" | "refused" | "cancelled" | "removed" | "placed" | "failed" | "unknown" | "undone" | "on" | "off" | "closed" | "saved"; text: string; at: number } | null;
   now: number; timezone: string; seq: number;
   /**
    * How much Recast asks (D24), the person's choice. "high": every placement opens a review first. "none": a complete,
@@ -80,6 +82,12 @@ export interface ClumpState {
   run?: RecipeRun | null;
   /** The approval the person gave for the run; each step is checked against it before it is sent. */
   runConsent?: Consent | undefined;
+  /** The person's saved workflows (workflows.ts), checked when they were read. */
+  workflows?: Recipe[];
+  /** Stored entries that cannot be used, each with the reason; shown so they can be deleted, never run. */
+  workflowIssues?: WorkflowIssue[];
+  /** Those entries as they were stored, kept as they are until the person deletes them. */
+  workflowKept?: unknown[];
 }
 export type ConfirmLevel = "high" | "none";
 
@@ -117,7 +125,8 @@ export type ClumpEvent =
   | { type: "cancel"; now: number }
   | { type: "dismiss"; now: number }
   | { type: "discard"; id: string; now: number }
-  | RunEvent;
+  | RunEvent
+  | WorkflowEvent;
 
 /** An event as a host sends it: the clock reading is added where the state lives. */
 export type ClumpInput = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
@@ -127,7 +136,9 @@ export type ClumpEffect =
   | { type: "reconcile"; op: Operation; destinationId: string }
   | { type: "undo"; receipt: Receipt; destinationId: string }
   /** Read the placement back from the destination and compare it with the plan (destinations that declare "verify"). */
-  | { type: "verify"; op: Operation; receipt: Receipt; destinationId: string };
+  | { type: "verify"; op: Operation; receipt: Receipt; destinationId: string }
+  /** Keep this list as the person's saved workflows (definitions only: no captured content, no credentials). */
+  | { type: "storeWorkflows"; items: unknown[] };
 
 export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true;
   /** After a capture: the object it is now (new, or the one already on the desk when it was the same piece). */
@@ -234,6 +245,8 @@ function applySlot(s: ClumpState, objectId: string, destinationId: string, slot?
 }
 
 export function reduceClump(state: ClumpState, ev: ClumpEvent): ClumpResult {
+  // Saved workflows are the person's own list: saving, renaming and deleting never touch what is in flight.
+  const wf = reduceWorkflows(state, ev); if (wf) return wf;
   const run = reduceRun(state, ev); if (run) return run;
   const r = step(state, ev);
   // A placed object is done: once the receipt is left (Done, or anything else that moves on) it leaves the desk, so the

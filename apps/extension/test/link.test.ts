@@ -493,7 +493,8 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(outlook.size).toBe(1); expect(live().length).toBe(before);                     // Outlook, not Google
     expect([...outlook.values()][0]).toMatchObject({ subject: "Late dinner", start: { dateTime: "2026-10-23T21:00:00" } });
     expect((await stored()).placement.verification).toMatchObject({ ok: true, link: "https://outlook.office365.com/owa/?itemid=AAMk1" });
-    expect(await page.locator("recast-clay >> .rg-verify").innerText()).toMatch(/^Read back from Outlook Calendar: (\d+) of \1 fields match\. Open in Outlook Calendar$/);
+    // The tab hears the new state a moment after the worker stores it.
+    await expect.poll(() => page.locator("recast-clay >> .rg-verify").innerText()).toMatch(/^Read back from Outlook Calendar: (\d+) of \1 fields match\. Open in Outlook Calendar$/);
     expect(JSON.stringify(await stored())).not.toContain("MS-AT");                          // the Microsoft token stays in the program
     await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await stored()).phase === "idle");

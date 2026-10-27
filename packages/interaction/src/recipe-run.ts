@@ -2,7 +2,7 @@
 // once. They are independent writes to independent services, so there is no pretend transaction: each step has its own
 // operation, its own receipt and its own outcome, and the run reports exactly that ("2 of 3 done"), never a blanket success.
 // A step whose answer was lost is unknown and is never sent again by the run.
-import { answerClump, checkConsent, chooseClump, plan, planRecipe, propose, rankProposals, recipeById, RECIPES, resolve, viewClump, type Consent, type Operation, type Receipt, type TargetKind } from "@recast/core";
+import { answerClump, checkConsent, chooseClump, plan, planRecipe, propose, rankProposals, recipeById, RECIPES, resolve, viewClump, type Consent, type Operation, type Receipt, type TargetKind, type Verification } from "@recast/core";
 import type { ClumpEffect, ClumpEvent, ClumpResult, ClumpState } from "./clump-machine.js";
 
 export type StepStatus = "ready" | "blocked" | "skipped" | "waiting" | "running" | "done" | "failed" | "unknown" | "undoing" | "undone";
@@ -13,8 +13,10 @@ export interface RunStep {
   destinationId?: string; destinationLabel?: string; app?: string; standIn?: boolean;
   op?: Operation; include: boolean; status: StepStatus;
   reason?: string; receipt?: Receipt; message?: string; undoable?: boolean;
+  /** The destination's own read-back once the step is done: "checking" until it answers. */
+  verification?: Verification | "checking";
 }
-export interface RecipeRun { recipeId: string; version: number; name: string; objectId: string; steps: RunStep[] }
+export interface RecipeRun { recipeId: string; version: number; name: string; objectId: string; steps: RunStep[]; /** one of the person's saved workflows */ saved?: boolean }
 
 export type RunEvent =
   | { type: "openRecipe"; recipeId: string; id?: string; now: number }
@@ -23,19 +25,21 @@ export type RunEvent =
   | { type: "undoStep"; stepId: string; now: number };
 
 /** A recipe as the module offers it for an object: available when at least one of its steps can run here. */
-export interface RecipeOffer { id: string; name: string; description: string; available: boolean; reason?: string }
+export interface RecipeOffer { id: string; name: string; description: string; available: boolean; reason?: string; saved?: boolean }
 
 const KIND_NAME: Partial<Record<TargetKind, string>> = { Calendar: "a calendar", Drafts: "a mail account", TaskList: "a task list", Docs: "documents", Issues: "an issue tracker" };
 
 function steps(s: ClumpState, recipeId: string, objectId: string): RunStep[] | { error: string } {
-  const r = recipeById(recipeId); if (!r) return { error: "no such recipe" };
+  const r = recipeById(recipeId, s.workflows ?? []); if (!r) return { error: "no such recipe" };
   const c = s.objects[objectId]; if (!c) return { error: "no such object" };
   const ctx = { now: new Date(s.now).toISOString(), timezone: s.timezone };
-  return planRecipe(r, c, ctx).map((p): RunStep => {
+  return planRecipe(r, c, ctx).map((p, i): RunStep => {
     const base = { id: p.id, label: p.label, targetKind: p.targetKind, worded: p.worded, uses: p.uses, ...(p.note ? { note: p.note } : {}) };
-    const d = s.destinations.find((x) => x.contract.targetKind === p.targetKind);
+    // A saved workflow names its exact destination: only that one will do, never a look-alike of the same kind.
+    const def = r.steps[i];
+    const d = def?.destination ? s.destinations.find((x) => x.contract.destination === def.destination) : s.destinations.find((x) => x.contract.targetKind === p.targetKind);
     const where = d ? { destinationId: d.id, destinationLabel: d.label, app: d.contract.app, ...(d.standIn ? { standIn: true } : {}) } : {};
-    if (!d) return { ...base, include: false, status: "blocked", reason: `${KIND_NAME[p.targetKind] ?? p.targetKind} is not connected here` };
+    if (!d) return { ...base, include: false, status: "blocked", reason: def?.destination ? `${def.app ?? def.destination} is not connected here` : `${KIND_NAME[p.targetKind] ?? p.targetKind} is not connected here` };
     if (!p.candidate) return { ...base, ...where, include: false, status: "blocked", reason: p.reason ?? "something is missing" };
     const proposal = rankProposals(propose(resolve(p.candidate), d.contract)).find((x) => x.status === "ready");
     if (!proposal) return { ...base, ...where, include: false, status: "blocked", reason: `${d.label} cannot take this as it is` };
@@ -47,12 +51,13 @@ function steps(s: ClumpState, recipeId: string, objectId: string): RunStep[] | {
 export function recipeOffers(s: ClumpState, objectId: string): RecipeOffer[] {
   const c = s.objects[objectId]; if (!c) return [];
   const type = viewClump(c, { now: new Date(s.now).toISOString(), timezone: s.timezone }).type;
-  return RECIPES.filter((r) => r.needs === type).map((r) => {
+  return [...RECIPES, ...(s.workflows ?? [])].filter((r) => r.needs === type).map((r) => {
+    const tag = r.origin === "saved" ? { saved: true } : {};
     const st = steps(s, r.id, objectId);
-    if ("error" in st) return { id: r.id, name: r.name, description: r.description, available: false, reason: st.error };
-    // Open when something in it can run, or can once the event is finished in the review (a missing title or date).
-    const usable = st.filter((x) => x.status === "ready" || (x.destinationId && x.reason?.startsWith("the event is not complete")));
-    return { id: r.id, name: r.name, description: r.description, available: usable.length > 0, ...(usable.length ? {} : { reason: st.map((x) => x.reason).filter(Boolean)[0] ?? "nothing in it can run here" }) };
+    if ("error" in st) return { id: r.id, name: r.name, description: r.description, available: false, reason: st.error, ...tag };
+    // Open when something in it can run, or can once it is finished in the review (a missing title or date, a disagreement).
+    const usable = st.filter((x) => x.status === "ready" || (x.destinationId && (x.reason?.startsWith("the event is not complete") || x.reason?.startsWith("it is not complete"))));
+    return { id: r.id, name: r.name, description: r.description, available: usable.length > 0, ...tag, ...(usable.length ? {} : { reason: st.map((x) => x.reason).filter(Boolean)[0] ?? "nothing in it can run here" }) };
   });
 }
 
@@ -87,10 +92,12 @@ export function reduceRun(s: ClumpState, ev: ClumpEvent): ClumpResult | null {
     if (!["composed", "choosing", "inspecting", "idle"].includes(s.phase)) return no(`cannot open a recipe while ${s.phase}`);
     const id = ev.id ?? s.focus; if (!id || !s.desk.includes(id)) return no("there is no composition to run it on");
     const st = steps(e, ev.recipeId, id); if ("error" in st) return no(st.error);
-    const r = recipeById(ev.recipeId)!;
-    return ok({ ...e, phase: "planning", focus: id, inspecting: null, placement: null, run: { recipeId: r.id, version: r.version, name: r.name, objectId: id, steps: st } });
+    const r = recipeById(ev.recipeId, s.workflows ?? [])!;
+    return ok({ ...e, phase: "planning", focus: id, inspecting: null, placement: null, run: { recipeId: r.id, version: r.version, name: r.name, objectId: id, steps: st, ...(r.origin === "saved" ? { saved: true } : {}) } });
   }
   if (!inRun || !s.run) return null;
+  // Settings are not steps: the rest of the machine applies them in any phase.
+  if (ev.type === "setConfirm" || ev.type === "setTimezone") return null;
   const run = s.run;
   const stepOf = (opId: string) => run.steps.find((x) => x.op?.opId === opId && (x.status === "running" || x.status === "undoing"));
   switch (ev.type) {
@@ -122,7 +129,15 @@ export function reduceRun(s: ClumpState, ev: ClumpEvent): ClumpResult | null {
     case "committed": {
       const t = stepOf(ev.receipt.opId); if (!t || t.status !== "running") return { state: s, effects: [], error: "ignored: an answer for an earlier action", stale: true };
       const d = s.destinations.find((x) => x.id === t.destinationId);
-      return next(withSteps(e, run, (x) => (x.id === t.id ? { ...x, status: "done", receipt: ev.receipt, undoable: ev.undoable && ev.receipt.reversible && d?.contract.reliability !== "deep-link" } : x)));
+      // A destination that can be read back is checked right away; the step says "checking" until it answers.
+      const reads = !!d?.contract.abilities?.includes("verify");
+      const r = next(withSteps(e, run, (x) => (x.id === t.id ? { ...x, status: "done", receipt: ev.receipt, undoable: ev.undoable && ev.receipt.reversible && d?.contract.reliability !== "deep-link", ...(reads ? { verification: "checking" as const } : {}) } : x)));
+      return reads ? { ...r, effects: [{ type: "verify", op: t.op!, receipt: ev.receipt, destinationId: t.destinationId! }, ...r.effects] } : r;
+    }
+    case "verified": {
+      const t = run.steps.find((x) => x.op?.opId === ev.opId && x.verification === "checking");
+      if (!t) return { state: s, effects: [], error: "ignored: an answer for an earlier action", stale: true };
+      return ok(withSteps(e, run, (x) => (x.id === t.id ? { ...x, verification: ev.verification } : x)));
     }
     case "commitFailed": case "outcomeUnknown": {
       const t = stepOf(ev.opId); if (!t || t.status !== "running") return { state: s, effects: [], error: "ignored: an answer for an earlier action", stale: true };
