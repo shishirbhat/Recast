@@ -41,6 +41,22 @@
     <p id="g-msg" role="status"></p>
   </section>
 
+  <section aria-labelledby="ms-h">
+    <h2 id="ms-h">Outlook Calendar (Microsoft 365)</h2>
+    <p id="ms-state" class="quiet"></p>
+    <ol>
+      <li>In portal.azure.com → App registrations → New registration: platform <b>Mobile and desktop applications</b> with the redirect address <code>http://localhost:8787/microsoft/callback</code>; API permission Microsoft Graph → Delegated → <b>Calendars.ReadWrite</b>. No client secret is needed.</li>
+      <li>Paste its Application (client) ID here.</li>
+      <li>Then sign in with Microsoft in your browser.</li>
+    </ol>
+    <form id="ms-form" autocomplete="off">
+      <label>Application (client) ID<input id="ms-id" placeholder="1b2c3d4e-…" spellcheck="false"></label>
+      <button class="pill" type="submit">Save</button>
+      <button class="pill ghost" type="button" id="ms-signin">Sign in with Microsoft in your browser</button>
+    </form>
+    <p id="ms-msg" role="status"></p>
+  </section>
+
   <section aria-labelledby="o-h">
     <h2 id="o-h">GitHub and Linear issues</h2>
     <p class="quiet">Connect a GitHub repository or a Linear team on the sign-in page (it opens in your browser), with a token for that one place.</p>

@@ -113,7 +113,7 @@ describe("cross-tab carry in the browser extension", () => {
     await restaurant.locator("recast-clay >> button", { hasText: "Choose where it goes" }).click();
     await until(async () => (await stored()).phase === "choosing");
     expect(await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")).toBe("true");
-    expect(await restaurant.locator("recast-clay >> .rg-reason").innerText()).toBe("Google Calendar is not connected here");
+    expect(await restaurant.locator("recast-clay >> .rg-reason").innerText()).toBe("Google Calendar or Outlook Calendar is not connected here");
     // A calendar page with Recast in it connects a (stand-in) calendar; the selector in the restaurant tab sees it.
     const cal = await openTab("calendar.html"); await restaurant.bringToFront();
     await until(async () => (await restaurant.locator("recast-clay >> #rg-opt-calendar").getAttribute("aria-disabled")) === "false");

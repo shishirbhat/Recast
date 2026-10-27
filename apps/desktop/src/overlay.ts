@@ -33,7 +33,7 @@ const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const MAC = navigator.userAgent.includes("Mac");
 
 // ---- destinations: the person's connections, as the bridge registry's contracts --------------------------------------------
-const LINK: Record<string, string> = { "link:google-calendar": "calendar", "link:gmail-drafts": "gmail", "link:google-tasks": "tasks", "link:google-tasks-due": "tasks", "link:google-docs": "docs", "link:github": "github", "link:linear": "linear" };
+const LINK: Record<string, string> = { "link:google-calendar": "calendar", "link:gmail-drafts": "gmail", "link:google-tasks": "tasks", "link:google-tasks-due": "tasks", "link:google-docs": "docs", "link:github": "github", "link:linear": "linear", "link:outlook-calendar": "outlook" };
 const MAPS: DestinationSpec[] = [{ id: "open:google-maps", label: "Google Maps", contract: CONTRACTS.googleMaps }, ...(MAC ? [{ id: "open:apple-maps", label: "Apple Maps", contract: CONTRACTS.appleMaps }] : [])];
 async function destinations(): Promise<DestinationSpec[]> {
   const st = await api.status().catch(() => ({} as Record<string, unknown>));
@@ -44,6 +44,7 @@ async function destinations(): Promise<DestinationSpec[]> {
     if (st["tasks"]) out.push({ id: "link:google-tasks", label: "Google Tasks", contract: CONTRACTS.googleTasks }, { id: "link:google-tasks-due", label: "Google Tasks", contract: CONTRACTS.googleTasksEntry });
     if (st["docs"]) out.push({ id: "link:google-docs", label: "Google Docs", contract: CONTRACTS.googleDocs });
   }
+  if (st["outlook"]) out.push({ id: "link:outlook-calendar", label: "Outlook Calendar", contract: CONTRACTS.outlookCalendarEvent });
   if (typeof st["github"] === "string") out.push({ id: "link:github", label: `GitHub ${st["github"]}`, contract: CONTRACTS.githubIssue });
   if (typeof st["linear"] === "string") out.push({ id: "link:linear", label: `Linear ${st["linear"]}`, contract: CONTRACTS.linearIssue });
   return [...out, ...MAPS];

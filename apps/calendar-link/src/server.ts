@@ -17,6 +17,7 @@ import path from "node:path";
 import { createTestEvents, type Outcome } from "./test-event.js";
 import { createExtensionApi } from "./extension-api.js";
 import { connectGithub, forgetGithub, readGithub } from "./github.js";
+import { createMicrosoft, forgetMicrosoft, readMicrosoft } from "./microsoft.js";
 import { connectLinear, forgetLinear, readLinear } from "./linear.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
@@ -41,6 +42,10 @@ export interface LinkConfig {
   tokenFile: string;
   /** Google's endpoints; replaceable only so tests can stand in for Google. */
   authUrl?: string; tokenUrl?: string; revokeUrl?: string;
+  /** Optional: a Microsoft app (public client) for Outlook Calendar. Absent: the page says how to add one. */
+  microsoftClientId?: string;
+  /** Microsoft's endpoints; replaceable only so tests can stand in for Microsoft. */
+  msAuthUrl?: string; msTokenUrl?: string;
   fetch?: typeof fetch;
   now?: () => number;
 }
@@ -66,8 +71,10 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
   const redirectUri = `http://localhost:${c.port}/oauth/callback`;
   const tests = createTestEvents({ clientId: c.clientId, clientSecret: c.clientSecret, tokenFile: c.tokenFile, tokenUrl, fetch: f, now,
     stateFile: path.join(path.dirname(c.tokenFile), "test-event.json") });
+  const ms = c.microsoftClientId ? createMicrosoft({ clientId: c.microsoftClientId, port: c.port, dir: path.dirname(c.tokenFile), fetch: f, now, ...(c.msAuthUrl ? { authUrl: c.msAuthUrl } : {}), ...(c.msTokenUrl ? { tokenUrl: c.msTokenUrl } : {}) }) : null;
   const ext = createExtensionApi({ clientId: c.clientId, clientSecret: c.clientSecret, tokenFile: c.tokenFile, tokenUrl, fetch: f, now,
-    stateFile: path.join(path.dirname(c.tokenFile), "test-event.json"), dir: path.dirname(c.tokenFile) });
+    stateFile: path.join(path.dirname(c.tokenFile), "test-event.json"), dir: path.dirname(c.tokenFile), ...(ms ? { microsoft: ms } : {}) });
+  let microsoftNote: string | null = null;
   let last: Outcome | null = null;   // the result of the last test button, shown once on the page
   let githubNote: string | null = null;   // the result of the last GitHub form, shown once
   let linearNote: string | null = null;
@@ -91,6 +98,16 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
 @media (prefers-color-scheme:dark){body{background:#141311;color:#f5f1e8}.box{background:#1d1b19;border-color:#34302b}button,.btn{background:#f5f1e8;color:#141311}.ghost{background:transparent;color:#f5f1e8;box-shadow:inset 0 0 0 1px #46413a}.muted{color:#b0aba3}.ok{color:#4ade80}}</style></head><body>${body}</body></html>`;
 
   const json = (res: ServerResponse, status: number, body: unknown) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" }); res.end(JSON.stringify(body)); };
+
+  /** Outlook Calendar, optional and separate from Google: a Microsoft sign-in, kept on this computer. */
+  function microsoftBox() {
+    const t = readMicrosoft(dir); const note = microsoftNote; microsoftNote = null;
+    const body = !ms
+      ? `<p class="muted">To add Outlook Calendar, register an app in Microsoft Entra (portal.azure.com → App registrations → New registration): any account type; platform "Mobile and desktop applications" with the redirect URI <code>http://localhost:${c.port}/microsoft/callback</code>; API permission Microsoft Graph → Delegated → Calendars.ReadWrite. No client secret is needed. Then put <code>MICROSOFT_CLIENT_ID=…</code> in <code>.env</code> and restart this program.</p>`
+      : t ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create, read and delete calendar events. The sign-in stays on this computer.</p><form method="post" action="/microsoft/disconnect"><button class="ghost" type="submit">Disconnect Outlook</button></form>`
+      : `<p>Not connected.</p><p><a class="btn" href="/microsoft/start">Sign in with Microsoft</a></p>`;
+    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Outlook Calendar</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${body}</div>`;
+  }
 
   /** GitHub, optional and separate from Google: one repository, one fine-grained token, kept on this computer. */
   function githubBox() {
@@ -140,7 +157,7 @@ ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them
 ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
 ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Google Drive box (only the files Recast creates).</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${githubBox()}${linearBox()}`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start" && !c.clientId) {
@@ -239,6 +256,21 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
         const r = await connectLinear(dir, form.get("key") ?? "", form.get("team") ?? "", f, now());
         linearNote = r.ok ? `Connected to the ${r.link.teamName} team.` : r.message;
       }
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
+    if (req.method === "GET" && url.pathname === "/microsoft/start") {
+      if (!ms) return send(res, 404, page("Not set up", `<p>Outlook Calendar is not set up yet. <a href="/">Back</a></p>`));
+      const s = ms.start(); res.writeHead(302, { location: s.location, "set-cookie": s.cookie, "cache-control": "no-store" }); return res.end();
+    }
+    if (req.method === "GET" && url.pathname === "/microsoft/callback") {
+      if (!ms) return send(res, 404, page("Not set up", `<p>Outlook Calendar is not set up yet. <a href="/">Back</a></p>`));
+      const r = await ms.callback(url.searchParams, req.headers.cookie ?? "");
+      return send(res, r.ok ? 200 : 400, page(r.ok ? "Connected" : "Not connected", `<h1${r.ok ? ' class="ok"' : ""}>${r.ok ? "Connected" : "Not connected"}</h1><p>${esc(r.message)}</p><p><a href="/">Back</a></p>`), { "set-cookie": ms.clearCookie });
+    }
+    if (req.method === "POST" && url.pathname === "/microsoft/disconnect") {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      forgetMicrosoft(dir); microsoftNote = "Outlook is disconnected here. To remove Recast's access entirely, go to myapps.microsoft.com (or account.microsoft.com → Privacy → Apps and services).";
       res.writeHead(303, { location: "/" }); return res.end();
     }
 

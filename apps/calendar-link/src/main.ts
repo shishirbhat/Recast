@@ -18,9 +18,12 @@ if (!clientId || clientId.startsWith("paste-")) problems.push("GOOGLE_CLIENT_ID 
 else if (!clientId.endsWith(".apps.googleusercontent.com")) problems.push("GOOGLE_CLIENT_ID does not look right: it should end with .apps.googleusercontent.com.");
 if (!clientSecret || clientSecret.startsWith("paste-")) problems.push("GOOGLE_CLIENT_SECRET is missing in .env.");
 if (!Number.isInteger(port) || port < 1024 || port > 65535) problems.push("PORT must be a number between 1024 and 65535.");
+// Optional: Outlook Calendar. A Microsoft app's client ID (a GUID); no secret, the app is a public client.
+const microsoftClientId = process.env["MICROSOFT_CLIENT_ID"]?.trim() ?? "";
+if (microsoftClientId && !microsoftClientId.startsWith("paste-") && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(microsoftClientId)) problems.push("MICROSOFT_CLIENT_ID does not look right: it is the Application (client) ID, like 1b2c3d4e-0000-0000-0000-000000000000.");
 if (problems.length) { console.error(`Cannot start:\n- ${problems.join("\n- ")}`); process.exit(1); }
 
 const tokenFile = path.join(root, ".secrets", "google-token.json");
-createLinkServer({ clientId, clientSecret, port, tokenFile }).listen(port, "127.0.0.1", () => {
+createLinkServer({ clientId, clientSecret, port, tokenFile, ...(microsoftClientId && !microsoftClientId.startsWith("paste-") ? { microsoftClientId } : {}) }).listen(port, "127.0.0.1", () => {
   console.log(`Recast Google Calendar sign-in is running.\nOpen http://localhost:${port}/ in your browser.\nPress Ctrl+C here to stop it.`);
 });

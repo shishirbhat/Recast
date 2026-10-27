@@ -298,3 +298,20 @@ Consequential architecture and product decisions, so that separate workstreams d
   - A deleted, trashed or closed item is "not there", never "matches".
 - **Not covered:** Google Sheets and Notion still say "not checked".
 - **On the way:** the API server offered "reconcile" after a lost answer whenever an operation was `verifiable`. Being readable afterwards is not the same as being able to ask about a lost write, so the hint now depends on the bridge having `reconcile`.
+
+### D43. Outlook Calendar through Microsoft Graph, to Google Calendar's standard (2026-10-27)
+- **Context:** Microsoft 365 is second in the owner's connector order (docs/24). Outlook Calendar is the largest gap for people not on Google.
+- **Decision:**
+  - **Bridge `outlookCalendarEvent`** (Graph v1.0, `/me/events`).
+    - Graph chooses the event id, so Recast writes its own key on the event (a single-value extended property, fixed GUID) and sends the same key as `transactionId`.
+    - Before writing, Recast looks the key up. A live event with the key is a duplicate and is refused.
+    - After a lost answer, the key finds the event: reconcile, never a second write.
+    - Read-back asks Graph to answer in the event's zone (`Prefer: outlook.timezone`) and compares title, start, end, zone and location. `webLink` is the link.
+    - Undo deletes. An all-day event is midnight to midnight.
+  - **Sign-in.** Microsoft identity platform, authorization code with PKCE as a **public client**, so there is no client secret anywhere.
+    - Permissions: `Calendars.ReadWrite` and `offline_access`.
+    - The token is kept in `.secrets/microsoft-token.json` (0600) and renewed with its refresh token.
+    - Requests go to graph.microsoft.com only. Sign-in and permission refusals are said in plain words.
+  - **Where it appears.** The extension and the desktop app offer it when connected. With Google Calendar also connected, Calendar asks which one (as GitHub and Linear do).
+  - **Wording.** When no calendar is connected, the reason names both apps.
+- **Not done:** no real Microsoft run (REAL_TEST_PLAN M needs the owner's app registration). Calendars other than the default one are not offered, and no Outlook mail or To Do yet.

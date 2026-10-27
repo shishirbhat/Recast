@@ -14,6 +14,10 @@ export const CONTRACTS = {
     destination: "google-calendar.calendar", app: "Google Calendar", targetKind: "Calendar", reliability: "official-api", abilities: ["create", "read", "delete", "verify", "undo"],
     accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
   },
+  outlookCalendarEvent: {
+    destination: "outlook-calendar.calendar", app: "Outlook Calendar", targetKind: "Calendar", reliability: "official-api", abilities: ["create", "read", "delete", "verify", "undo"],
+    accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
+  },
   gmailDraft: {
     destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "person-message-recipient", effect: "Create a draft to this person", dataMoved: ["Person.email"] }],

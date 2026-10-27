@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryEventLog, OutcomeUnknownError, commit, plan, propose, resolve, undo, type Candidate, type Receipt, type SemanticObject } from "@recast/core";
-import { HttpBridge, DestinationError, rfc822Draft, githubIssue, linearIssue, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
+import { HttpBridge, DestinationError, rfc822Draft, outlookCalendarEvent, githubIssue, linearIssue, googleCalendar, googleCalendarEvent, googleDocs, googleSheets, googleTasks, googleTasksEntry, gmailDraft, gmailMessageDraft, notion, REGISTRY, CONTRACTS, LinkBridge, googleMapsDirections, appleMapsDirections, linkFor, type LinkSpec, type HttpRequest, type HttpResponse, type Spec, type Transport } from "../src";
 
 const NOW = () => "2026-10-01T10:00:00Z";
 function obj(type: Candidate["type"], properties: Record<string, unknown>): SemanticObject {
@@ -26,7 +26,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, outlookCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
     it(name, () => { expect(() => new HttpBridge(spec as Spec<unknown>, {}, async () => ok()).describe()).not.toThrow(); });
   }
 });
@@ -34,7 +34,7 @@ describe("every contract passes the real schema and grammar checks", () => {
 // The abilities a contract declares are what the picker and the review promise. They must match what the bridge's
 // operations declare about themselves, so a destination never offers an Undo or a check it cannot perform.
 describe("declared abilities match what each bridge actually does", () => {
-  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
+  for (const [name, spec] of Object.entries({ googleCalendar, googleCalendarEvent, outlookCalendarEvent, gmailDraft, gmailMessageDraft, googleSheets, googleTasks, googleTasksEntry, notion, googleDocs, githubIssue, linearIssue })) {
     it(name, () => {
       const caps = spec.contract.accepts.map((row) => spec.capabilities[row.relationId]);
       expect(caps.every(Boolean), "every accepted row declares its operation").toBe(true);
@@ -210,7 +210,8 @@ describe("shared behaviour", () => {
 
 describe("the registry", () => {
   it("lists every bridge's contract once, and each spec performs exactly the contract it lists", () => {
-    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "github.issues", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "linear.issues", "notion.database"]);
+    expect(REGISTRY.map((c) => c.destination).sort()).toEqual(["apple-maps.directions", "github.issues", "gmail.compose-draft", "gmail.drafts", "google-calendar.calendar", "google-calendar.event-editor", "google-docs.new-document", "google-maps.directions", "google-sheets.range", "google-tasks.list", "google-tasks.tasklist", "linear.issues", "notion.database", "outlook-calendar.calendar"]);
+    expect(outlookCalendarEvent.contract).toBe(CONTRACTS.outlookCalendarEvent);
     expect(gmailMessageDraft.contract).toBe(CONTRACTS.gmailMessageDraft);
     expect(googleTasks.contract).toBe(CONTRACTS.googleTasks);
     expect(googleTasksEntry.contract).toBe(CONTRACTS.googleTasksEntry);

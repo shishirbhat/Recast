@@ -354,3 +354,86 @@ export const googleCalendarEvent: Spec<CalendarListTarget> = {
     } catch (e) { if (e instanceof DestinationError && (e.status === 404 || e.status === 410)) return "absent"; throw e; }
   },
 };
+
+// ---- Outlook Calendar (Microsoft Graph v1.0: POST /me/events, GET, DELETE) -------------------------------------------
+// Graph chooses the event id, so Recast also writes its own key on the event (a single-value extended property) and sends
+// the same key as transactionId (Graph drops a retried create with the same transactionId). With the key Recast can tell
+// a duplicate before writing, and after a lost answer find the event by key instead of writing again.
+export interface OutlookTarget { /** Absent: the person's default calendar. */ calendarId?: string }
+const GRAPH = "https://graph.microsoft.com/v1.0";
+/** Recast's own property set on Outlook events (a fixed GUID, so every Recast install reads the same property). */
+export const OUTLOOK_KEY_PROP = "String {4f0f6e3c-2b1d-4c8e-9a7b-5d2e8c1f7a90} Name RecastKey";
+const outlookEvents = (t: OutlookTarget) => t.calendarId ? `${GRAPH}/me/calendars/${seg(t.calendarId)}/events` : `${GRAPH}/me/events`;
+export const outlookEventKey = (objectId: string, t: OutlookTarget) => `rc${hash32(`${objectId}|outlook|${t.calendarId ?? "default"}`)}`;
+function outlookBody(op: Operation, key: string) {
+  const start = need(op, "Event.start"); const end = moved(op, "Event.end"); const tz = moved(op, "Event.timezone") ?? "UTC";
+  const allDay = moved(op, "Event.allDay") === "true" || !start.includes("T");
+  if (!allDay && !end) throw new DestinationError("missing Event.end");
+  const nextDay = (d: string) => { const x = new Date(`${d.slice(0, 10)}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+  // Graph takes a local date-time and a zone name (IANA names are accepted); an all-day event runs midnight to midnight.
+  const at = (v: string) => ({ dateTime: allDay ? `${v.slice(0, 10)}T00:00:00` : v.length === 16 ? `${v}:00` : v.slice(0, 19), timeZone: tz });
+  return {
+    subject: need(op, "Event.title"), start: at(start), end: at(allDay ? (end ? end.slice(0, 10) : nextDay(start)) : end!), isAllDay: allDay,
+    ...(moved(op, "Event.location") ? { location: { displayName: moved(op, "Event.location") } } : {}),
+    transactionId: key, singleValueExtendedProperties: [{ id: OUTLOOK_KEY_PROP, value: key }],
+  };
+}
+async function outlookFind(key: string, t: OutlookTarget, send: Send): Promise<Record<string, unknown> | null> {
+  const filter = `singleValueExtendedProperties/Any(ep: ep/id eq '${OUTLOOK_KEY_PROP}' and ep/value eq '${key}')`;
+  const r = asObj(await send({ method: "GET", url: `${outlookEvents(t)}?$filter=${encodeURIComponent(filter)}&$select=id,isCancelled` }));
+  const found = (Array.isArray(r.value) ? r.value : []).map(asObj).find((e) => e.isCancelled !== true);
+  return found ?? null;
+}
+/** The event's Graph id: kept in the token, or (after a lost answer, when only the key is known) found by Recast's key. */
+async function outlookIdOf(token: string, t: OutlookTarget, send: Send): Promise<string | null> {
+  const k = JSON.parse(token) as { id?: string; key: string };
+  if (k.id) return k.id;
+  const found = await outlookFind(k.key, t, send);
+  return found ? str(found.id, "event id") : null;
+}
+export const outlookCalendarEvent: Spec<OutlookTarget> = {
+  contract: CONTRACTS.outlookCalendarEvent,
+  capabilities: { "event-calendar-entry": { writes: true, idempotency: "provider-key", verifiable: true, reversal: "delete-created", onTimeout: "safe-to-retry", permission: "Calendars.ReadWrite" } },
+  check: (op) => { const start = moved(op, "Event.start") ?? ""; const allDay = moved(op, "Event.allDay") === "true" || !start.includes("T"); return !allDay && !moved(op, "Event.end") ? ["Event.end"] : []; },
+  async execute(op, t, send) {
+    const key = outlookEventKey(op.proposal.object.id, t);
+    // The same event already there (placed before, not deleted): a duplicate, reported, never written twice.
+    const existing = await outlookFind(key, t, send);
+    if (existing) throw new DuplicateError("this event is already in that calendar", JSON.stringify({ key, id: str(existing.id, "event id") }));
+    try {
+      const r = asObj(await send({ method: "POST", url: outlookEvents(t), body: outlookBody(op, key) }));
+      return JSON.stringify({ key, id: str(r.id, "event id") });
+    } catch (e) {
+      if (e instanceof OutcomeUnknownError) throw new OutcomeUnknownError(e.message, JSON.stringify({ key }));
+      throw e;
+    }
+  },
+  async undo(token, t, send) {
+    const id = await outlookIdOf(token, t, send);
+    if (!id) throw new DestinationError("the event is not in the calendar");
+    await send({ method: "DELETE", url: `${GRAPH}/me/events/${seg(id)}` });
+  },
+  async reconcile(token, t, send) {
+    const { key } = JSON.parse(token) as { key: string };
+    return (await outlookFind(key, t, send)) ? "present" : "absent";
+  },
+  // Read the event back in its own zone (Graph converts to the zone in the Prefer header) and compare each field.
+  async verify(token, op, t, send) {
+    const id = await outlookIdOf(token, t, send);
+    const tz = moved(op, "Event.timezone") ?? "UTC"; const want = outlookBody(op, "");
+    const e = id ? await readBack(send, { method: "GET", url: `${GRAPH}/me/events/${seg(id)}?$select=subject,start,end,location,isCancelled,webLink`, headers: { Prefer: `outlook.timezone="${tz}"` } }) : null;
+    const there = e && e.isCancelled !== true;
+    const local = (w: unknown) => { const v = asObj(w).dateTime; return typeof v === "string" ? v.slice(0, 19) : null; };
+    const actual = there ? {
+      "Event.title": typeof e!.subject === "string" ? e!.subject : null,
+      "Event.start": local(e!.start), "Event.end": local(e!.end),
+      ...(moved(op, "Event.timezone") ? { "Event.timezone": typeof asObj(e!.start).timeZone === "string" ? asObj(e!.start).timeZone as string : null } : {}),
+      ...(want.location ? { "Event.location": typeof asObj(e!.location).displayName === "string" ? asObj(e!.location).displayName as string : null } : {}),
+    } : null;
+    const expected: Record<string, string> = { "Event.title": want.subject, "Event.start": want.start.dateTime, "Event.end": want.end.dateTime, ...(moved(op, "Event.timezone") ? { "Event.timezone": tz } : {}), ...(want.location ? { "Event.location": want.location.displayName! } : {}) };
+    const fields = Object.keys(expected).map((path) => { const a = actual ? (actual as Record<string, string | null>)[path] ?? null : null; return { path, expected: expected[path]!, actual: a, match: a === expected[path] }; });
+    const link = typeof e?.webLink === "string" && /^https:\/\//.test(e.webLink) ? e.webLink : undefined;
+    if (!there) return { ok: false, fields, note: "the event is not in the calendar" };
+    return { ok: fields.every((f) => f.match), fields, ...(link ? { link } : {}) };
+  },
+};

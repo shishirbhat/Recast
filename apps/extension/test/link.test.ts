@@ -18,9 +18,19 @@ const ext = path.join(root, "dist-test");
 const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") && !existsSync("/opt/pw-browsers/chromium/chrome") ? "/opt/pw-browsers/chromium" : undefined);
 
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
-const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = []; const issues = new Map<number, Record<string, unknown>>(); const linearIssues = new Map<string, Record<string, unknown>>();
+const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const outlook = new Map<string, any>(); const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = []; const issues = new Map<number, Record<string, unknown>>(); const linearIssues = new Map<string, Record<string, unknown>>();
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fakeGoogle: typeof fetch = async (u, init) => {
+  // Microsoft Graph stand-in (Outlook Calendar): events kept by Graph's own ids, Recast's key as an extended property.
+  if (String(u).startsWith("https://graph.microsoft.com/")) {
+    const gu = new URL(String(u)); const gm = init?.method ?? "GET"; seenByGoogle.push(`${gm} ${String(u)}`);
+    if ((init?.headers as Record<string, string>)?.authorization !== "Bearer MS-AT") return json(401, {});
+    if (gm === "GET" && gu.pathname === "/v1.0/me/events") { const key = /ep\/value eq '([^']+)'/.exec(gu.searchParams.get("$filter") ?? "")?.[1]; return json(200, { value: [...outlook.values()].filter((e) => e.singleValueExtendedProperties[0].value === key).map((e) => ({ id: e.id })) }); }
+    if (gm === "POST") { const b = JSON.parse(String(init!.body)); const oid = `AAMk${outlook.size + 1}`; outlook.set(oid, { ...b, id: oid, webLink: `https://outlook.office365.com/owa/?itemid=${oid}` }); return json(201, outlook.get(oid)); }
+    const oid = gu.pathname.split("/events/")[1]!;
+    if (gm === "GET") return outlook.has(oid) ? json(200, outlook.get(oid)) : json(404, {});
+    if (gm === "DELETE") { outlook.delete(oid); return json(204, null); }
+  }
   const url = String(u), method = init?.method ?? "GET"; seenByGoogle.push(`${method} ${url}`);
   if (url === "https://api.linear.app/graphql") {
     if ((init?.headers as Record<string, string>)?.authorization !== `lin_api_${"y".repeat(30)}`) return json(401, {});
@@ -71,7 +81,7 @@ beforeAll(async () => {
   // Already signed in (the sign-in itself is tested in apps/calendar-link).
   mkdirSync(path.dirname(tokenFile), { recursive: true });
   writeFileSync(tokenFile, JSON.stringify({ access_token: "AT-1", refresh_token: "RT-1", expires_at: Date.now() + 3_600_000, scope: `${SCOPE} ${GMAIL_SCOPE} ${TASKS_SCOPE} ${DOCS_SCOPE}`, token_type: "Bearer", connected_at: "test" }));
-  link = createLinkServer({ clientId: "abc.apps.googleusercontent.com", clientSecret: "SECRET-x", port: 8787, tokenFile, fetch: fakeGoogle, tokenUrl: "https://google.test/token" });
+  link = createLinkServer({ clientId: "abc.apps.googleusercontent.com", clientSecret: "SECRET-x", port: 8787, tokenFile, fetch: fakeGoogle, tokenUrl: "https://google.test/token", microsoftClientId: "1b2c3d4e-0000-4000-8000-000000000001" });
   await new Promise<void>((r) => link.listen(8787, "127.0.0.1", r));
   const profile = path.join(root, "dist-test/.profile-link"); rmSync(profile, { recursive: true, force: true });
   ctx = await chromium.launchPersistentContext(profile, { executablePath: chromiumPath(), headless: false, timezoneId: "Asia/Kolkata",
@@ -451,5 +461,43 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await until(async () => (await stored()).phase === "idle");
     await page.close();
   });
-});
 
+  it("Outlook Calendar, connected beside Google Calendar: Calendar asks which one; Outlook gets the event, read back with its link; Undo deletes it there", async () => {
+    writeFileSync(path.join(path.dirname(tokenFile), "microsoft-token.json"), JSON.stringify({ access_token: "MS-AT", refresh_token: "MS-RT", expires_at: Date.now() + 3_600_000, scope: "Calendars.ReadWrite", connected_at: "test" }));
+    await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await until(async () => (await stored()).destinations.some((d: any) => d.id === "link:outlook-calendar"));
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    const page = await openTab("restaurant.html");
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle" && x.armed; });
+    const src = { app: "127.0.0.1", url: `${base}/restaurant.html`, title: "Dakshin · Restaurant" };
+    const piece = (id: string, kind: string, text: string, value?: object) => ({ id, kind, text, confidence: 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "css", value: `#${id}` } }], source: src });
+    await send({ type: "capture", fragment: piece("p9", "place", "Dakshin", { name: "Dakshin", address: "12 MG Road" }) });
+    const id = (await stored()).desk[0];
+    await send({ type: "capture", fragment: piece("t9", "time", "Friday 23 October, 9:00 PM"), carry: true });
+    await send({ type: "approach", target: { kind: "object", id } }); await send({ type: "drop" }); await send({ type: "settled" });
+    await send({ type: "answer", objectId: id, field: "title", value: "Late dinner" });
+    await send({ type: "openModule", id });
+    await page.locator("recast-clay >> [data-act=openWheel]").click();
+    await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-calendar");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await page.locator("recast-clay >> .rg-title").innerText()) === "Calendar: which one?");
+    const o = page.locator("recast-clay >> .rg-opt", { hasText: "Outlook Calendar" });
+    await o.click(); await page.waitForTimeout(200);
+    if ((await stored()).phase === "choosing") await o.click();
+    await until(async () => (await stored()).phase === "previewing");
+    const before = live().length;
+    await page.locator("recast-clay >> button", { hasText: "Add to calendar" }).click();
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect(outlook.size).toBe(1); expect(live().length).toBe(before);                     // Outlook, not Google
+    expect([...outlook.values()][0]).toMatchObject({ subject: "Late dinner", start: { dateTime: "2026-10-23T21:00:00" } });
+    expect((await stored()).placement.verification).toMatchObject({ ok: true, link: "https://outlook.office365.com/owa/?itemid=AAMk1" });
+    expect(await page.locator("recast-clay >> .rg-verify").innerText()).toMatch(/^Read back from Outlook Calendar: (\d+) of \1 fields match\. Open in Outlook Calendar$/);
+    expect(JSON.stringify(await stored())).not.toContain("MS-AT");                          // the Microsoft token stays in the program
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(outlook.size).toBe(0);
+    await page.close();
+  });
+});

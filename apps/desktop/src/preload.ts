@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("recastDesktop", {
   settings: (p: unknown) => ipcRenderer.invoke("recast:settings", p),
   google: (g: unknown) => ipcRenderer.invoke("recast:google", g),
   googleStatus: () => ipcRenderer.invoke("recast:google-status"),
+  microsoft: (id: unknown) => ipcRenderer.invoke("recast:microsoft", id),
   permission: () => ipcRenderer.invoke("recast:permission"),
   window: (what: string) => ipcRenderer.invoke("recast:window", what),
   on: (channel: string, fn: (v: unknown) => void) => {

@@ -105,6 +105,23 @@ Recast remembers the last test event in `apps/calendar-link/.secrets/test-event.
 2. On http://localhost:8787/, under **Linear issues**, enter the team's key (as in `ENG-12`) and paste the API key, then **Connect Linear**. Recast finds the team before saving anything. The key stays in `.secrets/linear.json` on this computer (readable only by you).
 3. An error (with notes) placed in **Tasks** goes to Linear. If GitHub is connected too, Tasks asks which one. Undo deletes the issue (Linear keeps it in its trash for a while). Steps: `docs/REAL_TEST_PLAN.md`, section I.
 
+## Part 12: Outlook Calendar (optional, separate from Google)
+Use a Microsoft account you can test with (a personal outlook.com account works).
+1. **Register an app:** go to <https://portal.azure.com> → **App registrations** → **New registration**.
+   1. Name: `Recast local`.
+   2. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**.
+   3. Redirect URI: platform **Public client/native (mobile & desktop)**, exactly `http://localhost:8787/microsoft/callback`.
+2. **Permission:** in the app, **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated** → `Calendars.ReadWrite`.
+3. **No client secret.** The app is a public client: Recast uses PKCE instead.
+4. **Copy the ID:** from **Overview**, copy the **Application (client) ID** into `.env` as `MICROSOFT_CLIENT_ID=…`, then restart this program.
+5. **Sign in:** at http://localhost:8787/, click **Sign in with Microsoft**.
+
+Recast can then create, read and delete its own events in your default Outlook calendar. Each event carries a small Recast key (an extended property), so:
+- placing the same thing twice is refused;
+- a lost answer can be checked.
+
+In the desktop app, paste the client ID under **Connections → Outlook Calendar** instead of using `.env`.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

@@ -106,7 +106,7 @@ describe("the destination selector", () => {
   });
   it("a fitting destination that is not connected is unavailable, with that reason", () => {
     const s = { ...dinner().s, destinations: [] };
-    expect(wheelEntries(s, "obj-1", REGISTRY)[0]).toMatchObject({ key: "calendar", available: false, reason: "Google Calendar is not connected here" });
+    expect(wheelEntries(s, "obj-1", REGISTRY)[0]).toMatchObject({ key: "calendar", available: false, reason: "Google Calendar or Outlook Calendar is not connected here" });
   });
   it("a message: Mail is available and Calendar says why not", () => {
     const on = command(initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: DESTS })).s;

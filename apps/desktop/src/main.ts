@@ -44,6 +44,7 @@ const writePrivate = (file: string, value: unknown) => { mkdirSync(path.dirname(
 let settings: Settings = { ...DEFAULTS };
 const settingsFile = () => path.join(data(), "settings.json");
 const googleFile = () => path.join(secrets(), "google-app.json");
+const microsoftAppFile = () => path.join(secrets(), "microsoft-app.json");
 const inboxFile = () => path.join(data(), "inbox.json");       // the blobs on screen, with where they sit
 const historyFile = () => path.join(data(), "history.json");   // every blob ever grabbed: the library
 
@@ -62,7 +63,8 @@ const page = (name: string) => path.join(__dirname, name);
 async function startLink() {
   const g = readJson<GoogleConfig | null>(googleFile(), null);
   const fetchImpl = test ? await testFetch() : fetch;
-  link = createLink({ clientId: g?.clientId ?? "", clientSecret: g?.clientSecret ?? "", port: PORT, tokenFile: path.join(secrets(), "google-token.json"), fetch: fetchImpl,
+  const msId = readJson<{ clientId: string } | null>(microsoftAppFile(), null)?.clientId;
+  link = createLink({ clientId: g?.clientId ?? "", clientSecret: g?.clientSecret ?? "", port: PORT, tokenFile: path.join(secrets(), "google-token.json"), fetch: fetchImpl, ...(msId ? { microsoftClientId: msId } : {}),
     ...(test ? { tokenUrl: "https://google.test/token" } : {}) });
   await new Promise<void>((resolve) => { if (server) server.close(() => resolve()); else resolve(); });
   server = link.server; serverNote = "";
@@ -309,7 +311,7 @@ function saveHistory(list: Entry[]) { writePrivate(historyFile(), list.slice(-20
 const clean = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) : undefined);
 
 // ---- the pages' few calls ---------------------------------------------------------------------------------------------
-const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear"]);
+const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear", "outlook"]);
 function ipc() {
   ipcMain.handle("recast:boot", () => ({ settings: publicSettings(), inbox: readJson<unknown>(inboxFile(), null), theme: themeName(), on }));
   ipcMain.handle("recast:status", async () => (link ? (await link.direct("status", {})).body : {}));
@@ -378,7 +380,13 @@ function ipc() {
     writePrivate(googleFile(), { clientId: id, clientSecret: secret }); await startLink();
     return { ok: true, message: "Saved. Now sign in with Google in your browser." };
   });
-  ipcMain.handle("recast:google-status", () => ({ configured: !!readJson<GoogleConfig | null>(googleFile(), null), serverNote }));
+  ipcMain.handle("recast:google-status", () => ({ configured: !!readJson<GoogleConfig | null>(googleFile(), null), microsoft: !!readJson<unknown>(microsoftAppFile(), null), serverNote }));
+  ipcMain.handle("recast:microsoft", async (_e, id: unknown) => {
+    const v = String(id ?? "").trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return { ok: false, message: "That is not an Application (client) ID: it looks like 1b2c3d4e-0000-0000-0000-000000000000." };
+    writePrivate(microsoftAppFile(), { clientId: v }); await startLink();
+    return { ok: true, message: "Saved. Now sign in with Microsoft in your browser." };
+  });
   ipcMain.handle("recast:window", (e, what: unknown) => {
     const w = BrowserWindow.fromWebContents(e.sender);
     if (what === "hide") w?.hide(); else if (what === "minimize") w?.minimize();

@@ -185,3 +185,16 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | L5 | Sign in again ticking only Tasks (untick Calendar), then place an event | A refusal naming the missing Google Calendar permission | permission failure stated |
 | L6 | Turn Wi-Fi off, place an event, turn Wi-Fi on | "did not answer… it may or may not have been made", then **Check** asks Google; never a second write | uncertain outcome |
 | L7 | With Gmail, Tasks, Docs, GitHub or Linear connected (sections C, E, F, H, I), place one item in each | Each receipt adds "Read back from <app>: N of N fields match" and, except Gmail, "Open in <app>" (Gmail links to the Drafts folder) | read-back beyond Calendar |
+
+## M. Outlook Calendar (needs a Microsoft app: apps/calendar-link README, Part 12)
+**Checks:** Microsoft sign-in on this computer, a real Outlook event placed, read back with its link, refused twice, checked after a lost answer, undone.
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| M1 | Put `MICROSOFT_CLIENT_ID` in `.env`, restart, open http://localhost:8787/ and click **Sign in with Microsoft** | Microsoft's sign-in, a consent screen naming "Read and write your calendars", then "Connected to Outlook Calendar." | sign-in, one permission |
+| M2 | Open the Recast popup (or reload the desktop app) | Outlook Calendar is offered; with Google Calendar also connected, Calendar asks "which one?" | destination offered |
+| M3 | Compose an event, choose Calendar → Outlook Calendar, **Add to calendar** | "Added to Outlook Calendar", then "Read back from Outlook Calendar: 5 of 5 fields match. Open in Outlook Calendar"; the event is in Outlook at the right time | real write + read-back |
+| M4 | Click **Open in Outlook Calendar** | The event opens in Outlook on the web | link |
+| M5 | Place the same composition again | "It is already in your Outlook Calendar, so it was not added a second time" | no duplicate |
+| M6 | **Undo** | The event disappears from Outlook | undo |
+| M7 | At the bottom of http://localhost:8787/, **Disconnect Outlook** | Outlook is no longer offered | disconnect |
