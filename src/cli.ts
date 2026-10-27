@@ -14,6 +14,8 @@ import { HOOK_MATCHER, runHook } from "./hooks/claude-code.ts";
 import { runMcp } from "./mcp/server.ts";
 import { startServer } from "./server/server.ts";
 import { Members } from "./server/auth.ts";
+import { RemoteError, call, errorText, forgetSession, join as remoteJoin, loadSession } from "./remote.ts";
+import type { Integration } from "./core/types.ts";
 import type { Role } from "./server/auth.ts";
 
 const RELAY_BIN = resolve(dirname(fileURLToPath(import.meta.url)), "../bin/relay");
@@ -32,6 +34,11 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay intent approve <intent-id>
   relay integrate check <task,task...> --cwd DIR [--verify CMD...]   cross-task gate (Relay runs every check)
   relay integrate approve <integration-id> --cwd DIR                 human approval; completes all its tasks
+  relay integrate together <task,task...> [--verify CMD...]         Check Together on the running server (agent work
+                                                included): rehearses the combined change, prints the result and why.
+                                                Never applies. Exit 0 passed, 1 blocked, 2 usage, 3 could not complete
+  relay remote join <invite-link>              sign this checkout in to a running Relay server (one-time invite)
+  relay remote status | leave                  which server and member this checkout uses / sign out
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
   relay verify <task> --cwd DIR                 run the task's verification commands (records evidence)
   relay impact [--base REF | --task ID] --cwd DIR   what a change affects: interfaces, consumers, tests, tasks, stale evidence
@@ -80,6 +87,10 @@ const { values: o, positionals: args } = parseArgs({
 });
 
 const dbPath = resolve(o.db ?? process.env.RELAY_DB ?? ".relay/relay.db");
+// The CLI's session with a running Relay server, kept beside the project database.
+const sessionFile = join(dirname(dbPath), "remote-session.json");
+/** Exit codes for commands that ask the server for a verdict: 0 passed, 1 blocked, 2 usage, 3 could not complete. */
+const COULD_NOT_COMPLETE = 3;
 const human: Actor = { kind: "human", id: o.as ?? process.env.USER ?? "human" };
 
 function need<T>(v: T | undefined, what: string): T {
@@ -142,6 +153,27 @@ async function main(): Promise<void> {
     process.on("SIGTERM", stop);
     return new Promise<void>(() => {});
   }
+  if (cmd === "remote") {
+    if (sub === "join") {
+      const r = await remoteJoin(need(a1, "invite link"), sessionFile);
+      return print({ server: r.server, name: r.name, role: r.role }, `Signed in to ${r.server} as ${r.name} (${r.role}).`);
+    }
+    if (sub === "status") {
+      const s = loadSession(sessionFile);
+      if (!s) return print({ server: null }, "Not signed in to a Relay server. Use: relay remote join <invite-link>");
+      const r = await call<{ me: { name: string; role: string } }>(s.server, s.cookie, "GET", "/state");
+      if (r.status !== 200) throw new RemoteError(r.status, `${s.server}: ${errorText(r.body, `HTTP ${r.status}`)}`);
+      return print({ server: s.server, name: r.body.me.name, role: r.body.me.role }, `${s.server} as ${r.body.me.name} (${r.body.me.role})`);
+    }
+    if (sub === "leave") {
+      const s = loadSession(sessionFile);
+      if (s) await call(s.server, s.cookie, "POST", "/logout").catch(() => {});
+      forgetSession(sessionFile);
+      return print({ server: null }, "Signed out.");
+    }
+    throw new RelayError("usage", `Unknown command: ${args.join(" ")}\n\n${USAGE}`);
+  }
+  if (cmd === "integrate" && sub === "together") return integrateTogether(need(a1, "task ids (comma-separated)"));
   if (cmd === "agent-config") {
     if (sub !== "claude-code") throw new RelayError("usage", `Unknown agent ${sub}`);
     const task = need(o.task, "--task");
@@ -314,8 +346,26 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * Check Together through the running server: the same service the browser IDE and VS Code call, so the result (and
+ * its explanation) is the one they'd show. Prints the server's report; never applies anything.
+ */
+async function integrateTogether(list: string): Promise<void> {
+  const ids = [...new Set(list.split(",").map((t) => t.trim()).filter(Boolean))];
+  if (ids.length < 2) throw new RelayError("usage", "Name at least two tasks to check together, comma-separated: relay integrate together T-a,T-b");
+  const s = loadSession(sessionFile);
+  if (!s) throw new RemoteError(null, "not signed in to a Relay server. Ask an owner for an invite link, then: relay remote join <invite-link>");
+  const r = await call<Integration & { report: string }>(s.server, s.cookie, "POST", "/integrations/check", { tasks: ids, ...(o.verify?.length ? { verify: o.verify } : {}) });
+  if (r.status === 401) throw new RemoteError(401, `your session on ${s.server} ended; sign in again with relay remote join <invite-link>`);
+  if (r.status !== 200) throw new RemoteError(r.status, `${s.server} refused the check (HTTP ${r.status}): ${errorText(r.body, "no reason given")}`);
+  const integ = r.body;
+  if (o.json) console.log(JSON.stringify(integ, null, 2));
+  else console.log(integ.report);
+  process.exitCode = integ.status === "passed" ? 0 : 1;
+}
+
 main().catch((err) => {
   const code = err instanceof RelayError ? err.code : "internal";
   console.error(`relay: ${err instanceof Error ? err.message : String(err)}`);
-  process.exitCode = code === "usage" ? 2 : 1;
+  process.exitCode = code === "usage" ? 2 : err instanceof RemoteError ? COULD_NOT_COMPLETE : 1;
 });

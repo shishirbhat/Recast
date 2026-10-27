@@ -77,6 +77,13 @@
         "title": "Apply to Project (owners only)",
         "category": "Relay",
         "icon": "$(lock)"
+      },
+      {
+        "command": "relay.checkTogether",
+        "title": "Check Together…",
+        "category": "Relay",
+        "icon": "$(git-merge)",
+        "enablement": "relay.connected"
       }
     ],
     "viewsContainers": {
@@ -109,6 +116,11 @@
           "command": "relay.coordination.refresh",
           "when": "view == relay.coordination && relay.connected",
           "group": "navigation"
+        },
+        {
+          "command": "relay.checkTogether",
+          "when": "view == relay.coordination && relay.connected",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -121,6 +133,11 @@
           "command": "relay.applyDenied",
           "when": "view == relay.coordination && viewItem == task-apply-denied",
           "group": "inline"
+        },
+        {
+          "command": "relay.checkTogether",
+          "when": "view == relay.coordination && viewItem =~ /^task/",
+          "group": "relay@1"
         }
       ],
       "editor/context": [

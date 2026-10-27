@@ -1,7 +1,7 @@
 /**
  * The deterministic integration proof as a regression test: two simulated tasks, each green alone, break the project
  * when combined; without Relay the break is merged, with Relay the rehearsal blocks it and the project is unchanged.
- * The script exits non-zero if any of that stops being true. It writes its report to a temp file, not to docs/.
+ * It also requires a confirmed explanation of the block. The script exits non-zero if any of that stops being true. It writes its report to a temp file, not to docs/.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,4 +21,7 @@ test("integration proof: individually green, combined red; Relay blocks it and l
   assert.match(report, /\| Project tests after merge \| \*\*FAIL\*\* \|/);
   assert.match(report, /\| Integration rehearsal \| \*\*blocked\*\* \|/);
   assert.match(report, /\| Shared project \| unchanged \|/);
+  // The explanation is built from the run's evidence: the field T-api removed, T-ui's read of it, the failing test.
+  assert.match(report, /\*\*Verdict: confirmed\.\*\* Confirmed cause: T-api changed getUser in src\/server\.js/);
+  assert.match(report, /src\/ui\.js:4 reads \.name, which getUser\(\) no longer returns/);
 });

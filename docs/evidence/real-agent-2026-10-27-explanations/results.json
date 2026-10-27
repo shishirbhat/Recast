@@ -1,0 +1,438 @@
+{
+  "claudeVersion": "2.1.311 (Claude Code)",
+  "prompts": {
+    "A": [
+      {
+        "id": "T-api",
+        "prompt": "Rename the `name` field returned by getUser in src/server.js to `fullName`, and update src/server.test.js to match. Then run `node --test src/server.test.js` and make sure it passes. Files in scope: src/server.js, src/server.test.js. Only change files in your scope."
+      },
+      {
+        "id": "T-ui",
+        "prompt": "Change the footer text exported from src/ui.js from 'bye' to 'see you soon', and add a test for the footer in src/footer.test.js. Then run `node --test src/ui.test.js src/footer.test.js` and make sure it passes. Files in scope: src/ui.js, src/footer.test.js. Only change files in your scope."
+      }
+    ],
+    "B": [
+      {
+        "id": "T-api",
+        "objective": "Rename the `name` field returned by getUser in src/server.js to `fullName`, and update src/server.test.js to match. Then run `node --test src/server.test.js` and make sure it passes.",
+        "scope": [
+          "src/server.js",
+          "src/server.test.js"
+        ],
+        "verify": "node --test src/server.test.js"
+      },
+      {
+        "id": "T-ui",
+        "objective": "Change the footer text exported from src/ui.js from 'bye' to 'see you soon', and add a test for the footer in src/footer.test.js. Then run `node --test src/ui.test.js src/footer.test.js` and make sure it passes.",
+        "scope": [
+          "src/ui.js",
+          "src/footer.test.js"
+        ],
+        "verify": "node --test src/ui.test.js src/footer.test.js"
+      }
+    ]
+  },
+  "checks": {
+    "T-api": "node --test src/server.test.js",
+    "T-ui": "node --test src/ui.test.js src/footer.test.js"
+  },
+  "projectTests": "node --test",
+  "trials": [
+    {
+      "n": 1,
+      "at": "2026-10-27T17:23:04.450Z",
+      "A": {
+        "startTree": "970127fbe8d9aa29c6f8c3badbf18327cebbf93c",
+        "tasks": [
+          {
+            "id": "T-api",
+            "agent": {
+              "exit": 0,
+              "seconds": 18,
+              "costUsd": 0.0912971,
+              "turns": 6,
+              "isError": false,
+              "result": "`getUser` in `src/server.js` now returns `fullName` instead of `name`, and I made the same change in `src/server.test.js`. `node --test src/server.test.js` passes (1 test, 0 failures). I changed only those two files."
+            },
+            "changedFiles": [
+              "src/server.js",
+              "src/server.test.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            }
+          },
+          {
+            "id": "T-ui",
+            "agent": {
+              "exit": 0,
+              "seconds": 23,
+              "costUsd": 0.1028998,
+              "turns": 7,
+              "isError": false,
+              "result": "I changed the footer in `src/ui.js` from `'bye'` to `'see you soon'` and added a test for it in `src/footer.test.js`. `node --test src/ui.test.js src/footer.test.js` passes: 2 tests, 0 failures. I touched no other files."
+            },
+            "changedFiles": [
+              "src/footer.test.js",
+              "src/ui.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            }
+          }
+        ],
+        "combined": {
+          "ok": false,
+          "fail": "not ok 3 - greets the user by name"
+        },
+        "mergeConflict": false,
+        "seconds": 24,
+        "costUsd": 0.194
+      },
+      "classA": "reproduced: both green, combined red",
+      "B": {
+        "startTree": "970127fbe8d9aa29c6f8c3badbf18327cebbf93c",
+        "tasks": [
+          {
+            "id": "T-api",
+            "agent": {
+              "exit": 0,
+              "seconds": 29,
+              "costUsd": 0.121016,
+              "turns": null,
+              "isError": false,
+              "result": "`getUser` in `src/server.js` now returns `{ id, fullName }`, which matches the `user-api` v1 contract. I updated the assertion in `src/server.test.js` to match.\n\n`node --test src/server.test.js` passes (1 test, 0 failures). I only edited those two files.\n\nThe task is submitted for review. It's now in `review_required`, and Relay still has to run its own verification before a human approves integration."
+            },
+            "changedFiles": [
+              "src/server.js",
+              "src/server.test.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            },
+            "relayState": "review_required",
+            "guardDenials": 0
+          },
+          {
+            "id": "T-ui",
+            "agent": {
+              "exit": 0,
+              "seconds": 36,
+              "costUsd": 0.11683569999999999,
+              "turns": null,
+              "isError": false,
+              "result": "The footer in `src/ui.js` now reads `'see you soon'` instead of `'bye'`. I added `src/footer.test.js`, which checks that value. `node --test src/ui.test.js src/footer.test.js` passes with 2 of 2 tests.\n\nI only touched the two files in scope. I submitted T-ui for review through Relay, and it's now waiting for approval. The test result I reported to Relay is my own claim, so Relay will run its own verification before integration."
+            },
+            "changedFiles": [
+              "src/footer.test.js",
+              "src/ui.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            },
+            "relayState": "review_required",
+            "guardDenials": 0
+          }
+        ],
+        "combined": {
+          "ok": false,
+          "fail": "not ok 2 - greets the user by name"
+        },
+        "mergeConflict": false,
+        "relayStatus": "blocked",
+        "relayGaps": [
+          "verification failed: node --test src/ui.test.js src/footer.test.js (exit 1)",
+          "verification failed: node --test (exit 1)"
+        ],
+        "explanation": {
+          "verdict": "confirmed",
+          "summary": "Confirmed cause: T-api changed getUser in src/server.js (part of contract user-api v1) so it no longer returns `name` (it now returns `fullName`). T-ui still reads `name` from getUser() at src/ui.js:4. The combined verification failed on it: `node --test src/ui.test.js src/footer.test.js`, \"greets the user by name\" (src/ui.test.js). Relay blocked integration because combined verification failed.",
+          "accurate": true,
+          "checks": [
+            "ok getUser(1) really stopped returning name (base [\"id\",\"name\"], combined [\"id\",\"fullName\"])",
+            "ok src/ui.js:4 reads .name: return 'Hello ' + getUser(id).name;",
+            "ok src/server.js was changed by T-api's own patch",
+            "ok src/ui.js is in T-ui's scope",
+            "ok cited failing test(s) really fail on the combined tree: greets the user by name"
+          ]
+        },
+        "projectUnchanged": true,
+        "seconds": 38,
+        "costUsd": 0.238
+      },
+      "classB": "reproduced: both green, combined red"
+    },
+    {
+      "n": 2,
+      "at": "2026-10-27T17:23:43.030Z",
+      "A": {
+        "startTree": "970127fbe8d9aa29c6f8c3badbf18327cebbf93c",
+        "tasks": [
+          {
+            "id": "T-api",
+            "agent": {
+              "exit": 0,
+              "seconds": 21,
+              "costUsd": 0.0810303,
+              "turns": 6,
+              "isError": false,
+              "result": "`getUser` in `src/server.js` now returns `fullName` instead of `name`, and I updated the expected object in `src/server.test.js` to match. `node --test src/server.test.js` passes (1 test, 0 failures). I changed only those two files."
+            },
+            "changedFiles": [
+              "src/server.js",
+              "src/server.test.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            }
+          },
+          {
+            "id": "T-ui",
+            "agent": {
+              "exit": 0,
+              "seconds": 18,
+              "costUsd": 0.08835889999999999,
+              "turns": 7,
+              "isError": false,
+              "result": "The footer in `src/ui.js` now reads `'see you soon'` instead of `'bye'`. I added `src/footer.test.js`, which checks that the exported `footer` equals `'see you soon'`.\n\nI ran `node --test src/ui.test.js src/footer.test.js`. Both tests pass. I changed only those two files."
+            },
+            "changedFiles": [
+              "src/footer.test.js",
+              "src/ui.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            }
+          }
+        ],
+        "combined": {
+          "ok": false,
+          "fail": "not ok 3 - greets the user by name"
+        },
+        "mergeConflict": false,
+        "seconds": 21,
+        "costUsd": 0.169
+      },
+      "classA": "reproduced: both green, combined red",
+      "B": {
+        "startTree": "970127fbe8d9aa29c6f8c3badbf18327cebbf93c",
+        "tasks": [
+          {
+            "id": "T-api",
+            "agent": {
+              "exit": 0,
+              "seconds": 29,
+              "costUsd": 0.121656,
+              "turns": null,
+              "isError": false,
+              "result": "`getUser` in `src/server.js` now returns `fullName` instead of `name`, which matches the user-api v1 contract (`{ id, fullName }`). I updated the expected value in `src/server.test.js` to match.\n\n`node --test src/server.test.js` passes (1 test, 0 failures). I changed only those two files.\n\nI claimed the task, read the contract and declared my intent first. I then reported the test run as evidence and submitted the task for review. It's now in `review_required`, so Relay's own verification and a human approval still have to happen before it's integrated."
+            },
+            "changedFiles": [
+              "src/server.js",
+              "src/server.test.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            },
+            "relayState": "review_required",
+            "guardDenials": 0
+          },
+          {
+            "id": "T-ui",
+            "agent": {
+              "exit": 0,
+              "seconds": 31,
+              "costUsd": 0.1190185,
+              "turns": null,
+              "isError": false,
+              "result": "The footer in `src/ui.js` now reads `'see you soon'` instead of `'bye'`, and the new `src/footer.test.js` asserts it. `node --test src/ui.test.js src/footer.test.js` passes with 2 of 2 tests.\n\nI only touched the two files in scope. The task is now in `review_required`, waiting on Relay's verification and a human approval before it's integrated."
+            },
+            "changedFiles": [
+              "src/footer.test.js",
+              "src/ui.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            },
+            "relayState": "review_required",
+            "guardDenials": 0
+          }
+        ],
+        "combined": {
+          "ok": false,
+          "fail": "not ok 2 - greets the user by name"
+        },
+        "mergeConflict": false,
+        "relayStatus": "blocked",
+        "relayGaps": [
+          "verification failed: node --test src/ui.test.js src/footer.test.js (exit 1)",
+          "verification failed: node --test (exit 1)"
+        ],
+        "explanation": {
+          "verdict": "confirmed",
+          "summary": "Confirmed cause: T-api changed getUser in src/server.js (part of contract user-api v1) so it no longer returns `name` (it now returns `fullName`). T-ui still reads `name` from getUser() at src/ui.js:4. The combined verification failed on it: `node --test src/ui.test.js src/footer.test.js`, \"greets the user by name\" (src/ui.test.js). Relay blocked integration because combined verification failed.",
+          "accurate": true,
+          "checks": [
+            "ok getUser(1) really stopped returning name (base [\"id\",\"name\"], combined [\"id\",\"fullName\"])",
+            "ok src/ui.js:4 reads .name: return 'Hello ' + getUser(id).name;",
+            "ok src/server.js was changed by T-api's own patch",
+            "ok src/ui.js is in T-ui's scope",
+            "ok cited failing test(s) really fail on the combined tree: greets the user by name"
+          ]
+        },
+        "projectUnchanged": true,
+        "seconds": 33,
+        "costUsd": 0.241
+      },
+      "classB": "reproduced: both green, combined red"
+    },
+    {
+      "n": 3,
+      "at": "2026-10-27T17:24:15.906Z",
+      "A": {
+        "startTree": "970127fbe8d9aa29c6f8c3badbf18327cebbf93c",
+        "tasks": [
+          {
+            "id": "T-api",
+            "agent": {
+              "exit": 0,
+              "seconds": 21,
+              "costUsd": 0.08522000000000002,
+              "turns": 6,
+              "isError": false,
+              "result": "`getUser` in `src/server.js` now returns `fullName` instead of `name`, and I made the same change in the expected value in `src/server.test.js`. I ran `node --test src/server.test.js` and the one test passes. I didn't touch any other files."
+            },
+            "changedFiles": [
+              "src/server.js",
+              "src/server.test.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            }
+          },
+          {
+            "id": "T-ui",
+            "agent": {
+              "exit": 0,
+              "seconds": 18,
+              "costUsd": 0.0820016,
+              "turns": 6,
+              "isError": false,
+              "result": "I changed the footer in `src/ui.js` from `'bye'` to `'see you soon'` and added `src/footer.test.js`, which checks that `footer` equals `'see you soon'`. `node --test src/ui.test.js src/footer.test.js` passes with 2 tests and 0 failures. I didn't change any other files."
+            },
+            "changedFiles": [
+              "src/footer.test.js",
+              "src/ui.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            }
+          }
+        ],
+        "combined": {
+          "ok": false,
+          "fail": "not ok 3 - greets the user by name"
+        },
+        "mergeConflict": false,
+        "seconds": 22,
+        "costUsd": 0.167
+      },
+      "classA": "reproduced: both green, combined red",
+      "B": {
+        "startTree": "970127fbe8d9aa29c6f8c3badbf18327cebbf93c",
+        "tasks": [
+          {
+            "id": "T-api",
+            "agent": {
+              "exit": 0,
+              "seconds": 37,
+              "costUsd": 0.1208326,
+              "turns": null,
+              "isError": false,
+              "result": "`getUser` in `src/server.js` now returns `fullName` instead of `name`, which matches the `user-api` v1 contract (`{ id, fullName }`). I updated the assertion in `src/server.test.js` to match. `node --test src/server.test.js` passes, 1 of 1.\n\nI submitted the task for review, so it is now in `review_required`. I changed only the two files in scope."
+            },
+            "changedFiles": [
+              "src/server.js",
+              "src/server.test.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            },
+            "relayState": "review_required",
+            "guardDenials": 0
+          },
+          {
+            "id": "T-ui",
+            "agent": {
+              "exit": 0,
+              "seconds": 30,
+              "costUsd": 0.1201209,
+              "turns": null,
+              "isError": false,
+              "result": "Task T-ui is done and submitted for review; it's now in `review_required`.\n\n- **Change:** the footer in `src/ui.js` now reads `'see you soon'` instead of `'bye'`.\n- **Test:** I added `src/footer.test.js`, which checks that the exported footer equals `'see you soon'`.\n- **Verification:** `node --test src/ui.test.js src/footer.test.js` passed, 2 of 2. Relay has recorded that result as an unverified agent claim and will run its own verification.\n- **Scope:** I only touched the two in-scope files, and no action was blocked. The `user-api` v1 contract wasn't affected by this change, so I didn't nee"
+            },
+            "changedFiles": [
+              "src/footer.test.js",
+              "src/ui.js"
+            ],
+            "outOfScope": [],
+            "ownCheck": {
+              "ok": true,
+              "fail": ""
+            },
+            "relayState": "review_required",
+            "guardDenials": 0
+          }
+        ],
+        "combined": {
+          "ok": false,
+          "fail": "not ok 2 - greets the user by name"
+        },
+        "mergeConflict": false,
+        "relayStatus": "blocked",
+        "relayGaps": [
+          "verification failed: node --test src/ui.test.js src/footer.test.js (exit 1)",
+          "verification failed: node --test (exit 1)"
+        ],
+        "explanation": {
+          "verdict": "confirmed",
+          "summary": "Confirmed cause: T-api changed getUser in src/server.js (part of contract user-api v1) so it no longer returns `name` (it now returns `fullName`). T-ui still reads `name` from getUser() at src/ui.js:4. The combined verification failed on it: `node --test src/ui.test.js src/footer.test.js`, \"greets the user by name\" (src/ui.test.js). Relay blocked integration because combined verification failed.",
+          "accurate": true,
+          "checks": [
+            "ok getUser(1) really stopped returning name (base [\"id\",\"name\"], combined [\"id\",\"fullName\"])",
+            "ok src/ui.js:4 reads .name: return 'Hello ' + getUser(id).name;",
+            "ok src/server.js was changed by T-api's own patch",
+            "ok src/ui.js is in T-ui's scope",
+            "ok cited failing test(s) really fail on the combined tree: greets the user by name"
+          ]
+        },
+        "projectUnchanged": true,
+        "seconds": 39,
+        "costUsd": 0.241
+      },
+      "classB": "reproduced: both green, combined red"
+    }
+  ]
+}

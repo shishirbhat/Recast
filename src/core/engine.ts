@@ -23,6 +23,7 @@ import type {
   Decision,
   EnforcementPoint,
   Evidence,
+  Explanation,
   Integration,
   Intent,
   RelayEvent,
@@ -30,6 +31,14 @@ import type {
   TaskState,
 } from "./types.ts";
 import { ACTIVE_STATES, RelayError, TASK_STATES } from "./types.ts";
+import { explainIntegration } from "../analysis/explain.ts";
+
+export interface IntegrationOptions {
+  /** The agent runner rebuilt every task's changes on this newer snapshot; judge the combined tree against it. */
+  rebasedOnto?: string;
+  /** Files each task's own run changed, so an explanation can say who changed what from observation, not scope. */
+  changedBy?: Record<string, string[]>;
+}
 
 type Row = Record<string, unknown>;
 const OUTPUT_LIMIT = 16_000;
@@ -528,20 +537,20 @@ export class Relay {
    * Checks a set of tasks as one integrated change in one workspace and records the result.
    * Relay runs every task's verification plus the integration commands itself, on this exact tree.
    */
-  checkIntegration(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: { rebasedOnto?: string } = {}): Integration {
+  checkIntegration(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: IntegrationOptions = {}): Integration {
     const prep = this.prepareIntegration(taskIds, cwd, integrationVerify, opts);
     return this.recordIntegration(prep, cwd, prep.commands.map((c) => runSync(c, cwd, timeoutMs)));
   }
 
   /** checkIntegration for the server: the commands run without blocking it. */
-  async checkIntegrationAsync(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: { rebasedOnto?: string } = {}): Promise<Integration> {
+  async checkIntegrationAsync(taskIds: string[], cwd: string, integrationVerify: string[] = [], timeoutMs = 300_000, opts: IntegrationOptions = {}): Promise<Integration> {
     const prep = this.prepareIntegration(taskIds, cwd, integrationVerify, opts);
     const results: CommandResult[] = [];
     for (const c of prep.commands) results.push(await runAsync(c, cwd, timeoutMs));
     return this.recordIntegration(prep, cwd, results);
   }
 
-  private prepareIntegration(taskIds: string[], cwd: string, integrationVerify: string[], opts: { rebasedOnto?: string }) {
+  private prepareIntegration(taskIds: string[], cwd: string, integrationVerify: string[], opts: IntegrationOptions) {
     if (!taskIds.length) throw new RelayError("invalid", "An integration needs at least one task");
     const tasks = [...new Set(taskIds)].map((id) => this.requireTask(id));
     const gaps: string[] = [];
@@ -580,7 +589,7 @@ export class Relay {
 
     const tree = workspaceFingerprint(cwd, own);
     const commands = [...new Set([...tasks.flatMap((t) => t.verify), ...integrationVerify])];
-    return { tasks, gaps, agreed, base, own, tree, commands, rebasedOnto: opts.rebasedOnto };
+    return { tasks, gaps, agreed, base, own, tree, commands, rebasedOnto: opts.rebasedOnto, changedBy: opts.changedBy };
   }
 
   private recordIntegration(prep: ReturnType<Relay["prepareIntegration"]>, cwd: string, ran: CommandResult[]): Integration {
@@ -589,6 +598,13 @@ export class Relay {
     for (const r of results) if (r.exitCode !== 0) gaps.push(`verification failed: ${r.command} (exit ${r.exitCode ?? "timeout"})`);
     if (!commands.length) gaps.push("no verification commands: an integration needs at least one");
     if (workspaceFingerprint(cwd, own) !== tree) gaps.push("workspace changed while verification ran (commands must not modify tracked or untracked files)");
+    // The explanation is computed from the same tree and results; it never changes the status, which is the gaps alone.
+    let explanation: Explanation | null = null;
+    try {
+      explanation = explainIntegration({ cwd, base, tree, tasks, results, changedBy: prep.changedBy, currentContract: (id) => this.currentContract(id) });
+    } catch (e) {
+      explanation = results.some((r) => r.exitCode !== 0) ? { verdict: "unknown", summary: `Cause unknown: Relay could not analyse this failure (${(e as Error).message}).`, causes: [], failures: [], uncertain: ["analysis failed"], resolve: "Read the failing output.", tree, base } : null;
+    }
 
     const integration: Integration = {
       id: randomUUID(),
@@ -599,14 +615,15 @@ export class Relay {
       status: gaps.length ? "blocked" : "passed",
       gaps,
       results,
+      explanation,
       createdAt: now(),
       approvedBy: null,
       approvedAt: null,
     };
     this.db
-      .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), integration.createdAt);
-    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree, ...(prep.rebasedOnto ? { rebasedOnto: prep.rebasedOnto, originalBases: Object.fromEntries(tasks.map((t) => [t.id, t.baseCommit])) } : {}) } });
+      .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, explanation, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), explanation ? JSON.stringify(explanation) : null, integration.createdAt);
+    this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree, explanation: explanation?.verdict ?? null, ...(prep.rebasedOnto ? { rebasedOnto: prep.rebasedOnto, originalBases: Object.fromEntries(tasks.map((t) => [t.id, t.baseCommit])) } : {}) } });
     return integration;
   }
 
@@ -622,6 +639,7 @@ export class Relay {
       status: r.status as Integration["status"],
       gaps: JSON.parse(r.gaps as string),
       results: JSON.parse(r.results as string),
+      explanation: r.explanation ? JSON.parse(r.explanation as string) : null,
       createdAt: r.created_at as string,
       approvedBy: (r.approved_by as string | null) ?? null,
       approvedAt: (r.approved_at as string | null) ?? null,

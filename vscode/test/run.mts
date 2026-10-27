@@ -35,10 +35,24 @@ const FILES = {
   "src/u4.js": "// four\n",
   "src/u5.js": "aaa bbb\n",
   "src/gen.js": "// generated\n",
+  // Check Together: an API and a UI that agents change separately (simulated agent, scripted below).
+  "ct/package.json": '{ "type": "module" }\n',
+  "ct/server.js": "export function getUser(id) {\n  return { id, name: 'Ada' };\n}\n",
+  "ct/ui.js": "import { getUser } from './server.js';\n\nexport function greet(id) {\n  return 'Hello ' + getUser(id).name;\n}\n\nexport const footer = 'bye';\n",
+  "ct/ui.test.js": "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { greet } from './ui.js';\ntest('greets the user by name', () => assert.equal(greet(1), 'Hello Ada'));\n",
+  "ct/copy.js": "export const title = 'Shop';\n",
+  "ct/copy.test.js": "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { title } from './copy.js';\ntest('title', () => assert.equal(title, 'Shop'));\n",
 };
+const SIM = resolve(root, "../test/fixtures/simulated-agent");
+// T-ct-api renames the field; T-ct-ui changes the footer and still reads `.name`; T-ct-copy fails its own test.
+process.env.RELAY_SIM_EDITS = JSON.stringify({
+  "T-ct-api": { "ct/server.js": [["name: 'Ada'", "fullName: 'Ada'"]] },
+  "T-ct-ui": { "ct/ui.js": [["'bye'", "'see you soon'"]] },
+  "T-ct-copy": { "ct/copy.js": [["'Shop'", "'Store'"]] },
+});
 const STATIC = resolve(root, "../ide/web/out");
 const SHOTS = resolve(root, "../docs/evidence/vscode-extension-2026-10-22");
-const first = await testServer(FILES, { flushMs: 30, ...(existsSync(STATIC) ? { staticDir: STATIC } : {}) });
+const first = await testServer(FILES, { flushMs: 30, claudeBin: SIM, ...(existsSync(STATIC) ? { staticDir: STATIC } : {}) });
 const { repo, dbPath } = first;
 let server: RelayServer = first.server;
 const signals = mkdtempSync(join(tmpdir(), "relay-signals-"));
@@ -156,11 +170,26 @@ try {
   })();
   restarter.catch((e) => console.log(`restart helper failed: ${(e as Error).message}`));
   server.relay.createTask({ id: "T-docs", objective: "Explain the greeting in the README", scope: ["README.md"] }, HUMAN);
+  // Agent work for Check Together, finished (and checked by Relay) before VS Code starts.
+  server.relay.proposeContract("ct-user-api", "getUser(id) -> { id, fullName }", HUMAN);
+  server.relay.acceptContract("ct-user-api", 1, HUMAN);
+  server.relay.createTask({ id: "T-ct-api", objective: "API returns fullName", scope: ["ct/server.js"], contracts: { "ct-user-api": 1 }, verify: ["node --check ct/server.js"] }, HUMAN);
+  server.relay.createTask({ id: "T-ct-ui", objective: "Friendlier footer", scope: ["ct/ui.js"], contracts: { "ct-user-api": 1 }, verify: ["node --test ct/ui.test.js"] }, HUMAN);
+  server.relay.createTask({ id: "T-ct-copy", objective: "Rename the shop", scope: ["ct/copy.js"], verify: ["node --test ct/copy.test.js"] }, HUMAN);
+  for (const id of ["T-ct-api", "T-ct-ui", "T-ct-copy"]) server.relay.transition(id, "queued", HUMAN);
+  await server.runs.start(["T-ct-api", "T-ct-ui", "T-ct-copy"], server.members.invite("Runner", "owner").member);
+  for (const id of ["T-ct-api", "T-ct-ui", "T-ct-copy"]) {
+    const end = Date.now() + 30_000;
+    while (!(server.runs.forTask(id).at(-1)?.status === "finished" && !server.runs.forTask(id).at(-1)!.checking)) {
+      if (Date.now() > end) throw new Error(`agent run for ${id} didn't finish`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
   code = await runTests({
     extensionDevelopmentPath: root,
     extensionTestsPath: join(root, "dist-test", "suite.js"),
     launchArgs: [checkout, "--disable-extensions", "--no-sandbox", "--disable-gpu", "--disable-workspace-trust", `--user-data-dir=${mkdtempSync(join(tmpdir(), "relay-vscode-user-"))}`],
-    extensionTestsEnv: { RELAY_TEST_INVITE: `${server.url}/join#${token}`, RELAY_TEST_SERVER: server.url, RELAY_TEST_BO_COOKIE: bo.cookie, RELAY_TEST_BO_ID: bo.id, RELAY_TEST_CHECKOUT: checkout, RELAY_TEST_SIGNALS: signals, RELAY_TEST_INVITE2: `${server.url}/join#${ada2.token}`, RELAY_TEST_ONLY: process.env.RELAY_TEST_ONLY ?? "" },
+    extensionTestsEnv: { RELAY_TEST_INVITE: `${server.url}/join#${token}`, RELAY_TEST_SERVER: server.url, RELAY_TEST_BO_COOKIE: bo.cookie, RELAY_TEST_BO_ID: bo.id, RELAY_TEST_CHECKOUT: checkout, RELAY_TEST_SIGNALS: signals, RELAY_TEST_INVITE2: `${server.url}/join#${ada2.token}`, RELAY_TEST_REPO: repo, RELAY_TEST_ONLY: process.env.RELAY_TEST_ONLY ?? "" },
   }).catch((e: Error) => {
     console.error(e.message);
     return 1;

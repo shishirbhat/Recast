@@ -208,6 +208,12 @@ export function parseModule(path: string, text: string, resolve: (from: string, 
         }
       }
       if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && bound.has(n.expression.text)) uses.push({ symbol: bound.get(n.expression.text)!, prop: n.name.text, line: line(n) });
+      // A read straight off the call: `f(x).prop`, `(await f(x)).prop`.
+      if (ts.isPropertyAccessExpression(n)) {
+        let e: ts.Expression = n.expression;
+        while (ts.isAwaitExpression(e) || ts.isParenthesizedExpression(e)) e = e.expression;
+        if (ts.isCallExpression(e) && ts.isIdentifier(e.expression) && importedLocal.has(e.expression.text)) uses.push({ symbol: importedLocal.get(e.expression.text)!, prop: n.name.text, line: line(n) });
+      }
       if (ts.isFunctionLike(n) && n !== scope) return findUses(n);
       ts.forEachChild(n, walk);
     };

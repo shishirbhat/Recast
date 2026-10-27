@@ -88,6 +88,8 @@ export interface Integration {
   results: { command: string; exitCode: number | null; output: string }[];
   contracts: Record<string, number>;
   tree: string;
+  /** Why combined verification failed, from evidence; null when it passed. Never changes `status`. */
+  explanation: { verdict: "confirmed" | "likely" | "unknown"; summary: string; resolve: string; causes: { confidence: string; evidence: string[]; uncertain: string[] }[]; uncertain: string[] } | null;
 }
 
 export interface Why {

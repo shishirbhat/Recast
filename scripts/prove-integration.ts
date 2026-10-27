@@ -62,7 +62,8 @@ try {
   r.createTask({ id: "T-ui", objective: "Friendlier footer", scope: ["src/ui.js"], contracts: { "user-api": 1 }, verify: [OWN_CHECK["T-ui"]!] }, HUMAN);
   for (const t of ["T-api", "T-ui"]) r.transition(t, "queued", HUMAN);
   await server.runs.start(["T-api", "T-ui"], owner);
-  await until(() => ["T-api", "T-ui"].every((t) => ["finished", "failed"].includes(server.runs.forTask(t).at(-1)?.status ?? "")), 30_000, "both runs");
+  // Both runs ended and Relay has finished its own checks on each (a rehearsal is refused before that).
+  await until(() => ["T-api", "T-ui"].every((t) => { const run = server.runs.forTask(t).at(-1); return !!run && ["finished", "failed"].includes(run.status) && !run.checking; }), 30_000, "both runs");
   const runs = Object.fromEntries(["T-api", "T-ui"].map((t) => [t, server.runs.forTask(t).at(-1)!]));
 
   // ---- A. Without Relay: verify each change alone, then merge both into the shared project.
@@ -111,19 +112,30 @@ try {
     ...integ.gaps.map((g) => row("Gap reported", "—", g.replace(/\|/g, "/"))),
     row("Shared project", untouched ? "unchanged" : "CHANGED", "nothing applied until the combined check passes and a person approves"),
     "",
+    "#### Relay's explanation",
+    "",
+    `**Verdict: ${integ.explanation?.verdict ?? "none"}.** ${integ.explanation?.summary ?? "No explanation was produced."}`,
+    "",
+    ...(integ.explanation?.causes ?? []).flatMap((c, i) => [`Evidence for cause ${i + 1} (${c.confidence}):`, "", ...c.evidence.map((e) => `- ${e}`), ...c.uncertain.map((u) => `- Not established: ${u}`), ""]),
+    ...(integ.explanation?.uncertain.length ? ["Uncertain:", "", ...integ.explanation.uncertain.map((u) => `- ${u}`), ""] : []),
+    integ.explanation ? `To resolve: ${integ.explanation.resolve}` : "",
+    "",
     "### Measured",
     "",
     row("", "Without Relay", "With Relay"),
     row("---", "---", "---"),
     row("Broken changes that reached the shared project", merged.ok ? "0" : "1", untouched ? "0" : "1"),
     row("When the break is found", "after merge", "before apply"),
-    row("Cause shown", "a failing test, after the fact", "the failing combined test, with the tasks and contract versions checked (not the cause)"),
+    row("Cause shown", "a failing test, after the fact", `the failing combined test, and the cause: ${integ.explanation?.verdict ?? "none"} (below)`),
   );
   const out = process.argv[2] ?? resolve(import.meta.dirname, "../docs/evidence/integration-proof.md");
   writeSection(out, "deterministic", lines.join("\n"));
   console.log(lines.join("\n"));
   console.log(`\nwrote ${out}`);
   if (merged.ok || integ.status !== "blocked" || !untouched) process.exitCode = 1;
+  // The explanation must come from evidence: the shape change, the consumer's read, and the failing test that reaches it.
+  const cause = integ.explanation?.causes.find((c) => c.confidence === "confirmed");
+  if (integ.explanation?.verdict !== "confirmed" || !cause?.provider.removedKeys.length || !cause.consumer.read || !cause.failing.length) process.exitCode = 1;
 } finally {
   await server.close();
 }

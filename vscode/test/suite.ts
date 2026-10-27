@@ -13,6 +13,8 @@ import { WebsocketProvider } from "y-websocket";
 import WS from "ws";
 import type { RelayApi } from "../src/extension.ts";
 import type { Connection } from "../src/connection.ts";
+import { RelayError } from "../src/connection.ts";
+import { failureMessage, outcome, pendingTasks, preselected } from "../src/checkTogether.ts";
 
 const env = (k: string) => process.env[k] ?? assert.fail(`${k} not set`);
 const SERVER = env("RELAY_TEST_SERVER");
@@ -244,6 +246,70 @@ test("the Coordination view shows the project's tasks with the server's status",
   const tasks = (await relay.connection!.request<{ tasks: { id: string; status: string }[] }>("GET", "/coordination")).tasks;
   assert.ok(tasks.some((t) => t.id === "T-docs" && t.status === "proposed"));
   await vscode.commands.executeCommand("workbench.view.extension.relay");
+});
+
+// ---------- Check Together ----------
+
+/** Hash of every file in the shared project (the server's repository), so "unchanged" means byte for byte. */
+function sharedProject(): string {
+  const repo = env("RELAY_TEST_REPO");
+  const files = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repo, encoding: "utf8" }).stdout.split("\n").filter((f) => f && !f.startsWith(".relay/")).sort();
+  return files.map((f) => `${f}\0${readFileSync(join(repo, f), "utf8")}`).join("\0");
+}
+type Coord = { id: string; status: string; partners: string[]; objective: string; why: string; blockers: string[]; files: string[]; run: { status: string; provider: string; worktree: string } | null };
+
+test("Check Together: the view's selection plus its contract partners are preselected; a blocked result is explained and nothing is applied", async () => {
+  await relay.refreshCoordination();
+  const tasks = (await relay.connection!.request<{ tasks: Coord[] }>("GET", "/coordination")).tasks;
+  const ui = tasks.find((t) => t.id === "T-ct-ui")!;
+  assert.deepEqual(ui.partners, ["T-ct-api"]);
+  // Selecting tasks: only finished work that isn't in the project is offered; partners come preselected.
+  assert.deepEqual(pendingTasks(tasks).map((t) => t.id).filter((id) => id.startsWith("T-ct")).sort(), ["T-ct-api", "T-ct-copy", "T-ct-ui"]);
+  assert.ok(!pendingTasks(tasks).some((t) => t.id === "T-docs"), "a proposed task isn't offered");
+  assert.deepEqual(preselected([ui], pendingTasks(tasks)).sort(), ["T-ct-api", "T-ct-ui"]);
+
+  const before = sharedProject();
+  // The real command, as the view's context menu invokes it (clicked node + selection); the picker is accepted as shown.
+  const done = vscode.commands.executeCommand("relay.checkTogether", { kind: "task", task: ui }, [{ kind: "task", task: ui }]);
+  await sleep(800);
+  await vscode.commands.executeCommand("workbench.action.acceptSelectedQuickOpenItem");
+  await done;
+  const last = relay.lastCheck();
+  assert.ok(last, "a result was recorded");
+  assert.deepEqual([...last.result.tasks].sort(), ["T-ct-api", "T-ct-ui"]);
+  assert.equal(last.result.status, "blocked");
+  assert.equal(last.result.explanation?.verdict, "confirmed");
+  assert.match(last.result.report, /FAIL {2}node --test ct\/ui\.test\.js/);
+  assert.match(last.result.report, /ct\/ui\.js:4 reads \.name, which getUser\(\) no longer returns/);
+  assert.equal(last.outcome.severity, "error");
+  assert.match(last.outcome.message, /^Relay blocked T-ct-api \+ T-ct-ui\. Confirmed cause: T-ct-api changed getUser in ct\/server\.js .* T-ct-ui still reads `name` from getUser\(\) at ct\/ui\.js:4\. .* Nothing was applied\.$/);
+  // Blocked: the person can read the report or go back to either task; approving isn't offered.
+  assert.deepEqual(last.outcome.actions, ["Show Report", ...last.result.tasks.map((t) => `Show ${t}`)]);
+  assert.equal(sharedProject(), before, "the shared project is unchanged");
+  const after = (await relay.connection!.request<{ tasks: Coord[] }>("GET", "/coordination")).tasks;
+  assert.equal(after.find((t) => t.id === "T-ct-api")!.run?.status, "finished", "the agent work is still pending, not applied");
+});
+
+test("Check Together: an unexplained failure says the cause is unknown; an unknown task is refused; approval is offered to owners only", async () => {
+  const before = sharedProject();
+  const r = await relay.checkTogether(["T-ct-ui", "T-ct-copy"]);
+  assert.ok(r);
+  assert.equal(r.status, "blocked");
+  assert.equal(r.explanation?.verdict, "unknown");
+  assert.match(relay.lastCheck()!.outcome.message, /^Relay blocked T-ct-ui \+ T-ct-copy\. \(unknown\) Cause unknown\./);
+  assert.match(r.report, /not ok {2}"title" \(ct\/copy\.test\.js:4\): expected 'Shop', got 'Store'/);
+  assert.equal(sharedProject(), before);
+
+  // A task that doesn't exist: refused by the server, reported, nothing recorded as a result.
+  assert.equal(await relay.checkTogether(["T-ct-api", "T-nope"]), null);
+  assert.equal(relay.lastCheck(), null);
+  assert.match(failureMessage(new RelayError(404, "Unknown task T-nope"), ["T-ct-api", "T-nope"]), /Refresh the Coordination view/);
+  assert.match(failureMessage(new RelayError(403, "Your role (viewer) can't do this."), ["T-ct-api"]), /^You can't check T-ct-api together/);
+  // A passing result offers approval to owners only, and never applies by itself.
+  const passed = { id: "i", tasks: ["A", "B"], status: "passed" as const, gaps: [], baseCommit: null, tree: "t", explanation: null, report: "" };
+  assert.deepEqual(outcome(passed, true).actions, ["Approve and Apply…", "Show Report"]);
+  assert.deepEqual(outcome(passed, false).actions, ["Show Report"]);
+  assert.match(outcome(passed, false).message, /Nothing has been applied; a project owner must approve it/);
 });
 
 // ---------- undo from every entry point ----------

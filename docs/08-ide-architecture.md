@@ -107,7 +107,8 @@ Consequences:
 | `POST /api/agent` | edit | agent composer: a prompt becomes a scoped task (owners run it, editors propose) |
 | `POST /api/runs` | edit | start agents on several tasks from one snapshot |
 | `POST /api/contracts` · `/contracts/:id/:v/accept\|reject` | edit / approve | contracts |
-| `POST /api/integrations/check` · `/integrations/:id/approve` | edit (extra commands: approve) / approve | the cross-task gate |
+| `POST /api/integrations/check` · `/integrations/:id/approve` | edit (extra commands: approve) / approve | the cross-task gate (Check Together). Body `{ tasks, verify? }`; unknown task 404, empty list 400, a mix of agent and non-agent tasks 409, a task already being checked 409. Returns the stored integration (with `explanation`) plus `report`, the text every client prints. Approve refuses (409) a blocked check, and one whose shared project, tasks or contracts moved since |
+| `GET /api/integrations/:id` | read | one recorded check, with `explanation` and `report` |
 | `GET /api/impact?base=\|task=` | read | dependency map: interface changes, consumers, tests, tasks, stale evidence |
 | `GET /api/context?task=` | read | accepted decisions, current contracts, warnings and obsolete records for a task |
 | `GET/POST /api/investigations` · `/:id` · `/:id/entries` · `/:id/run` | read / edit / approve (run) | shared investigations |
@@ -135,7 +136,7 @@ Consequences:
 | Contracts | `contract.proposed`, `contract.accepted`, `contract.rejected` |
 | Intents | `intent.declared`, `intent.approved` |
 | Enforcement and evidence | `enforcement.decision`, `enforcement.diff_check`, `evidence.recorded` |
-| Integration | `integration.checked` (with `rebasedOnto` and `originalBases` when the runner rebased runs), `integration.approved` |
+| Integration | `integration.checked` (with `explanation`: the verdict confirmed/likely/unknown or null, and `rebasedOnto` and `originalBases` when the runner rebased runs), `integration.approved` |
 | Agent runs | `agent.run_started`, `agent.tool`, `agent.denied`, `agent.result`, `agent.error`, `agent.run_ended`, `agent.run_cancelled`, `agent.changes_applied` |
 | Investigations | `investigation.created`, `investigation.entry`, `investigation.command`, `investigation.updated` |
 | Decisions | `decision.proposed`, `decision.accepted`, `decision.rejected`, `decision.invalidated` |

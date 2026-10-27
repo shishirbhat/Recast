@@ -52,6 +52,9 @@ test("parser: imports, re-exports, exports with signatures and returned keys, pr
   assert.deepEqual(getUser.returnKeys, ["id", "name", "plan"]);
   const lazy = parseModule("web/lazy.js", FILES["web/lazy.js"]!, () => null);
   assert.match(lazy.gaps[0]!, /computed path/);
+  // A read straight off the call result, with or without await (these were missed: no break was ever found for them).
+  const direct = parseModule("web/direct.js", 'import { getUser } from "../api/users.js";\nexport const a = (id) => getUser(id).name;\nexport async function b(id) {\n  return (await getUser(id)).plan;\n}\nexport const c = (other) => other(1).name;\n', () => "api/users.js");
+  assert.deepEqual(direct.uses.map((u) => [u.symbol, u.prop, u.line]), [["getUser", "name", 2], ["getUser", "plan", 4]]);
 });
 
 test("an API change is traced to its consumers (through a re-export), affected tests, and dependent tasks; unrelated code is not", () => {

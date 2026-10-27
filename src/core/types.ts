@@ -96,9 +96,46 @@ export interface Integration {
   status: "blocked" | "passed" | "approved";
   gaps: string[];
   results: { command: string; exitCode: number | null; output: string }[];
+  /** Why combined verification failed, from evidence only; null when it passed. Never changes `status`. */
+  explanation: Explanation | null;
   createdAt: string;
   approvedBy: string | null;
   approvedAt: string | null;
+}
+
+/** A failed verification command and the failing tests Relay could read from its output. */
+export interface FailedCheck {
+  command: string;
+  tests: { name: string; file: string | null; line: number | null; message: string }[];
+  excerpt: string;
+}
+
+export interface ExplanationCause {
+  confidence: "confirmed" | "likely";
+  /** The change to an exported interface, and the task(s) that made it. */
+  provider: { tasks: string[]; how: "changed by its run" | "in its declared scope"; file: string; symbol: string; line: number | null; change: string; removedKeys: string[]; addedKeys: string[] };
+  /** The code that depends on it, and the task(s) that own that code. `read` is the property it reads that is gone. */
+  consumer: { tasks: string[]; file: string; line: number; read: string | null };
+  /** Contracts the involved tasks share. Only "current" ones are used as evidence. */
+  contracts: { id: string; version: number | null; status: "current" | "stale" | "missing" | "unrelated"; detail: string }[];
+  failing: { command: string; test: string | null; file: string | null }[];
+  /** Each step of the chain, with file:line references. */
+  evidence: string[];
+  /** What this cause leaves unproven. Empty for a confirmed cause. */
+  uncertain: string[];
+}
+
+export interface Explanation {
+  verdict: "confirmed" | "likely" | "unknown";
+  summary: string;
+  causes: ExplanationCause[];
+  failures: FailedCheck[];
+  uncertain: string[];
+  /** What a developer must resolve. Relay never picks which task's change wins. */
+  resolve: string;
+  /** The combined tree and base the explanation was computed for; it does not apply to any other state. */
+  tree: string;
+  base: string | null;
 }
 
 export type Severity = "block" | "warn";

@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS integrations (
   status TEXT NOT NULL,
   gaps TEXT NOT NULL,           -- JSON string[]
   results TEXT NOT NULL,        -- JSON [{command, exitCode, output}]
+  explanation TEXT,             -- JSON Explanation (why combined verification failed), or NULL
   created_at TEXT NOT NULL,
   approved_by TEXT,
   approved_at TEXT
@@ -176,6 +177,9 @@ export function openDb(path: string): DatabaseSync {
   // Bounded lock wait: a hook must answer inside its deadline rather than hang on a busy database.
   db.exec("PRAGMA busy_timeout = 1500;");
   db.exec(SCHEMA);
+  // Databases created before a column existed get it added; CREATE TABLE IF NOT EXISTS doesn't change them.
+  const cols = (db.prepare("PRAGMA table_info(integrations)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("explanation")) db.exec("ALTER TABLE integrations ADD COLUMN explanation TEXT");
   return db;
 }
 

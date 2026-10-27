@@ -6,7 +6,7 @@ Relay is a provider-neutral coordination engine for human developers and coding 
 
 This branch (`relay`) is an orphan branch. It shares no history with Recast.
 
-## Status (2026-10-21)
+## Status (2026-10-27)
 
 | Component | Status |
 |---|---|
@@ -18,14 +18,16 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 | CLI | **Implemented.** Exercised by tests |
 | Codex CLI adapter | **Not built.** Waiting for an OpenAI API key |
 | Cursor | **Docs only.** Needs a desktop test |
-| Cross-task integration gate (`relay integrate`) | **Implemented and tested** (replays real run 3). Exercised against the real provider only through the per-task block |
-| Benchmark vs. baseline workflow | **Not started** |
+| Cross-task integration gate (`relay integrate`, Check Together) | **Implemented and tested.** Exercised with real Claude Code agents in the integration proof (3 + 3 trials, `docs/evidence/integration-proof.md`): blocked every combined break, project unchanged |
+| Benchmark vs. baseline workflow | **One scenario measured** (`scripts/prove-integration-real.ts`: two real agents with and without Relay). Not yet a benchmark across many tasks |
 | Collaborative IDE (server, Yjs sync, presence, auth, IDE workbench UI) | **Implemented and tested** (real clients, two-browser E2E). Not yet tested by independent users |
 | Google Docs-style presence and line history (avatars at the top, live carets, line authorship on by default, who wrote any line, when, and the edit that did it) | **Implemented and tested** (real Yjs clients, two- and three-browser E2E) |
 | Agent runs from the IDE (worktrees, stale input, 3-way apply, combined gate) | **Tested against the real provider from the browser** (Claude Code 2.1.307, 2026-10-21: started from Coordination, verified by Relay in its worktree, applied by a person; evidence in `docs/evidence/claude-code-ide-2026-10-21`). Stale input and the combined gate are tested with the simulated agent only |
 | IDE workbench at VS Code / Cursor structure (menus, palette prefixes, split editors, minimap, Prettier, Replace in Files, file operations, Testing view, Welcome) | **Implemented and tested** (browser E2E). See `RELAY_HANDOFF.md` |
 | Coordination workspace (`GET /api/coordination`: engine-derived statuses, dependencies, overlaps, "safe to integrate next") | **Implemented and tested** (unit, API and browser E2E with the simulated agent) |
-| VS Code extension | **Not started** |
+| VS Code extension (`vscode/`): join, live shared files, presence, own-edit undo, Coordination view, Apply, Check Together | **Implemented and tested** in a real VS Code against a real server (`cd vscode && npm test`). Check Together's approval step is tested through the API, not by clicking its modal |
+| Explanation of a blocked combined check (confirmed / likely / unknown, from the dependency map, the task diffs, contracts and the failing tests) | **Implemented and tested** (deterministic: `test/explain.test.ts`, `test/integration-proof.test.ts`; real Claude Code: 3 trials in `docs/evidence/integration-proof.md`) |
+| Check Together from the CLI (`relay integrate together`) | **Implemented and tested** (the real CLI binary against a real server, simulated agents) |
 | Validation with independent users | **None** |
 
 The first milestone (two different real agents, a caught contract mismatch, a verified integrated result, and less coordination effort than the baseline) **has not been reached**. One provider works end to end. The second provider, worktree-based orchestration and the baseline measurement are still open.
@@ -54,6 +56,28 @@ relay check T-ui --cwd . && relay verify T-ui --cwd . && relay task complete T-u
 relay integrate check T-ui,T-api --cwd . --verify "npm run test:integration"
 relay integrate approve <integration-id> --cwd .
 ```
+
+### Check Together against a running Relay server
+
+Agent work lives in the server's worktrees, so checking agent tasks together goes through the server (`relay ide`), with a member's session, like the browser IDE and the VS Code extension:
+
+```sh
+relay remote join "http://127.0.0.1:4747/join#<token>"   # one-time invite from an owner (relay ide invite <name>)
+relay integrate together T-api,T-ui                       # rehearse the combined change; prints the result and why
+relay integrate together T-api,T-ui --json                # the stored integration record, explanation included
+relay remote status | relay remote leave
+```
+
+`integrate together` never applies anything. It prints the server's report: the combined verification results, the failing tests, why Relay blocked it, and the cause with its evidence (confirmed, likely or unknown; see `docs/evidence/integration-proof.md`). Applying needs an owner's approval (browser IDE, VS Code, or `POST /api/integrations/:id/approve`), which refuses if the shared project, the tasks or the contracts changed since the check.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | the combined verification passed (nothing applied) |
+| 1 | blocked: the combined verification failed, or another gate refused (the report says which) |
+| 2 | usage error (fewer than two tasks, a malformed invite link) |
+| 3 | could not complete: not signed in, session ended, unknown task, not allowed, server unreachable or refused the request |
+
+The session is stored beside the project database (`.relay/remote-session.json`, readable only by you, listed in `.relay/.gitignore`) and never printed. `RELAY_SERVER` and `RELAY_SESSION` override it, e.g. in CI.
 
 ## Relay IDE (collaborative, browser-based)
 

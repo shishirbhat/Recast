@@ -63,6 +63,15 @@ export class CoordinationTree implements vscode.TreeDataProvider<Node> {
     return this.tasks?.find((t) => t.id === id);
   }
 
+  all(): CoordTask[] {
+    return this.tasks ?? [];
+  }
+
+  /** Needed to reveal a task (Check Together's "Show T-…"): tasks are top level, files and notes sit under theirs. */
+  getParent(node: Node): Node | undefined {
+    return node.kind === "file" ? { kind: "task", task: node.task } : undefined;
+  }
+
   getChildren(node?: Node): Node[] {
     if (!node) {
       if (!this.conn) return [];

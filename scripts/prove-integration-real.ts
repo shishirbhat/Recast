@@ -25,6 +25,8 @@ import { join, resolve } from "node:path";
 import { testServer, until } from "../test/collab-helpers.ts";
 import { HUMAN, makeRepo } from "../test/helpers.ts";
 import { writeSection } from "./evidence-section.ts";
+import { parseFailures } from "../src/analysis/explain.ts";
+import type { Integration } from "../src/core/types.ts";
 
 const arg = (k: string, d: string) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -141,6 +143,7 @@ interface WorkflowOutcome {
   relayStatus?: string;
   relayGaps?: string[];
   projectUnchanged?: boolean;
+  explanation?: { verdict: string; summary: string; accurate: boolean | null; checks: string[] } | null;
   error?: string;
   seconds: number;
   costUsd: number;
@@ -199,6 +202,57 @@ async function workflowA(trialDir: string): Promise<WorkflowOutcome> {
   };
 }
 
+/**
+ * Is Relay's explanation true of the actual code? Judged independently of how Relay derived it, by running the code:
+ * the combined change is rebuilt from the agents' patches in a fresh clone, then
+ *   - the provider's function is imported from the base and the combined tree and called: the keys it really stopped
+ *     returning must include every key the explanation says was removed;
+ *   - the consumer line the explanation cites must, in the combined tree, read one of those removed keys;
+ *   - the file it blames must be one the providing task's own patch changed, and the consumer must be in the other
+ *     task's scope;
+ *   - the failing tests it cites must be among the tests that really fail on the combined tree.
+ * Naming the expected field is not enough to pass.
+ */
+function judge(base: string, patchFiles: string[], tasks: TaskOutcome[], x: NonNullable<Integration["explanation"]>): { accurate: boolean | null; checks: string[] } {
+  if (x.verdict === "unknown") return { accurate: null, checks: ["verdict unknown: no cause claimed, nothing to judge"] };
+  const dir = join(mkdtempSync(join(tmpdir(), "relay-judge-")), "repo");
+  git(tmpdir(), "clone", "-q", base, dir);
+  for (const f of patchFiles) if (readFileSync(f, "utf8").trim()) git(dir, "apply", "--3way", f);
+  const checks: string[] = [];
+  let ok = true;
+  const fail = (m: string) => ((ok = false), checks.push(`FAIL ${m}`));
+  const pass = (m: string) => checks.push(`ok ${m}`);
+  const failing = new Set(parseFailures("node --test", sh(dir, PROJECT_TESTS).out, dir).tests.map((t) => t.name));
+  for (const c of x.causes) {
+    const call = (root: string) => {
+      const r = sh(root, `node --input-type=module -e "const m = await import('./${c.provider.file}'); console.log(JSON.stringify(Object.keys(m['${c.provider.symbol}'](1) ?? {})))"`);
+      return r.ok ? (JSON.parse(r.out.trim()) as string[]) : null;
+    };
+    const before = call(base);
+    const after = call(dir);
+    if (!before || !after) fail(`${c.provider.symbol}() in ${c.provider.file} could not be called`);
+    else {
+      const removed = before.filter((k) => !after.includes(k));
+      if (c.provider.removedKeys.length && c.provider.removedKeys.every((k) => removed.includes(k))) pass(`${c.provider.symbol}(1) really stopped returning ${c.provider.removedKeys.join(", ")} (base ${JSON.stringify(before)}, combined ${JSON.stringify(after)})`);
+      else fail(`claimed removed ${JSON.stringify(c.provider.removedKeys)}, actually removed ${JSON.stringify(removed)}`);
+      const line = readFileSync(join(dir, c.consumer.file), "utf8").split("\n")[c.consumer.line - 1] ?? "";
+      if (c.consumer.read && removed.includes(c.consumer.read) && line.includes(`.${c.consumer.read}`)) pass(`${c.consumer.file}:${c.consumer.line} reads .${c.consumer.read}: ${line.trim()}`);
+      else fail(`${c.consumer.file}:${c.consumer.line} is ${JSON.stringify(line.trim())}, which doesn't read a removed key`);
+    }
+    const providers = tasks.filter((t) => t.changedFiles.includes(c.provider.file)).map((t) => t.id);
+    if (c.provider.tasks.length && c.provider.tasks.every((id) => providers.includes(id))) pass(`${c.provider.file} was changed by ${providers.join(", ")}'s own patch`);
+    else fail(`blames ${c.provider.tasks.join(", ")} for ${c.provider.file}, changed by ${providers.join(", ") || "no task"}`);
+    const owners = TASKS.filter((t) => t.scope.includes(c.consumer.file)).map((t) => t.id);
+    if (c.consumer.tasks.length && c.consumer.tasks.every((id) => owners.includes(id))) pass(`${c.consumer.file} is in ${owners.join(", ")}'s scope`);
+    else fail(`says ${c.consumer.tasks.join(", ")} owns ${c.consumer.file}; scope says ${owners.join(", ") || "nobody"}`);
+    const cited = c.failing.map((f) => f.test).filter((t): t is string => !!t);
+    if (cited.length && cited.every((t) => failing.has(t))) pass(`cited failing test(s) really fail on the combined tree: ${[...new Set(cited)].join(", ")}`);
+    else fail(`cited ${JSON.stringify(cited)}; failing on the combined tree: ${JSON.stringify([...failing])}`);
+  }
+  if (!x.causes.length) fail("no cause listed");
+  return { accurate: ok, checks };
+}
+
 async function workflowB(trialDir: string): Promise<WorkflowOutcome> {
   const t0 = Date.now();
   const { server, repo } = await testServer(FILES, { claudeBin: CLAUDE });
@@ -247,6 +301,8 @@ async function workflowB(trialDir: string): Promise<WorkflowOutcome> {
       mergeConflict = true;
     }
     const failed = integ?.results.find((x) => x.exitCode !== 0);
+    const patches = TASKS.map((t) => join(trialDir, `B-${t.id}.patch`));
+    const explanation = integ?.explanation ? { verdict: integ.explanation.verdict, summary: integ.explanation.summary, ...judge(repo, patches, tasks, integ.explanation) } : null;
     return {
       startTree,
       tasks,
@@ -254,6 +310,7 @@ async function workflowB(trialDir: string): Promise<WorkflowOutcome> {
       mergeConflict,
       relayStatus: integ?.status ?? "refused (conflict)",
       relayGaps: integ?.gaps ?? [],
+      explanation,
       projectUnchanged: diskState(repo) === before && tree(repo) === startTree,
       seconds: Math.round((Date.now() - t0) / 1000),
       costUsd: sum(tasks.map((t) => t.agent.costUsd)),
@@ -313,15 +370,23 @@ if (REPORT) {
     "",
     "### B. With Relay (Relay's agent runner, then the integration rehearsal)",
     "",
-    row("Trial", "T-api files", "T-api own check", "T-ui files", "T-ui own check", "Rehearsal", "Combined tests", "Project unchanged", "Agent time / cost", "Outcome"),
-    row("---", "---", "---", "---", "---", "---", "---", "---", "---", "---"),
+    row("Trial", "T-api files", "T-api own check", "T-ui files", "T-ui own check", "Rehearsal", "Combined tests", "Project unchanged", "Explanation", "Accurate", "Agent time / cost", "Outcome"),
+    row("---", "---", "---", "---", "---", "---", "---", "---", "---", "---", "---", "---"),
     ...trials.filter((t) => t.B).map((t) => {
       const b = t.B!;
-      if (b.error) return row(String(t.n), "—", "—", "—", "—", "—", "—", "—", "—", `inconclusive: \`${b.error.slice(0, 120).replace(/\|/g, "/")}\``);
+      if (b.error) return row(String(t.n), "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", `inconclusive: \`${b.error.slice(0, 120).replace(/\|/g, "/")}\``);
       const [x, y] = b.tasks;
-      return row(String(t.n), x!.changedFiles.join(", ") || "none", pf(x!.ownCheck), y!.changedFiles.join(", ") || "none", pf(y!.ownCheck), b.relayStatus === "blocked" ? "**blocked**" : b.relayStatus!, pf(b.combined), yes(b.projectUnchanged), `${Math.max(x!.agent.seconds, y!.agent.seconds)} s / $${b.costUsd}`, t.classB!);
+      return row(String(t.n), x!.changedFiles.join(", ") || "none", pf(x!.ownCheck), y!.changedFiles.join(", ") || "none", pf(y!.ownCheck), b.relayStatus === "blocked" ? "**blocked**" : b.relayStatus!, pf(b.combined), yes(b.projectUnchanged), b.explanation?.verdict ?? "none", b.explanation ? (b.explanation.accurate === null ? "n/a" : b.explanation.accurate ? "yes" : "**no**") : "—", `${Math.max(x!.agent.seconds, y!.agent.seconds)} s / $${b.costUsd}`, t.classB!);
     }),
   ];
+  lines.push(
+    "",
+    "#### Relay's explanation in each trial",
+    "",
+    "Judged by running the code, not by matching words: the provider function is called on the base and the combined tree, the cited consumer line is read, and the cited tests must really fail (`judge()` in the script).",
+    "",
+    ...trials.filter((t) => t.B?.explanation).flatMap((t) => [`- **Trial ${t.n}: ${t.B!.explanation!.verdict}${t.B!.explanation!.accurate === null ? "" : t.B!.explanation!.accurate ? ", accurate" : ", NOT accurate"}.** ${t.B!.explanation!.summary}`, ...t.B!.explanation!.checks.map((c) => `  - ${c}`)]),
+  );
   writeSection(REPORT, "real-agent", lines.join("\n"));
   console.log(`wrote real-agent section of ${REPORT}`);
 }

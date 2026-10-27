@@ -98,6 +98,8 @@ export class AgentRuns {
   private closed = false;
   /** Runs being applied right now: a second apply of the same run is refused instead of racing the first. */
   private applying = new Set<string>();
+  /** Tasks whose combined check is running: they can be neither applied nor checked again until it is recorded. */
+  private rehearsing = new Set<string>();
 
   constructor(relay: Relay, root: string, dbPath: string, adapter: ProviderAdapter | string) {
     this.relay = relay;
@@ -312,6 +314,7 @@ export class AgentRuns {
    */
   async apply(taskId: string, by: Member): Promise<{ applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[]; reverified: boolean; integrationId: string | null }> {
     const run = this.latest(taskId);
+    if (this.rehearsing.has(taskId)) throw new RelayError("illegal_transition", `${taskId} is being checked together with other tasks; nothing can be applied until that check finishes`);
     if (run.status !== "finished") throw new RelayError("illegal_transition", `The agent run on ${taskId} is ${run.status}`);
     if (run.checking) throw new RelayError("illegal_transition", `Relay is still checking the agent's work on ${taskId}; apply once its verification has run`);
     if (this.applying.has(run.id)) throw new RelayError("illegal_transition", `${taskId} is already being applied`);
@@ -393,9 +396,32 @@ export class AgentRuns {
    */
   async checkTogether(taskIds: string[], verify: string[]): Promise<Integration> {
     const runs = taskIds.map((id) => this.latest(id));
+    const busy = taskIds.filter((id) => this.rehearsing.has(id));
+    if (busy.length) throw new RelayError("illegal_transition", `${busy.join(", ")} ${busy.length === 1 ? "is" : "are"} already being checked together; wait for that result`);
+    const unfinished = runs.filter((r) => r.status !== "finished" || r.checking);
+    if (unfinished.length) throw new RelayError("illegal_transition", unfinished.map((r) => `${r.taskId}'s agent run is ${r.checking ? "still being checked by Relay" : r.status}`).join("; "));
+    for (const id of taskIds) this.rehearsing.add(id);
+    try {
+      return await this.rehearse(taskIds, runs, verify);
+    } finally {
+      for (const id of taskIds) this.rehearsing.delete(id);
+    }
+  }
+
+  /** True while a combined check runs for the task; applying or approving it waits until the result is recorded. */
+  isRehearsing(taskId: string): boolean {
+    return this.rehearsing.has(taskId);
+  }
+
+  private async rehearse(taskIds: string[], runs: AgentRun[], verify: string[]): Promise<Integration> {
     // Runs started together share a snapshot. After one task is rerun (e.g. to fix a mismatch the gate found), its
     // partners' work is rebased 3-way onto the newest snapshot instead of being thrown away; a real conflict refuses.
-    const snapshot = [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]!.snapshot;
+    // If the shared project itself moved since then, the check is made on top of the project as it is now, because
+    // that is what approving would apply onto.
+    const newest = [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]!.snapshot;
+    this.docs?.flushAll();
+    const now = snapshotCommit(this.root);
+    const snapshot = treeOf(this.root, now) === treeOf(this.root, newest) ? newest : now;
     const rebased = runs.some((r) => r.snapshot !== snapshot);
     const dir = join(this.root, ".relay", "worktrees", `integration-${randomUUID().slice(0, 8)}`);
     git(this.root, ["worktree", "add", "--detach", dir, snapshot]);
@@ -415,7 +441,8 @@ export class AgentRuns {
         writeFileSync(join(dir, u), readFileSync(join(r.worktree, u)));
       }
     }
-    const integ = await this.relay.checkIntegrationAsync(taskIds, dir, verify, undefined, rebased ? { rebasedOnto: snapshot } : {});
+    const changedBy = Object.fromEntries(runs.map((r) => [r.taskId, changedFiles(r.worktree, r.snapshot)]));
+    const integ = await this.relay.checkIntegrationAsync(taskIds, dir, verify, undefined, { ...(rebased ? { rebasedOnto: snapshot } : {}), changedBy });
     this.combined.set(integ.id, dir);
     return integ;
   }
@@ -433,7 +460,13 @@ export class AgentRuns {
     const dir = this.combined.get(integrationId);
     if (!dir) throw new RelayError("not_found", "This integration was not prepared by the agent runner");
     const integ = this.relay.getIntegration(integrationId)!;
+    const busy = integ.tasks.filter((id) => this.rehearsing.has(id));
+    if (busy.length) throw new RelayError("illegal_transition", `${busy.join(", ")} ${busy.length === 1 ? "is" : "are"} being checked together again; approve once that check finishes`);
     const snapshot = integ.baseCommit!;
+    // The check judged the change on top of the project as it was at `snapshot`. If the project moved since, that
+    // result no longer covers what applying would produce: require a new check (which rebases onto the new state).
+    this.docs?.flushAll();
+    if (treeOf(this.root, snapshotCommit(this.root)) !== treeOf(this.root, snapshot)) throw new RelayError("stale_state", "The shared project changed since this check; check these tasks together again before approving");
     const files = changedFiles(dir, snapshot);
     const dry = this.dryRun(dir, snapshot, files);
     if (dry.length) return { integration: integ, applied: [], conflicts: dry, skipped: [] };

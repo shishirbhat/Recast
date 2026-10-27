@@ -10,6 +10,8 @@ import { PresenceDecorations } from "./presence.ts";
 import { CoordinationTree } from "./coordination.ts";
 import type { CoordTask } from "./coordination.ts";
 import { SessionContent, showLineHistory } from "./history.ts";
+import { CheckTogether } from "./checkTogether.ts";
+import type { CheckResult, Outcome } from "./checkTogether.ts";
 
 /** What the extension exposes to other extensions (and to its tests). */
 export interface RelayApi {
@@ -24,6 +26,10 @@ export interface RelayApi {
   settled(): Promise<void>;
   /** Shared files missing from this checkout, and ones whose local copy differs (what joining reports). */
   compareWithShared(): Promise<{ missing: string[]; differ: string[] }>;
+  /** Check Together without the picker: the same server call the command makes; null if it couldn't run. */
+  checkTogether(taskIds: string[]): Promise<CheckResult | null>;
+  /** The latest Check Together result and what the person was offered (actions), or null. */
+  lastCheck(): { result: CheckResult; outcome: Outcome } | null;
 }
 
 const SECRET = (folder: vscode.Uri) => `relay.session:${folder.toString()}`;
@@ -38,6 +44,8 @@ class RelayExtension implements vscode.Disposable, SyncChoices {
   private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   private presence = new PresenceDecorations();
   readonly tree = new CoordinationTree();
+  private view: vscode.TreeView<unknown>;
+  readonly checks: CheckTogether;
   private sessions = new SessionContent();
   readonly output = vscode.window.createOutputChannel("Relay");
   private disposables: vscode.Disposable[] = [];
@@ -52,11 +60,22 @@ class RelayExtension implements vscode.Disposable, SyncChoices {
     this.version = (ctx.extension.packageJSON as { version: string }).version;
     Connection.client = `vscode/${this.version}`;
     this.status.command = "relay.status";
+    // Several tasks can be selected at once, for Check Together.
+    this.view = vscode.window.createTreeView("relay.coordination", { treeDataProvider: this.tree, canSelectMany: true }) as vscode.TreeView<unknown>;
+    this.checks = new CheckTogether(
+      () => this.conn,
+      async (id) => {
+        const t = this.tree.task(id);
+        if (t) await this.view.reveal({ kind: "task", task: t }, { select: true, focus: true, expand: true });
+      },
+      () => this.tree.refresh(),
+    );
     this.disposables.push(
       this.status,
       this.presence,
       this.output,
-      vscode.window.registerTreeDataProvider("relay.coordination", this.tree),
+      this.view,
+      this.checks,
       vscode.workspace.registerTextDocumentContentProvider("relay-session", this.sessions),
       vscode.workspace.onDidOpenTextDocument((d) => this.track(d)),
       vscode.workspace.onDidCloseTextDocument((d) => this.untrack(d)),
@@ -413,6 +432,15 @@ class RelayExtension implements vscode.Disposable, SyncChoices {
     await this.tree.refresh();
   }
 
+  /** Check Together from the view (the clicked task and any others selected) or the Command Palette (pick them). */
+  async checkTogether(node?: { task?: CoordTask }, nodes?: { task?: CoordTask }[]): Promise<void> {
+    if (!this.conn) throw new Error("Join a Relay project first.");
+    await this.tree.refresh();
+    const selected = [...(nodes ?? []), ...(node ? [node] : [])].map((n) => n.task).filter((t): t is CoordTask => !!t);
+    const ids = await this.checks.pick(this.tree.all(), selected);
+    if (ids) await this.checks.run(ids);
+  }
+
   async showStatus(): Promise<void> {
     if (!this.conn) return void (await vscode.commands.executeCommand("relay.join"));
     const s = this.activeSync();
@@ -495,6 +523,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<RelayApi> 
     vscode.commands.registerCommand("relay.coordination.refresh", run(() => relay.tree.refresh())),
     vscode.commands.registerCommand("relay.apply", run((node: { task: CoordTask }) => relay.apply(node.task))),
     vscode.commands.registerCommand("relay.applyDenied", () => vscode.window.showInformationMessage("Only project owners can apply agent work to the shared project.")),
+    vscode.commands.registerCommand("relay.checkTogether", run((node?: { task?: CoordTask }, nodes?: { task?: CoordTask }[]) => relay.checkTogether(node, nodes))),
   );
   // "Open in VS Code" links from Relay's invite dialog. Any web page can open a vscode:// link, so joining always asks
   // first, naming the server that open files would be shared with.
@@ -530,6 +559,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<RelayApi> 
     sharedFiles: () => [...relay.files],
     settled: () => relay.settled(),
     compareWithShared: () => relay.compare(),
+    checkTogether: (ids) => relay.checks.run(ids),
+    lastCheck: () => relay.checks.last,
   };
 }
 

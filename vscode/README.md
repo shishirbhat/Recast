@@ -22,6 +22,7 @@ Before an invite is used, the extension checks the server's protocol version. A 
 | Presence | Collaborators' carets and selections in their own colour, with their name; they see yours, in VS Code or in the browser. |
 | Who wrote this line? | Right-click › **Who Wrote This Line?**: each part of the line with its author and time; pick one to open that edit session as a diff. |
 | Coordination | The Relay view in the activity bar: every task with Relay's status and why, its files and blockers. Owners can **Apply to Project** on agent work that's ready. |
+| Check Together | Tasks that share a contract can't be applied one by one. Select them in the Relay view (Ctrl/Cmd-click) and choose **Check Together…** (right-click, or the merge icon in the view's title bar, or the Command Palette). The picker lists finished work that isn't in the project yet, with the selection and its contract partners already ticked. Relay's server builds the combined change, runs the checks and shows progress; the full report opens in the **Relay: Check Together** output. If it's blocked you see why, and the cause when Relay can establish it (confirmed, likely or unknown, with the evidence), plus a button back to each task. Nothing is applied either way. If it passed, owners get **Approve and Apply…**, which asks first and is refused if the project, a task or a contract changed since the check (check together again). |
 
 ## Undo
 

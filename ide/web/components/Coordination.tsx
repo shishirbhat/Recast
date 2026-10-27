@@ -531,6 +531,22 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
               </li>
             ))}
           </ul>
+          {integration.explanation && (
+            <div className="mt-2 text-[12.5px]" data-testid="integration-explanation">
+              <p>
+                <span className="font-semibold">{integration.explanation.verdict === "confirmed" ? "Cause (confirmed)" : integration.explanation.verdict === "likely" ? "Likely cause (not confirmed)" : "Cause unknown"}:</span> {integration.explanation.summary.replace(/^(Confirmed cause|Likely cause \(not confirmed\)|Cause unknown)[:.] ?/, "")}
+              </p>
+              <details className="mt-1 text-ink-2">
+                <summary className="cursor-pointer">Evidence</summary>
+                <ul className="mt-1 space-y-0.5 font-mono text-[11.5px]">
+                  {integration.explanation.causes.flatMap((c) => [...c.evidence, ...c.uncertain.map((u) => `not established: ${u}`)]).concat(integration.explanation.uncertain).map((e, i) => (
+                    <li key={i}>· {e}</li>
+                  ))}
+                </ul>
+              </details>
+              <p className="mt-1 text-ink-2">{integration.explanation.resolve}</p>
+            </div>
+          )}
           {integration.status === "passed" && isOwner && (
             <Button tone="primary" size="sm" className="mt-3" onClick={() => act(() => api("POST", `/integrations/${integration.id}/approve`).then(() => setIntegration(null)), `Approved ${integration.tasks.join(" + ")} together.`)}>
               <ShieldCheck size={13} /> Approve all {integration.tasks.length}

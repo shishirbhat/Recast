@@ -16,6 +16,7 @@ import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { coordination } from "../analysis/coordination.ts";
 import { changeRecord } from "../analysis/change.ts";
+import { integrationReport } from "../analysis/explain.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
 import * as gitops from "./gitops.ts";
 import { TestRunner } from "./testrunner.ts";
@@ -955,19 +956,38 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         const b = await readBody(req);
         const extra = strList(b.verify, "verify");
         if (extra.length && !can(m.role, "approve")) throw new HttpError(403, "forbidden", "Only owners can add verification commands");
-        const ids = strList(b.tasks, "tasks");
-        // Agent tasks are checked in a combined worktree of their changes; human tasks in the shared workspace.
-        if (ids.length && ids.every((id) => runs.hasRuns(id))) return json(res, 200, await runs.checkTogether(ids, extra));
-        docs.flushAll();
-        return json(res, 200, await relay.checkIntegrationAsync(ids, root, extra));
+        const ids = [...new Set(strList(b.tasks, "tasks"))];
+        if (!ids.length) throw new HttpError(400, "invalid", "Name the tasks to check together");
+        for (const id of ids) relay.requireTask(id);
+        // Agent tasks are checked in a combined worktree of their changes; human tasks in the shared workspace. A mix
+        // can't be built into one change yet, so it is refused rather than checked without the agents' work.
+        const agent = ids.filter((id) => runs.hasRuns(id));
+        if (agent.length && agent.length < ids.length) throw new HttpError(409, "invalid", `${agent.join(", ")} ${agent.length === 1 ? "has" : "have"} agent work in a worktree and ${ids.filter((id) => !agent.includes(id)).join(", ")} ${ids.length - agent.length === 1 ? "doesn't" : "don't"}; Relay can't combine the two into one check yet`);
+        let integ;
+        if (agent.length) integ = await runs.checkTogether(ids, extra);
+        else {
+          docs.flushAll();
+          integ = await relay.checkIntegrationAsync(ids, root, extra);
+        }
+        return json(res, 200, { ...integ, report: integrationReport(integ) });
       }
       if (parts[2] === "approve") {
         const m = requireMember(req, "approve");
         const id = parts[1] ?? "";
-        if (runs.hasCombined(id)) return json(res, 200, runs.approveTogether(id, m));
+        if (runs.hasCombined(id)) {
+          const r = runs.approveTogether(id, m);
+          return json(res, 200, { ...r, report: integrationReport(relay.getIntegration(id)!) });
+        }
         docs.flushAll();
-        return json(res, 200, { integration: relay.approveIntegration(id, actorFor(m), root), applied: [], conflicts: [], skipped: [] });
+        const integ = relay.approveIntegration(id, actorFor(m), root);
+        return json(res, 200, { integration: integ, applied: [], conflicts: [], skipped: [], report: integrationReport(integ) });
       }
+    }
+    if (method === "GET" && parts[0] === "integrations" && parts[1]) {
+      requireMember(req, "read");
+      const integ = relay.getIntegration(parts[1]);
+      if (!integ) throw new HttpError(404, "not_found", "No such integration");
+      return json(res, 200, { ...integ, report: integrationReport(integ) });
     }
     if (parts[0] === "members" && method === "POST") {
       requireMember(req, "admin");
