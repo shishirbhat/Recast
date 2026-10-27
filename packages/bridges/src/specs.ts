@@ -3,7 +3,31 @@ import { CONTRACTS } from "./contracts";
 import { DestinationError, DuplicateError, need, moved, seg, type Send, type Spec } from "./http";
 
 /** A write that cannot be repeated safely and cannot be read back: an unknown outcome stays unknown until the person checks. */
-const unkeyedCreate = (permission: string, reversal: OperationCapabilities["reversal"]): OperationCapabilities => ({ writes: true, idempotency: "none", verifiable: false, reversal, onTimeout: "outcome-unknown", permission });
+const unkeyedCreate = (permission: string, reversal: OperationCapabilities["reversal"], o: { readBack?: boolean } = {}): OperationCapabilities => ({ writes: true, idempotency: "none", verifiable: !!o.readBack, reversal, onTimeout: "outcome-unknown", permission });
+
+// ---- reading a placement back (Verify) -----------------------------------------------------------------------------
+/** The item, or null when the provider says it is not there (404, 410). Any other refusal is an error, never "absent". */
+async function readBack(send: Send, req: Parameters<Send>[0]): Promise<Record<string, unknown> | null> {
+  try { return asObj(await send(req)); } catch (e) { if (e instanceof DestinationError && (e.status === 404 || e.status === 410)) return null; throw e; }
+}
+/** Compare what the provider now holds with what was moved, field by field. `gone` means it is not (or no longer) there. */
+function compared(op: Operation, actual: Record<string, string | null> | null, gone: string, link?: unknown) {
+  const fields = Object.keys(actual ?? Object.fromEntries(op.dataMoved.map((d) => [d.path, null]))).map((path) => {
+    const expected = moved(op, path) ?? ""; const a = actual ? actual[path] ?? null : null;
+    return { path, expected, actual: a, match: a !== null && a === expected };
+  });
+  const href = typeof link === "string" && /^https:\/\//.test(link) ? link : undefined;
+  if (!actual) return { ok: false, fields, note: gone };
+  return { ok: fields.every((f) => f.match), fields, ...(href ? { link: href } : {}) };
+}
+/** A draft's raw message, decoded: its To header and its text. */
+function parseRaw(raw: string): { to: string | null; body: string | null } {
+  const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+  const text = new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+  const cut = text.search(/\r?\n\r?\n/); const head = cut < 0 ? text : text.slice(0, cut);
+  const to = /^to:\s*(.*)$/im.exec(head)?.[1]?.trim() ?? null;
+  return { to, body: cut < 0 ? null : text.slice(cut).replace(/^\r?\n\r?\n/, "") };
+}
 
 const asObj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown, what: string): string => { if (typeof v !== "string" || !v) throw new DestinationError(`unexpected response: no ${what}`); return v; };
@@ -58,23 +82,32 @@ export function rfc822Draft(to: string, body = ""): string {
 }
 export const gmailDraft: Spec<GmailTarget> = {
   contract: CONTRACTS.gmailDraft,
-  capabilities: { "person-message-recipient": unkeyedCreate("gmail.compose", "delete-created") },
+  capabilities: { "person-message-recipient": unkeyedCreate("gmail.compose", "delete-created", { readBack: true }) },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Person.email")) } } }));
     return JSON.stringify({ id: str(r.id, "draft id") });
   },
   async undo(token, t, send) { await send({ method: "DELETE", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts/${seg((JSON.parse(token) as { id: string }).id)}` }); },
+  verify: (token, op, t, send) => verifyDraft(token, op, t, send, { "Person.email": "to" }),
 };
+/** Read a draft back (drafts.get, raw) and compare its To and text. The link is the Drafts folder: Gmail has no stable address for one draft. */
+async function verifyDraft(token: string, op: Operation, t: GmailTarget, send: Send, map: Record<string, "to" | "body">) {
+  const d = await readBack(send, { method: "GET", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts/${seg((JSON.parse(token) as { id: string }).id)}?format=raw` });
+  const raw = d ? asObj(d.message).raw : undefined;
+  const parsed = typeof raw === "string" ? parseRaw(raw) : null;
+  return compared(op, parsed ? Object.fromEntries(Object.entries(map).map(([path, k]) => [path, parsed[k]])) : null, "the draft is not in Gmail", "https://mail.google.com/mail/u/0/#drafts");
+}
 
 /** A composed message (a person and what to say) saved as a draft: To and the text. Still a draft, never a send. */
 export const gmailMessageDraft: Spec<GmailTarget> = {
   contract: CONTRACTS.gmailMessageDraft,
-  capabilities: { "message-draft-entry": unkeyedCreate("gmail.compose", "delete-created") },
+  capabilities: { "message-draft-entry": unkeyedCreate("gmail.compose", "delete-created", { readBack: true }) },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${GMAIL}/${seg(t.userId ?? "me")}/drafts`, body: { message: { raw: rfc822Draft(need(op, "Message.to"), need(op, "Message.snippet")) } } }));
     return JSON.stringify({ id: str(r.id, "draft id") });
   },
   undo: (token, t, send) => gmailDraft.undo(token, t, send),
+  verify: (token, op, t, send) => verifyDraft(token, op, t, send, { "Message.to": "to", "Message.snippet": "body" }),
 };
 
 // ---- Google Sheets (Sheets API v4, values.append / values.clear) ---------------------------------
@@ -99,25 +132,39 @@ export interface TasksTarget { taskListId: string }
 const TASKS = "https://tasks.googleapis.com/tasks/v1/lists";
 export const googleTasks: Spec<TasksTarget> = {
   contract: CONTRACTS.googleTasks,
-  capabilities: { "document-task-reference": unkeyedCreate("tasks", "delete-created") },
+  capabilities: { "document-task-reference": unkeyedCreate("tasks", "delete-created", { readBack: true }) },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Document.title"), ...(moved(op, "Document.url") ? { notes: moved(op, "Document.url") } : {}) } }));
     return JSON.stringify({ id: str(r.id, "task id") });
   },
   async undo(token, t, send) { await send({ method: "DELETE", url: `${TASKS}/${seg(t.taskListId)}/tasks/${seg((JSON.parse(token) as { id: string }).id)}` }); },
+  verify: (token, op, t, send) => verifyTask(token, op, t, send, { "Document.title": "title", "Document.url": "notes" }),
 };
+/** Read a task back (tasks.get). A deleted task still answers, marked deleted: that is "not there". */
+async function verifyTask(token: string, op: Operation, t: TasksTarget, send: Send, map: Record<string, "title" | "notes" | "due">) {
+  const k = await readBack(send, { method: "GET", url: `${TASKS}/${seg(t.taskListId)}/tasks/${seg((JSON.parse(token) as { id: string }).id)}` });
+  const there = k && k.deleted !== true;
+  const value = (key: "title" | "notes" | "due") => { const v = k?.[key]; return typeof v !== "string" ? null : key === "due" ? v.slice(0, 10) : v; };
+  const paths = Object.keys(map).filter((p) => moved(op, p) !== undefined);
+  return compared(op, there ? Object.fromEntries(paths.map((p) => [p, map[p] === "due" ? value("due") : value(map[p]!)])) : null, "the task is not in Google Tasks", k?.webViewLink);
+}
 
 // A whole task, with its due date. Google keeps only the date of `due` (the time part is discarded), so it is sent as
 // midnight UTC of that day: the date the person saw is the date Google shows.
 export const googleTasksEntry: Spec<TasksTarget> = {
   contract: CONTRACTS.googleTasksEntry,
-  capabilities: { "task-tasklist-entry": unkeyedCreate("tasks", "delete-created") },
+  capabilities: { "task-tasklist-entry": unkeyedCreate("tasks", "delete-created", { readBack: true }) },
   async execute(op, t, send) {
     const url = moved(op, "Task.url"), due = moved(op, "Task.due");
     const r = asObj(await send({ method: "POST", url: `${TASKS}/${seg(t.taskListId)}/tasks`, body: { title: need(op, "Task.title"), ...(url ? { notes: url } : {}), ...(due ? { due: `${String(due).slice(0, 10)}T00:00:00.000Z` } : {}) } }));
     return JSON.stringify({ id: str(r.id, "task id") });
   },
   undo: googleTasks.undo,
+  // Google keeps only the date of `due`, so the date is what is compared.
+  verify: async (token, op, t, send) => {
+    const r = await verifyTask(token, op, t, send, { "Task.title": "title", "Task.url": "notes", "Task.due": "due" });
+    return { ...r, fields: r.fields.map((f) => f.path === "Task.due" ? { ...f, expected: f.expected.slice(0, 10), match: f.actual === f.expected.slice(0, 10) } : f), ok: r.fields.every((f) => f.path === "Task.due" ? f.actual === f.expected.slice(0, 10) : f.match) && !r.note };
+  },
 };
 
 // ---- Google Docs (Docs API v1 documents.create + batchUpdate; Drive API v3 files.update to trash) --------------------
@@ -130,7 +177,7 @@ export const googleDocs: Spec<DocsTarget> = {
   contract: CONTRACTS.googleDocs,
   // Undo trashes (the person can restore it from the Drive trash): "archive". Google's document id is Google's, so a lost
   // answer cannot be checked exactly: unknown stays unknown until the person looks.
-  capabilities: { "note-docs-entry": unkeyedCreate("drive.file", "archive") },
+  capabilities: { "note-docs-entry": unkeyedCreate("drive.file", "archive", { readBack: true }) },
   async execute(op, _t, send) {
     const r = asObj(await send({ method: "POST", url: DOCS, body: { title: need(op, "Note.title") } }));
     const id = str(r.documentId, "documentId"); const token = JSON.stringify({ id });
@@ -145,6 +192,15 @@ export const googleDocs: Spec<DocsTarget> = {
     return token;
   },
   async undo(token, _t, send) { await trash((JSON.parse(token) as { id: string }).id, send); },
+  // Read the document back (documents.get) and compare its title and its text; a trashed one is not there.
+  async verify(token, op, _t, send) {
+    const id = (JSON.parse(token) as { id: string }).id;
+    const d = await readBack(send, { method: "GET", url: `${DOCS}/${seg(id)}` });
+    const meta = d ? await readBack(send, { method: "GET", url: `${DRIVE}/${seg(id)}?fields=trashed` }) : null;
+    const text = d ? (asObj(d.body).content as unknown[] | undefined ?? []).flatMap((c) => (asObj(asObj(c).paragraph).elements as unknown[] | undefined ?? []).map((e) => String(asObj(asObj(e).textRun).content ?? ""))).join("") : "";
+    const there = d && meta?.trashed !== true;
+    return compared(op, there ? { "Note.title": typeof d!.title === "string" ? d!.title : null, "Note.body": text.replace(/\n$/, "") } : null, "the document is not in Google Drive", `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`);
+  },
 };
 
 // ---- GitHub (REST API 2022-11-28: issues.create / issues.update to close) ---------------------------------------------
@@ -156,7 +212,7 @@ export const githubIssue: Spec<GithubTarget> = {
   contract: CONTRACTS.githubIssue,
   // Closing is the reversal GitHub allows (deleting needs admin rights). The issue number is GitHub's: a lost answer
   // cannot be checked exactly, so it stays unknown until the person looks.
-  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:write", "archive") },
+  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:write", "archive", { readBack: true }) },
   async execute(op, t, send) {
     const r = asObj(await send({ method: "POST", url: issuesUrl(t), headers: GITHUB_HEADERS, body: { title: need(op, "Issue.title"), body: need(op, "Issue.body") } }));
     if (typeof r.number !== "number") throw new DestinationError("unexpected response: no issue number");
@@ -164,6 +220,12 @@ export const githubIssue: Spec<GithubTarget> = {
   },
   async undo(token, t, send) {
     await send({ method: "PATCH", url: `${issuesUrl(t)}/${(JSON.parse(token) as { number: number }).number}`, headers: GITHUB_HEADERS, body: { state: "closed", state_reason: "not_planned" } });
+  },
+  // Read the issue back; a closed one (Undo's reversal) is not "placed as planned".
+  async verify(token, op, t, send) {
+    const i = await readBack(send, { method: "GET", url: `${issuesUrl(t)}/${(JSON.parse(token) as { number: number }).number}`, headers: GITHUB_HEADERS });
+    const open = i && i.state === "open";
+    return compared(op, open ? { "Issue.title": typeof i!.title === "string" ? i!.title : null, "Issue.body": typeof i!.body === "string" ? i!.body : null } : null, i ? "the issue is closed" : "the issue is not in the repository", i?.html_url);
   },
 };
 
@@ -179,7 +241,7 @@ async function gql(send: Send, query: string, variables: Record<string, unknown>
 }
 export const linearIssue: Spec<LinearTarget> = {
   contract: CONTRACTS.linearIssue,
-  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:create", "delete-created") },
+  capabilities: { "issue-tracker-entry": unkeyedCreate("issues:create", "delete-created", { readBack: true }) },
   async execute(op, t, send) {
     const d = asObj((await gql(send, "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }",
       { input: { teamId: t.teamId, title: need(op, "Issue.title"), description: need(op, "Issue.body") } })).issueCreate);
@@ -190,6 +252,11 @@ export const linearIssue: Spec<LinearTarget> = {
   async undo(token, _t, send) {
     const d = asObj((await gql(send, "mutation($id: String!) { issueDelete(id: $id) { success } }", { id: (JSON.parse(token) as { id: string }).id })).issueDelete);
     if (d.success !== true) throw new DestinationError("Linear did not delete the issue");
+  },
+  async verify(token, op, _t, send) {
+    const i = asObj((await gql(send, "query($id: String!) { issue(id: $id) { title description url archivedAt trashed } }", { id: (JSON.parse(token) as { id: string }).id })).issue);
+    const there = typeof i.title === "string" && !i.archivedAt && i.trashed !== true;
+    return compared(op, there ? { "Issue.title": i.title as string, "Issue.body": typeof i.description === "string" ? i.description : null } : null, "the issue is not in Linear", i.url);
   },
 };
 

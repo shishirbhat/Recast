@@ -47,10 +47,12 @@ const fakeGoogle: typeof fetch = async (u, init) => {
   if (url.startsWith("https://tasks.googleapis.com/")) {
     if (method === "POST") { const id = `t${tasks.size + 1}`; tasks.set(id, JSON.parse(String(init!.body))); return json(200, { id }); }
     if (method === "DELETE") { tasks.delete(url.split("/tasks/").pop()!); return json(204, null); }
+    if (method === "GET") { const id = url.split("/tasks/").pop()!; return tasks.has(id) ? json(200, { id, ...(tasks.get(id) as object) }) : json(404, {}); }
   }
   if (url.includes("/gmail/")) {
     if (method === "POST") { const id = `d${drafts.size + 1}`; drafts.set(id, JSON.parse(String(init!.body))); return json(200, { id, message: { id: `m${id}` } }); }
     if (method === "DELETE") { drafts.delete(url.split("/drafts/")[1]!); return json(204, null); }
+    if (method === "GET") { const id = url.split("/drafts/")[1]!.split("?")[0]!; return drafts.has(id) ? json(200, { id, message: { id: `m${id}`, raw: (drafts.get(id) as any).message.raw } }) : json(404, {}); }
   }
   const id = decodeURIComponent(url.split("/events/")[1]?.split("?")[0] ?? "");
   if (method === "POST") { const b = JSON.parse(String(init!.body)); if (events.has(b.id)) return json(409, {}); events.set(b.id, { ...b, status: "confirmed", htmlLink: `https://www.google.com/calendar/event?eid=${b.id}` }); if (dropNext) { dropNext = false; return json(504, {}); } return json(200, events.get(b.id)); }
@@ -200,6 +202,9 @@ describe("the extension places in the real Google Calendar through the Recast pr
     const raw = Buffer.from((drafts.get("d1") as any).message.raw, "base64url").toString();
     expect(raw).toMatch(/To: maya\.rao@example\.com/); expect(raw).toContain("Free for dinner this week?");
     expect(seenByGoogle.some((x) => /messages\/send|drafts\/send/.test(x))).toBe(false);      // never sent
+    // Read back from Gmail: the draft's To and text, as Gmail now holds them.
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect((await stored()).placement.verification).toMatchObject({ ok: true, link: "https://mail.google.com/mail/u/0/#drafts" });
     await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await stored()).phase === "idle");
     expect(drafts.size).toBe(0);
@@ -224,6 +229,9 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await page.locator("recast-clay >> button", { hasText: "Add a task" }).click();
     await until(async () => (await stored()).phase === "succeeded");
     expect([...tasks.values()]).toEqual([{ title: "Q3 planning notes", notes: `${base}/article.html` }]);
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect((await stored()).placement.verification).toMatchObject({ ok: true });
+    expect(await page.locator("recast-clay >> .rg-verify").innerText()).toMatch(/^Read back from Google Tasks: 2 of 2 fields match\.$/);
     await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
     await until(async () => (await stored()).phase === "idle");
     expect(tasks.size).toBe(0);

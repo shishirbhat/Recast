@@ -158,7 +158,8 @@ export function createApi(deps: ApiDeps) {
         await pd.placements.save({ tenantId, destination, target, receipt: r, dataMoved: op.dataMoved, status: "outcome_unknown", action: [...action, { status: "outcome_unknown", at: iso(), reason: e.message }], ...(e.reconcileRef ? { reconcileRef: e.reconcileRef } : {}) });
         // 202: the provider may or may not have done it. Never reported as success, never silently retried.
         throw new Accepted({ status: "outcome_unknown", action_id: r.receiptId, message: `${e.message}. Recast has not retried it.`,
-          next: e.reconcileRef && caps?.verifiable ? "POST /v1/place/reconcile with this action_id to check with the destination" : "check the destination yourself before trying again: this destination cannot be checked or retried safely" });
+          // Only when the bridge can actually ask about a lost write (being readable afterwards is not enough).
+          next: e.reconcileRef && dt.spec.reconcile ? "POST /v1/place/reconcile with this action_id to check with the destination" : "check the destination yourself before trying again: this destination cannot be checked or retried safely" });
       }
       if (e instanceof DuplicateError) throw new HttpError(409, "already_placed", "this is already in that destination; nothing new was created");
       const r = provisional();

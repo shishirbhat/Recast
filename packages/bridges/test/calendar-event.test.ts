@@ -122,9 +122,9 @@ describe("Google Calendar: verifying a placement by reading it back", () => {
     expect(g.calls.filter((c) => c.method !== "GET")).toHaveLength(1);   // checking never writes
   });
   it("a destination with no read-back says it was not checked", async () => {
-    const b = new HttpBridge(gmailMessageDraft, {}, async () => ({ status: 200, json: {} }));
-    const v = await b.verify({ receiptId: "r", opId: "o", at: "x", status: "done", objectId: "x", destination: "gmail.drafts", relationId: "message-draft-entry", effect: "", reversible: true, bridgeRef: "{}" }, {} as never);
-    expect(v).toMatchObject({ ok: false, fields: [], note: "Gmail cannot be read back, so this was not checked" });
+    const b = new HttpBridge(googleSheets, { spreadsheetId: "s", range: "A1" }, async () => ({ status: 200, json: {} }));
+    const v = await b.verify({ receiptId: "r", opId: "o", at: "x", status: "done", objectId: "x", destination: "google-sheets.range", relationId: "product-product-compare", effect: "", reversible: true, bridgeRef: "{}" }, {} as never);
+    expect(v).toMatchObject({ ok: false, fields: [], note: "Google Sheets cannot be read back, so this was not checked" });
   });
 });
 

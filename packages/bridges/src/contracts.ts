@@ -15,11 +15,11 @@ export const CONTRACTS = {
     accepts: [{ relationId: "event-calendar-entry", effect: "Add to calendar", dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
   },
   gmailDraft: {
-    destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api", abilities: ["create", "delete", "undo"],
+    destination: "gmail.compose-draft", app: "Gmail", targetKind: "Message", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "person-message-recipient", effect: "Create a draft to this person", dataMoved: ["Person.email"] }],
   },
   gmailMessageDraft: {
-    destination: "gmail.drafts", app: "Gmail", targetKind: "Drafts", reliability: "official-api", abilities: ["create", "delete", "undo"],
+    destination: "gmail.drafts", app: "Gmail", targetKind: "Drafts", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "message-draft-entry", effect: "Save as draft", dataMoved: ["Message.to", "Message.snippet"] }],
   },
   googleSheets: {
@@ -27,12 +27,12 @@ export const CONTRACTS = {
     accepts: [{ relationId: "product-product-compare", effect: "Add a row", dataMoved: ["Product.name", "Product.url"] }],
   },
   googleTasks: {
-    destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api", abilities: ["create", "delete", "undo"],
+    destination: "google-tasks.list", app: "Google Tasks", targetKind: "Task", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
   },
   /** A whole task (a page with a due date) placed on the default list; `googleTasks` adds a document as a task. */
   googleTasksEntry: {
-    destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo"],
+    destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
   },
   notion: {
@@ -41,7 +41,7 @@ export const CONTRACTS = {
   },
   /** A note (passages with their sources) as a new Google Doc. Undo moves it to the Drive trash, where the person can still restore it. */
   googleDocs: {
-    destination: "google-docs.new-document", app: "Google Docs", targetKind: "Docs", reliability: "official-api", abilities: ["create", "undo"],
+    destination: "google-docs.new-document", app: "Google Docs", targetKind: "Docs", reliability: "official-api", abilities: ["create", "undo", "verify"],
     accepts: [{ relationId: "note-docs-entry", effect: "Create a document", dataMoved: ["Note.title", "Note.body"] }],
   },
   /**
@@ -49,12 +49,12 @@ export const CONTRACTS = {
    * GitHub does not let ordinary accounts delete issues: Undo closes it as "not planned".
    */
   githubIssue: {
-    destination: "github.issues", app: "GitHub", targetKind: "Issues", reliability: "official-api", abilities: ["create", "undo"],
+    destination: "github.issues", app: "GitHub", targetKind: "Issues", reliability: "official-api", abilities: ["create", "undo", "verify"],
     accepts: [{ relationId: "issue-tracker-entry", effect: "Open an issue", effectFlags: ["notifies-third-party"], dataMoved: ["Issue.title", "Issue.body"] }],
   },
   /** The same issue in Linear, on one team. Undo deletes it (Linear keeps deleted issues in its trash for a while). */
   linearIssue: {
-    destination: "linear.issues", app: "Linear", targetKind: "Issues", reliability: "official-api", abilities: ["create", "delete", "undo"],
+    destination: "linear.issues", app: "Linear", targetKind: "Issues", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "issue-tracker-entry", effect: "Create an issue", effectFlags: ["notifies-third-party"], dataMoved: ["Issue.title", "Issue.body"] }],
   },
   // Open-and-prefill: the map app opens with directions to the place. Nothing is written, so there is nothing to confirm or undo.

@@ -282,3 +282,19 @@ Consequential architecture and product decisions, so that separate workstreams d
   - Sign-in and permission refusals (401, 403), rate limits and network failures are said in words a person can act on, on commit, verify and undo.
   - A connection failure during a write is an unknown outcome (checked, never resent), because the write may have landed.
 - **Not covered:** only Google Calendar can be read back. Gmail drafts, Tasks, Docs, GitHub and Linear say "not checked" rather than pretend. Real Google has not run this yet (REAL_TEST_PLAN L).
+
+### D42. Every connector that can be read back is read back (2026-10-27)
+- **Decision:** Verify, until now Google Calendar only, also covers:
+
+  | Connector | Read back with | Fields compared | Link |
+  |---|---|---|---|
+  | Gmail drafts | `drafts.get`, raw | To and text | the Drafts folder (Gmail has no stable address for one draft) |
+  | Google Tasks | `tasks.get` | title, link and due date (Google keeps only the date) | Google's `webViewLink` |
+  | Google Docs | `documents.get` (plus Drive's `trashed`) | title and text | `docs.google.com/document/d/<id>/edit` |
+  | GitHub | the issue | title and body | its `html_url` |
+  | Linear | the issue, by id, in GraphQL variables | title and description | its `url` |
+
+  - Each connector's capabilities now say `verifiable` and its contract declares `verify`; the existing ability test keeps the two in step.
+  - A deleted, trashed or closed item is "not there", never "matches".
+- **Not covered:** Google Sheets and Notion still say "not checked".
+- **On the way:** the API server offered "reconcile" after a lost answer whenever an operation was `verifiable`. Being readable afterwards is not the same as being able to ask about a lost write, so the hint now depends on the bridge having `reconcile`.
