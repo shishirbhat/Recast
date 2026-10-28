@@ -222,7 +222,7 @@ describe("a whole page, taken on its own", () => {
   it("without Google Tasks connected, Tasks says so and nothing can be chosen there", () => {
     const { s } = taken();
     const off = { ...s, destinations: DESTS };
-    expect(wheelEntries(off, "obj-1", REGISTRY).find((x) => x.key === "tasks")).toMatchObject({ available: false, reason: "Google Tasks or Todoist is not connected here" });
+    expect(wheelEntries(off, "obj-1", REGISTRY).find((x) => x.key === "tasks")).toMatchObject({ available: false, reason: "Google Tasks, Microsoft To Do or Todoist is not connected here" });
   });
   it("choosing Tasks opens a review of the title and address (writes nothing); confirming commits one task", () => {
     const { s } = taken();

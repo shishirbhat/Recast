@@ -334,3 +334,10 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Connection:** a personal API token pasted on the local program's page. It is checked with Todoist (`/api/v1/projects`) before saving, kept in `.secrets/todoist.json` (0600), sent to api.todoist.com only, and never returned to the extension. Offered in the extension and the desktop app. With Google Tasks also connected, Tasks asks "which one?".
 - **Lost answers:** Todoist chooses the id, so a lost answer stays unknown and the person is asked to look. It is never resent.
 - **Not done:** no real Todoist run (REAL_TEST_PLAN N needs the owner's account). The Inbox only; there is no project picker. The API v1 field names were taken from third-party references and checked against no official source in this session; N3 confirms them.
+
+### D47. Outlook mail drafts and Microsoft To Do, on the same Microsoft sign-in (2026-10-28)
+- **Decision:** two optional permissions ticked on the Recast page before signing in with Microsoft: `Mail.ReadWrite` (Outlook drafts) and `Tasks.ReadWrite` (To Do). The calendar permission is always asked. A renewal keeps exactly what was granted.
+- **Outlook drafts** (`outlookMessageDraft`): `POST /me/messages` in the signed-in person's own mailbox. It is a draft and is never sent. Read-back compares To and the text; a draft that has been sent is "not there". Undo deletes it.
+- **To Do** (`msTodoTask`, `msTodoEntry`): the default list is looked up when placing, and its id is kept with the task, so Undo and read-back go to the same list. The due date is a day (midnight UTC), and the day is what is compared. A completed task is "not there".
+- Graph chooses the ids, so a lost answer stays unknown and the person is asked to look. Without the permission ticked, placing is refused before anything reaches Microsoft.
+- **Not done:** no real Microsoft run (REAL_TEST_PLAN M8–M11). Not covered by a browser test yet, only the local program's.

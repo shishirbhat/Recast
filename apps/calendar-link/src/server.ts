@@ -17,7 +17,7 @@ import path from "node:path";
 import { createTestEvents, type Outcome } from "./test-event.js";
 import { createExtensionApi } from "./extension-api.js";
 import { connectGithub, forgetGithub, readGithub } from "./github.js";
-import { createMicrosoft, forgetMicrosoft, readMicrosoft } from "./microsoft.js";
+import { createMicrosoft, forgetMicrosoft, msAllows, readMicrosoft } from "./microsoft.js";
 import { connectLinear, forgetLinear, readLinear } from "./linear.js";
 import { connectTodoist, forgetTodoist, readTodoist } from "./todoist.js";
 
@@ -106,9 +106,9 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
     const t = readMicrosoft(dir); const note = microsoftNote; microsoftNote = null;
     const body = !ms
       ? `<p class="muted">To add Outlook Calendar, register an app in Microsoft Entra (portal.azure.com → App registrations → New registration): any account type; platform "Mobile and desktop applications" with the redirect URI <code>http://localhost:${c.port}/microsoft/callback</code>; API permission Microsoft Graph → Delegated → Calendars.ReadWrite. No client secret is needed. Then put <code>MICROSOFT_CLIENT_ID=…</code> in <code>.env</code> and restart this program.</p>`
-      : t ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Permission: create, read and delete calendar events. The sign-in stays on this computer.</p><form method="post" action="/microsoft/disconnect"><button class="ghost" type="submit">Disconnect Outlook</button></form>`
-      : `<p>Not connected.</p><p><a class="btn" href="/microsoft/start">Sign in with Microsoft</a></p>`;
-    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Outlook Calendar</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${body}</div>`;
+      : t ? `<p class="ok">Connected.</p><p class="muted">Since ${esc(t.connected_at)}. Allowed: calendar events${msAllows(t, "mail") ? ", mail drafts (never sent)" : ""}${msAllows(t, "todo") ? ", To Do tasks" : ""}. The sign-in stays on this computer.</p>${msAllows(t, "mail") && msAllows(t, "todo") ? "" : `<p class="muted">To add mail drafts or To Do, disconnect and sign in again with them ticked.</p>`}<form method="post" action="/microsoft/disconnect"><button class="ghost" type="submit">Disconnect Outlook</button></form>`
+      : `<p>Not connected.</p><form method="get" action="/microsoft/start"><p class="muted">Calendar is always asked for. Also allow:</p><p><label><input type="checkbox" name="mail" value="1"> Outlook mail drafts (Recast saves drafts; it never sends)</label><br><label><input type="checkbox" name="todo" value="1"> Microsoft To Do tasks</label></p><button class="btn" type="submit">Sign in with Microsoft</button></form>`;
+    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Microsoft: Outlook Calendar, mail drafts, To Do</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${body}</div>`;
   }
 
   /** GitHub, optional and separate from Google: one repository, one fine-grained token, kept on this computer. */
@@ -282,7 +282,7 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
 
     if (req.method === "GET" && url.pathname === "/microsoft/start") {
       if (!ms) return send(res, 404, page("Not set up", `<p>Outlook Calendar is not set up yet. <a href="/">Back</a></p>`));
-      const s = ms.start(); res.writeHead(302, { location: s.location, "set-cookie": s.cookie, "cache-control": "no-store" }); return res.end();
+      const s = ms.start({ mail: url.searchParams.get("mail") === "1", todo: url.searchParams.get("todo") === "1" }); res.writeHead(302, { location: s.location, "set-cookie": s.cookie, "cache-control": "no-store" }); return res.end();
     }
     if (req.method === "GET" && url.pathname === "/microsoft/callback") {
       if (!ms) return send(res, 404, page("Not set up", `<p>Outlook Calendar is not set up yet. <a href="/">Back</a></p>`));

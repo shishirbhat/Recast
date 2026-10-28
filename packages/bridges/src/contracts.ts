@@ -39,6 +39,20 @@ export const CONTRACTS = {
     destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
   },
+  /** Outlook mail (Microsoft Graph): a composed message saved as a draft in the person's own mailbox. Never sent. */
+  outlookMessageDraft: {
+    destination: "outlook-mail.drafts", app: "Outlook", targetKind: "Drafts", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
+    accepts: [{ relationId: "message-draft-entry", effect: "Save as draft", dataMoved: ["Message.to", "Message.snippet"] }],
+  },
+  /** Microsoft To Do (Microsoft Graph), the default list: a page as a task, and a whole task with its due date. */
+  msTodoTask: {
+    destination: "microsoft-todo.task", app: "Microsoft To Do", targetKind: "Task", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
+    accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
+  },
+  msTodoEntry: {
+    destination: "microsoft-todo.list", app: "Microsoft To Do", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
+    accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
+  },
   /** Todoist (API v1): a page as a task, and a whole task with its due date, in the Inbox. Undo deletes it. */
   todoistTask: {
     destination: "todoist.task", app: "Todoist", targetKind: "Task", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],

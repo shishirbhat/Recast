@@ -479,3 +479,71 @@ export const outlookCalendarEvent: Spec<OutlookTarget> = {
     return { ok: fields.every((f) => f.match), fields, ...(link ? { link } : {}) };
   },
 };
+
+// ---- Outlook mail drafts (Graph: POST /me/messages creates a draft; GET; DELETE) ----------------------------------------
+// The draft goes in the signed-in person's own mailbox (/me), never another's. Graph chooses the id, so a lost answer
+// stays unknown until the person looks in Drafts.
+export type OutlookMailTarget = Record<string, never>;
+export const outlookMessageDraft: Spec<OutlookMailTarget> = {
+  contract: CONTRACTS.outlookMessageDraft,
+  capabilities: { "message-draft-entry": unkeyedCreate("Mail.ReadWrite", "delete-created", { readBack: true }) },
+  async execute(op, _t, send) {
+    const r = asObj(await send({ method: "POST", url: `${GRAPH}/me/messages`, body: { body: { contentType: "Text", content: need(op, "Message.snippet") }, toRecipients: [{ emailAddress: { address: need(op, "Message.to") } }] } }));
+    if (r.isDraft === false) throw new DestinationError("Outlook did not keep it as a draft");
+    return JSON.stringify({ id: str(r.id, "message id") });
+  },
+  async undo(token, _t, send) { await send({ method: "DELETE", url: `${GRAPH}/me/messages/${seg((JSON.parse(token) as { id: string }).id)}` }); },
+  async verify(token, op, _t, send) {
+    const m = await readBack(send, { method: "GET", url: `${GRAPH}/me/messages/${seg((JSON.parse(token) as { id: string }).id)}?$select=toRecipients,body,isDraft,webLink`, headers: { Prefer: 'outlook.body-content-type="text"' } });
+    const to = Array.isArray(m?.toRecipients) ? (m!.toRecipients as unknown[]).map((x) => asObj(asObj(x).emailAddress).address).filter((x) => typeof x === "string").join(", ") : null;
+    const text = typeof asObj(m?.body).content === "string" ? (asObj(m!.body).content as string).replace(/\r\n/g, "\n").trim() : null;
+    return compared(op, m && m.isDraft !== false ? { "Message.to": to || null, "Message.snippet": text } : null, "the draft is not in Outlook", m?.webLink);
+  },
+};
+
+// ---- Microsoft To Do (Graph: the default list; POST/GET/DELETE /me/todo/lists/{list}/tasks/{id}) -------------------------
+// The default list is looked up when placing, and its id is kept with the task, so Undo and read-back go to the same list.
+export type TodoTarget = Record<string, never>;
+const TODO = `${GRAPH}/me/todo/lists`;
+async function todoDefaultList(send: Send): Promise<string> {
+  const r = asObj(await send({ method: "GET", url: `${TODO}?$filter=${encodeURIComponent("wellknownListName eq 'defaultList'")}` }));
+  const list = Array.isArray(r.value) ? asObj(r.value[0]) : {};
+  return str(list.id, "default To Do list");
+}
+async function todoCreate(body: Record<string, unknown>, send: Send) {
+  const list = await todoDefaultList(send);
+  const r = asObj(await send({ method: "POST", url: `${TODO}/${seg(list)}/tasks`, body }));
+  return JSON.stringify({ list, id: str(r.id, "task id") });
+}
+const todoUrl = (token: string) => { const k = JSON.parse(token) as { list: string; id: string }; return `${TODO}/${seg(k.list)}/tasks/${seg(k.id)}`; };
+async function verifyTodo(token: string, op: Operation, send: Send, map: Record<string, "title" | "body" | "due">) {
+  const k = await readBack(send, { method: "GET", url: todoUrl(token) });
+  const there = k && k.status !== "completed";
+  const value = (key: "title" | "body" | "due") => key === "title" ? (typeof k?.title === "string" ? k.title : null)
+    : key === "body" ? (typeof asObj(k?.body).content === "string" ? (asObj(k!.body).content as string).trim() : null)
+    : (typeof asObj(k?.dueDateTime).dateTime === "string" ? (asObj(k!.dueDateTime).dateTime as string).slice(0, 10) : null);
+  const paths = Object.keys(map).filter((p) => moved(op, p) !== undefined);
+  return compared(op, there ? Object.fromEntries(paths.map((p) => [p, value(map[p]!)])) : null, "the task is not in Microsoft To Do", "https://to-do.office.com/tasks/");
+}
+export const msTodoTask: Spec<TodoTarget> = {
+  contract: CONTRACTS.msTodoTask,
+  capabilities: { "document-task-reference": unkeyedCreate("Tasks.ReadWrite", "delete-created", { readBack: true }) },
+  execute: (op, _t, send) => todoCreate({ title: need(op, "Document.title"), ...(moved(op, "Document.url") ? { body: { contentType: "text", content: moved(op, "Document.url") } } : {}) }, send),
+  async undo(token, _t, send) { await send({ method: "DELETE", url: todoUrl(token) }); },
+  verify: (token, op, _t, send) => verifyTodo(token, op, send, { "Document.title": "title", "Document.url": "body" }),
+};
+// To Do keeps a due date as a day: it is sent as that day at midnight, in UTC, and the day is what is compared.
+export const msTodoEntry: Spec<TodoTarget> = {
+  contract: CONTRACTS.msTodoEntry,
+  capabilities: { "task-tasklist-entry": unkeyedCreate("Tasks.ReadWrite", "delete-created", { readBack: true }) },
+  execute(op, _t, send) {
+    const url = moved(op, "Task.url"), due = moved(op, "Task.due");
+    return todoCreate({ title: need(op, "Task.title"), ...(url ? { body: { contentType: "text", content: url } } : {}), ...(due ? { dueDateTime: { dateTime: `${String(due).slice(0, 10)}T00:00:00.0000000`, timeZone: "UTC" } } : {}) }, send);
+  },
+  undo: msTodoTask.undo,
+  async verify(token, op, _t, send) {
+    const r = await verifyTodo(token, op, send, { "Task.title": "title", "Task.url": "body", "Task.due": "due" });
+    const fields = r.fields.map((f) => f.path === "Task.due" ? { ...f, expected: f.expected.slice(0, 10), match: f.actual === f.expected.slice(0, 10) } : f);
+    return { ...r, fields, ok: !r.note && fields.every((f) => f.match) };
+  },
+};

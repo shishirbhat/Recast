@@ -122,6 +122,8 @@ Recast can then create, read and delete its own events in your default Outlook c
 
 In the desktop app, paste the client ID under **Connections → Outlook Calendar** instead of using `.env`.
 
+**Outlook mail drafts and Microsoft To Do (optional).** In the app registration, also add the delegated permissions `Mail.ReadWrite` (drafts) and `Tasks.ReadWrite` (To Do). On the Recast page, tick them before **Sign in with Microsoft**: Microsoft then asks you for them too. Recast saves drafts in your own mailbox and never sends them. To Do tasks go to your default list. Steps: `docs/REAL_TEST_PLAN.md`, section M8 onwards.
+
 ## Part 13: Todoist (optional, separate from Google)
 1. In Todoist: **Settings → Integrations → Developer**, copy the **API token**. It gives access to your whole Todoist account, so paste it only here, on your own computer.
 2. On http://localhost:8787/, under **Todoist**, paste it and **Connect Todoist**. Recast checks it with Todoist before saving anything. The token stays in `.secrets/todoist.json` on this computer (readable only by you), and requests with it go to api.todoist.com only.

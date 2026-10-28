@@ -6,7 +6,7 @@ async function refresh() {
   const g = await api.googleStatus(); const st = await api.status();
   const allowed = [st["connected"] ? "Calendar" : "", st["gmail"] ? "Gmail drafts" : "", st["tasks"] ? "Tasks" : "", st["docs"] ? "Docs" : ""].filter(Boolean);
   $("#g-state").innerHTML = st["connected"] ? `<span class="ok">Connected.</span> Allowed: ${allowed.join(", ")}.` : g.configured ? "Set up. Sign in with Google to connect an account." : "Not set up yet.";
-  $("#ms-state").innerHTML = st["outlook"] ? `<span class="ok">Connected.</span>` : g.microsoft ? "Set up. Sign in with Microsoft to connect an account." : "Not set up yet.";
+  $("#ms-state").innerHTML = st["outlook"] ? `<span class="ok">Connected:</span> calendar${st["outlookMail"] ? ", mail drafts" : ""}${st["mstodo"] ? ", To Do" : ""}.` : g.microsoft ? "Set up. Sign in with Microsoft to connect an account." : "Not set up yet.";
   $("#server-note").textContent = g.serverNote;
 }
 $("#g-form").addEventListener("submit", async (e) => {

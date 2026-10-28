@@ -8,13 +8,13 @@ import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import path from "node:path";
 import { randomInt } from "node:crypto";
 import { commit, InMemoryEventLog, OutcomeUnknownError, undo, verify, type Consent, type Operation, type Receipt, type Verification } from "@recast/core";
-import { calendarEventId, DestinationError, DuplicateError, outlookCalendarEvent, todoistEntry, todoistTask, outlookEventKey, githubIssue, linearIssue, gmailMessageDraft, googleCalendarEvent, googleDocs, googleTasks, googleTasksEntry, HttpBridge } from "@recast/bridges";
+import { calendarEventId, DestinationError, DuplicateError, msTodoEntry, msTodoTask, outlookMessageDraft, outlookCalendarEvent, todoistEntry, todoistTask, outlookEventKey, githubIssue, linearIssue, gmailMessageDraft, googleCalendarEvent, googleDocs, googleTasks, googleTasksEntry, HttpBridge } from "@recast/bridges";
 import { type CalendarAccess, googleTransport } from "./test-event.js";
 import { hasDocs, hasGmail, hasTasks, readToken } from "./server.js";
 import { githubTransport, readGithub } from "./github.js";
 import { linearTransport, readLinear } from "./linear.js";
 import { readTodoist, todoistTransport } from "./todoist.js";
-import { readMicrosoft, type Microsoft } from "./microsoft.js";
+import { msAllows, readMicrosoft, type Microsoft } from "./microsoft.js";
 
 interface Pairing { allowed: string[]; pending: { origin: string; code: string; at: number }[] }
 const EXT_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
@@ -37,9 +37,11 @@ export function createExtensionApi(a: CalendarAccess & { dir: string; microsoft?
   const receipts = () => readJson<Receipt[]>(receiptFile, []);
   const keep = (r: Receipt) => writePrivate(receiptFile, [...receipts().filter((x) => x.receiptId !== r.receiptId), r].slice(-200));
   // Three destinations behind one sign-in. Gmail and Tasks only if the person ticked them (each its own permission).
-  type Dest = "calendar" | "gmail" | "tasks" | "docs" | "github" | "linear" | "outlook" | "todoist";
+  type Dest = "calendar" | "gmail" | "tasks" | "docs" | "github" | "linear" | "outlook" | "todoist" | "outlook-mail" | "mstodo";
   // Tasks has two contracts on the same list: a document as a task, and a whole task with its due date.
-  const bridge = (d: Dest = "calendar", destination?: string) => d === "outlook" ? new HttpBridge(outlookCalendarEvent, {}, a.microsoft!.transport())
+  const bridge = (d: Dest = "calendar", destination?: string) => d === "outlook-mail" ? new HttpBridge(outlookMessageDraft, {}, a.microsoft!.transport())
+    : d === "mstodo" ? new HttpBridge(destination === msTodoEntry.contract.destination ? msTodoEntry : msTodoTask, {}, a.microsoft!.transport())
+    : d === "outlook" ? new HttpBridge(outlookCalendarEvent, {}, a.microsoft!.transport())
     : d === "gmail" ? new HttpBridge(gmailMessageDraft, { userId: "me" }, googleTransport(a))
     : d === "docs" ? new HttpBridge(googleDocs, {}, googleTransport(a))
     // Todoist, like Tasks, has two contracts: a page as a task, and a whole task with its due date.
@@ -48,15 +50,16 @@ export function createExtensionApi(a: CalendarAccess & { dir: string; microsoft?
     : d === "github" ? (() => { const g = readGithub(a.dir)!; return new HttpBridge(githubIssue, { owner: g.owner, repo: g.repo }, githubTransport(g, a.fetch)); })()
     : d === "tasks" ? new HttpBridge(destination === googleTasksEntry.contract.destination ? googleTasksEntry : googleTasks, { taskListId: "@default" }, googleTransport(a))
     : new HttpBridge(googleCalendarEvent, { calendarId: "primary" }, googleTransport(a));
-  const destOf = (destination: string): Dest => destination === todoistTask.contract.destination || destination === todoistEntry.contract.destination ? "todoist" : destination === outlookCalendarEvent.contract.destination ? "outlook" : destination === linearIssue.contract.destination ? "linear" : destination === githubIssue.contract.destination ? "github" : destination === googleDocs.contract.destination ? "docs" : destination === gmailMessageDraft.contract.destination ? "gmail" : destination === googleTasks.contract.destination || destination === googleTasksEntry.contract.destination ? "tasks" : "calendar";
-  const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t), tasks: hasTasks(t), docs: hasDocs(t), github: (() => { const g = readGithub(a.dir); return g ? `${g.owner}/${g.repo}` : false; })(), linear: (() => { const l = readLinear(a.dir); return l ? l.teamName : false; })(), outlook: !!a.microsoft && !!readMicrosoft(a.dir), todoist: !!readTodoist(a.dir) }; };
+  const destOf = (destination: string): Dest => destination === outlookMessageDraft.contract.destination ? "outlook-mail" : destination === msTodoTask.contract.destination || destination === msTodoEntry.contract.destination ? "mstodo" : destination === todoistTask.contract.destination || destination === todoistEntry.contract.destination ? "todoist" : destination === outlookCalendarEvent.contract.destination ? "outlook" : destination === linearIssue.contract.destination ? "linear" : destination === githubIssue.contract.destination ? "github" : destination === googleDocs.contract.destination ? "docs" : destination === gmailMessageDraft.contract.destination ? "gmail" : destination === googleTasks.contract.destination || destination === googleTasksEntry.contract.destination ? "tasks" : "calendar";
+  const statusBody = () => { const t = readToken(a.tokenFile); return { paired: true, connected: !!t, gmail: hasGmail(t), tasks: hasTasks(t), docs: hasDocs(t), github: (() => { const g = readGithub(a.dir); return g ? `${g.owner}/${g.repo}` : false; })(), linear: (() => { const l = readLinear(a.dir); return l ? l.teamName : false; })(), outlook: !!a.microsoft && !!readMicrosoft(a.dir), outlookMail: !!a.microsoft && msAllows(readMicrosoft(a.dir), "mail"), mstodo: !!a.microsoft && msAllows(readMicrosoft(a.dir), "todo"), todoist: !!readTodoist(a.dir) }; };
   const iso = () => new Date(a.now()).toISOString();
-  const APP: Record<Dest, string> = { calendar: "Google Calendar", gmail: "Gmail", tasks: "Google Tasks", docs: "Google Docs", github: "GitHub", linear: "Linear", outlook: "Outlook Calendar", todoist: "Todoist" };
+  const APP: Record<Dest, string> = { calendar: "Google Calendar", gmail: "Gmail", tasks: "Google Tasks", docs: "Google Docs", github: "GitHub", linear: "Linear", outlook: "Outlook Calendar", todoist: "Todoist", "outlook-mail": "Outlook", mstodo: "Microsoft To Do" };
   /** A provider's refusal in words a person can act on. Never echoes a token or a response body. */
   const explain = (e: unknown, dest: Dest): string => {
-    const where = APP[dest]; const google = dest !== "github" && dest !== "linear" && dest !== "outlook" && dest !== "todoist";
-    if (dest === "outlook" && e instanceof DestinationError && e.status === 401) return "Microsoft no longer accepts this sign-in (expired or revoked). Sign in with Microsoft again on the Recast page";
-    if (dest === "outlook" && e instanceof DestinationError && e.status === 403) return "Microsoft refused: this sign-in does not allow Outlook Calendar. Sign in with Microsoft again on the Recast page";
+    const where = APP[dest]; const microsoft = dest === "outlook" || dest === "outlook-mail" || dest === "mstodo";
+    const google = dest !== "github" && dest !== "linear" && dest !== "todoist" && !microsoft;
+    if (microsoft && e instanceof DestinationError && e.status === 401) return "Microsoft no longer accepts this sign-in (expired or revoked). Sign in with Microsoft again on the Recast page";
+    if (microsoft && e instanceof DestinationError && e.status === 403) return `Microsoft refused: this sign-in does not allow ${where}. Sign in with Microsoft again on the Recast page`;
     if (e instanceof DestinationError && e.status === 401) return google ? "Google no longer accepts this sign-in (expired or revoked). Sign in again on the Recast page" : `${where} no longer accepts the saved key. Connect it again on the Recast page`;
     if (e instanceof DestinationError && e.status === 403) return google ? `Google refused: this sign-in does not allow ${where}. Sign in again on the Recast page and tick it` : `${where} refused: the saved key does not allow this`;
     if (e instanceof DestinationError && e.status === 404) return `${where} could not find it`;
@@ -98,13 +101,16 @@ export function createExtensionApi(a: CalendarAccess & { dir: string; microsoft?
 
   async function act(route: string, body: Record<string, unknown>): Promise<ExtReply> {
       if (route === "status") return { status: 200, body: statusBody() };
-      const dest: Dest = body.destination === "todoist" ? "todoist" : body.destination === "outlook" ? "outlook" : body.destination === "gmail" ? "gmail" : body.destination === "tasks" ? "tasks" : body.destination === "docs" ? "docs" : body.destination === "github" ? "github" : body.destination === "linear" ? "linear" : "calendar";
+      const dest: Dest = body.destination === "outlook-mail" ? "outlook-mail" : body.destination === "mstodo" ? "mstodo" : body.destination === "todoist" ? "todoist" : body.destination === "outlook" ? "outlook" : body.destination === "gmail" ? "gmail" : body.destination === "tasks" ? "tasks" : body.destination === "docs" ? "docs" : body.destination === "github" ? "github" : body.destination === "linear" ? "linear" : "calendar";
       // GitHub stands alone: it needs its own connection, not Google's.
       if (dest === "github" && !readGithub(a.dir)) return { status: 409, body: { outcome: "failed", message: "GitHub is not connected. Connect a repository on the Recast page first." } };
       if (dest === "linear" && !readLinear(a.dir)) return { status: 409, body: { outcome: "failed", message: "Linear is not connected. Connect a team on the Recast page first." } };
       if (dest === "todoist" && !readTodoist(a.dir)) return { status: 409, body: { outcome: "failed", message: "Todoist is not connected. Connect it on the Recast page first." } };
+      if ((dest === "outlook-mail" || dest === "mstodo") && (!a.microsoft || !readMicrosoft(a.dir))) return { status: 409, body: { outcome: "failed", message: `${APP[dest]} is not connected. Sign in with Microsoft on the Recast page first.` } };
+      if (dest === "outlook-mail" && !msAllows(readMicrosoft(a.dir), "mail")) return { status: 409, body: { outcome: "failed", message: "Outlook mail drafts are not allowed. Sign in with Microsoft again on the Recast page and tick mail drafts." } };
+      if (dest === "mstodo" && !msAllows(readMicrosoft(a.dir), "todo")) return { status: 409, body: { outcome: "failed", message: "Microsoft To Do is not allowed. Sign in with Microsoft again on the Recast page and tick To Do." } };
       if (dest === "outlook" && (!a.microsoft || !readMicrosoft(a.dir))) return { status: 409, body: { outcome: "failed", message: "Outlook Calendar is not connected. Sign in with Microsoft on the Recast page first." } };
-      if (dest !== "github" && dest !== "linear" && dest !== "outlook" && dest !== "todoist" && !readToken(a.tokenFile)) return { status: 409, body: { outcome: "failed", message: "Google is not connected. Sign in on the Recast page first." } };
+      if (dest !== "github" && dest !== "linear" && dest !== "outlook" && dest !== "todoist" && dest !== "outlook-mail" && dest !== "mstodo" && !readToken(a.tokenFile)) return { status: 409, body: { outcome: "failed", message: "Google is not connected. Sign in on the Recast page first." } };
       if (dest === "gmail" && !hasGmail(readToken(a.tokenFile))) return { status: 409, body: { outcome: "failed", message: "Gmail drafts are not allowed. Sign in again on the Recast page and tick Gmail." } };
       if (dest === "docs" && !hasDocs(readToken(a.tokenFile))) return { status: 409, body: { outcome: "failed", message: "Google Docs is not allowed. Sign in again on the Recast page and tick Google Drive (only the files Recast creates)." } };
       if (dest === "tasks" && !hasTasks(readToken(a.tokenFile))) return { status: 409, body: { outcome: "failed", message: "Google Tasks is not allowed. Sign in again on the Recast page and tick Tasks." } };
@@ -117,7 +123,7 @@ export function createExtensionApi(a: CalendarAccess & { dir: string; microsoft?
           keep(receipt);
           return { status: 200, body: { outcome: "done", receipt } };
         } catch (e) {
-          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: dest === "gmail" ? "Gmail did not answer; the draft may have been saved" : dest === "docs" ? "Google Docs did not answer; the document may have been created" : dest === "github" ? "GitHub did not answer; the issue may have been opened" : dest === "linear" ? "Linear did not answer; the issue may have been created" : dest === "tasks" ? "Google Tasks did not answer; the task may have been added" : dest === "todoist" ? "Todoist did not answer; the task may have been added" : `${APP[dest]} did not answer; it may have been added` } };
+          if (e instanceof OutcomeUnknownError) return { status: 200, body: { outcome: "unknown", message: dest === "gmail" ? "Gmail did not answer; the draft may have been saved" : dest === "docs" ? "Google Docs did not answer; the document may have been created" : dest === "github" ? "GitHub did not answer; the issue may have been opened" : dest === "linear" ? "Linear did not answer; the issue may have been created" : dest === "tasks" ? "Google Tasks did not answer; the task may have been added" : dest === "todoist" ? "Todoist did not answer; the task may have been added" : dest === "outlook-mail" ? "Outlook did not answer; the draft may have been saved" : dest === "mstodo" ? "Microsoft To Do did not answer; the task may have been added" : `${APP[dest]} did not answer; it may have been added` } };
           if (e instanceof DuplicateError) return { status: 200, body: { outcome: "failed", message: `It is already in your ${APP[dest]}, so it was not added a second time` } };
           return { status: 200, body: { outcome: "failed", message: explain(e, dest) } };
         }
@@ -131,6 +137,8 @@ export function createExtensionApi(a: CalendarAccess & { dir: string; microsoft?
         if (dest === "linear") return { status: 200, body: { checkable: false, message: "Linear can't be asked about one issue. Look at the team's issues: if it's there, keep it; if not, dismiss this and place again." } };
         if (dest === "github") return { status: 200, body: { checkable: false, message: "GitHub can't be asked about one issue. Look at the repository's issues: if it's there, keep it; if not, dismiss this and place again." } };
         if (dest === "docs") return { status: 200, body: { checkable: false, message: "Google Docs can't be asked about one document. Look in Google Drive: if it's there, keep it; if not, dismiss this and place again." } };
+        if (dest === "outlook-mail") return { status: 200, body: { checkable: false, message: "Outlook can't be asked about one draft. Look in your Outlook Drafts: if it's there, keep it; if not, dismiss this and place again." } };
+        if (dest === "mstodo") return { status: 200, body: { checkable: false, message: "Microsoft To Do can't be asked about one task. Look in To Do: if it's there, keep it; if not, dismiss this and place again." } };
         if (dest === "todoist") return { status: 200, body: { checkable: false, message: "Todoist can't be asked about one task. Look in your Todoist Inbox: if it's there, keep it; if not, dismiss this and place again." } };
         if (dest === "tasks") return { status: 200, body: { checkable: false, message: "Google Tasks can't be asked about one task. Look in Google Tasks: if it's there, keep it; if not, dismiss this and place again." } };
         // Outlook: found by Recast's own key on the event. Google: the event id is Recast's.

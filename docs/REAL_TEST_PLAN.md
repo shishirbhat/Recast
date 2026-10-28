@@ -198,6 +198,10 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | M5 | Place the same composition again | "It is already in your Outlook Calendar, so it was not added a second time" | no duplicate |
 | M6 | **Undo** | The event disappears from Outlook | undo |
 | M7 | At the bottom of http://localhost:8787/, **Disconnect Outlook** | Outlook is no longer offered | disconnect |
+| M8 | Add `Mail.ReadWrite` and `Tasks.ReadWrite` to the app registration; on the Recast page tick **Outlook mail drafts** and **Microsoft To Do**, then **Sign in with Microsoft** | Microsoft's consent lists reading and writing your mail and your tasks; the page then says "Allowed: calendar events, mail drafts (never sent), To Do tasks" | optional permissions |
+| M9 | Press a person (with an email address) into a sentence; Mail → Outlook drafts → **Save as draft** | "Read back from Outlook: 2 of 2 fields match. Open in Outlook"; the draft is in Outlook's Drafts, not sent | real draft + read-back |
+| M10 | **This page** on an article; Tasks → Microsoft To Do → **Add a task** | The task is in To Do's default list with the page link in its note; read back 2 of 2 | real To Do task |
+| M11 | **Undo** on each | The draft and the task disappear | undo |
 
 ## N. Todoist (needs a Todoist account: apps/calendar-link README, Part 13)
 **Checks:** the token is checked before saving; a real Todoist task placed, read back with its link, undone; a refused token is stated.

@@ -8,7 +8,9 @@ import path from "node:path";
 import type { Transport } from "@recast/bridges";
 
 export const MS_SCOPE = "Calendars.ReadWrite";
-const SCOPES = `offline_access ${MS_SCOPE}`;
+/** Optional, each ticked by the person on the Recast page: Outlook mail drafts, and Microsoft To Do. */
+export const MS_MAIL = "Mail.ReadWrite", MS_TODO = "Tasks.ReadWrite";
+const scopesFor = (o: { mail?: boolean; todo?: boolean }) => ["offline_access", MS_SCOPE, ...(o.mail ? [MS_MAIL] : []), ...(o.todo ? [MS_TODO] : [])].join(" ");
 const STATE_TTL_MS = 10 * 60 * 1000;
 const b64url = (b: Buffer) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
@@ -23,13 +25,15 @@ export const microsoftFile = (dir: string) => path.join(dir, "microsoft-token.js
 export function readMicrosoft(dir: string): MicrosoftToken | null { try { return JSON.parse(readFileSync(microsoftFile(dir), "utf8")) as MicrosoftToken; } catch { return null; } }
 export function forgetMicrosoft(dir: string) { if (existsSync(microsoftFile(dir))) rmSync(microsoftFile(dir)); }
 const save = (dir: string, t: MicrosoftToken) => { mkdirSync(dir, { recursive: true, mode: 0o700 }); writeFileSync(microsoftFile(dir), JSON.stringify(t), { mode: 0o600 }); chmodSync(microsoftFile(dir), 0o600); };
-const hasScope = (granted: string) => granted.split(/\s+/).some((s) => s.toLowerCase() === MS_SCOPE.toLowerCase() || s.toLowerCase().endsWith(`/${MS_SCOPE.toLowerCase()}`));
+const hasScope = (granted: string, scope = MS_SCOPE) => granted.split(/\s+/).some((s) => s.toLowerCase() === scope.toLowerCase() || s.toLowerCase().endsWith(`/${scope.toLowerCase()}`));
+/** Whether this sign-in allows Outlook mail drafts or Microsoft To Do (each its own permission). */
+export const msAllows = (t: MicrosoftToken | null, what: "mail" | "todo") => !!t && hasScope(t.scope, what === "mail" ? MS_MAIL : MS_TODO);
 
 export function createMicrosoft(c: MicrosoftConfig) {
   const authUrl = c.authUrl ?? "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
   const tokenUrl = c.tokenUrl ?? "https://login.microsoftonline.com/common/oauth2/v2.0/token";
   const redirectUri = `http://localhost:${c.port}/microsoft/callback`;
-  const pending = new Map<string, { verifier: string; at: number }>();
+  const pending = new Map<string, { verifier: string; at: number; scopes: string }>();
   const COOKIE = "recast_ms_state";
 
   async function tokenRequest(form: Record<string, string>): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; error: string }> {
@@ -44,11 +48,11 @@ export function createMicrosoft(c: MicrosoftConfig) {
   return {
     redirectUri,
     /** The address to send the browser to, and the cookie that ties the answer to this browser. */
-    start(): { location: string; cookie: string } {
-      const state = b64url(randomBytes(24)); const verifier = b64url(randomBytes(48));
+    start(o: { mail?: boolean; todo?: boolean } = {}): { location: string; cookie: string } {
+      const state = b64url(randomBytes(24)); const verifier = b64url(randomBytes(48)); const scopes = scopesFor(o);
       for (const [k, v] of pending) if (c.now() - v.at > STATE_TTL_MS) pending.delete(k);
-      pending.set(state, { verifier, at: c.now() });
-      const q = new URLSearchParams({ client_id: c.clientId, response_type: "code", redirect_uri: redirectUri, response_mode: "query", scope: SCOPES, state,
+      pending.set(state, { verifier, at: c.now(), scopes });
+      const q = new URLSearchParams({ client_id: c.clientId, response_type: "code", redirect_uri: redirectUri, response_mode: "query", scope: scopes, state,
         code_challenge: b64url(createHash("sha256").update(verifier).digest()), code_challenge_method: "S256", prompt: "select_account" });
       return { location: `${authUrl}?${q}`, cookie: `${COOKIE}=${state}; HttpOnly; SameSite=Lax; Path=/microsoft; Max-Age=600` };
     },
@@ -60,7 +64,7 @@ export function createMicrosoft(c: MicrosoftConfig) {
       const entry = pending.get(state); pending.delete(state);
       if (!state || !entry || !cookie || !same(cookie, state) || c.now() - entry.at > STATE_TTL_MS) return { ok: false, message: "That sign-in did not start from this page, or it took longer than ten minutes. Start again." };
       if (err || !code) return { ok: false, message: `Microsoft said: ${err ?? "no code"}. Nothing was saved.` };
-      const r = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirectUri, code_verifier: entry.verifier, scope: SCOPES });
+      const r = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirectUri, code_verifier: entry.verifier, scope: entry.scopes });
       if (!r.ok) return { ok: false, message: r.error === "unreachable" ? "Microsoft could not be reached. Nothing was saved." : `Microsoft refused the sign-in (${r.error}). Nothing was saved.` };
       const granted = String(r.body.scope ?? "");
       if (!hasScope(granted)) return { ok: false, message: "The calendar permission was not granted. Nothing was saved." };
@@ -86,7 +90,8 @@ export function createMicrosoft(c: MicrosoftConfig) {
       if (!t) throw new Error("Outlook Calendar is not connected. Sign in with Microsoft on the Recast page first.");
       if (t.expires_at - 60_000 > c.now()) return t.access_token;
       if (!t.refresh_token) throw new Error("The Microsoft sign-in has expired. Sign in with Microsoft again on the Recast page.");
-      const r = await tokenRequest({ grant_type: "refresh_token", refresh_token: t.refresh_token, scope: SCOPES });
+      // Renewed with what this sign-in was granted, so a ticked permission is kept.
+      const r = await tokenRequest({ grant_type: "refresh_token", refresh_token: t.refresh_token, scope: [...new Set(["offline_access", ...t.scope.split(/\s+/).filter(Boolean)])].join(" ") });
       if (!r.ok) throw new Error(r.error === "unreachable" ? "Microsoft could not be reached to renew the sign-in." : "Microsoft no longer accepts this sign-in (expired or revoked). Sign in with Microsoft again on the Recast page.");
       const next: MicrosoftToken = { ...t, access_token: r.body.access_token as string, ...(typeof r.body.refresh_token === "string" ? { refresh_token: r.body.refresh_token } : {}), expires_at: c.now() + Number(r.body.expires_in ?? 3600) * 1000 };
       save(c.dir, next);
