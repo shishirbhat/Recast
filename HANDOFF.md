@@ -75,6 +75,16 @@ The repository's own records stay authoritative for what they cover; this file p
 
 **Desktop next steps:** (1) owner tries the latest build on the Mac and reports (crash report if any; what Terminal printed); (2) fix what that shows; (3) places and names as highlights; (4) source app name on Windows; (5) multiple displays; (6) Wayland; (7) signing with the owner's Developer ID when available; (8) a public release page if the owner approves.
 
+## Public showcase repository (28 Oct, for investors and the Thiel Fellowship application)
+- **https://github.com/shishirbhat/recast-and-relay** (public, "All rights reserved", **no product source**: owner's explicit choice).
+- Contents:
+  - landing page;
+  - Recast page and playable demo (the harness's minified `clay-artifact.html`, comments stripped);
+  - Relay page and interactive walkthrough of the integration-proof experiment;
+  - `docs/how-it-works.md`, `docs/api.md` (interfaces only), README, LICENSE.
+- Source of that repository's content: built in this session's scratchpad. To update it, clone it, edit and push. Refresh the demo from `apps/harness/dist/clay-artifact.html`.
+- **GitHub Pages must be switched on by the owner** (Settings → Pages → main, root). This session's proxy refuses the Pages API. Site: https://shishirbhat.github.io/recast-and-relay/
+
 ## Published pages (claude.ai artifacts, owner's account, private until shared)
 - **Recast try-it page:** https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN (other account); a copy with the Invite/Chat/Plan scene in this session's account: https://claude.ai/artifact/VxW75bXhvrgjoXUXmSiFwF. Source: `apps/harness/dist/clay-artifact.html` (`pnpm --filter @recast/harness build`). Republish to the same link after any change to the harness, overlay, interaction or core.
 - **Recast Engineering Status** (claude.ai artifact, owner's account): https://claude.ai/artifact/D1J6XJs7ieV4a9crCUX4jc. Built from this repository's own figures. Update it by republishing from a session that has its source, or rebuild from `docs/ENGINEERING_STATUS.md`.
@@ -111,6 +121,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-28:** owner asked for a public showcase repo (Thiel Fellowship, investors): created by the owner, filled and pushed from here (demo, Recast and Relay pages, Relay walkthrough, how it works, API docs; no source). Pages, links and walkthrough were checked in Chromium (light, dark, phone). Pages still to be enabled by the owner.
 - **2026-10-27 (cont.):** owner's brief "Personal Saved Workflows" → D44: saved workflows on the recipe engine (core `checkWorkflow`/`workflowFrom`/step `place`; interaction `workflows.ts`; glass Save/Your workflows/Manage; storage in all three hosts); recipe steps now read back; settings accepted mid-run. Tests: interaction 15, harness 2, extension 1, desktop 1. Full run 1032/0/0 (two extension assertions that read the page before the tab heard the new state now wait for it).
 - **2026-10-27:** Section L attempted and BLOCKED (no Google sign-in in this container; L is hands-on). Then D42: read-back for Gmail drafts, Tasks, Docs, GitHub, Linear; API's reconcile hint fixed; the review now says whether Recast will read the result back. Then Outlook Calendar (D43). 1014/0/0.
 - **2026-10-26 (cont.):** engineering brief → D41: `verify` route in the local program, read-back in extension worker, in-page stand-ins and desktop; link to the event; plain errors; network loss mid-write = unknown; desktop catch-all-undo bug fixed (its test shown to fail with the old code). 994/0/0 with xdotool installed. New private try-it page in this account: https://claude.ai/artifact/VxW75bXhvrgjoXUXmSiFwF (the old link is in the other account).
