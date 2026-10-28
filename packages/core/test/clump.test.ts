@@ -1,6 +1,6 @@
 // Clumps: pieces pressed together into one object, recursively, without losing any ingredient.
 import { describe, expect, it } from "vitest";
-import { answerClump, canMerge, looksLikeError, pieceOfSelection, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
+import { answerClump, canMerge, looksLikeError, pieceOfSelection, webDocument, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
 import { relationById } from "../src/rules.js";
 
 const CTX = { now: "2026-10-19T09:00:00Z", timezone: "Asia/Kolkata" };   // Monday 19 Oct 2026, 14:30 in Bengaluru
@@ -244,5 +244,22 @@ describe("phase two: what a selection is, from its text alone", () => {
   ])("%s → %s", (text, kind) => { expect(pieceOfSelection(text, CTX).kind).toBe(kind); });
   it("an email address carries its address as the person's email", () => {
     expect(pieceOfSelection("mailto:Maya.Rao@Example.com", CTX)).toEqual({ kind: "person", value: { email: "maya.rao@example.com" } });
+  });
+  it("a web address is a document: a file by its name and kind, a page by its path or its site (D49)", () => {
+    expect(pieceOfSelection("https://example.com/reports/Q3%20board-report.pdf", CTX)).toEqual({ kind: "page", value: { name: "Q3 board report (PDF)", url: "https://example.com/reports/Q3%20board-report.pdf" } });
+    expect(pieceOfSelection("www.example.com/blog/how-we-ship", CTX)).toEqual({ kind: "page", value: { name: "how we ship", url: "https://www.example.com/blog/how-we-ship" } });
+    expect(pieceOfSelection("https://www.example.com/", CTX)).toEqual({ kind: "page", value: { name: "example.com", url: "https://www.example.com/" } });
+    expect(pieceOfSelection("https://example.com/deck.pptx", CTX).value).toMatchObject({ name: "deck (PowerPoint)" });
+    // Not addresses: words, a scheme other than the web, a bare name, an address inside a sentence.
+    for (const t of ["example", "javascript:alert(1)", "ftp://example.com/x.pdf", "file:///etc/passwd", "see https://example.com/x.pdf for details", "http://intranet/x"]) expect(pieceOfSelection(t, CTX).kind, t).toBe("text");
+    // A link's own address may be an intranet or a local host.
+    expect(webDocument("http://intranet/files/plan.pdf", { fromLink: true })).toEqual({ name: "plan (PDF)", url: "http://intranet/files/plan.pdf" });
+    expect(webDocument("javascript:alert(1)", { fromLink: true })).toBeNull();
+  });
+  it("a PDF link on its own is a document that fits Tasks, like a page", () => {
+    const f = { id: "u1", kind: "page" as const, text: "https://example.com/Q3-report.pdf", ...pieceOfSelection("https://example.com/Q3-report.pdf", CTX), confidence: 0.9, evidence: [{ locator: { kind: "user" as const, value: "selection" } }] };
+    const v = viewClump(newClump("obj-1", f as Fragment), CTX);
+    expect(v).toMatchObject({ type: "Document", label: "Q3 report (PDF)" }); expect(v.placeableAs).toContain("Task");
+    expect(v.candidate?.properties).toMatchObject({ title: "Q3 report (PDF)", url: "https://example.com/Q3-report.pdf" });
   });
 });

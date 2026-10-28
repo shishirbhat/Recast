@@ -392,6 +392,23 @@ describe("phase two in the extension: select any text on a real page, move it as
     await send({ type: "discard", id: first });
     await until(async () => { const x = await stored(); return x.phase === "idle" && x.desk.length === 0; });
   }, 60_000);
+  it("a link to a PDF, pressed with Alt, is the file as a document: its words and its kind, the file's address", async () => {
+    const page = await openTab("article.html");
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    await until(async () => (await stored()).armed);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle"; });
+    const a = await centre(page, "#report");
+    await page.mouse.move(a.x, a.y); await page.keyboard.down("Alt"); await page.mouse.down(); await page.keyboard.up("Alt");
+    await until(async () => !!(await stored()).carried);
+    const id = (await stored()).carried as string;
+    expect((await stored()).objects[id].ingredients[0]).toMatchObject({ kind: "page", text: "Board report (PDF)", value: { name: "Board report (PDF)", url: `${base}/files/Q3-board-report.pdf` } });
+    await page.mouse.move(40, 400, { steps: 6 }); await page.mouse.up();
+    await until(async () => (await stored()).desk.includes(id));
+    await send({ type: "discard", id });
+    await page.close();
+  }, 60_000);
   it("a selected date reads as a time; text being typed in a field never shows a blob", async () => {
     const page = await openTab("restaurant.html");
     const blob = page.locator("recast-clay >> .sel-blob");

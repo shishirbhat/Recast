@@ -5,7 +5,7 @@
 // in any tab you bring Recast into it is "in hand" on the shelf, ready to be dragged onto something there.
 // A tab cannot follow the pointer while another tab is in front, so carrying across tabs is: switch tabs, then pick the
 // object up from the shelf. Everything else (merging, choosing, reviewing, placing) is the same as on a single page.
-import { commit, verify as coreVerify, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, pieceOfSelection, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt, type Verification } from "@recast/core";
+import { commit, verify as coreVerify, InMemoryEventLog, OutcomeUnknownError, newClump, canMerge, looksLikeError, pieceOfSelection, webDocument, undo as coreUndo, type CapabilityContract, type Fragment, type Operation, type Receipt, type Verification } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { createControlTrigger, doubtNote, escapeEvent, moduleModel, viewOf, type ClumpEffect, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { classifyElement, classifyPiece } from "@recast/extract-web";
@@ -150,6 +150,14 @@ async function main() {
     if (person) {
       const name = person.properties["name"] as string; const email = typeof person.properties["email"] === "string" ? person.properties["email"] as string : undefined;
       return { id: `p${++seq}-${Date.now()}`, kind: "person", text: name, value: { name, ...(email ? { email } : {}) }, confidence: Math.min(...Object.values(person.fields).map((f) => f.confidence)), evidence: person.fields["name"]!.evidence, source };
+    }
+    // A link to a file (a PDF, a slide deck): the file itself as a document, named by the link's words or its file name.
+    const a = el.closest?.("a[href]") as HTMLAnchorElement | null;
+    const file = a ? webDocument(a.href, { fromLink: true }) : null;
+    if (a && file && /\((PDF|Word|Excel|PowerPoint|CSV)\)$/.test(file.name)) {
+      const words = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+      const name = words && words.length <= 120 && !/^https?:/i.test(words) ? `${words} (${/\(([^)]+)\)$/.exec(file.name)![1]})` : file.name;
+      return { id: `f${++seq}-${Date.now()}`, kind: "page", text: name, value: { name, url: file.url }, confidence: 0.9, evidence: [{ locator: { kind: "css", value: "a[href]" }, excerpt: a.href.slice(0, 200) }], source };
     }
     const piece = classifyPiece(el, opts);
     if (piece) return { ...piece, id: `${piece.id}#${++seq}` };

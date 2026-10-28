@@ -285,8 +285,31 @@ export function pieceOfSelection(text: string, ctx: Pick<ComposeContext, "now" |
   const t = text.replace(/\s+/g, " ").trim();
   if (looksLikeError(text)) return { kind: "error" };
   if (/^(mailto:)?[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(t)) return { kind: "person", value: { email: t.replace(/^mailto:/i, "").toLowerCase() } };
+  // A web address on its own is a document: a page, or a file such as a PDF, named by its file name or its address.
+  const doc = webDocument(t); if (doc) return { kind: "page", value: doc };
   if (t.length <= 60 && t.split(" ").length <= 8 && readTime(t, ctx)) return { kind: "time" };
   return { kind: "text" };
+}
+
+const FILE_KIND: Record<string, string> = { pdf: "PDF", docx: "Word", doc: "Word", xlsx: "Excel", pptx: "PowerPoint", csv: "CSV" };
+/**
+ * A selected or captured web address as a document: { name, url }. A file (a PDF, a slide deck) is named by its file name
+ * and its kind, "Q3 report (PDF)"; any other page by the last part of its path, or its site. Only http(s); nothing is fetched.
+ * `fromLink`: the address came from a link on a page (already an address), so its host is not second-guessed.
+ */
+export function webDocument(text: string, o: { fromLink?: boolean } = {}): { name: string; url: string } | null {
+  const t = text.trim();
+  if (/\s/.test(t) || t.length > 2000) return null;
+  let u: URL;
+  try { u = new URL(/^https?:\/\//i.test(t) ? t : /^www\.[^/\s]+\.[a-z]{2,}/i.test(t) ? `https://${t}` : ""); } catch { return null; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+  // Typed text must look like a site on the web; a link's own address (from the page) may be any host, an intranet too.
+  if (!o.fromLink && !/\.[a-z]{2,}$/i.test(u.hostname)) return null;
+  const last = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() ?? "").replace(/\+/g, " ");
+  const ext = /\.([a-z0-9]{2,5})$/i.exec(last)?.[1]?.toLowerCase();
+  const words = (s: string) => s.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  const name = ext && FILE_KIND[ext] ? `${words(last) || u.hostname} (${FILE_KIND[ext]})` : words(last) || u.hostname.replace(/^www\./, "");
+  return { name: name.slice(0, 120), url: u.href };
 }
 
 /** Selected text that reads as an error message (an exception, a failed step, a stack trace). Used where text is captured. */
