@@ -28,7 +28,7 @@ import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
 import { expandReplacement, findMatches, textFingerprint, writeAtomic, gitStatus, listEmptyFolders, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
 import type { SearchOptions } from "./files.ts";
-import { AgentRuns } from "./runs.ts";
+import { AgentRuns, treeOf } from "./runs.ts";
 import { TerminalService } from "./terminal.ts";
 
 export interface ServerOptions {
@@ -280,7 +280,19 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   /** Plain-language reasons a task cannot complete right now, from the engine's own gate. */
   function why(taskId: string) {
     const task = relay.requireTask(taskId);
-    const gaps = task.state === "completed" ? [] : relay.completionGaps(task, root);
+    // Same workspace as the change record and Apply: unapplied agent work is judged in its worktree, where Relay
+    // verified it; against the shared project its evidence would always read as stale. Whether the shared project
+    // moved since the agent's snapshot is a separate fact, said as such: Apply re-checks the merged result then.
+    const run = runs.forTask(taskId).at(-1);
+    const pending = run && run.status !== "applied" ? run : null;
+    const gaps = task.state === "completed" ? [] : relay.completionGaps(task, pending ? pending.worktree : root);
+    if (pending && task.state !== "completed") {
+      docs.flushAll();
+      if (workspaceFingerprint(root, relayOwnFiles(root, resolve(opts.dbPath))) !== treeOf(root, pending.snapshot)) {
+        const note = "; Apply re-checks the merged result";
+        gaps.push(...(task.verify.length ? task.verify.map((cmd) => `shared files changed since verification ran: ${cmd}${note}`) : [`shared files changed since the agent started${note}`]));
+      }
+    }
     const evidence = relay.evidence(taskId);
     return {
       task,

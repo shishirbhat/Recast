@@ -135,3 +135,16 @@ test("a rehearsal is refused while Relay is still checking a run, or when a run 
     delete process.env.RELAY_SIM_FAIL;
   }
 });
+
+test("a task's \"why\" judges unapplied agent work in its own worktree, not against the shared project", () =>
+  withServer(async ({ server, repo }) => {
+    const ed = await joinAs(server, "Bo", "editor");
+    const why = (await api(server, ed.cookie, "GET", "/api/tasks/T-api/why")).body;
+    // Relay verified T-api in its worktree and nothing has changed there: only the contract partner remains.
+    assert.deepEqual(why.gaps, ["shares a contract with unfinished task(s) T-ui; complete them together with relay integrate"]);
+    assert.equal(why.ladder.relayVerified, true);
+    // Someone edits the shared project meanwhile: said as exactly that, not as stale evidence.
+    writeFileSync(join(repo, "README.md"), "# shop\n");
+    const moved = (await api(server, ed.cookie, "GET", "/api/tasks/T-api/why")).body;
+    assert.deepEqual(moved.gaps.slice(1), ["shared files changed since verification ran: node --test src/server.test.js; Apply re-checks the merged result"]);
+  }));

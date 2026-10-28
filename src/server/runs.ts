@@ -71,7 +71,7 @@ export function snapshotCommit(root: string): string {
 }
 
 /** The tree a commit records: two commits with the same tree hold exactly the same files. */
-function treeOf(root: string, commit: string): string {
+export function treeOf(root: string, commit: string): string {
   return git(root, ["rev-parse", `${commit}^{tree}`]).trim();
 }
 
