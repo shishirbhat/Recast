@@ -100,3 +100,16 @@ describe("Google Calendar sign-in (local server, stand-in Google)", () => {
     expect(calls.at(-1)).toMatchObject({ url: "https://google.test/revoke" }); expect(calls.at(-1)!.body.get("token")).toBe("RT-1");
   });
 });
+
+describe("the Todoist box on the Recast page", () => {
+  it("is offered, refuses a connect from another site, and says plainly when a token is not one", async () => {
+    const page = await (await get("/")).text();
+    expect(page).toContain("Todoist (optional)"); expect(page).toContain('action="/todoist/connect"');
+    const foreign = await fetch(`${base}/todoist/connect`, { method: "POST", redirect: "manual", headers: { origin: "https://evil.example", "content-type": "application/x-www-form-urlencoded" }, body: "token=" + "a".repeat(40) });
+    expect(foreign.status).toBe(403);
+    const bad = await fetch(`${base}/todoist/connect`, { method: "POST", redirect: "manual", headers: { origin: base, "content-type": "application/x-www-form-urlencoded" }, body: "token=nope" });
+    expect(bad.status).toBe(303);
+    expect(await (await get("/")).text()).toContain("does not look like a Todoist API token");
+    expect(existsSync(path.join(dir, ".secrets", "todoist.json"))).toBe(false);
+  });
+});

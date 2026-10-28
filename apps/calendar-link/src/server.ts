@@ -19,6 +19,7 @@ import { createExtensionApi } from "./extension-api.js";
 import { connectGithub, forgetGithub, readGithub } from "./github.js";
 import { createMicrosoft, forgetMicrosoft, readMicrosoft } from "./microsoft.js";
 import { connectLinear, forgetLinear, readLinear } from "./linear.js";
+import { connectTodoist, forgetTodoist, readTodoist } from "./todoist.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 /** Optional: create (and delete its own) Gmail drafts. Never sends mail; the person sends a draft from Gmail. */
@@ -78,6 +79,7 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
   let last: Outcome | null = null;   // the result of the last test button, shown once on the page
   let githubNote: string | null = null;   // the result of the last GitHub form, shown once
   let linearNote: string | null = null;
+  let todoistNote: string | null = null;
   const dir = path.dirname(c.tokenFile);
   const pending = new Map<string, { verifier: string; at: number }>();   // state → PKCE verifier, one use each
 
@@ -128,6 +130,14 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
 <p><label>API key<br><input name="key" type="password" required autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Connect Linear</button></form>`}</div>`;
   }
 
+  function todoistBox() {
+    const l = readTodoist(dir); const note = todoistNote; todoistNote = null;
+    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Todoist (optional)</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${l
+      ? `<p class="ok">Connected to Todoist.</p><p class="muted">Recast can add tasks to your Inbox, read them back, and delete the ones it added (Undo). The token stays on this computer.</p><form method="post" action="/todoist/disconnect"><button class="ghost" type="submit">Disconnect Todoist</button></form>`
+      : `<p class="muted">In Todoist: Settings → Integrations → Developer → copy the API token. It gives access to your whole Todoist account, so only paste it here, on your own computer.</p>
+<form method="post" action="/todoist/connect"><p><label>API token<br><input name="token" type="password" required autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Connect Todoist</button></form>`}</div>`;
+  }
+
   async function handle(req: IncomingMessage, res: ServerResponse) {
     // Only this computer, by name: a web page elsewhere cannot point a DNS name at 127.0.0.1 and talk to this server.
     const host = req.headers.host ?? "";
@@ -157,7 +167,7 @@ ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them
 ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
 ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Google Drive box (only the files Recast creates).</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}${todoistBox()}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start" && !c.clientId) {
@@ -255,6 +265,17 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
         const form = new URLSearchParams(raw);
         const r = await connectLinear(dir, form.get("key") ?? "", form.get("team") ?? "", f, now());
         linearNote = r.ok ? `Connected to the ${r.link.teamName} team.` : r.message;
+      }
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
+    if (req.method === "POST" && (url.pathname === "/todoist/connect" || url.pathname === "/todoist/disconnect")) {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      if (url.pathname === "/todoist/disconnect") { forgetTodoist(dir); todoistNote = "Todoist is disconnected here. To revoke the token itself, reset it in Todoist's settings."; }
+      else {
+        let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) break; }
+        const r = await connectTodoist(dir, new URLSearchParams(raw).get("token") ?? "", f, now());
+        todoistNote = r.ok ? "Connected to Todoist." : r.message;
       }
       res.writeHead(303, { location: "/" }); return res.end();
     }

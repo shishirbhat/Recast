@@ -39,6 +39,15 @@ export const CONTRACTS = {
     destination: "google-tasks.tasklist", app: "Google Tasks", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
   },
+  /** Todoist (API v1): a page as a task, and a whole task with its due date, in the Inbox. Undo deletes it. */
+  todoistTask: {
+    destination: "todoist.task", app: "Todoist", targetKind: "Task", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
+    accepts: [{ relationId: "document-task-reference", effect: "Add a task", dataMoved: ["Document.title", "Document.url"] }],
+  },
+  todoistEntry: {
+    destination: "todoist.inbox", app: "Todoist", targetKind: "TaskList", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
+    accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
+  },
   notion: {
     destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api", abilities: ["create", "undo"],
     accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],

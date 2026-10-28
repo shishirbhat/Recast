@@ -6,7 +6,8 @@ import path from "node:path";
 import { createExtensionApi } from "../src/extension-api.js";
 import { connectGithub, githubFile, readGithub } from "../src/github.js";
 import { connectLinear, linearFile } from "../src/linear.js";
-import { statSync } from "node:fs";
+import { connectTodoist, todoistFile } from "../src/todoist.js";
+import { existsSync, statSync } from "node:fs";
 import { DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
 import { answerClump, mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
 import { CONTRACTS } from "@recast/bridges";
@@ -227,5 +228,57 @@ describe("Linear issues through the same door (its own connection)", () => {
     expect((await a.api.handle("undo", EXT, { destination: "linear", receipt: r.body.receipt })).body).toEqual({ outcome: "undone" });
     expect(deleted).toBe("lin-1");
     expect((await a.api.handle("reconcile", EXT, { destination: "linear", op: op() })).body).toMatchObject({ checkable: false });
+  });
+});
+
+describe("Todoist through the same door (its own connection; Todoist stand-in)", () => {
+  const TOKEN = "0123456789abcdef0123456789abcdef01234567";
+  const op = (contract: "todoistTask" | "todoistEntry" = "todoistTask") => {
+    const page = newClump("obj-1", { id: "pg1", kind: "page", text: "Q3 plan", value: { name: "Q3 plan", url: "https://example.com/q3" }, confidence: 0.95, evidence: [{ locator: { kind: "meta", value: "title" } }], source: { app: "example.com", url: "https://example.com/q3" } });
+    const v = viewClump(page, { now: "2026-10-21T09:00:00Z", timezone: "UTC" });
+    return plan(propose(resolve(v.candidate!), CONTRACTS[contract])[0]!, { now: () => "2026-10-21T09:00:00Z" });
+  };
+  const tasks = new Map<string, Record<string, unknown>>();
+  const todoist = (url: string, init: RequestInit) => {
+    if ((init.headers as Record<string, string>)?.authorization !== `Bearer ${TOKEN}`) return new Response("Forbidden", { status: 401 });
+    if (url === "https://api.todoist.com/api/v1/projects") return new Response(JSON.stringify({ results: [{ id: "inbox", name: "Inbox" }] }), { status: 200 });
+    const id = url.split("/tasks/")[1];
+    if (init.method === "POST" && url === "https://api.todoist.com/api/v1/tasks") { const b = JSON.parse(String(init.body)); const t = { id: "6X1", content: b.content, description: b.description ?? "", checked: false }; tasks.set("6X1", t); return new Response(JSON.stringify(t), { status: 200 }); }
+    if (init.method === "DELETE" && id) { tasks.delete(id); return new Response(null, { status: 204 }); }
+    if (id) return tasks.has(id) ? new Response(JSON.stringify(tasks.get(id)), { status: 200 }) : new Response("Not found", { status: 404 });
+    return new Response("{}", { status: 400 });
+  };
+  const asFetch = (async (u: string, i: RequestInit) => todoist(String(u), i ?? {})) as unknown as typeof fetch;
+  it("connecting checks the token with Todoist first and keeps it in a 0600 file", async () => {
+    const a = setup(SCOPE);
+    expect(await connectTodoist(a.dir, "nope", asFetch, 0)).toMatchObject({ ok: false, message: /does not look like a Todoist API token/ });
+    expect(await connectTodoist(a.dir, "f".repeat(40), asFetch, 0)).toMatchObject({ ok: false, message: /did not accept/ });
+    expect(existsSync(todoistFile(a.dir))).toBe(false);
+    expect(await connectTodoist(a.dir, TOKEN, asFetch, 0)).toMatchObject({ ok: true });
+    expect(statSync(todoistFile(a.dir)).mode & 0o777).toBe(0o600);
+  });
+  it("places only once connected; reads back with its link; cannot be asked about a lost one; Undo deletes it", async () => {
+    tasks.clear();
+    const a = setup(SCOPE, todoist); await pair(a.api);
+    const before = await a.api.handle("commit", EXT, { destination: "todoist", op: op(), consent: { kind: "confirm" } });
+    expect(before.status).toBe(409); expect(String(before.body.message)).toMatch(/Todoist is not connected/);
+    expect((await connectTodoist(a.dir, TOKEN, asFetch, 0)).ok).toBe(true);
+    expect((await a.api.handle("status", EXT, {})).body).toMatchObject({ todoist: true });
+    const o = op();
+    const r = await a.api.handle("commit", EXT, { destination: "todoist", op: o, consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "done", receipt: { destination: "todoist.task", reversible: true } });
+    expect((await a.api.handle("verify", EXT, { destination: "todoist", op: o, receipt: r.body.receipt })).body).toMatchObject({ verification: { ok: true, link: "https://app.todoist.com/app/task/6X1" } });
+    expect((await a.api.handle("reconcile", EXT, { destination: "todoist", op: o })).body).toMatchObject({ checkable: false });
+    expect((await a.api.handle("undo", EXT, { destination: "todoist", receipt: r.body.receipt })).body).toEqual({ outcome: "undone" });
+    expect(tasks.size).toBe(0);
+    // The token is never part of any answer.
+    expect(JSON.stringify(r.body)).not.toContain(TOKEN);
+  });
+  it("a refused token is said plainly, never echoed", async () => {
+    tasks.clear();
+    const a = setup(SCOPE, (u, i) => (u.endsWith("/projects") ? todoist(u, i) : new Response("Forbidden", { status: 401 }))); await pair(a.api);
+    expect((await connectTodoist(a.dir, TOKEN, asFetch, 0)).ok).toBe(true);
+    const r = await a.api.handle("commit", EXT, { destination: "todoist", op: op(), consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "failed", message: "Todoist no longer accepts the saved key. Connect it again on the Recast page" });
   });
 });

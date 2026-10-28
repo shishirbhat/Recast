@@ -260,6 +260,48 @@ export const linearIssue: Spec<LinearTarget> = {
   },
 };
 
+// ---- Todoist (API v1: POST /tasks, GET /tasks/{id}, DELETE /tasks/{id}) --------------------------------------------------
+// Todoist chooses the task id, so a lost answer cannot be looked up exactly: it stays unknown until the person looks.
+// The page's link goes in the description; the due date is a plain date (YYYY-MM-DD), as the person saw it.
+export interface TodoistTarget { projectId?: string }
+const TODOIST = "https://api.todoist.com/api/v1/tasks";
+const todoistLink = (id: string) => `https://app.todoist.com/app/task/${seg(id)}`;
+async function todoistCreate(t: TodoistTarget, body: Record<string, unknown>, send: Send) {
+  const r = asObj(await send({ method: "POST", url: TODOIST, body: { ...body, ...(t.projectId ? { project_id: t.projectId } : {}) } }));
+  return JSON.stringify({ id: str(r.id, "task id") });
+}
+async function verifyTodoist(token: string, op: Operation, send: Send, map: Record<string, "content" | "description" | "due">) {
+  const id = (JSON.parse(token) as { id: string }).id;
+  const k = await readBack(send, { method: "GET", url: `${TODOIST}/${seg(id)}` });
+  // A completed or deleted task is no longer the task Recast added.
+  const there = k && k.is_deleted !== true && k.checked !== true;
+  const due = (k?.due && typeof k.due === "object" ? (k.due as Record<string, unknown>).date : null);
+  const value = (key: "content" | "description" | "due") => key === "due" ? (typeof due === "string" ? due.slice(0, 10) : null) : typeof k?.[key] === "string" ? (k[key] as string) : null;
+  const paths = Object.keys(map).filter((p) => moved(op, p) !== undefined);
+  return compared(op, there ? Object.fromEntries(paths.map((p) => [p, value(map[p]!)])) : null, "the task is not in Todoist", todoistLink(id));
+}
+export const todoistTask: Spec<TodoistTarget> = {
+  contract: CONTRACTS.todoistTask,
+  capabilities: { "document-task-reference": unkeyedCreate("data:read_write", "delete-created", { readBack: true }) },
+  execute: (op, t, send) => todoistCreate(t, { content: need(op, "Document.title"), ...(moved(op, "Document.url") ? { description: moved(op, "Document.url") } : {}) }, send),
+  async undo(token, _t, send) { await send({ method: "DELETE", url: `${TODOIST}/${seg((JSON.parse(token) as { id: string }).id)}` }); },
+  verify: (token, op, _t, send) => verifyTodoist(token, op, send, { "Document.title": "content", "Document.url": "description" }),
+};
+export const todoistEntry: Spec<TodoistTarget> = {
+  contract: CONTRACTS.todoistEntry,
+  capabilities: { "task-tasklist-entry": unkeyedCreate("data:read_write", "delete-created", { readBack: true }) },
+  execute(op, t, send) {
+    const url = moved(op, "Task.url"), due = moved(op, "Task.due");
+    return todoistCreate(t, { content: need(op, "Task.title"), ...(url ? { description: url } : {}), ...(due ? { due_date: String(due).slice(0, 10) } : {}) }, send);
+  },
+  undo: todoistTask.undo,
+  async verify(token, op, _t, send) {
+    const r = await verifyTodoist(token, op, send, { "Task.title": "content", "Task.url": "description", "Task.due": "due" });
+    const fields = r.fields.map((f) => f.path === "Task.due" ? { ...f, expected: f.expected.slice(0, 10), match: f.actual === f.expected.slice(0, 10) } : f);
+    return { ...r, fields, ok: !r.note && fields.every((f) => f.match) };
+  },
+};
+
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
 export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
 const NOTION = "https://api.notion.com/v1/pages";

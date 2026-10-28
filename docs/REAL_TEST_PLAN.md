@@ -198,3 +198,16 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | M5 | Place the same composition again | "It is already in your Outlook Calendar, so it was not added a second time" | no duplicate |
 | M6 | **Undo** | The event disappears from Outlook | undo |
 | M7 | At the bottom of http://localhost:8787/, **Disconnect Outlook** | Outlook is no longer offered | disconnect |
+
+## N. Todoist (needs a Todoist account: apps/calendar-link README, Part 13)
+**Checks:** the token is checked before saving; a real Todoist task placed, read back with its link, undone; a refused token is stated.
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| N1 | At http://localhost:8787/, paste a wrong value under **Todoist** and **Connect** | "That does not look like a Todoist API token…"; nothing saved | input checked |
+| N2 | Paste the real token and **Connect Todoist** | "Connected to Todoist." | token checked with Todoist |
+| N3 | In the extension, **This page** on any article, Choose where it goes → Tasks (→ Todoist if Google Tasks is also connected) → **Add a task** | "Added to Todoist", then "Read back from Todoist: 2 of 2 fields match. Open in Todoist"; the task is in your Inbox with the page link in its description | real write + read-back |
+| N4 | Click **Open in Todoist** | The task opens in Todoist | link |
+| N5 | **Undo** | The task disappears from Todoist | undo |
+| N6 | The page plus a date (as in E8b), placed in Todoist | The task is due on that day | due date |
+| N7 | In Todoist, reset the API token (Settings → Integrations → Developer), then place something | "Todoist no longer accepts the saved key. Connect it again on the Recast page"; nothing claims it was added | auth failure stated |

@@ -122,6 +122,11 @@ Recast can then create, read and delete its own events in your default Outlook c
 
 In the desktop app, paste the client ID under **Connections → Outlook Calendar** instead of using `.env`.
 
+## Part 13: Todoist (optional, separate from Google)
+1. In Todoist: **Settings → Integrations → Developer**, copy the **API token**. It gives access to your whole Todoist account, so paste it only here, on your own computer.
+2. On http://localhost:8787/, under **Todoist**, paste it and **Connect Todoist**. Recast checks it with Todoist before saving anything. The token stays in `.secrets/todoist.json` on this computer (readable only by you), and requests with it go to api.todoist.com only.
+3. A page, or a page with a date, placed in **Tasks** can go to Todoist's Inbox. With Google Tasks also connected, Tasks asks which one. Recast reads the task back (title, link, due date) and Undo deletes it. A lost answer cannot be looked up (Todoist chooses the task's id), so Recast asks you to look instead of sending it again. Steps: `docs/REAL_TEST_PLAN.md`, section N.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|
