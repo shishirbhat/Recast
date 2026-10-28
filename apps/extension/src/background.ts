@@ -218,6 +218,9 @@ async function forget(tabId: number) {
     const destinations = s.destinations.filter((d) => !d.id.startsWith(`${tabId}:`));
     const there = !!s.placement?.destinationId.startsWith(`${tabId}:`);
     const next = { ...s, destinations };
+    // A merge is already applied when its fusion starts; only the tab that pressed them plays it and then settles it. If
+    // that tab closes (or navigates) first, nothing would ever settle it and Recast would stay "pressing together".
+    if (s.phase === "merging") return reduceClump(next, { type: "settled", now: Date.now() });
     if (!there) return { state: next };
     const label = s.destinations.find((d) => d.id === s.placement!.destinationId)?.label ?? "The destination";
     const opId = s.placement!.op?.opId ?? "";

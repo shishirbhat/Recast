@@ -341,3 +341,8 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **To Do** (`msTodoTask`, `msTodoEntry`): the default list is looked up when placing, and its id is kept with the task, so Undo and read-back go to the same list. The due date is a day (midnight UTC), and the day is what is compared. A completed task is "not there".
 - Graph chooses the ids, so a lost answer stays unknown and the person is asked to look. Without the permission ticked, placing is refused before anything reaches Microsoft.
 - **Not done:** no real Microsoft run (REAL_TEST_PLAN M8–M11). Not covered by a browser test yet, only the local program's.
+
+### D48. The extension has a keyboard path; a merge whose tab closes is settled (2026-10-28)
+- **Keyboard:** on an object in the tray, Enter opens the module and Space picks it up. With one in hand, Enter on another object presses them together, and Enter on the one in hand puts it down. With text selected while Recast is on, Alt+Enter puts the selection on the desk. Escape steps back, as before. The module itself already took arrows, Enter and Escape (shared glass).
+- **Bug fixed on the way:** a merge is applied when its fusion starts, and only the tab that pressed the pieces settles it. If that tab closed or navigated during the quarter-second fusion, the state stayed "merging" for good, and nothing else was accepted. The worker now settles a merge when a tab goes away. Found because a test closed its tab right after a merge.
+- **Not done:** no keyboard way to choose a destination on the page itself (a calendar slot); use the module's selector.

@@ -117,7 +117,7 @@ async function main() {
       blob.dataset["text"] = sel.text; blob.dataset["kind"] = kind;
       const short = sel.text.length > 42 ? `${sel.text.slice(0, 40)}…` : sel.text;
       blob.replaceChildren(Object.assign(document.createElement("span"), { className: "g", textContent: KIND_GLYPH[kind] ?? "❝" }), Object.assign(document.createElement("span"), { className: "t", textContent: short }), Object.assign(document.createElement("span"), { className: "k", textContent: KIND_WORD[kind] ?? "Text" }));
-      blob.setAttribute("aria-label", `Selected text: ${sel.text.slice(0, 120)}, ${(KIND_WORD[kind] ?? "text").toLowerCase()}. Enter to put it on your desk`);
+      blob.setAttribute("aria-label", `Selected text: ${sel.text.slice(0, 120)}, ${(KIND_WORD[kind] ?? "text").toLowerCase()}. Enter (or Alt+Enter from the page) to put it on your desk`);
     }
     blob.hidden = false;
     const end = [...sel.range.getClientRects()].at(-1) ?? sel.range.getBoundingClientRect();
@@ -207,7 +207,7 @@ async function main() {
     if (inWell && well) items.push(item(inWell, well.x, well.y, targetMode(inWell), true));
     if (carriedHere) items.push(item(state.carried!, pointer.x, pointer.y, "carried"));
     clay.update(state.armed ? items : []);
-    for (const it of items) { const l = clay.label(it.id); if (l) { l.tabIndex = 0; l.setAttribute("role", "button"); } }
+    for (const it of items) { const l = clay.label(it.id); if (l) { l.tabIndex = 0; l.setAttribute("role", "button"); l.setAttribute("aria-keyshortcuts", "Enter Space"); } }
     if (state.carried && !localCarry) hint(`In hand: ${viewOf(state, state.carried).label}. Drag it onto something on this page.`);
     else if (!error && state.last) hint(state.last.text);
     updateBlob();
@@ -277,6 +277,34 @@ async function main() {
     const ev = escapeEvent(state); if (!ev) return;
     e.preventDefault(); localCarry = false; const wasOpen = glass.well() !== null;
     void dispatch(ev).then((r) => { state = r.state; render(); if (wasOpen && glass.well()) glass.focus(); });
+  }, true);
+
+  // ---- keyboard: the same path as the try-it page -------------------------------------------------------------------------
+  // On an object in the tray: Enter opens the module on it; Space picks it up. With one in hand, Enter on another object
+  // presses them together, Enter on the one in hand puts it back down. Escape (above) steps back as everywhere else.
+  // With text selected while Recast is on, Alt+Enter puts the selection on the desk (the blob's own action, by keyboard).
+  shadow.addEventListener("keydown", (e) => {
+    const ke = e as KeyboardEvent; const el = ke.target as HTMLElement;
+    const obj = el.closest?.<HTMLElement>(".clay-item"); if (!obj || !state?.armed) return;
+    const id = obj.dataset["id"]!; const enter = ke.key === "Enter", space = ke.key === " ";
+    if (!enter && !space) return;
+    ke.preventDefault(); ke.stopPropagation();
+    void (async () => {
+      if (state.carried && state.carried !== id && enter) {
+        // Pressed in by keyboard: this tab plays the fusion and settles it (the pointer's shared flag is for drags).
+        await dispatch({ type: "approach", target: { kind: "object", id } }); const r = await dispatch({ type: "drop" });
+         if (r.state.phase === "merging") { const m = r.state.merging!; await clay.fuse(m.id, m.incomingId); state = (await dispatch({ type: "settled" })).state; }
+      } else if (state.carried === id) { const r = await dispatch({ type: "drop" }); state = r.state; }
+      else if (space) { const r = await dispatch({ type: "pickUp", id }); state = r.state; }
+      else { const r = await dispatch({ type: "openModule", id }); state = r.state; setTimeout(() => glass.focus(), 0); }
+      render();
+      // Keep the keyboard on the desk: on what is in hand, or on the object it went into.
+      setTimeout(() => (clay.label(state.carried ?? id) ?? clay.label(state.desk.at(-1) ?? ""))?.focus(), 30);
+    })();
+  });
+  addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !e.altKey || !state?.armed || blob.hidden || !blob.dataset["text"]) return;
+    e.preventDefault(); void takeSelection(false, selectionFragment(blob.dataset["text"])).then(() => clay.label(state.desk.at(-1) ?? "")?.focus());
   }, true);
 
   let lastTargetKey = "";

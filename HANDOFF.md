@@ -117,7 +117,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - Next in the owner's order, buildable against provider stand-ins (real runs need the owner's accounts): Todoist tasks; Microsoft 365 through Graph (Outlook calendar and mail, To Do); a generic webhook or custom URL destination with declared abilities; one capture → several destinations previewed together.
 - Show a destination's declared abilities in the wheel (for example "can undo", "opens only").
 - Files (PDF links) as documents, not only the page.
-- Keyboard path in the extension beyond Escape (the clay page has it).
+- (Done, D48) Keyboard path in the extension.
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)

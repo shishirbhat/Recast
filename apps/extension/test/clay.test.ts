@@ -346,6 +346,52 @@ describe("phase two in the extension: select any text on a real page, move it as
     expect((await stored()).objects[first].ingredients.map((f: any) => f.text)).toEqual(["No structured data.", "Just a page"]);
     await page.close();
   }, 60_000);
+  it("by keyboard alone: Alt+Enter takes a selection; Space picks an object up; Enter on another presses them together; Enter opens the module; Escape steps back", async () => {
+    const page = await openTab("empty.html");
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    await until(async () => (await stored()).armed);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    await until(async () => { const x = await stored(); return x.desk.length === 0 && x.phase === "idle"; });
+    const blob = page.locator("recast-clay >> .sel-blob");
+    await mouseSelect(page, "p", "No structured data.");
+    await until(async () => await blob.isVisible());
+    expect(await blob.getAttribute("aria-label")).toMatch(/Alt\+Enter/);
+    await page.keyboard.press("Alt+Enter");
+    await until(async () => (await stored()).desk.length === 1);
+    const first = (await stored()).desk[0] as string;
+    await mouseSelect(page, "h1", "Just a page");
+    await until(async () => await blob.isVisible());
+    await page.keyboard.press("Alt+Enter");
+    await until(async () => (await stored()).desk.length === 2);
+    const second = (await stored()).desk.find((x: string) => x !== first) as string;
+    // The second object has the keyboard; Space lifts it.
+    await page.locator(item(second)).focus();
+    await page.keyboard.press(" ");
+    await until(async () => (await stored()).carried === second);
+    await page.locator(item(first)).focus();
+    await page.keyboard.press("Enter");
+    await until(async () => { const x = await stored(); return x.objects[first]?.ingredients.length === 2 && !x.carried && x.phase !== "merging"; });
+    expect((await stored()).desk).toEqual([first]);
+    // Enter on it opens the module; Escape closes it again, nothing written.
+    await page.locator(item(first)).focus();
+    await page.keyboard.press("Enter");
+    await until(async () => (await stored()).phase === "composed");
+    await page.keyboard.press("Escape");
+    await until(async () => (await stored()).phase === "idle");
+    expect((await stored()).desk).toEqual([first]);
+    // A merge whose tab closes before its fusion has played is settled, never left "pressing together" for good.
+    const src = { app: "127.0.0.1", url: page.url(), title: "Nothing here" };
+    await send({ type: "capture", fragment: { id: "k9", kind: "text", text: "One more line", confidence: 0.9, evidence: [{ locator: { kind: "user", value: "selection" } }], source: src }, carry: true });
+    await send({ type: "approach", target: { kind: "object", id: first } }); await send({ type: "drop" });
+    await until(async () => (await stored()).phase === "merging");
+    await page.close();
+    await until(async () => (await stored()).phase === "composed");
+    expect((await stored()).objects[first].ingredients).toHaveLength(3);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    await send({ type: "discard", id: first });
+    await until(async () => { const x = await stored(); return x.phase === "idle" && x.desk.length === 0; });
+  }, 60_000);
   it("a selected date reads as a time; text being typed in a field never shows a blob", async () => {
     const page = await openTab("restaurant.html");
     const blob = page.locator("recast-clay >> .sel-blob");
