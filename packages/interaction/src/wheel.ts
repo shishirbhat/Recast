@@ -18,14 +18,26 @@ export const WHEEL_SLOTS: readonly { key: WheelKey; label: string; kinds: readon
   { key: "more", label: "More", kinds: [] },   // everything else in the registry
 ];
 
-export interface WheelOption { destination: string; app: string; effect: string; available: boolean; reason?: string; destinationId?: string; standIn?: boolean }
+export interface WheelOption { destination: string; app: string; effect: string; available: boolean; reason?: string; destinationId?: string; standIn?: boolean;
+  /** What the destination itself declares it can do, in words: "Read back after placing · Undo", or "Opens only". */
+  can: string }
+
+/**
+ * A destination's declared abilities, as the person needs them before choosing: whether Recast can check the result, and
+ * whether it can take it back. From the contract only (D30), so it never promises more than the bridge declares.
+ */
+export function abilityLine(c: CapabilityContract): string {
+  const a = c.abilities ?? [];
+  if (c.reliability === "deep-link" || (a.includes("open") && !a.includes("create") && !a.includes("update"))) return "Opens it for you to finish there: Recast can’t check or undo it";
+  return [a.includes("verify") ? "Read back after placing" : "Can’t be read back", a.includes("undo") ? "Undo" : "No Undo"].join(" · ");
+}
 export interface WheelEntry { key: WheelKey; label: string; available: boolean; reason?: string; destinationId?: string; standIn?: boolean; options: WheelOption[] }
 
 export function wheelEntries(s: ClumpState, objectId: string, registry: readonly CapabilityContract[]): WheelEntry[] {
   const v = viewOf(s, objectId);
   const named = new Set(WHEEL_SLOTS.flatMap((w) => w.kinds));
   const option = (c: CapabilityContract): WheelOption => {
-    const base = { destination: c.destination, app: c.app, effect: c.accepts[0]?.effect ?? "" };
+    const base = { destination: c.destination, app: c.app, effect: c.accepts[0]?.effect ?? "", can: abilityLine(c) };
     if (!v.placeableAs.includes(c.targetKind as never)) return { ...base, available: false, reason: unfit(c.app, c, v.type) };
     const live = s.destinations.find((d) => d.contract.destination === c.destination);
     if (!live) return { ...base, available: false, reason: `${c.app} is not connected here` };

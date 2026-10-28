@@ -230,9 +230,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   }
   function rowEffect(key: string): string {
     if (model.mode !== "choosing") return "";
-    if (drill) { const entry = model.entries.find((x) => x.key === drill)!; const m = entry.options[Number(key.split(":")[1])]; return m ? `${m.app}: ${m.effect.toLowerCase()}` : ""; }
+    // What it will do, then what the destination declares it can do afterwards (check it, take it back).
+    if (drill) { const entry = model.entries.find((x) => x.key === drill)!; const m = entry.options[Number(key.split(":")[1])]; return m ? `${m.app}: ${m.effect.toLowerCase()}. ${m.can}` : ""; }
     const o = model.entries.find((x) => x.key === key)?.options.find((x) => x.available);
-    return o ? `${o.app}: ${o.effect.toLowerCase()}` : "";
+    return o ? `${o.app}: ${o.effect.toLowerCase()}. ${o.can}` : "";
   }
   function openSelected() {
     if (model.mode !== "choosing") return;

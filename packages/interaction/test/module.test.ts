@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { CONTRACTS, REGISTRY } from "@recast/bridges";
 import type { Fragment } from "@recast/core";
-import { commandEvents, escapeEvent, initialClumpState, moduleModel, reduceClump, wheelEntries, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
+import { abilityLine, commandEvents, escapeEvent, initialClumpState, moduleModel, reduceClump, wheelEntries, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
 
 const NOW = Date.parse("2026-10-19T09:00:00Z");
 let n = 0;
@@ -287,3 +287,15 @@ describe("a place on its own → a map app (open and prefill)", () => {
     expect(run([{ type: "undo" }], r.s).errors).toEqual(["this placement cannot be undone"]);
   });
 });
+
+describe("what each destination declares it can do, in words (D45)", () => {
+  it("comes from the contract's abilities only: read back, undo, or opens only", () => {
+    expect(abilityLine(CONTRACTS.googleCalendarEvent)).toBe("Read back after placing · Undo");
+    expect(abilityLine(CONTRACTS.googleSheets)).toBe("Can’t be read back · Undo");
+    expect(abilityLine(CONTRACTS.googleMaps)).toBe("Opens it for you to finish there: Recast can’t check or undo it");
+    expect(abilityLine({ ...CONTRACTS.githubIssue, abilities: ["create"] })).toBe("Can’t be read back · No Undo");
+    // Every registry entry gets a line, and every wheel option carries it.
+    for (const c of REGISTRY) expect(abilityLine(c)).toMatch(/\S/);
+  });
+});
+

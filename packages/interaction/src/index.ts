@@ -4,7 +4,7 @@ export type { View } from "./view.js";
 export { CHIP_W, CHIP_H, CHIP_GAP, MAGNET, APPROACH, chipRect, center, contains, distanceToRect } from "./geometry.js";
 export type * from "./types.js";
 export { initialClumpState, reduceClump, viewOf, ctxOf, commandEvents, escapeEvent, unfit } from "./clump-machine.js";
-export { WHEEL_SLOTS, wheelEntries, firstAvailable, moduleModel, doubtNote } from "./wheel.js";
+export { WHEEL_SLOTS, wheelEntries, abilityLine, firstAvailable, moduleModel, doubtNote } from "./wheel.js";
 export type { WheelKey, WheelEntry, WheelOption, ModuleModel, ModuleObject } from "./wheel.js";
 export type { ClumpPhase, ClumpState, ClumpEvent, ClumpInput, ClumpEffect, ClumpResult, DestinationSpec, Target, Placement, ConfirmLevel } from "./clump-machine.js";
 export { createControlTrigger, createDoubleTap, createTaps, DOUBLE_TAP, type TapInput } from "./double-tap.js";

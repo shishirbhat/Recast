@@ -364,6 +364,8 @@ describe("the glass module and the destination selector", () => {
     expect(await page.locator(".rg-actions [data-act=open]").isDisabled()).toBe(true);
     await page.waitForTimeout(120); await page.mouse.wheel(0, -100); await page.waitForTimeout(120); await page.mouse.wheel(0, -100);
     await expect.poll(async () => (await st(page)).choice).toBe("calendar");
+    // What the place will do, and what it declares it can do afterwards (D45).
+    await expect.poll(() => page.locator(".rg-reason").innerText()).toBe("Google Calendar: add to calendar. Read back after placing · Undo. A local stand-in: nothing reaches the real service");
     expect((await st(page)).phase).toBe("choosing"); expect(await page.locator("[data-placed='event']").count()).toBe(0);
     // Open: the same module becomes the review. Still nothing written.
     await page.getByRole("button", { name: "Open" }).click();

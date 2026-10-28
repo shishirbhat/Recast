@@ -324,3 +324,7 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Stored data is not trusted:** every entry is checked on read (`checkWorkflow`): exact fields, known steps and kinds, a destination this build can place in, version 1. A refused entry is shown with its reason, kept as stored until deleted, and never run.
 - **Recipe runs now read back each step** whose destination declares `verify` (this applies to every recipe, not only saved ones). A setting such as the confirmation level or time zone is accepted during a run (it was refused before).
 - **Not done:** no sharing, sync, marketplace or parameters; no real-provider run of a saved workflow.
+
+### D45. The wheel says what each place can do afterwards (2026-10-28)
+- **Decision:** before choosing, the selector's line for a place says what it will do and what its contract declares it can do afterwards: "Google Calendar: add to calendar. Read back after placing · Undo". The alternatives are "Can’t be read back", "No Undo", or, for open-and-prefill places, "Opens it for you to finish there: Recast can’t check or undo it".
+- **Source:** `abilityLine(contract)` in `packages/interaction/src/wheel.ts`, from the declared abilities (D30) only, so it never promises more than the bridge declares. The review's "after" line (D42) still restates it.
