@@ -146,9 +146,9 @@ let seq = 0;
 /** A selection from the app in front, as a piece where it was grabbed: read as a time, a person, an error or text. */
 function capture(text: string, origin: Origin, at: Point, how: { carry?: boolean; from?: "selection" | "highlight" } = {}) {
   const t = text.replace(/\s+/g, " ").trim(); if (!t) return;
-  const { kind, value } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: TZ });
+  const { kind, value, confidence } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: TZ });
   const source = { app: origin.app ?? "Another app", ...(origin.url && /^https?:/.test(origin.url) ? { url: origin.url } : {}), ...(origin.title ? { title: origin.title.slice(0, 200) } : {}) };
-  const f: Fragment = { id: `g${Date.now()}-${++seq}`, kind, text: t.slice(0, 1000), confidence: 0.9, ...(value ? { value } : {}),
+  const f: Fragment = { id: `g${Date.now()}-${++seq}`, kind, text: t.slice(0, 1000), confidence: confidence ?? 0.9, ...(value ? { value } : {}),
     evidence: [{ locator: { kind: "user", value: how.from ?? "selection" }, excerpt: t.slice(0, 200) }], source };
   lastAt = how.carry ? { ...at } : spotNear(at);
   const r = dispatch({ type: "capture", fragment: f, ...(how.carry ? { carry: true } : {}) });

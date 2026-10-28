@@ -178,9 +178,9 @@ function fragmentOf(el: HTMLElement): Fragment {
   const tab = el.closest<HTMLElement>("[data-tab]")!;
   const kind = el.dataset["kind"] as Fragment["kind"];
   const text = (el.dataset["text"] ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
-  const value = { ...(el.dataset["name"] ? { name: el.dataset["name"] } : {}), ...(el.dataset["address"] ? { address: el.dataset["address"] } : {}), ...(el.dataset["email"] ? { email: el.dataset["email"] } : {}) };
+  const value = { ...(el.dataset["name"] ? { name: el.dataset["name"] } : {}), ...(el.dataset["address"] ? { address: el.dataset["address"] } : {}), ...(el.dataset["email"] ? { email: el.dataset["email"] } : {}), ...(el.dataset["url"] ? { url: el.dataset["url"] } : {}) };
   return {
-    id: `${el.id}-${++captureSeq}`, kind, text, confidence: 0.9, ...(Object.keys(value).length ? { value } : {}),
+    id: `${el.id}-${++captureSeq}`, kind, text, confidence: Number(el.dataset["confidence"] ?? 0.9), ...(Object.keys(value).length ? { value } : {}),
     evidence: [{ locator: { kind: "css", value: `#${el.id}` }, excerpt: text }],
     source: { app: "browser", url: tab.dataset["url"]!, title: el.dataset["sourceTitle"] ?? tab.dataset["title"]! },
   };
@@ -204,8 +204,9 @@ function capture(el: HTMLElement, carry: boolean) {
 // picked up with the keyboard in exactly the same way.
 let selBlob: HTMLElement | null = null; let selSeq = 0;
 const SEL_MAX = 1000;
-const SEL_GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝" };
-const SEL_KIND: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text" };
+const SEL_GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝", place: "⌖", page: "▤" };
+// A reading Recast is less sure of says so on the blob ("Place?"), before anything is made from it.
+const SEL_KIND: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text", place: "Place?", page: "Document" };
 function selectionInPage(): { range: Range; text: string; tab: HTMLElement } | null {
   const sel = getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
   const range = sel.getRangeAt(0); const node = range.commonAncestorContainer;
@@ -222,10 +223,11 @@ function updateSelectionBlob() {
   if (!sel) { if (selBlob) { selBlob.remove(); selBlob = null; } return; }
   if (!selBlob || selBlob.dataset["text"] !== sel.text || !sel.tab.contains(selBlob)) {
     selBlob?.remove();
-    const { kind, value } = pieceOfSelection(sel.text, { now: new Date(NOW()).toISOString(), timezone: TZ });
+    const { kind, value, confidence } = pieceOfSelection(sel.text, { now: new Date(NOW()).toISOString(), timezone: TZ });
     const b = document.createElement("span");
     b.className = "grab sel-blob"; b.id = `sel-${++selSeq}`; b.tabIndex = 0; b.setAttribute("role", "button");
     b.dataset["kind"] = kind; b.dataset["text"] = sel.text; if (value?.email) b.dataset["email"] = value.email;
+    if (value?.name) b.dataset["name"] = value.name; if (value?.address) b.dataset["address"] = value.address; if (value?.url) b.dataset["url"] = value.url; if (confidence) b.dataset["confidence"] = String(confidence);
     const short = sel.text.length > 42 ? `${sel.text.slice(0, 40)}…` : sel.text;
     b.innerHTML = `<span class="sel-glyph" aria-hidden="true">${SEL_GLYPH[kind] ?? "❝"}</span><span class="sel-text">${esc(short)}</span><span class="sel-kind">${SEL_KIND[kind] ?? "Text"}</span>`;
     b.setAttribute("aria-label", `Selected text: ${sel.text.slice(0, 120)}, ${(SEL_KIND[kind] ?? "text").toLowerCase()}. Enter to pick up`);

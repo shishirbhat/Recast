@@ -90,7 +90,7 @@ async function main() {
   // While Recast is on, selecting text shows a blob beside it: the selection, read as a time, a person (an email address),
   // an error or text. Drag the blob to carry it; tap it (or press Enter on it) to put it on your desk.
   const blob = $<HTMLButtonElement>(".sel-blob");
-  const KIND_WORD: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text" };
+  const KIND_WORD: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text", place: "Place?", page: "Document" };
   const KIND_GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝" };
   let selPress: { x: number; y: number; started: boolean; fragment: Fragment; pending?: Promise<void> } | null = null;
   function selectedText(): { text: string; range: Range } | null {
@@ -102,9 +102,9 @@ async function main() {
     return text && text.length <= 1000 ? { text, range } : null;
   }
   function selectionFragment(text: string): Fragment {
-    const { kind, value } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: tz });
+    const { kind, value, confidence } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: tz });
     const source = { app: location.hostname || "page", url: location.href, ...(document.title ? { title: document.title.slice(0, 200) } : {}) };
-    return { id: `s${++seq}-${Date.now()}`, kind, text, confidence: 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: text.slice(0, 200) }], source };
+    return { id: `s${++seq}-${Date.now()}`, kind, text, confidence: confidence ?? 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "user", value: "selection" }, excerpt: text.slice(0, 200) }], source };
   }
   function updateBlob() {
     if (selPress) return;

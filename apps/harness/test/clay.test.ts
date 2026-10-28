@@ -597,6 +597,32 @@ describe("phase two: select any text, and move it as a blob", () => {
     expect(s.objects[s.desk[0]].ingredients[0]).toMatchObject({ kind: "person", text: "maya.rao@example.com", value: { email: "maya.rao@example.com" } });
     expect(errors).toEqual([]); await ctx.close();
   });
+  it("a street address in plain text reads as a place, marked as a guess: the blob says 'Place?' and the review asks first (D50)", async () => {
+    const { page, ctx, errors } = await open();
+    await page.locator("#tab-restaurant").click();
+    await mouseSelect(page, "#page-restaurant .sub", "12 MG Road, Bengaluru");
+    await page.locator(".sel-blob").waitFor();
+    expect(await page.locator(".sel-blob .sel-kind").innerText()).toBe("Place?");
+    await page.locator(".sel-blob").click();
+    let s = await st(page);
+    const id = s.desk.at(-1);
+    expect(s.objects[id].ingredients[0]).toMatchObject({ kind: "place", text: "12 MG Road, Bengaluru", confidence: 0.6, value: { name: "12 MG Road", address: "12 MG Road, Bengaluru" } });
+    // On its own a place goes to a map; the review says Recast is not sure of this reading.
+    await atRest(page, objectSel(id)); await page.locator(objectSel(id)).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "inspecting");
+    await page.getByRole("button", { name: "Choose where it goes" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    await page.locator("[data-act=openWheel]").click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "choosing");
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    expect(await page.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-more");
+    await page.getByRole("button", { name: "Open" }).click();                 // into "More places"
+    await page.locator(".rg-opt", { hasText: "Google Maps" }).click(); await page.waitForTimeout(150);
+    if ((await st(page)).phase === "choosing") await page.getByRole("button", { name: "Open" }).click();
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "previewing");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/not sure/i);
+    expect(errors).toEqual([]); await ctx.close();
+  });
   it("a date in plain text reads as a time and joins an object like a highlighted one; keyboard: Tab to the blob, Enter lifts it", async () => {
     const { page, ctx, errors } = await open();
     await page.evaluate(() => { const p = document.createElement("p"); p.id = "free-time"; p.textContent = "Back in Bengaluru on Saturday at 8:30 PM, if you are around."; document.querySelector("#page-profile")!.appendChild(p); });

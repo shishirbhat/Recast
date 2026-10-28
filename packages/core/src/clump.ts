@@ -281,14 +281,30 @@ function noteView(c: Clump): NoteView {
  * page marks). An error message, then a short date or time, then a lone email address (a person); anything else is text.
  * Places are not guessed from free text: an address-shaped string is too often something else.
  */
-export function pieceOfSelection(text: string, ctx: Pick<ComposeContext, "now" | "timezone">): { kind: Fragment["kind"]; value?: Fragment["value"] } {
+export function pieceOfSelection(text: string, ctx: Pick<ComposeContext, "now" | "timezone">): { kind: Fragment["kind"]; value?: Fragment["value"]; confidence?: number } {
   const t = text.replace(/\s+/g, " ").trim();
   if (looksLikeError(text)) return { kind: "error" };
   if (/^(mailto:)?[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(t)) return { kind: "person", value: { email: t.replace(/^mailto:/i, "").toLowerCase() } };
   // A web address on its own is a document: a page, or a file such as a PDF, named by its file name or its address.
   const doc = webDocument(t); if (doc) return { kind: "page", value: doc };
+  // A street address is a place. It is a reading of free text, so it carries lower confidence: the review says Recast is
+  // not sure and asks the person to check it before anything uses it.
+  const place = addressOf(t); if (place) return { kind: "place", value: place, confidence: 0.6 };
   if (t.length <= 60 && t.split(" ").length <= 8 && readTime(t, ctx)) return { kind: "time" };
   return { kind: "text" };
+}
+
+// A number, then a street's name and a street word ("12 MG Road", "221B Baker Street"), or a postal code after a comma.
+const STREET_RE = /\b\d{1,5}[A-Za-z]?\s+[\p{L}0-9 .'’-]{2,40}?\b(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Square|Sq|Marg|Nagar|Cross|Main|Parkway|Pkwy|Place|Pl|Court|Ct|Terrace|Highway|Hwy)\b\.?/iu;
+const POSTAL_RE = /,\s*[^,]*(?:\b\d{6}\b|\b\d{5}(?:-\d{4})?\b|\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b)\s*$/;
+function addressOf(t: string): { name: string; address: string } | null {
+  if (t.length < 8 || t.length > 160 || /[?!]$/.test(t) || /https?:|@/.test(t) || t.split(" ").length > 20) return null;
+  if (!STREET_RE.test(t) && !POSTAL_RE.test(t)) return null;
+  // "Dakshin, 12 MG Road, Bengaluru": a name before the street is the place's name; otherwise the address names it.
+  const parts = t.split(",").map((p) => p.trim()).filter(Boolean);
+  const named = parts.length > 1 && !/\d/.test(parts[0]!) && parts[0]!.length <= 60;
+  const address = named ? parts.slice(1).join(", ") : t;
+  return { name: named ? parts[0]! : address.split(",")[0]!.trim(), address };
 }
 
 const FILE_KIND: Record<string, string> = { pdf: "PDF", docx: "Word", doc: "Word", xlsx: "Excel", pptx: "PowerPoint", csv: "CSV" };

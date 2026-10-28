@@ -256,8 +256,14 @@ describe("phase two: what a selection is, from its text alone", () => {
     expect(webDocument("http://intranet/files/plan.pdf", { fromLink: true })).toEqual({ name: "plan (PDF)", url: "http://intranet/files/plan.pdf" });
     expect(webDocument("javascript:alert(1)", { fromLink: true })).toBeNull();
   });
+  it("a street address is a place, with lower confidence so the review asks first (D50)", () => {
+    expect(pieceOfSelection("Dakshin, 12 MG Road, Bengaluru 560001", CTX)).toEqual({ kind: "place", value: { name: "Dakshin", address: "12 MG Road, Bengaluru 560001" }, confidence: 0.6 });
+    expect(pieceOfSelection("221B Baker Street, London NW1 6XE", CTX)).toEqual({ kind: "place", value: { name: "221B Baker Street", address: "221B Baker Street, London NW1 6XE" }, confidence: 0.6 });
+    expect(pieceOfSelection("1600 Amphitheatre Parkway, Mountain View, CA 94043", CTX).kind).toBe("place");
+    for (const t of ["Main road closed at 5", "Meet me on Baker Street?", "Design Review", "We moved to 3 different offices last year and it was a lot", "Room 12, second floor", "Q3 planning notes"]) expect(pieceOfSelection(t, CTX).kind, t).not.toBe("place");
+  });
   it("a PDF link on its own is a document that fits Tasks, like a page", () => {
-    const f = { id: "u1", kind: "page" as const, text: "https://example.com/Q3-report.pdf", ...pieceOfSelection("https://example.com/Q3-report.pdf", CTX), confidence: 0.9, evidence: [{ locator: { kind: "user" as const, value: "selection" } }] };
+    const f = { id: "u1", text: "https://example.com/Q3-report.pdf", ...pieceOfSelection("https://example.com/Q3-report.pdf", CTX), confidence: 0.9, evidence: [{ locator: { kind: "user" as const, value: "selection" } }] };
     const v = viewClump(newClump("obj-1", f as Fragment), CTX);
     expect(v).toMatchObject({ type: "Document", label: "Q3 report (PDF)" }); expect(v.placeableAs).toContain("Task");
     expect(v.candidate?.properties).toMatchObject({ title: "Q3 report (PDF)", url: "https://example.com/Q3-report.pdf" });
