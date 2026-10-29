@@ -20,6 +20,7 @@ import { connectGithub, forgetGithub, readGithub } from "./github.js";
 import { createMicrosoft, forgetMicrosoft, msAllows, readMicrosoft } from "./microsoft.js";
 import { connectLinear, forgetLinear, readLinear } from "./linear.js";
 import { connectTodoist, forgetTodoist, readTodoist } from "./todoist.js";
+import { connectNotion, forgetNotion, readNotion } from "./notion.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 /** Optional: create (and delete its own) Gmail drafts. Never sends mail; the person sends a draft from Gmail. */
@@ -80,6 +81,7 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
   let githubNote: string | null = null;   // the result of the last GitHub form, shown once
   let linearNote: string | null = null;
   let todoistNote: string | null = null;
+  let notionNote: string | null = null;
   const dir = path.dirname(c.tokenFile);
   const pending = new Map<string, { verifier: string; at: number }>();   // state → PKCE verifier, one use each
 
@@ -130,6 +132,15 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
 <p><label>API key<br><input name="key" type="password" required autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Connect Linear</button></form>`}</div>`;
   }
 
+  function notionBox() {
+    const n = readNotion(dir); const note = notionNote; notionNote = null;
+    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Notion (optional)</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${n
+      ? `<p class="ok">Connected to ${esc(n.databaseName)}.</p><p class="muted">Recast can add pages there (title${n.urlProperty ? `, and the link in “${esc(n.urlProperty)}”` : ", with the link in the page"}), read them back, and archive the ones it added (Undo). The token stays on this computer.</p><form method="post" action="/notion/disconnect"><button class="ghost" type="submit">Disconnect Notion</button></form>`
+      : `<p class="muted">In Notion: Settings → Connections → Develop or manage integrations → New integration (internal), copy its token. Then open the database you want, ••• → Connections → add the integration, and copy the database's link.</p>
+<form method="post" action="/notion/connect"><p><label>Database link<br><input name="database" required placeholder="https://www.notion.so/…" autocomplete="off" style="font:inherit;width:100%"></label></p>
+<p><label>Integration token<br><input name="token" type="password" required autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Connect Notion</button></form>`}</div>`;
+  }
+
   function todoistBox() {
     const l = readTodoist(dir); const note = todoistNote; todoistNote = null;
     return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Todoist (optional)</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${l
@@ -167,7 +178,7 @@ ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them
 ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
 ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Google Drive box (only the files Recast creates).</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}${todoistBox()}`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}${todoistBox()}${notionBox()}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start" && !c.clientId) {
@@ -265,6 +276,18 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
         const form = new URLSearchParams(raw);
         const r = await connectLinear(dir, form.get("key") ?? "", form.get("team") ?? "", f, now());
         linearNote = r.ok ? `Connected to the ${r.link.teamName} team.` : r.message;
+      }
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
+    if (req.method === "POST" && (url.pathname === "/notion/connect" || url.pathname === "/notion/disconnect")) {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      if (url.pathname === "/notion/disconnect") { forgetNotion(dir); notionNote = "Notion is disconnected here. To revoke the token itself, remove the integration in Notion's settings."; }
+      else {
+        let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) break; }
+        const form = new URLSearchParams(raw);
+        const r = await connectNotion(dir, form.get("token") ?? "", form.get("database") ?? "", f, now());
+        notionNote = r.ok ? `Connected to ${r.link.databaseName}.` : r.message;
       }
       res.writeHead(303, { location: "/" }); return res.end();
     }

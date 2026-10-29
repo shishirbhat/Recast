@@ -22,7 +22,7 @@ async function place<T>(spec: Spec<T>, target: T, t: Transport, object: Semantic
   expect(p.status).toBe("ready");
   const op = plan(p, { now: NOW });
   const receipt = await commit(op, { kind: "hold", heldMs: 700 }, { bridge, log, now: NOW });
-  return { receipt, undo: () => undo(receipt, { bridge, log, now: NOW }), log, bridge };
+  return { receipt, op, undo: () => undo(receipt, { bridge, log, now: NOW }), log, bridge };
 }
 
 describe("every contract passes the real schema and grammar checks", () => {
@@ -193,6 +193,25 @@ describe("Notion", () => {
     const s = fake(() => ok({ id: "p" }));
     await place(notion, { databaseId: "db1", titleProperty: "Title", urlProperty: "Link" }, s.t, obj("Document", { title: "X", url: "https://e.com/" }), "document-project-source");
     expect(Object.keys((s.calls[0]!.body as { properties: object }).properties)).toEqual(["Title", "Link"]);
+  });
+
+  it("reads the page back from Notion: title and link, with the page's own address; an archived page is not there (D51)", async () => {
+    let page: Record<string, unknown> = {};
+    const s = fake((r) => { if (r.method === "POST") { const b = r.body as any; page = { id: "page-1", url: "https://www.notion.so/Read-the-spec-page1", archived: false, properties: { Name: { title: [{ plain_text: b.properties.Name.title[0].text.content }] }, URL: { url: b.properties.URL?.url ?? null } } }; return ok(page); } return r.method === "GET" ? ok(page) : ok(); });
+    const r = await place(notion, { databaseId: "db1" }, s.t, obj("Document", { title: "Read the spec", url: "https://example.com/spec" }), "document-project-source");
+    const v = await r.bridge.verify!(r.receipt, r.op);
+    expect(v).toMatchObject({ ok: true, link: "https://www.notion.so/Read-the-spec-page1", fields: [{ path: "Document.title", actual: "Read the spec", match: true }, { path: "Document.url", actual: "https://example.com/spec", match: true }] });
+    page = { ...page, archived: true };
+    expect(await r.bridge.verify!(r.receipt, r.op)).toMatchObject({ ok: false, note: "the page is not in Notion" });
+  });
+
+  it("a database without a link column gets the link in the page's text, and the title is what is read back", async () => {
+    let page: Record<string, unknown> = {};
+    const s = fake((r) => { if (r.method === "POST") { page = { id: "p2", archived: false, properties: { Name: { title: [{ plain_text: "X" }] } } }; return ok(page); } return ok(page); });
+    const r = await place(notion, { databaseId: "db1", urlProperty: false }, s.t, obj("Document", { title: "X", url: "https://e.com/" }), "document-project-source");
+    expect(s.calls[0]!.body).toMatchObject({ properties: { Name: {} }, children: [{ type: "paragraph", paragraph: { rich_text: [{ text: { content: "https://e.com/", link: { url: "https://e.com/" } } }] } }] });
+    expect(Object.keys((s.calls[0]!.body as any).properties)).toEqual(["Name"]);
+    expect(await r.bridge.verify!(r.receipt, r.op)).toMatchObject({ ok: true, fields: [{ path: "Document.title", match: true }] });
   });
 });
 

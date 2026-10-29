@@ -20,8 +20,16 @@ const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-b
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
 const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const outlook = new Map<string, any>(); const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = []; const issues = new Map<number, Record<string, unknown>>(); const linearIssues = new Map<string, Record<string, unknown>>();
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const todo = new Map<string, Record<string, unknown>>();
+const todo = new Map<string, Record<string, unknown>>(); const notionPages = new Map<string, any>();
 const fakeGoogle: typeof fetch = async (u, init) => {
+  // Notion stand-in (API 2022-06-28): one database the integration can see.
+  if (String(u).startsWith("https://api.notion.com/")) {
+    const h = init?.headers as Record<string, string>; const nm = init?.method ?? "GET"; const pid = String(u).split("/v1/pages/")[1];
+    if (h?.authorization !== `Bearer ntn_${"x".repeat(30)}` || h["Notion-Version"] !== "2022-06-28") return json(401, {});
+    if (nm === "POST") { const b = JSON.parse(String(init!.body)); const pg = { id: `np${notionPages.size + 1}`, url: `https://www.notion.so/np${notionPages.size + 1}`, archived: false, properties: { Name: { title: [{ plain_text: b.properties.Name.title[0].text.content }] }, URL: { url: b.properties.URL?.url ?? null } } }; notionPages.set(pg.id, pg); return json(200, pg); }
+    if (nm === "PATCH") { notionPages.set(pid!, { ...notionPages.get(pid!), archived: true }); return json(200, notionPages.get(pid!)); }
+    return pid && notionPages.has(pid) ? json(200, notionPages.get(pid)) : json(404, {});
+  }
   // Todoist stand-in (API v1): tasks kept by Todoist's own ids.
   if (String(u).startsWith("https://api.todoist.com/")) {
     const tm = init?.method ?? "GET"; const tid = String(u).split("/tasks/")[1];
@@ -543,6 +551,37 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await until(async () => (await stored()).phase === "idle");
     expect(todo.size).toBe(0);
     rmSync(tf); await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await page.close();
+  });
+
+  it("Notion: a page goes to the connected database under Documents; read back with its link; Undo archives it", async () => {
+    const nf = path.join(path.dirname(tokenFile), "notion.json");
+    writeFileSync(nf, JSON.stringify({ token: `ntn_${"x".repeat(30)}`, databaseId: "0123456789abcdef0123456789abcdef", databaseName: "Reading list", titleProperty: "Name", urlProperty: "URL", connected_at: "test" }));
+    await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await until(async () => (await stored()).destinations.some((d: any) => d.id === "link:notion" && d.label === "Notion · Reading list"));
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    const page = await openTab("article.html");
+    await page.locator("recast-clay >> button[data-act=takePage]").click();
+    await until(async () => (await stored()).phase === "composed");
+    await page.locator("recast-clay >> [data-act=openWheel]").click();
+    const drum = page.locator("recast-clay >> .rg-drum");
+    await until(async () => (await drum.getAttribute("aria-activedescendant")) !== null);
+    await drum.focus();
+    for (let i = 0; i < 6 && (await drum.getAttribute("aria-activedescendant")) !== "rg-opt-documents"; i++) { await page.keyboard.press("ArrowDown"); await page.waitForTimeout(150); }
+    expect(await drum.getAttribute("aria-activedescendant")).toBe("rg-opt-documents");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await stored()).phase === "previewing");
+    expect(notionPages.size).toBe(0);                                       // reviewing writes nothing
+    await page.locator("recast-clay >> button", { hasText: "Add a page" }).click();
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect([...notionPages.values()]).toEqual([expect.objectContaining({ properties: { Name: { title: [{ plain_text: "Q3 planning notes" }] }, URL: { url: `${base}/article.html` } } })]);
+    await expect.poll(() => page.locator("recast-clay >> .rg-verify").innerText()).toMatch(/^Read back from Notion · Reading list: 2 of 2 fields match\. Open in Notion · Reading list$/);
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(notionPages.get("np1").archived).toBe(true);
+    rmSync(nf); await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
     await page.close();
   });
 });

@@ -303,19 +303,34 @@ export const todoistEntry: Spec<TodoistTarget> = {
 };
 
 // ---- Notion (API version 2022-06-28, pages.create / pages.update archived) -----------------------
-export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string }
+/** `urlProperty: false`: the database has no link column, so the link goes in the page's text instead. */
+export interface NotionTarget { databaseId: string; titleProperty?: string; urlProperty?: string | false }
 const NOTION = "https://api.notion.com/v1/pages";
 const NOTION_HEADERS = { "Notion-Version": "2022-06-28", "Content-Type": "application/json" };
 export const notion: Spec<NotionTarget> = {
   contract: CONTRACTS.notion,
-  capabilities: { "document-project-source": unkeyedCreate("insert_content", "archive") },
+  capabilities: { "document-project-source": unkeyedCreate("insert_content", "archive", { readBack: true }) },
   async execute(op, t, send) {
     const properties: Record<string, unknown> = { [t.titleProperty ?? "Name"]: { title: [{ text: { content: need(op, "Document.title") } }] } };
-    if (moved(op, "Document.url")) properties[t.urlProperty ?? "URL"] = { url: moved(op, "Document.url") };
-    const r = asObj(await send({ method: "POST", url: NOTION, headers: NOTION_HEADERS, body: { parent: { database_id: t.databaseId }, properties } }));
+    const url = moved(op, "Document.url");
+    if (url && t.urlProperty !== false) properties[t.urlProperty ?? "URL"] = { url };
+    const children = url && t.urlProperty === false ? [{ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: url, link: { url } } }] } }] : undefined;
+    const r = asObj(await send({ method: "POST", url: NOTION, headers: NOTION_HEADERS, body: { parent: { database_id: t.databaseId }, properties, ...(children ? { children } : {}) } }));
     return JSON.stringify({ id: str(r.id, "page id") });
   },
   async undo(token, _t, send) { await send({ method: "PATCH", url: `${NOTION}/${seg((JSON.parse(token) as { id: string }).id)}`, headers: NOTION_HEADERS, body: { archived: true } }); },
+  // Read the page back: its title (all of the title's text runs) and its link property. An archived page is not there.
+  async verify(token, op, t, send) {
+    const pg = await readBack(send, { method: "GET", url: `${NOTION}/${seg((JSON.parse(token) as { id: string }).id)}`, headers: NOTION_HEADERS });
+    const props = asObj(pg?.properties);
+    const title = asObj(props[t.titleProperty ?? "Name"]).title;
+    const text = Array.isArray(title) ? title.map((r) => String(asObj(r).plain_text ?? asObj(asObj(r).text).content ?? "")).join("") : null;
+    // Without a link column the link is in the page's text: the title is what can be compared.
+    const link = moved(op, "Document.url") !== undefined && t.urlProperty !== false ? (typeof asObj(props[t.urlProperty ?? "URL"]).url === "string" ? asObj(props[t.urlProperty ?? "URL"]).url as string : null) : undefined;
+    const there = pg && pg.archived !== true && pg.in_trash !== true;
+    const r = compared(op, there ? { "Document.title": text, ...(link !== undefined ? { "Document.url": link } : {}) } : null, "the page is not in Notion", pg?.url);
+    return there ? { ...r, fields: r.fields.filter((f) => f.path === "Document.title" || link !== undefined) } : r;
+  },
 };
 
 // ---- Google Calendar, new event (Calendar API v3, events.insert with a client-chosen id / events.get / events.delete) ----

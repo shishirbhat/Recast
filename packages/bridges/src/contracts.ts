@@ -63,7 +63,7 @@ export const CONTRACTS = {
     accepts: [{ relationId: "task-tasklist-entry", effect: "Add a task", dataMoved: ["Task.title", "Task.url", "Task.due"] }],
   },
   notion: {
-    destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api", abilities: ["create", "undo"],
+    destination: "notion.database", app: "Notion", targetKind: "Project", reliability: "official-api", abilities: ["create", "undo", "verify"],
     accepts: [{ relationId: "document-project-source", effect: "Add a page", dataMoved: ["Document.title", "Document.url"] }],
   },
   /** A note (passages with their sources) as a new Google Doc. Undo moves it to the Drive trash, where the person can still restore it. */

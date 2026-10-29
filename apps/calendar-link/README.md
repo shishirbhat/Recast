@@ -129,6 +129,12 @@ In the desktop app, paste the client ID under **Connections → Outlook Calendar
 2. On http://localhost:8787/, under **Todoist**, paste it and **Connect Todoist**. Recast checks it with Todoist before saving anything. The token stays in `.secrets/todoist.json` on this computer (readable only by you), and requests with it go to api.todoist.com only.
 3. A page, or a page with a date, placed in **Tasks** can go to Todoist's Inbox. With Google Tasks also connected, Tasks asks which one. Recast reads the task back (title, link, due date) and Undo deletes it. A lost answer cannot be looked up (Todoist chooses the task's id), so Recast asks you to look instead of sending it again. Steps: `docs/REAL_TEST_PLAN.md`, section N.
 
+## Part 14: Notion (optional, separate from Google)
+1. In Notion: **Settings → Connections → Develop or manage integrations → New integration**. Keep it **Internal**, give it a name (for example "Recast local"), and allow **Read content** and **Insert content**. Copy its token (it starts with `ntn_`).
+2. Open the database you want pages in. Choose **••• → Connections → add your integration**, then **Share → Copy link**.
+3. On http://localhost:8787/, under **Notion**, paste the database link and the token, then **Connect Notion**. Recast finds the database, its title column and its link column (if it has one) before saving anything. The token stays in `.secrets/notion.json` on this computer (readable only by you), and requests with it go to api.notion.com only.
+4. A page placed in **Documents** goes to that database: the title, plus the link (in the link column, or in the page text if there is none). Recast reads it back, and Undo archives it. Steps: `docs/REAL_TEST_PLAN.md`, section O.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

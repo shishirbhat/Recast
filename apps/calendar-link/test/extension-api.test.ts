@@ -7,6 +7,7 @@ import { createExtensionApi } from "../src/extension-api.js";
 import { connectGithub, githubFile, readGithub } from "../src/github.js";
 import { connectLinear, linearFile } from "../src/linear.js";
 import { connectTodoist, todoistFile } from "../src/todoist.js";
+import { connectNotion, notionFile } from "../src/notion.js";
 import { existsSync, statSync } from "node:fs";
 import { DOCS_SCOPE, GMAIL_SCOPE, SCOPE, TASKS_SCOPE } from "../src/server.js";
 import { answerClump, mergeClumps, newClump, plan, propose, resolve, viewClump } from "@recast/core";
@@ -280,5 +281,54 @@ describe("Todoist through the same door (its own connection; Todoist stand-in)",
     expect((await connectTodoist(a.dir, TOKEN, asFetch, 0)).ok).toBe(true);
     const r = await a.api.handle("commit", EXT, { destination: "todoist", op: op(), consent: { kind: "confirm" } });
     expect(r.body).toMatchObject({ outcome: "failed", message: "Todoist no longer accepts the saved key. Connect it again on the Recast page" });
+  });
+});
+
+describe("Notion through the same door (its own connection; Notion stand-in)", () => {
+  const TOKEN = "ntn_" + "a1b2c3d4e5".repeat(4);
+  const DB = "0123456789abcdef0123456789abcdef";
+  const op = () => {
+    const page = newClump("obj-1", { id: "pg1", kind: "page", text: "Q3 plan", value: { name: "Q3 plan", url: "https://example.com/q3" }, confidence: 0.95, evidence: [{ locator: { kind: "meta", value: "title" } }], source: { app: "example.com", url: "https://example.com/q3" } });
+    const v = viewClump(page, { now: "2026-10-21T09:00:00Z", timezone: "UTC" });
+    return plan(propose(resolve(v.candidate!), CONTRACTS.notion)[0]!, { now: () => "2026-10-21T09:00:00Z" });
+  };
+  let columns: Record<string, { type: string }> = { Name: { type: "title" }, Link: { type: "url" }, Status: { type: "select" } };
+  const pages = new Map<string, any>();
+  const notionApi = (url: string, init: RequestInit) => {
+    const h = init.headers as Record<string, string>;
+    if (h?.authorization !== `Bearer ${TOKEN}` || h["Notion-Version"] !== "2022-06-28") return new Response(JSON.stringify({ object: "error", code: "unauthorized" }), { status: 401 });
+    if (url === `https://api.notion.com/v1/databases/${DB}`) return new Response(JSON.stringify({ id: DB, title: [{ plain_text: "Reading list" }], properties: columns }), { status: 200 });
+    if (url.startsWith("https://api.notion.com/v1/databases/")) return new Response("{}", { status: 404 });
+    if (url === "https://api.notion.com/v1/pages" && init.method === "POST") { const b = JSON.parse(String(init.body)); const pg = { id: "pg-1", url: "https://www.notion.so/pg1", archived: false, parent: b.parent, properties: { Name: { title: [{ plain_text: b.properties.Name.title[0].text.content }] }, ...(b.properties.Link ? { Link: { url: b.properties.Link.url } } : {}) } }; pages.set("pg-1", pg); return new Response(JSON.stringify(pg), { status: 200 }); }
+    const id = url.split("/v1/pages/")[1];
+    if (id && init.method === "PATCH") { pages.set(id, { ...pages.get(id), archived: true }); return new Response(JSON.stringify(pages.get(id)), { status: 200 }); }
+    if (id) return pages.has(id) ? new Response(JSON.stringify(pages.get(id)), { status: 200 }) : new Response("{}", { status: 404 });
+    return new Response("{}", { status: 400 });
+  };
+  const asFetch = (async (u: string, i: RequestInit) => notionApi(String(u), i ?? {})) as unknown as typeof fetch;
+  it("connecting finds the database and its title and link columns first; a database not shared with the integration says how to share it", async () => {
+    const a = setup(SCOPE);
+    expect(await connectNotion(a.dir, "nope", DB, asFetch, 0)).toMatchObject({ ok: false, message: /integration token/ });
+    expect(await connectNotion(a.dir, TOKEN, "not a link", asFetch, 0)).toMatchObject({ ok: false, message: /database's link/ });
+    expect(await connectNotion(a.dir, TOKEN, "f".repeat(32), asFetch, 0)).toMatchObject({ ok: false, message: /Connections, add your integration/ });
+    expect(existsSync(notionFile(a.dir))).toBe(false);
+    const r = await connectNotion(a.dir, TOKEN, `https://www.notion.so/acme/Reading-list-${DB}?v=1234`, asFetch, 0);
+    expect(r).toMatchObject({ ok: true, link: { databaseId: DB, databaseName: "Reading list", titleProperty: "Name", urlProperty: "Link" } });
+    expect(statSync(notionFile(a.dir)).mode & 0o777).toBe(0o600);
+  });
+  it("places a page in that database, reads it back with its link, cannot be asked about a lost one, and Undo archives it", async () => {
+    pages.clear(); columns = { Name: { type: "title" }, Link: { type: "url" } };
+    const a = setup(SCOPE, notionApi); await pair(a.api);
+    expect((await a.api.handle("commit", EXT, { destination: "notion", op: op(), consent: { kind: "confirm" } })).body).toMatchObject({ outcome: "failed", message: /Notion is not connected/ });
+    expect((await connectNotion(a.dir, TOKEN, DB, asFetch, 0)).ok).toBe(true);
+    expect((await a.api.handle("status", EXT, {})).body).toMatchObject({ notion: "Reading list" });
+    const o = op(); const r = await a.api.handle("commit", EXT, { destination: "notion", op: o, consent: { kind: "confirm" } });
+    expect(r.body).toMatchObject({ outcome: "done", receipt: { destination: "notion.database", reversible: true } });
+    expect(pages.get("pg-1")).toMatchObject({ parent: { database_id: DB }, properties: { Name: { title: [{ plain_text: "Q3 plan" }] }, Link: { url: "https://example.com/q3" } } });
+    expect((await a.api.handle("verify", EXT, { destination: "notion", op: o, receipt: r.body.receipt })).body).toMatchObject({ verification: { ok: true, link: "https://www.notion.so/pg1" } });
+    expect((await a.api.handle("reconcile", EXT, { destination: "notion", op: o })).body).toMatchObject({ checkable: false });
+    expect((await a.api.handle("undo", EXT, { destination: "notion", receipt: r.body.receipt })).body).toEqual({ outcome: "undone" });
+    expect(pages.get("pg-1").archived).toBe(true);
+    expect(JSON.stringify(r.body)).not.toContain(TOKEN);
   });
 });

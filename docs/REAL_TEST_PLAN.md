@@ -215,3 +215,16 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | N5 | **Undo** | The task disappears from Todoist | undo |
 | N6 | The page plus a date (as in E8b), placed in Todoist | The task is due on that day | due date |
 | N7 | In Todoist, reset the API token (Settings → Integrations → Developer), then place something | "Todoist no longer accepts the saved key. Connect it again on the Recast page"; nothing claims it was added | auth failure stated |
+
+## O. Notion (needs a Notion workspace: apps/calendar-link README, Part 14)
+**Checks:** the database and token are checked before saving; a real page is added, read back with its link, and archived; a database not shared with the integration is explained.
+
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| O1 | Paste the token and a link to a database you did **not** share with the integration | "Notion cannot see that database with this token… ••• → Connections, add your integration…"; nothing saved | permission explained |
+| O2 | Share the database with the integration and connect again | "Connected to <database name>." | database found |
+| O3 | In the extension, **This page** on an article → Documents → **Add a page** | "Read back from Notion · <name>: 2 of 2 fields match. Open in Notion · <name>"; the page is in the database with the article's title and link | real write + read-back |
+| O4 | **Open in Notion** | The new page opens in Notion | link |
+| O5 | **Undo** | The page is archived (moved to Notion's trash) | undo |
+| O6 | Connect a database that has no URL column, and place a page | The link is in the page's text; the read-back compares the title | no link column |
+
