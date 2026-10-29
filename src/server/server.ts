@@ -8,13 +8,14 @@ import type { WebSocket } from "ws";
 import { Relay } from "../core/engine.ts";
 import { RelayError, TASK_STATES } from "../core/types.ts";
 import type { TaskState } from "../core/types.ts";
-import { relayOwnFiles, repoRoot, resolveCommit, showAt, workspaceFingerprint } from "../git.ts";
+import { changedFiles, relayOwnFiles, repoRoot, resolveCommit, showAt, workspaceFingerprint } from "../git.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { Members, SESSION_COOKIE, actorFor, can, parseCookies } from "./auth.ts";
 import type { Member } from "./auth.ts";
 import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { coordination } from "../analysis/coordination.ts";
+import { ownership, radar } from "../analysis/radar.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { integrationReport } from "../analysis/explain.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
@@ -28,7 +29,7 @@ import { GitHub } from "./github.ts";
 import type { GitHubOptions, MergeMethod } from "./github.ts";
 import { expandReplacement, findMatches, textFingerprint, writeAtomic, gitStatus, listEmptyFolders, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
 import type { SearchOptions } from "./files.ts";
-import { AgentRuns, treeOf } from "./runs.ts";
+import { AgentRuns, snapshotCommit, treeOf } from "./runs.ts";
 import { TerminalService } from "./terminal.ts";
 
 export interface ServerOptions {
@@ -417,6 +418,29 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       requireMember(req, "read");
       docs.flushAll(); // changed files and verification are judged on what collaborators see
       return json(res, 200, coordination(relay, root, resolve(opts.dbPath), (id) => runs.forTask(id), impact.compute({})));
+    }
+    if (method === "GET" && (parts[0] === "radar" || parts[0] === "ownership")) {
+      // Conflict Radar and the changed-file ownership map: read-only, from the same facts as coordination.
+      requireMember(req, "read");
+      docs.flushAll();
+      const own = relayOwnFiles(root, resolve(opts.dbPath));
+      const impactNow = impact.compute({});
+      const coord = coordination(relay, root, resolve(opts.dbPath), (id) => runs.forTask(id), impactNow);
+      const base = { relay, root, coord, runsFor: (id: string) => runs.forTask(id) };
+      if (parts[0] === "ownership") return json(res, 200, { computedAt: coord.computedAt, files: ownership(base, changedFiles(root, "HEAD", own).filter((f) => !own.includes(f))) });
+      let projectTree: string | null = null;
+      return json(
+        res,
+        200,
+        radar({
+          ...base,
+          impact: impactNow,
+          projectText: (path) => docs.get(path)?.text.toString() ?? readText(root, path),
+          isRehearsing: (id) => runs.isRehearsing(id),
+          projectMatches: (commit) => treeOf(root, (projectTree ??= snapshotCommit(root))) === treeOf(root, commit),
+          projectTree: () => workspaceFingerprint(root, own),
+        }),
+      );
     }
     if (method === "GET" && parts[0] === "symbols") {
       requireMember(req, "read");
