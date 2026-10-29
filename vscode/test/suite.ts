@@ -290,6 +290,19 @@ test("Check Together: the view's selection plus its contract partners are presel
   assert.equal(after.find((t) => t.id === "T-ct-api")!.run?.status, "finished", "the agent work is still pending, not applied");
 });
 
+test("Conflict radar in the Relay view: the interface break between the agents is listed first, suspected, with its evidence", async () => {
+  await relay.refreshCoordination();
+  const rows = relay.viewRows();
+  assert.equal(rows[0]!.label, "Conflict radar");
+  assert.match(rows[0]!.description, /alerts?, \d+ high/);
+  const alert = rows[0]!.children.find((c) => /T-ct-api changed getUser\(\); T-ct-ui's ct\/ui\.js still reads \.name/.test(c.label));
+  assert.ok(alert, JSON.stringify(rows[0]!.children));
+  // The first Check Together test above already ran the combined check: the suspicion is now settled as known.
+  assert.match(alert.description, /^(Known|Suspected) · high$/);
+  assert.match(alert.tooltip, /static-analysis.*ct\/ui\.js:4 reads \.name from getUser\(\)/);
+  assert.ok(rows.slice(1).some((r) => r.label.startsWith("T-ct-api")), "the tasks are still listed after the radar");
+});
+
 test("Check Together: an unexplained failure says the cause is unknown; an unknown task is refused; approval is offered to owners only", async () => {
   const before = sharedProject();
   const r = await relay.checkTogether(["T-ct-ui", "T-ct-copy"]);

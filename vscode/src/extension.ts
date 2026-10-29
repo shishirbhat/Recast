@@ -30,6 +30,8 @@ export interface RelayApi {
   checkTogether(taskIds: string[]): Promise<CheckResult | null>;
   /** The latest Check Together result and what the person was offered (actions), or null. */
   lastCheck(): { result: CheckResult; outcome: Outcome } | null;
+  /** The Relay view's top-level rows as VS Code shows them (label and description), for tests. */
+  viewRows(): { label: string; description: string; children: { label: string; description: string; tooltip: string }[] }[];
 }
 
 const SECRET = (folder: vscode.Uri) => `relay.session:${folder.toString()}`;
@@ -561,6 +563,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<RelayApi> 
     compareWithShared: () => relay.compare(),
     checkTogether: (ids) => relay.checks.run(ids),
     lastCheck: () => relay.checks.last,
+    viewRows: () =>
+      relay.tree.getChildren().map((n) => {
+        const it = relay.tree.getTreeItem(n);
+        const kids = it.collapsibleState ? relay.tree.getChildren(n).map((c) => relay.tree.getTreeItem(c)) : [];
+        const text = (i: vscode.TreeItem) => ({ label: String(typeof i.label === "string" ? i.label : (i.label?.label ?? "")), description: String(i.description ?? "") });
+        return { ...text(it), children: kids.map((k) => ({ ...text(k), tooltip: typeof k.tooltip === "string" ? k.tooltip : (k.tooltip?.value ?? "") })) };
+      }),
   };
 }
 

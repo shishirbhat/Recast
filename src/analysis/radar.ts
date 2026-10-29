@@ -132,6 +132,25 @@ export function radar(input: RadarInput): Radar {
     return { label: `Check ${ids.join(" and ")} together`, action: { kind: "check-together", tasks: ids }, ...(why ? { disabled: why } : {}) };
   };
 
+  /**
+   * The newest combined check of exactly these tasks made after their latest work, if any: a real test result settles
+   * what was only suspected (blocked confirms it, passed means the tests didn't see a problem).
+   */
+  const settled = (ids: string[]): { status: string; at: string; gap: string | null } | null => {
+    const after = latest(...ids.map((id) => { const r = runs.get(id); return r ? runAt(r) : null; })) ?? "";
+    const rows = relay.db.prepare("SELECT tasks, status, gaps, created_at FROM integrations WHERE created_at >= ? ORDER BY created_at DESC").all(after) as { tasks: string; status: string; gaps: string; created_at: string }[];
+    const hit = rows.find((r) => { const t = JSON.parse(r.tasks) as string[]; return t.length === ids.length && ids.every((id) => t.includes(id)); });
+    return hit ? { status: hit.status, at: hit.created_at, gap: (JSON.parse(hit.gaps) as string[])[0] ?? null } : null;
+  };
+  const settle = (alert: RadarAlert): RadarAlert => {
+    if (alert.certainty !== "suspected") return alert;
+    const r = settled(alert.tasks);
+    if (!r) return alert;
+    const ev: AlertEvidence = { at: r.at, source: "engine", text: `Checked together ${r.at}: ${r.status}${r.gap ? ` (${r.gap})` : ""}` };
+    if (r.status === "blocked") return { ...alert, certainty: "known", severity: "high", detail: `Confirmed by checking them together: the combined change failed its verification. ${alert.detail.split(". ")[0]}.`, evidence: [...alert.evidence, ev], since: latest(alert.since, r.at) };
+    return { ...alert, severity: "low", detail: "Checked together after this was found, and the combined verification passed: the tests didn't see a problem. The static finding stays visible in case the tests don't cover it.", evidence: [...alert.evidence, ev], since: latest(alert.since, r.at) };
+  };
+
   // 1. Two live tasks changed the same file. Known; whether the edits conflict is decided by a real 3-way merge.
   for (const a of live) {
     for (const o of a.overlaps) {
@@ -398,6 +417,7 @@ export function radar(input: RadarInput): Radar {
     });
   }
 
+  for (let i = 0; i < alerts.length; i++) if (alerts[i]!.kind === "interface-changed" || alerts[i]!.kind === "same-file") alerts[i] = settle(alerts[i]!);
   alerts.sort((x, y) => SEVERITY[x.severity] - SEVERITY[y.severity] || (x.certainty === y.certainty ? 0 : x.certainty === "known" ? -1 : 1) || (y.since ?? "").localeCompare(x.since ?? ""));
   return {
     computedAt: new Date().toISOString(),

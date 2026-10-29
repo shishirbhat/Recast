@@ -111,3 +111,33 @@ test("CLI: a passing rehearsal exits 0 and applies nothing; refusals and an unre
   assert.equal(down.code, 3);
   assert.match(down.err, /can't reach http:\/\/127\.0\.0\.1:\d+/);
 });
+
+test("CLI: relay radar prints the alerts with known/suspected and evidence, exit 1 on high; relay ownership lists changed files", async () => {
+  const db = freshDb();
+  const s = await twoAgentTasks(BREAKING);
+  try {
+    const { token } = s.server.members.invite("Cli", "viewer");
+    assert.equal((await cli(db, "remote", "join", `${s.server.url}/join#${token}`)).code, 0);
+    const r = await cli(db, "radar");
+    assert.equal(r.code, 1, r.err);
+    assert.match(r.out, /^HIGH {2}suspected {2}T-api changed getUser\(\); T-ui's src\/ui\.js still reads \.name$/m);
+    assert.match(r.out, /- static-analysis: src\/ui\.js:\d+ reads \.name from getUser\(\)/);
+    const j = JSON.parse((await cli(db, "radar", "--json")).out);
+    assert.equal(j.alerts[0].kind, "interface-changed");
+    const own = await cli(db, "ownership");
+    assert.equal(own.code, 0, own.err);
+    assert.match(own.out, /^src\/server\.js\n {2}owned by: T-api\n {2}changed by agent:claude-code for T-api in \.relay\/worktrees\//m);
+  } finally {
+    await s.server.close();
+  }
+  const none = await twoAgentTasks(COMPATIBLE);
+  try {
+    const { token } = none.server.members.invite("Cli2", "viewer");
+    const db2 = freshDb();
+    await cli(db2, "remote", "join", `${none.server.url}/join#${token}`);
+    const r = await cli(db2, "radar");
+    assert.equal(r.code, 0, r.out);
+  } finally {
+    await none.server.close();
+  }
+});

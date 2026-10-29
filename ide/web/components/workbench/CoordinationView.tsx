@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CircleAlert, FileDiff, GitBranch, Link2, Play, RefreshCw, ShieldCheck, Square, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Member, TaskState } from "@/lib/types";
+import { RadarPanel } from "./Radar";
 
 /** Mirrors src/analysis/coordination.ts. Every status is derived on the server from engine state and the change record. */
 export type CoordStatus = "proposed" | "waiting" | "queued" | "running" | "stopped" | "checking" | "blocked" | "verification_failed" | "verification_required" | "review" | "ready" | "failed" | "cancelled" | "done";
@@ -247,6 +248,8 @@ export function CoordinationView({ tick, members, role, onOpenTask, onOpenFile, 
                 </div>
               ))}
             </section>
+
+            <RadarPanel tick={tick} role={role} chip={chip} onOpenTask={onOpenTask} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} notify={notify} onChanged={load} />
 
             <DependencyGraph tasks={live} onOpen={onOpenTask} />
 

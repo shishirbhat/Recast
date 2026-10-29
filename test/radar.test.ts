@@ -53,6 +53,30 @@ test("an agent changes an interface another task still reads: suspected, high, w
   });
 });
 
+test("a combined check settles a suspicion: blocked makes it known; passed keeps it visible at low severity", async () => {
+  await withRadar(BREAKING, async (s, get) => {
+    const own = await joinAs(s.server, "Ola", "owner");
+    const checked = (await api(s.server, own.cookie, "POST", "/api/integrations/check", { tasks: ["T-api", "T-ui"] })).body;
+    assert.equal(checked.status, "blocked");
+    const [a] = ofKind(await get(), "interface-changed");
+    assert.equal(a!.certainty, "known");
+    assert.match(a!.detail, /^Confirmed by checking them together/);
+    assert.ok(a!.evidence.some((e) => e.source === "engine" && /Checked together .*: blocked/.test(e.text)));
+  });
+  // Verification that never runs the UI code passes together: the static finding stays, but no longer high.
+  const s = await twoAgentTasks(BREAKING, "node --check src/ui.js");
+  try {
+    const own = await joinAs(s.server, "Ola", "owner");
+    assert.equal((await api(s.server, own.cookie, "POST", "/api/integrations/check", { tasks: ["T-api", "T-ui"] })).body.status, "passed");
+    const [a] = ofKind((await api(s.server, own.cookie, "GET", "/api/radar")).body as Radar, "interface-changed");
+    assert.equal(a!.certainty, "suspected");
+    assert.equal(a!.severity, "low");
+    assert.match(a!.detail, /combined verification passed/);
+  } finally {
+    await s.server.close();
+  }
+});
+
 test("two agents edit the same lines: known conflict from a real merge; different parts of a file: suspected, merges as text", async () => {
   await withRadar({ "T-api": { "src/ui.js": [["'bye'", "'ciao'"]] }, "T-ui": { "src/ui.js": [["'bye'", "'see you soon'"]] } }, async (_s, get) => {
     const [a] = ofKind(await get(), "same-file");

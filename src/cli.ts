@@ -15,6 +15,7 @@ import { runMcp } from "./mcp/server.ts";
 import { startServer } from "./server/server.ts";
 import { Members } from "./server/auth.ts";
 import { RemoteError, call, errorText, forgetSession, join as remoteJoin, loadSession } from "./remote.ts";
+import type { OwnedFile, Radar } from "./analysis/radar.ts";
 import type { Integration } from "./core/types.ts";
 import type { Role } from "./server/auth.ts";
 
@@ -37,6 +38,9 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay integrate together <task,task...> [--verify CMD...]         Check Together on the running server (agent work
                                                 included): rehearses the combined change, prints the result and why.
                                                 Never applies. Exit 0 passed, 1 blocked, 2 usage, 3 could not complete
+  relay radar [--json]                          Conflict Radar from the running server: what could go wrong between pieces
+                                                of work, known vs suspected, with evidence. Exit 0 none high, 1 high alerts
+  relay ownership [--json]                      changed files with the tasks that own them and who changed them, where
   relay remote join <invite-link>              sign this checkout in to a running Relay server (one-time invite)
   relay remote status | leave                  which server and member this checkout uses / sign out
   relay check <task> --cwd DIR                  diff-time conflict check (records evidence)
@@ -174,6 +178,8 @@ async function main(): Promise<void> {
     throw new RelayError("usage", `Unknown command: ${args.join(" ")}\n\n${USAGE}`);
   }
   if (cmd === "integrate" && sub === "together") return integrateTogether(need(a1, "task ids (comma-separated)"));
+  if (cmd === "radar") return radarCmd();
+  if (cmd === "ownership") return ownershipCmd();
   if (cmd === "agent-config") {
     if (sub !== "claude-code") throw new RelayError("usage", `Unknown agent ${sub}`);
     const task = need(o.task, "--task");
@@ -362,6 +368,40 @@ async function integrateTogether(list: string): Promise<void> {
   if (o.json) console.log(JSON.stringify(integ, null, 2));
   else console.log(integ.report);
   process.exitCode = integ.status === "passed" ? 0 : 1;
+}
+
+/** GET from the server this checkout is signed in to, with the same errors as Check Together. */
+async function remoteGet<T>(path: string): Promise<T> {
+  const s = loadSession(sessionFile);
+  if (!s) throw new RemoteError(null, "not signed in to a Relay server. Ask an owner for an invite link, then: relay remote join <invite-link>");
+  const r = await call<T>(s.server, s.cookie, "GET", path);
+  if (r.status === 401) throw new RemoteError(401, `your session on ${s.server} ended; sign in again with relay remote join <invite-link>`);
+  if (r.status !== 200) throw new RemoteError(r.status, `${s.server} refused (HTTP ${r.status}): ${errorText(r.body, "no reason given")}`);
+  return r.body;
+}
+
+async function radarCmd(): Promise<void> {
+  const r = await remoteGet<Radar>("/radar");
+  if (o.json) console.log(JSON.stringify(r, null, 2));
+  else if (!r.alerts.length) console.log("Conflict radar: nothing to warn about.");
+  else
+    console.log(
+      [`Conflict radar: ${r.alerts.length} ${r.alerts.length === 1 ? "alert" : "alerts"}`, ""]
+        .concat(r.alerts.flatMap((a) => [`${a.severity.toUpperCase()}  ${a.certainty === "known" ? "known    " : "suspected"}  ${a.title}`, `      ${a.detail}`, ...a.evidence.map((e) => `      - ${e.source}${e.at ? ` ${e.at}` : ""}: ${e.text}`), ""]))
+        .concat(r.limits.map((l) => `Not seen: ${l}`))
+        .join("\n"),
+    );
+  process.exitCode = r.alerts.some((a) => a.severity === "high") ? 1 : 0;
+}
+
+async function ownershipCmd(): Promise<void> {
+  const r = await remoteGet<{ files: OwnedFile[] }>("/ownership");
+  if (o.json) return console.log(JSON.stringify(r, null, 2));
+  if (!r.files.length) return console.log("No changed files.");
+  for (const f of r.files) {
+    console.log(`${f.path}${f.contested ? "  (contested)" : ""}\n  owned by: ${f.scopeOwners.join(", ") || "no task"}`);
+    for (const c of f.changes) console.log(`  changed by ${c.by}${c.task ? ` for ${c.task}` : ""} ${c.where === "agent-worktree" ? `in ${c.worktree}` : "in the shared project"}${c.at ? ` at ${c.at}` : ""}`);
+  }
 }
 
 main().catch((err) => {
