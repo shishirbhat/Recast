@@ -14,7 +14,12 @@ The repository's own records stay authoritative for what they cover; this file p
 - Before calling a test failure real, check it against committed code (`git stash`, run the package, `git stash pop`).
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
-## Current state (2026-10-28)
+## Current state (2026-10-29)
+- **29 Oct ("go"):**
+  - **Notion** connection: one database, read back, Undo archives (D51; REAL_TEST_PLAN O).
+  - **Your own webhook**: signed JSON, once, press-and-hold, no Undo, said so (D52; REAL_TEST_PLAN P).
+  - Tests added: Outlook drafts and To Do in the extension; Todoist from the desktop.
+  - CI: two red runs were the desktop's first test clicking a cold browser window before it took input. The helper now waits for a real mousemove first; it could not be reproduced here, so watch the next CI runs.
 - **28 Oct, owner: "work on the product, everything that does not need me"**:
   - the wheel says what each place can do (read back, Undo, opens only; D45);
   - **Todoist** (D46);
@@ -40,7 +45,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - **Outlook Calendar (D43, 27 Oct):** Microsoft sign-in in the local program (no client secret), Outlook as a destination in the extension and the desktop app, same guarantees as Google Calendar (no duplicates, lost answer checked, read back with link, Undo). Needs the owner's Microsoft app registration: `apps/calendar-link/README.md` Part 12; REAL_TEST_PLAN M.
 - **Section L could not run from a cloud session (27 Oct):** no Google sign-in exists here; it lives in `apps/calendar-link/.secrets/` on the owner's Mac, and signing in needs the owner's browser to reach that machine's localhost. Owner runs L on the Mac.
 - Fixed: "Friday 23 October" was silently read as the next Friday once the 23rd had passed (dates with a day and month but no year were not read). Extension tests had gone red for this reason alone once the real date passed 23 Oct.
-- Last full run (2026-10-28, after D45–D50): **1064 passed, 0 failed**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
+- Last full run (2026-10-29, after D51–D52): **1084 passed, 0 failed**. `pnpm test` now runs the three browser-driven suites (harness, extension, desktop) one after another and the rest in parallel: on 4 CPUs they starved each other and timing-sensitive interaction tests failed for that reason alone.
 - **Newest (owner's integration direction, `docs/24-integration-universe.md`):**
   - Every destination declares its **abilities** (open, create, read, update, search, delete, verify, undo), checked against what its bridge does (D30).
   - **Open and prefill**: a place → **Google Maps** (or Apple Maps) directions. Needs no account; the review is a real link; done says "Opened", no Undo. On the try-it page and in the extension.
@@ -108,7 +113,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
-0000. **Owner's real runs for the new connectors:** REAL_TEST_PLAN N (Todoist: paste your API token on the Recast page) and M8–M11 (add Mail.ReadWrite and Tasks.ReadWrite to the Microsoft app, tick them, sign in again).
+0000. **Owner's real runs for the new connectors:** REAL_TEST_PLAN N (Todoist token), M8–M11 (Microsoft mail and To Do permissions), O (Notion integration + a database), P (any webhook receiver, e.g. a free n8n or Zapier hook).
 000. **Owner tries saved workflows** on the try-it page or in the extension: place something, Save as workflow, then run it on a different object. Report whether Save was easy to find (nothing at P yet).
 00. **Desktop app on the owner's Mac** (see "Desktop app" above): the owner's current priority; respond to their report first.
 0a. **Owner's real-Google runs:** `docs/REAL_TEST_PLAN.md` B, C, E, plus new **F** (Google Docs: enable Docs API and Drive API, sign in again ticking Drive), **G** (Google Maps: no setup) and **H** (GitHub: a fine-grained token for one test repository) and **I** (Linear: an API key).
@@ -123,13 +128,14 @@ The repository's own records stay authoritative for what they cover; this file p
 - Recast should grow well beyond Calendar and Mail: anything on screen, put to work in any app. Aim for 10 to 15 excellent connectors first, not 100 logos. See `docs/24-integration-universe.md`: it maps the owner's proposal onto the existing contracts and grammar and lists the gaps (declared abilities per connector, deep-link bridges, code and file references, multi-destination plans). The owner's order starts with Google Drive and Docs, then Microsoft 365, Notion and Todoist, Slack, Linear and GitHub, Maps handoff, meeting links, webhooks.
 
 ## Build ideas queued (no owner input needed)
-- Next in the owner's order, buildable against provider stand-ins: a generic webhook or custom URL destination with declared abilities; Slack (a message draft); Notion pages from the extension (bridge exists, no connection yet). Done: Todoist (D46), Outlook mail and To Do (D47), multi-destination (recipes, D35).
+- Next in the owner's order, buildable against provider stand-ins: meeting links (Zoom/Meet) on events; Google Drive files as documents; Slack (Slack has no draft API: a "send" needs a hold and a bot or user token, so it needs the owner's decision). Done: Todoist (D46), Outlook mail and To Do (D47), Notion (D51), webhook (D52), multi-destination (recipes, D35).
 - (Done, D45) Destination abilities in the wheel.
 - (Done, D49) Files (PDF links) as documents.
 - (Done, D48) Keyboard path in the extension.
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-29:** CI desktop flake traced (cold window, clicks lost) and fixed in the helper; Notion connection (D51); your own webhook (D52); extension test for Outlook drafts and To Do; desktop test for Todoist. Full run 1084/0/0, typecheck clean.
 - **2026-10-28 (cont.):** product work list (visible to-do list): D45–D50, each with its own commit; full run 1064/0/0, typecheck clean.
 - **2026-10-28:** owner asked for a public showcase repo (Thiel Fellowship, investors): created by the owner, filled and pushed from here (demo, Recast and Relay pages, Relay walkthrough, how it works, API docs; no source). Pages, links and walkthrough were checked in Chromium (light, dark, phone). Pages still to be enabled by the owner.
 - **2026-10-27 (cont.):** owner's brief "Personal Saved Workflows" → D44: saved workflows on the recipe engine (core `checkWorkflow`/`workflowFrom`/step `place`; interaction `workflows.ts`; glass Save/Your workflows/Manage; storage in all three hosts); recipe steps now read back; settings accepted mid-run. Tests: interaction 15, harness 2, extension 1, desktop 1. Full run 1032/0/0 (two extension assertions that read the page before the tab heard the new state now wait for it).
