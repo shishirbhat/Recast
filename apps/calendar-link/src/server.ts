@@ -21,6 +21,7 @@ import { createMicrosoft, forgetMicrosoft, msAllows, readMicrosoft } from "./mic
 import { connectLinear, forgetLinear, readLinear } from "./linear.js";
 import { connectTodoist, forgetTodoist, readTodoist } from "./todoist.js";
 import { connectNotion, forgetNotion, readNotion } from "./notion.js";
+import { connectWebhook, forgetWebhook, readWebhook } from "./webhook.js";
 
 export const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 /** Optional: create (and delete its own) Gmail drafts. Never sends mail; the person sends a draft from Gmail. */
@@ -82,6 +83,7 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
   let linearNote: string | null = null;
   let todoistNote: string | null = null;
   let notionNote: string | null = null;
+  let webhookNote: string | null = null;
   const dir = path.dirname(c.tokenFile);
   const pending = new Map<string, { verifier: string; at: number }>();   // state → PKCE verifier, one use each
 
@@ -132,6 +134,15 @@ export function createLink(c: LinkConfig): { server: Server; direct: (route: str
 <p><label>API key<br><input name="key" type="password" required autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Connect Linear</button></form>`}</div>`;
   }
 
+  function webhookBox() {
+    const w = readWebhook(dir); const note = webhookNote; webhookNote = null;
+    return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Your webhook (optional)</h2>${note ? `<p role="status">${note}</p>` : ""}${w
+      ? `<p class="ok">Sending to “${esc(w.name)}”: <code>${esc(w.url)}</code></p><p class="muted">Recast sends the reviewed event, page or note as JSON, signed (X-Recast-Signature), once per approval. It can't read it back or undo it, and asks you to hold before sending.</p><form method="post" action="/webhook/disconnect"><button class="ghost" type="submit">Remove webhook</button></form>`
+      : `<p class="muted">Zapier, Make, n8n or your own server: give it a name and its address. Recast sends it a signed test ping before saving.</p>
+<form method="post" action="/webhook/connect"><p><label>Name (shown in Recast)<br><input name="name" required placeholder="Team log" autocomplete="off" style="font:inherit;width:100%"></label></p>
+<p><label>Address<br><input name="url" type="url" required placeholder="https://hooks.example.com/…" autocomplete="off" style="font:inherit;width:100%"></label></p><button type="submit">Add webhook</button></form>`}</div>`;
+  }
+
   function notionBox() {
     const n = readNotion(dir); const note = notionNote; notionNote = null;
     return `<div class="box"><h2 style="font-size:18px;margin:0 0 4px">Notion (optional)</h2>${note ? `<p role="status">${esc(note)}</p>` : ""}${n
@@ -178,7 +189,7 @@ ${hasGmail(t) ? "" : `<p class="muted">Gmail drafts are not allowed. To add them
 ${hasTasks(t) ? "" : `<p class="muted">Google Tasks is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Tasks box.</p>`}
 ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a href="/oauth/start">sign in again</a> and tick the Google Drive box (only the files Recast creates).</p>`}
 <form method="post" action="/disconnect"><button class="ghost" type="submit">Disconnect and remove the permission</button></form>`
-        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}${todoistBox()}${notionBox()}`));
+        : `<p>Not connected yet.</p><p><a class="btn" href="/oauth/start">Sign in with Google</a></p><p class="muted">Use your throwaway test account, not your personal one.</p>`}</div>${extBox}${testBox}${microsoftBox()}${githubBox()}${linearBox()}${todoistBox()}${notionBox()}${webhookBox()}`));
     }
 
     if (req.method === "GET" && url.pathname === "/oauth/start" && !c.clientId) {
@@ -276,6 +287,19 @@ ${hasDocs(t) ? "" : `<p class="muted">Google Docs is not allowed. To add it, <a 
         const form = new URLSearchParams(raw);
         const r = await connectLinear(dir, form.get("key") ?? "", form.get("team") ?? "", f, now());
         linearNote = r.ok ? `Connected to the ${r.link.teamName} team.` : r.message;
+      }
+      res.writeHead(303, { location: "/" }); return res.end();
+    }
+
+    if (req.method === "POST" && (url.pathname === "/webhook/connect" || url.pathname === "/webhook/disconnect")) {
+      if (foreign) return send(res, 403, page("Refused", "<p>Refused.</p>"));
+      if (url.pathname === "/webhook/disconnect") { forgetWebhook(dir); webhookNote = "The webhook is removed here."; }
+      else {
+        let raw = ""; for await (const chunk of req) { raw += chunk; if (raw.length > 4096) break; }
+        const form = new URLSearchParams(raw);
+        const r = await connectWebhook(dir, form.get("name") ?? "", form.get("url") ?? "", f, now());
+        // The signing secret is shown here once, so the receiver can be set up to check it; it is never shown again.
+        webhookNote = r.ok ? `Added “${esc(r.link.name)}”. Its signing secret, shown only now: <code>${esc(r.link.secret)}</code>. Check X-Recast-Signature = sha256 HMAC of “X-Recast-Timestamp.body” with it.` : esc(r.message);
       }
       res.writeHead(303, { location: "/" }); return res.end();
     }

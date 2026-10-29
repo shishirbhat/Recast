@@ -361,3 +361,10 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Read-back added:** the page's title, and its link column, are read from Notion. An archived or trashed page is "not there". The page's own address is the link. Without a link column, the link goes in the page's text, and the title is what is compared.
 - A lost answer cannot be looked up (Notion chooses the page id). The person is asked to look, and nothing is resent.
 - **Not done:** no real Notion run (REAL_TEST_PLAN O). One database per connection. Notion's newer "data sources" API is not used; the 2022-06-28 version is pinned.
+
+### D52. Your own webhook as a destination: sent, signed, once, with a hold (2026-10-29)
+- **Decision:** the person can add their own webhook (Zapier, Make, n8n, their server) with a name and an https address (http only for localhost). Recast sends a signed test ping and saves only on a 2xx. It generates a signing secret, shows it once, and keeps it in `.secrets/webhook.json` (0600).
+- **What is sent:** an event (under Calendar), a page (under Tasks) or a note (under Documents), as JSON: `recast`, `delivery` (the operation id, also in `X-Recast-Delivery`), `type`, `object` (the reviewed fields only), `source`. It is signed with `X-Recast-Signature: sha256=HMAC(secret, "<X-Recast-Timestamp>.<body>")`. It goes to the saved address only; no redirects are followed, and the request times out after 10 s.
+- **Trust:** declared abilities are `create` only. The wheel says "Can’t be read back · No Undo". Because it sends something that cannot be taken back, the trust model asks for a press-and-hold, and a click sends nothing. A lost answer is unknown and never resent; the delivery id lets a receiver drop a repeat.
+- **Rule refined:** a destination declares `create` when it writes something new, whether or not it can be undone (it used to also require an undo). All existing connectors still match.
+- The wheel never lists the webhook among apps that are "not connected".

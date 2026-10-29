@@ -228,3 +228,12 @@ See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were 
 | O5 | **Undo** | The page is archived (moved to Notion's trash) | undo |
 | O6 | Connect a database that has no URL column, and place a page | The link is in the page's text; the read-back compares the title | no link column |
 
+## P. Your own webhook (any receiver: a Zapier Catch Hook, n8n, Make, or your server; README Part 15)
+| # | Do | You should see | Checks |
+|---|---|---|---|
+| P1 | Add the webhook with an http:// address that is not localhost | "Use an https:// address…"; nothing saved | address checked |
+| P2 | Add it with the real https:// address | Your receiver gets a ping `{ "recast": 1, "kind": "ping" }`; the page shows the signing secret once | test ping |
+| P3 | **This page** on an article → Tasks → your webhook | The selector says "Can’t be read back · No Undo"; the review asks you to hold | honest abilities |
+| P4 | Click the button once | Nothing is sent | a click is not a hold |
+| P5 | Press and hold | "Added to <name>"; your receiver gets one JSON delivery with the page's title and link, and `X-Recast-Signature` checks out with the secret | real delivery, signed |
+

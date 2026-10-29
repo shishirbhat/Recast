@@ -48,7 +48,8 @@ export function wheelEntries(s: ClumpState, objectId: string, registry: readonly
     const first = options.find((o) => o.available);
     if (first) return { key: slot.key, label: slot.label, available: true, destinationId: first.destinationId!, ...(first.standIn ? { standIn: true } : {}), options };
     // Several apps would take it but none is connected: name them all ("Google Calendar or Outlook Calendar").
-    const unconnected = [...new Set(options.filter((o) => o.reason?.endsWith(" is not connected here")).map((o) => o.app))];
+    // The person's own webhook is not an app anyone misses: it is offered when set up, never named as "not connected".
+    const unconnected = [...new Set(options.filter((o) => o.reason?.endsWith(" is not connected here") && !o.destination.startsWith("webhook.")).map((o) => o.app))];
     const reason = slot.key === "more" ? `Nothing else Recast connects to takes ${aThing(v.type)}` : unconnected.length > 1 ? `${unconnected.slice(0, -1).join(", ")} or ${unconnected.at(-1)} is not connected here` : options[0]?.reason ?? `No ${slot.label.toLowerCase()} bridge yet`;
     return { key: slot.key, label: slot.label, available: false, reason, options };
   });

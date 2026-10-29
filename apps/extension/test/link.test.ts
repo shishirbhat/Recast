@@ -20,8 +20,10 @@ const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-b
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
 const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const outlook = new Map<string, any>(); const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = []; const issues = new Map<number, Record<string, unknown>>(); const linearIssues = new Map<string, Record<string, unknown>>();
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const todo = new Map<string, Record<string, unknown>>(); const notionPages = new Map<string, any>();
+const todo = new Map<string, Record<string, unknown>>(); const notionPages = new Map<string, any>(); const hooks: { body: any; headers: Record<string, string> }[] = [];
 const fakeGoogle: typeof fetch = async (u, init) => {
+  // The person's own webhook (a receiver stand-in): records each signed delivery.
+  if (String(u) === "https://hooks.example.com/recast") { hooks.push({ body: JSON.parse(String(init!.body)), headers: init!.headers as Record<string, string> }); return json(200, { ok: true }); }
   // Notion stand-in (API 2022-06-28): one database the integration can see.
   if (String(u).startsWith("https://api.notion.com/")) {
     const h = init?.headers as Record<string, string>; const nm = init?.method ?? "GET"; const pid = String(u).split("/v1/pages/")[1];
@@ -551,6 +553,44 @@ describe("the extension places in the real Google Calendar through the Recast pr
     await until(async () => (await stored()).phase === "idle");
     expect(todo.size).toBe(0);
     rmSync(tf); await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await page.close();
+  });
+
+  it("your own webhook, beside Google Tasks: Tasks asks which one; sending needs a press-and-hold; signed, once; no Undo, no read-back", async () => {
+    const hf = path.join(path.dirname(tokenFile), "webhook.json");
+    writeFileSync(hf, JSON.stringify({ url: "https://hooks.example.com/recast", name: "Team log", secret: "s".repeat(64), connected_at: "test" }));
+    await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await until(async () => (await stored()).destinations.some((d: any) => d.id === "link:webhook-page" && d.label === "Team log"));
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" });
+    for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old });
+    hooks.length = 0;
+    const page = await openTab("article.html");
+    await page.locator("recast-clay >> button[data-act=takePage]").click();
+    await until(async () => (await stored()).phase === "composed");
+    await page.locator("recast-clay >> [data-act=openWheel]").click();
+    await until(async () => (await page.locator("recast-clay >> .rg-drum").getAttribute("aria-activedescendant")) === "rg-opt-tasks");
+    await page.locator("recast-clay >> button[data-act=open]").click();
+    await until(async () => (await page.locator("recast-clay >> .rg-title").innerText()) === "Tasks: which one?");
+    const o = page.locator("recast-clay >> .rg-opt", { hasText: "Your webhook" });
+    await o.click(); await page.waitForTimeout(200);
+    expect(await page.locator("recast-clay >> .rg-reason").innerText()).toMatch(/Your webhook: send to your webhook\. Can’t be read back · No Undo/);
+    if ((await stored()).phase === "choosing") await o.click();
+    await until(async () => (await stored()).phase === "previewing");
+    const hold = page.locator("recast-clay >> button[data-act=hold]");
+    expect(await hold.innerText()).toMatch(/^Hold to confirm/);
+    await hold.click();                                                     // a click is not a hold: nothing is sent
+    await page.waitForTimeout(300); expect(hooks).toHaveLength(0);
+    const b = (await hold.boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.waitForTimeout(800); await page.mouse.up();
+    await until(async () => (await stored()).phase === "succeeded");
+    expect(hooks).toHaveLength(1);
+    expect(hooks[0]!.body).toMatchObject({ recast: 1, type: "Document", object: { title: "Q3 planning notes", url: `${base}/article.html` } });
+    expect(hooks[0]!.headers["X-Recast-Signature"]).toMatch(/^sha256=[0-9a-f]{64}$/);
+    expect(await page.locator("recast-clay >> button", { hasText: "Undo" }).count()).toBe(0);
+    expect(JSON.stringify(await stored())).not.toContain("s".repeat(64));     // the secret stays in the program
+    await send({ type: "dismiss" });
+    rmSync(hf); await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
     await page.close();
   });
 

@@ -312,7 +312,7 @@ function saveHistory(list: Entry[]) { writePrivate(historyFile(), list.slice(-20
 const clean = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) : undefined);
 
 // ---- the pages' few calls ---------------------------------------------------------------------------------------------
-const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear", "outlook", "todoist", "outlook-mail", "mstodo", "notion"]);
+const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear", "outlook", "todoist", "outlook-mail", "mstodo", "notion", "webhook"]);
 function ipc() {
   ipcMain.handle("recast:boot", () => ({ settings: publicSettings(), inbox: readJson<unknown>(inboxFile(), null), workflows: readJson<unknown>(workflowsFile(), []), theme: themeName(), on }));
   ipcMain.handle("recast:status", async () => (link ? (await link.direct("status", {})).body : {}));

@@ -84,6 +84,22 @@ export const CONTRACTS = {
     destination: "linear.issues", app: "Linear", targetKind: "Issues", reliability: "official-api", abilities: ["create", "delete", "undo", "verify"],
     accepts: [{ relationId: "issue-tracker-entry", effect: "Create an issue", effectFlags: ["notifies-third-party"], dataMoved: ["Issue.title", "Issue.body"] }],
   },
+  /**
+   * The person's own webhook (Zapier, Make, n8n, their server): Recast POSTs the reviewed object as JSON, signed. It
+   * sends, so it asks first; it cannot be read back or undone, and says so.
+   */
+  webhookEvent: {
+    destination: "webhook.event", app: "Your webhook", targetKind: "Calendar", reliability: "official-api", abilities: ["create"],
+    accepts: [{ relationId: "event-calendar-entry", effect: "Send to your webhook", effectFlags: ["send"], dataMoved: ["Event.title", "Event.start", "Event.end", "Event.timezone", "Event.allDay", "Event.location"] }],
+  },
+  webhookPage: {
+    destination: "webhook.page", app: "Your webhook", targetKind: "Task", reliability: "official-api", abilities: ["create"],
+    accepts: [{ relationId: "document-task-reference", effect: "Send to your webhook", effectFlags: ["send"], dataMoved: ["Document.title", "Document.url"] }],
+  },
+  webhookNote: {
+    destination: "webhook.note", app: "Your webhook", targetKind: "Docs", reliability: "official-api", abilities: ["create"],
+    accepts: [{ relationId: "note-docs-entry", effect: "Send to your webhook", effectFlags: ["send"], dataMoved: ["Note.title", "Note.body"] }],
+  },
   // Open-and-prefill: the map app opens with directions to the place. Nothing is written, so there is nothing to confirm or undo.
   googleMaps: {
     destination: "google-maps.directions", app: "Google Maps", targetKind: "Map", reliability: "deep-link", abilities: ["open"],

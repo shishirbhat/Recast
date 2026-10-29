@@ -135,6 +135,12 @@ In the desktop app, paste the client ID under **Connections → Outlook Calendar
 3. On http://localhost:8787/, under **Notion**, paste the database link and the token, then **Connect Notion**. Recast finds the database, its title column and its link column (if it has one) before saving anything. The token stays in `.secrets/notion.json` on this computer (readable only by you), and requests with it go to api.notion.com only.
 4. A page placed in **Documents** goes to that database: the title, plus the link (in the link column, or in the page text if there is none). Recast reads it back, and Undo archives it. Steps: `docs/REAL_TEST_PLAN.md`, section O.
 
+## Part 15: Your own webhook (optional: Zapier, Make, n8n or your server)
+1. Create a webhook that accepts a JSON POST (a "Catch Hook" in Zapier, a "Webhook" trigger in n8n or Make, or your own endpoint). Copy its address.
+2. On http://localhost:8787/, under **Your webhook**, give it a name (it is how Recast shows it) and paste the address, then **Add webhook**. Recast sends a signed test ping first and saves only if it answers 2xx.
+3. Recast then shows a **signing secret, once**. To check a delivery came from your computer, compute the HMAC-SHA256 of `<X-Recast-Timestamp>.<raw body>` with the secret, and compare it with `X-Recast-Signature` (`sha256=…`). `X-Recast-Delivery` names each delivery, so a repeat can be dropped.
+4. An event (under Calendar), a page (under Tasks) or a note (under Documents) can then go to it. Sending needs a press-and-hold, because it cannot be taken back. Recast cannot read it back or undo it, and says so. Steps: `docs/REAL_TEST_PLAN.md`, section P.
+
 ## If something goes wrong
 | You see | Fix |
 |---|---|

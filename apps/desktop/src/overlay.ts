@@ -34,7 +34,7 @@ const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const MAC = navigator.userAgent.includes("Mac");
 
 // ---- destinations: the person's connections, as the bridge registry's contracts --------------------------------------------
-const LINK: Record<string, string> = { "link:google-calendar": "calendar", "link:gmail-drafts": "gmail", "link:google-tasks": "tasks", "link:google-tasks-due": "tasks", "link:google-docs": "docs", "link:github": "github", "link:linear": "linear", "link:outlook-calendar": "outlook", "link:todoist": "todoist", "link:todoist-due": "todoist", "link:outlook-mail": "outlook-mail", "link:mstodo": "mstodo", "link:mstodo-due": "mstodo", "link:notion": "notion" };
+const LINK: Record<string, string> = { "link:google-calendar": "calendar", "link:gmail-drafts": "gmail", "link:google-tasks": "tasks", "link:google-tasks-due": "tasks", "link:google-docs": "docs", "link:github": "github", "link:linear": "linear", "link:outlook-calendar": "outlook", "link:todoist": "todoist", "link:todoist-due": "todoist", "link:outlook-mail": "outlook-mail", "link:mstodo": "mstodo", "link:mstodo-due": "mstodo", "link:notion": "notion", "link:webhook-event": "webhook", "link:webhook-page": "webhook", "link:webhook-note": "webhook" };
 const MAPS: DestinationSpec[] = [{ id: "open:google-maps", label: "Google Maps", contract: CONTRACTS.googleMaps }, ...(MAC ? [{ id: "open:apple-maps", label: "Apple Maps", contract: CONTRACTS.appleMaps }] : [])];
 async function destinations(): Promise<DestinationSpec[]> {
   const st = await api.status().catch(() => ({} as Record<string, unknown>));
@@ -45,6 +45,7 @@ async function destinations(): Promise<DestinationSpec[]> {
     if (st["tasks"]) out.push({ id: "link:google-tasks", label: "Google Tasks", contract: CONTRACTS.googleTasks }, { id: "link:google-tasks-due", label: "Google Tasks", contract: CONTRACTS.googleTasksEntry });
     if (st["docs"]) out.push({ id: "link:google-docs", label: "Google Docs", contract: CONTRACTS.googleDocs });
   }
+  if (typeof st["webhook"] === "string") { const n = st["webhook"]; out.push({ id: "link:webhook-event", label: n, contract: CONTRACTS.webhookEvent }, { id: "link:webhook-page", label: n, contract: CONTRACTS.webhookPage }, { id: "link:webhook-note", label: n, contract: CONTRACTS.webhookNote }); }
   if (typeof st["notion"] === "string") out.push({ id: "link:notion", label: `Notion · ${st["notion"]}`, contract: CONTRACTS.notion });
   if (st["outlookMail"]) out.push({ id: "link:outlook-mail", label: "Outlook drafts", contract: CONTRACTS.outlookMessageDraft });
   if (st["mstodo"]) out.push({ id: "link:mstodo", label: "Microsoft To Do", contract: CONTRACTS.msTodoTask }, { id: "link:mstodo-due", label: "Microsoft To Do", contract: CONTRACTS.msTodoEntry });

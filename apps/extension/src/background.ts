@@ -66,12 +66,14 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
 // Off unless the person connects it from the popup: that grants access to http://localhost only, and the program then
 // asks the person to Allow this extension (a code shown in both places). The Google token never reaches the extension:
 // the program places the reviewed operation and answers with the outcome.
-export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks", LINK_TASKS_DUE = "link:google-tasks-due", LINK_DOCS = "link:google-docs", LINK_GITHUB = "link:github", LINK_LINEAR = "link:linear", LINK_OUTLOOK = "link:outlook-calendar", LINK_TODOIST = "link:todoist", LINK_TODOIST_DUE = "link:todoist-due", LINK_OUTLOOK_MAIL = "link:outlook-mail", LINK_MSTODO = "link:mstodo", LINK_MSTODO_DUE = "link:mstodo-due", LINK_NOTION = "link:notion";
+export const LINK = "http://localhost:8787", LINK_ORIGINS = ["http://localhost/*"], LINK_DEST = "link:google-calendar", LINK_GMAIL = "link:gmail-drafts", LINK_TASKS = "link:google-tasks", LINK_TASKS_DUE = "link:google-tasks-due", LINK_DOCS = "link:google-docs", LINK_GITHUB = "link:github", LINK_LINEAR = "link:linear", LINK_OUTLOOK = "link:outlook-calendar", LINK_TODOIST = "link:todoist", LINK_TODOIST_DUE = "link:todoist-due", LINK_OUTLOOK_MAIL = "link:outlook-mail", LINK_MSTODO = "link:mstodo", LINK_MSTODO_DUE = "link:mstodo-due", LINK_NOTION = "link:notion", LINK_HOOK_EVENT = "link:webhook-event", LINK_HOOK_PAGE = "link:webhook-page", LINK_HOOK_NOTE = "link:webhook-note";
 const linkDest: DestinationSpec = { id: LINK_DEST, label: "Google Calendar", contract: CONTRACTS.googleCalendarEvent };
 const outlookDest: DestinationSpec = { id: LINK_OUTLOOK, label: "Outlook Calendar", contract: CONTRACTS.outlookCalendarEvent };
 // Outlook mail drafts and Microsoft To Do: optional permissions on the same Microsoft sign-in.
 const outlookMailDest: DestinationSpec = { id: LINK_OUTLOOK_MAIL, label: "Outlook drafts", contract: CONTRACTS.outlookMessageDraft };
 const msTodoDests: DestinationSpec[] = [{ id: LINK_MSTODO, label: "Microsoft To Do", contract: CONTRACTS.msTodoTask }, { id: LINK_MSTODO_DUE, label: "Microsoft To Do", contract: CONTRACTS.msTodoEntry }];
+// The person's own webhook: an event, a page or a note, sent signed; named as they named it.
+const webhookDests = (name: string): DestinationSpec[] => [{ id: LINK_HOOK_EVENT, label: name, contract: CONTRACTS.webhookEvent }, { id: LINK_HOOK_PAGE, label: name, contract: CONTRACTS.webhookPage }, { id: LINK_HOOK_NOTE, label: name, contract: CONTRACTS.webhookNote }];
 // Notion: one database, named as the person connected it.
 const notionDest = (name: string): DestinationSpec => ({ id: LINK_NOTION, label: `Notion · ${name}`, contract: CONTRACTS.notion });
 // Todoist, like Google Tasks: a page as a task, and a task with its due date.
@@ -82,22 +84,22 @@ const tasksDueDest: DestinationSpec = { id: LINK_TASKS_DUE, label: "Google Tasks
 const docsDest: DestinationSpec = { id: LINK_DOCS, label: "Google Docs", contract: CONTRACTS.googleDocs };
 const githubDest = (repo: string): DestinationSpec => ({ id: LINK_GITHUB, label: `GitHub ${repo}`, contract: CONTRACTS.githubIssue });
 const linearDest = (team: string): DestinationSpec => ({ id: LINK_LINEAR, label: `Linear ${team}`, contract: CONTRACTS.linearIssue });
-const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS || id === LINK_TASKS_DUE || id === LINK_DOCS || id === LINK_GITHUB || id === LINK_LINEAR || id === LINK_OUTLOOK || id === LINK_TODOIST || id === LINK_TODOIST_DUE || id === LINK_OUTLOOK_MAIL || id === LINK_MSTODO || id === LINK_MSTODO_DUE || id === LINK_NOTION;
+const isLink = (id: string) => id === LINK_DEST || id === LINK_GMAIL || id === LINK_TASKS || id === LINK_TASKS_DUE || id === LINK_DOCS || id === LINK_GITHUB || id === LINK_LINEAR || id === LINK_OUTLOOK || id === LINK_TODOIST || id === LINK_TODOIST_DUE || id === LINK_OUTLOOK_MAIL || id === LINK_MSTODO || id === LINK_MSTODO_DUE || id === LINK_NOTION || id === LINK_HOOK_EVENT || id === LINK_HOOK_PAGE || id === LINK_HOOK_NOTE;
 /** What the program calls each destination. */
-const linkName = (id: string) => (id === LINK_NOTION ? "notion" : id === LINK_OUTLOOK_MAIL ? "outlook-mail" : id === LINK_MSTODO || id === LINK_MSTODO_DUE ? "mstodo" : id === LINK_TODOIST || id === LINK_TODOIST_DUE ? "todoist" : id === LINK_OUTLOOK ? "outlook" : id === LINK_GMAIL ? "gmail" : id === LINK_TASKS || id === LINK_TASKS_DUE ? "tasks" : id === LINK_DOCS ? "docs" : id === LINK_GITHUB ? "github" : id === LINK_LINEAR ? "linear" : "calendar");
+const linkName = (id: string) => (id === LINK_HOOK_EVENT || id === LINK_HOOK_PAGE || id === LINK_HOOK_NOTE ? "webhook" : id === LINK_NOTION ? "notion" : id === LINK_OUTLOOK_MAIL ? "outlook-mail" : id === LINK_MSTODO || id === LINK_MSTODO_DUE ? "mstodo" : id === LINK_TODOIST || id === LINK_TODOIST_DUE ? "todoist" : id === LINK_OUTLOOK ? "outlook" : id === LINK_GMAIL ? "gmail" : id === LINK_TASKS || id === LINK_TASKS_DUE ? "tasks" : id === LINK_DOCS ? "docs" : id === LINK_GITHUB ? "github" : id === LINK_LINEAR ? "linear" : "calendar");
 
 async function link(route: string, body: unknown = {}): Promise<{ status: number; body: Record<string, unknown> }> {
   const r = await fetch(`${LINK}/ext/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, body: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 /** Whether the program is reachable, this extension is allowed there, and a Google account is connected. */
-async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean; tasks?: boolean; docs?: boolean; github?: string; linear?: string; outlook?: boolean; todoist?: boolean; outlookMail?: boolean; mstodo?: boolean; notion?: string }> {
+async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" | "not-signed-in" | "ready"; code?: string; gmail?: boolean; tasks?: boolean; docs?: boolean; github?: string; linear?: string; outlook?: boolean; todoist?: boolean; outlookMail?: boolean; mstodo?: boolean; notion?: string; webhook?: string }> {
   if (!(await chrome.permissions.contains({ origins: LINK_ORIGINS }))) return { state: "off" };
   try {
     const r = await link("pair");
     if (r.status === 202) return { state: "pending", code: String(r.body["code"]) };
     if (r.status !== 200) return { state: "unreachable" };
-    const github = { ...(typeof r.body["github"] === "string" ? { github: r.body["github"] as string } : {}), ...(typeof r.body["linear"] === "string" ? { linear: r.body["linear"] as string } : {}), ...(r.body["outlook"] ? { outlook: true } : {}), ...(r.body["todoist"] ? { todoist: true } : {}), ...(r.body["outlookMail"] ? { outlookMail: true } : {}), ...(r.body["mstodo"] ? { mstodo: true } : {}), ...(typeof r.body["notion"] === "string" ? { notion: r.body["notion"] as string } : {}) };
+    const github = { ...(typeof r.body["github"] === "string" ? { github: r.body["github"] as string } : {}), ...(typeof r.body["linear"] === "string" ? { linear: r.body["linear"] as string } : {}), ...(r.body["outlook"] ? { outlook: true } : {}), ...(r.body["todoist"] ? { todoist: true } : {}), ...(r.body["outlookMail"] ? { outlookMail: true } : {}), ...(r.body["mstodo"] ? { mstodo: true } : {}), ...(typeof r.body["notion"] === "string" ? { notion: r.body["notion"] as string } : {}), ...(typeof r.body["webhook"] === "string" ? { webhook: r.body["webhook"] as string } : {}) };
     // GitHub, Linear, Outlook and Todoist are their own connections: offered even when Google is not signed in.
     return r.body["connected"] ? { state: "ready", gmail: !!r.body["gmail"], tasks: !!r.body["tasks"], docs: !!r.body["docs"], ...github } : { state: "not-signed-in", ...github };
   } catch { return { state: "unreachable" }; }
@@ -107,7 +109,7 @@ async function syncLink() {
   const st = await linkStatus();
   await apply((s) => {
     const others = s.destinations.filter((d) => !isLink(d.id));
-    const mine = [...(st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest, tasksDueDest] : []), ...(st.docs ? [docsDest] : [])] : []), ...(st.outlook ? [outlookDest] : []), ...(st.github ? [githubDest(st.github)] : []), ...(st.linear ? [linearDest(st.linear)] : []), ...(st.todoist ? todoistDests : []), ...(st.outlookMail ? [outlookMailDest] : []), ...(st.mstodo ? msTodoDests : []), ...(st.notion ? [notionDest(st.notion)] : [])];
+    const mine = [...(st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest, tasksDueDest] : []), ...(st.docs ? [docsDest] : [])] : []), ...(st.outlook ? [outlookDest] : []), ...(st.github ? [githubDest(st.github)] : []), ...(st.linear ? [linearDest(st.linear)] : []), ...(st.todoist ? todoistDests : []), ...(st.outlookMail ? [outlookMailDest] : []), ...(st.mstodo ? msTodoDests : []), ...(st.notion ? [notionDest(st.notion)] : []), ...(st.webhook ? webhookDests(st.webhook) : [])];
     return { state: { ...s, destinations: [...mine, ...others] } };
   });
   return st;

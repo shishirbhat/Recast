@@ -562,3 +562,20 @@ export const msTodoEntry: Spec<TodoTarget> = {
     return { ...r, fields, ok: !r.note && fields.every((f) => f.match) };
   },
 };
+
+// ---- The person's own webhook (POST JSON to a URL they set) ---------------------------------------------------------------
+// One delivery per operation, named by the operation's id (X-Recast-Delivery), so a receiver can drop a repeat. Recast never
+// repeats it itself: a lost answer is unknown. The local program signs the body (HMAC) in its transport; the spec only
+// says what is sent. Nothing can be read back or undone: the receiver decides what happens next.
+export interface WebhookTarget { url: string }
+const sendHook = (op: Operation, t: WebhookTarget, send: Send, object: Record<string, string>) =>
+  send({ method: "POST", url: t.url, headers: { "X-Recast-Delivery": op.opId }, body: { recast: 1, delivery: op.opId, at: op.at, effect: op.proposal.effect, type: op.proposal.object.type, object, source: op.proposal.object.provenance?.source?.url ?? null } })
+    .then(() => JSON.stringify({ delivery: op.opId }));
+const fieldsOf = (op: Operation, prefix: string) => Object.fromEntries(op.dataMoved.filter((d) => d.path.startsWith(`${prefix}.`)).map((d) => [d.path.slice(prefix.length + 1), d.value]));
+// Never offered (the contract declares no undo); here only so a stray call says why instead of doing anything.
+const hookUndo = async () => { throw new DestinationError("A webhook delivery cannot be taken back: the receiver has it"); };
+const hookCaps = (relationId: string) => ({ [relationId]: { writes: true, idempotency: "none", verifiable: false, reversal: "none", onTimeout: "outcome-unknown", permission: "webhook" } as OperationCapabilities });
+export const webhookEvent: Spec<WebhookTarget> = { contract: CONTRACTS.webhookEvent, undo: hookUndo, capabilities: hookCaps("event-calendar-entry"), execute: (op, t, send) => sendHook(op, t, send, fieldsOf(op, "Event")) };
+export const webhookPage: Spec<WebhookTarget> = { contract: CONTRACTS.webhookPage, undo: hookUndo, capabilities: hookCaps("document-task-reference"), execute: (op, t, send) => sendHook(op, t, send, fieldsOf(op, "Document")) };
+export const webhookNote: Spec<WebhookTarget> = { contract: CONTRACTS.webhookNote, undo: hookUndo, capabilities: hookCaps("note-docs-entry"), execute: (op, t, send) => sendHook(op, t, send, fieldsOf(op, "Note")) };
+
