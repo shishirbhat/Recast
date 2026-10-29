@@ -327,6 +327,35 @@ describe("the Recast app (the library)", () => {
     expect(errors).toEqual([]);
   });
 
+  it("Todoist from the desktop: a copied link to a PDF is a document; Tasks → Todoist; added, read back with its link, undone", async () => {
+    const dir = profile("dark");
+    writeFileSync(path.join(dir, "secrets", "todoist.json"), JSON.stringify({ token: "d".repeat(40), connected_at: "test" }));
+    const { app: a, overlay, errors } = await launch(dir);
+    await a.evaluate(({ clipboard }, x) => clipboard.selection?.writeText(x), "https://example.com/files/Q3-board-report.pdf"); await a.evaluate(() => (globalThis as any).__recastGrab());
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
+    expect(await blobs(overlay).first().innerText()).toContain("Q3 board report (PDF)");
+    await overlay.waitForTimeout(400); await blobs(overlay).first().click();
+    // A single piece opens inside first ("Choose where it goes" there), then the module's own button opens the wheel.
+    for (let i = 0; i < 3 && !(await overlay.locator(".rg-drum").count()); i++) { await overlay.getByRole("button", { name: /Choose where it goes/ }).first().click(); await overlay.waitForTimeout(300); }
+    await expect.poll(() => overlay.locator(".rg-drum").getAttribute("aria-activedescendant")).toBe("rg-opt-tasks");
+    await overlay.waitForTimeout(300);
+    await overlay.getByRole("button", { name: "Open" }).click();
+    await expect.poll(() => overlay.locator(".rg-title").innerText()).toMatch(/^(Tasks: which one\?|Todoist: review)$/);
+    if ((await overlay.locator(".rg-title").innerText()) === "Tasks: which one?") {
+      const o = overlay.locator(".rg-opt", { hasText: "Todoist" }); await o.click(); await overlay.waitForTimeout(200);
+      if ((await overlay.locator(".rg-title").innerText()) === "Tasks: which one?") await o.click();
+    }
+    await expect.poll(() => overlay.locator(".rg-title").innerText()).toBe("Todoist: review");
+    expect(Object.keys((await fake()).todoist)).toHaveLength(0);             // the review writes nothing
+    await overlay.getByRole("button", { name: "Add a task" }).click();
+    await expect.poll(() => overlay.locator(".rg-title").innerText()).toBe("Added to Todoist");
+    expect(Object.values((await fake()).todoist)).toEqual([expect.objectContaining({ content: "Q3 board report (PDF)", description: "https://example.com/files/Q3-board-report.pdf" })]);
+    await expect.poll(() => overlay.locator(".rg-verify").innerText().catch(() => "")).toMatch(/^Read back from Todoist: 2 of 2 fields match\. Open in Todoist$/);
+    await overlay.getByRole("button", { name: "Undo" }).click();
+    await expect.poll(async () => Object.keys((await fake()).todoist).length).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
   it("the pages cannot reach Node, links to anything but the web are refused, and only the overlay may set where it takes the mouse", async () => {
     const { library, overlay } = await launch(profile("dark"));
     for (const p of [library, overlay]) {

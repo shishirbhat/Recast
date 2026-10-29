@@ -20,7 +20,7 @@ const chromiumPath = () => process.env.RECAST_CHROMIUM ?? (existsSync("/opt/pw-b
 // Stand-in Google: events kept by id like the real API; `dropNext` makes the next insert land but its answer time out.
 const events = new Map<string, Record<string, unknown>>(); let dropNext = false; const outlook = new Map<string, any>(); const drafts = new Map<string, unknown>(); const tasks = new Map<string, unknown>(); const docs = new Map<string, { title: string; text?: string; trashed?: boolean }>(); const seenByGoogle: string[] = []; const issues = new Map<number, Record<string, unknown>>(); const linearIssues = new Map<string, Record<string, unknown>>();
 const json = (status: number, body: unknown) => new Response(status === 204 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const todo = new Map<string, Record<string, unknown>>(); const notionPages = new Map<string, any>(); const hooks: { body: any; headers: Record<string, string> }[] = [];
+const todo = new Map<string, Record<string, unknown>>(); const notionPages = new Map<string, any>(); const hooks: { body: any; headers: Record<string, string> }[] = []; const msDrafts = new Map<string, any>(); const msTodo = new Map<string, any>();
 const fakeGoogle: typeof fetch = async (u, init) => {
   // The person's own webhook (a receiver stand-in): records each signed delivery.
   if (String(u) === "https://hooks.example.com/recast") { hooks.push({ body: JSON.parse(String(init!.body)), headers: init!.headers as Record<string, string> }); return json(200, { ok: true }); }
@@ -44,6 +44,14 @@ const fakeGoogle: typeof fetch = async (u, init) => {
   if (String(u).startsWith("https://graph.microsoft.com/")) {
     const gu = new URL(String(u)); const gm = init?.method ?? "GET"; seenByGoogle.push(`${gm} ${String(u)}`);
     if ((init?.headers as Record<string, string>)?.authorization !== "Bearer MS-AT") return json(401, {});
+    // Outlook drafts and To Do (the default list).
+    if (gu.pathname === "/v1.0/me/messages" && gm === "POST") { const b = JSON.parse(String(init!.body)); const id = `D${msDrafts.size + 1}`; msDrafts.set(id, { ...b, id, isDraft: true, webLink: `https://outlook.office365.com/owa/?ItemID=${id}` }); return json(201, msDrafts.get(id)); }
+    if (gu.pathname.startsWith("/v1.0/me/messages/")) { const id = gu.pathname.split("/").pop()!; if (gm === "DELETE") { msDrafts.delete(id); return json(204, null); } return msDrafts.has(id) ? json(200, msDrafts.get(id)) : json(404, {}); }
+    if (gu.pathname === "/v1.0/me/todo/lists") return json(200, { value: [{ id: "L1", wellknownListName: "defaultList" }] });
+    const tm2 = /^\/v1\.0\/me\/todo\/lists\/L1\/tasks(?:\/(.+))?$/.exec(gu.pathname);
+    if (tm2 && gm === "POST") { const b = JSON.parse(String(init!.body)); const id = `TD${msTodo.size + 1}`; msTodo.set(id, { ...b, id, status: "notStarted" }); return json(201, msTodo.get(id)); }
+    if (tm2 && gm === "DELETE") { msTodo.delete(tm2[1]!); return json(204, null); }
+    if (tm2) return msTodo.has(tm2[1]!) ? json(200, msTodo.get(tm2[1]!)) : json(404, {});
     if (gm === "GET" && gu.pathname === "/v1.0/me/events") { const key = /ep\/value eq '([^']+)'/.exec(gu.searchParams.get("$filter") ?? "")?.[1]; return json(200, { value: [...outlook.values()].filter((e) => e.singleValueExtendedProperties[0].value === key).map((e) => ({ id: e.id })) }); }
     if (gm === "POST") { const b = JSON.parse(String(init!.body)); const oid = `AAMk${outlook.size + 1}`; outlook.set(oid, { ...b, id: oid, webLink: `https://outlook.office365.com/owa/?itemid=${oid}` }); return json(201, outlook.get(oid)); }
     const oid = gu.pathname.split("/events/")[1]!;
@@ -554,6 +562,62 @@ describe("the extension places in the real Google Calendar through the Recast pr
     expect(todo.size).toBe(0);
     rmSync(tf); await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
     await page.close();
+  });
+
+  it("Outlook drafts and Microsoft To Do (ticked on the Microsoft sign-in): Mail and Tasks ask which one; each is placed, read back and undone", async () => {
+    const mf = path.join(path.dirname(tokenFile), "microsoft-token.json");
+    writeFileSync(mf, JSON.stringify({ access_token: "MS-AT", refresh_token: "MS-RT", expires_at: Date.now() + 3_600_000, scope: "Calendars.ReadWrite Mail.ReadWrite Tasks.ReadWrite", connected_at: "test" }));
+    await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await until(async () => { const d = (await stored()).destinations.map((x: any) => x.id); return d.includes("link:outlook-mail") && d.includes("link:mstodo"); });
+    const send = (e: unknown) => sw.evaluate((e) => (globalThis as any).recastClay.dispatch(e), e);
+    const clear = async () => { for (let i = 0; i < 5 && (await stored()).phase !== "idle"; i++) await send({ type: "cancel" }); for (const old of (await stored()).desk as string[]) await send({ type: "discard", id: old }); };
+    const choose = async (page: any, slot: string, title: string, app: string) => {
+      await page.locator("recast-clay >> [data-act=openWheel]").click();
+      const drum = page.locator("recast-clay >> .rg-drum");
+      await until(async () => (await drum.getAttribute("aria-activedescendant")) !== null); await drum.focus();
+      for (let i = 0; i < 6 && (await drum.getAttribute("aria-activedescendant")) !== `rg-opt-${slot}`; i++) { await page.keyboard.press("ArrowDown"); await page.waitForTimeout(150); }
+      await page.locator("recast-clay >> button[data-act=open]").click();
+      await until(async () => (await page.locator("recast-clay >> .rg-title").innerText()) === title);
+      const o = page.locator("recast-clay >> .rg-opt", { hasText: app }); await o.click(); await page.waitForTimeout(200);
+      if ((await stored()).phase === "choosing") await o.click();
+      await until(async () => (await stored()).phase === "previewing");
+    };
+    // A person (with an email address) pressed into a sentence is a message: Mail → Outlook drafts.
+    await clear();
+    const page = await openTab("restaurant.html");
+    const src = { app: "127.0.0.1", url: `${base}/restaurant.html`, title: "Dakshin · Restaurant" };
+    const piece = (id: string, kind: string, text: string, value?: object) => ({ id, kind, text, confidence: 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "css", value: `#${id}` } }], source: src });
+    await send({ type: "capture", fragment: piece("pm1", "person", "Maya Rao", { name: "Maya Rao", email: "maya.rao@example.com" }) });
+    const id = (await stored()).desk[0];
+    await send({ type: "capture", fragment: piece("tx1", "text", "Free for dinner on Friday?"), carry: true });
+    await send({ type: "approach", target: { kind: "object", id } }); await send({ type: "drop" }); await send({ type: "settled" });
+    await send({ type: "openModule", id });
+    await choose(page, "mail", "Mail: which one?", "Outlook");
+    await page.locator("recast-clay >> button", { hasText: "Save as draft" }).click();
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect([...msDrafts.values()]).toEqual([expect.objectContaining({ isDraft: true, toRecipients: [{ emailAddress: { address: "maya.rao@example.com" } }] })]);
+    expect((await stored()).placement.verification).toMatchObject({ ok: true, link: "https://outlook.office365.com/owa/?ItemID=D1" });
+    await page.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(msDrafts.size).toBe(0);
+    await page.close();
+    // A page → Tasks → Microsoft To Do.
+    await clear();
+    const article = await openTab("article.html");
+    await article.locator("recast-clay >> button[data-act=takePage]").click();
+    await until(async () => (await stored()).phase === "composed");
+    await choose(article, "tasks", "Tasks: which one?", "Microsoft To Do");
+    await article.locator("recast-clay >> button", { hasText: "Add a task" }).click();
+    await until(async () => { const v = (await stored()).placement?.verification; return !!v && v !== "checking"; });
+    expect([...msTodo.values()]).toEqual([expect.objectContaining({ title: "Q3 planning notes", body: { contentType: "text", content: `${base}/article.html` } })]);
+    expect((await stored()).placement.verification).toMatchObject({ ok: true });
+    await article.locator("recast-clay >> button", { hasText: "Undo" }).click();
+    await until(async () => (await stored()).phase === "idle");
+    expect(msTodo.size).toBe(0);
+    expect(JSON.stringify(await stored())).not.toContain("MS-AT");
+    writeFileSync(mf, JSON.stringify({ access_token: "MS-AT", refresh_token: "MS-RT", expires_at: Date.now() + 3_600_000, scope: "Calendars.ReadWrite", connected_at: "test" }));
+    await sw.evaluate(() => (globalThis as any).recastClay.syncLink());
+    await article.close();
   });
 
   it("your own webhook, beside Google Tasks: Tasks asks which one; sending needs a press-and-hold; signed, once; no Undo, no read-back", async () => {
