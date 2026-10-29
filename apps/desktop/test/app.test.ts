@@ -84,6 +84,10 @@ async function selectWithMouse(p: Page, selector: string) {
   // As a person does: triple click, and look. If the page did not take the clicks (the machine was busy), click again.
   for (let attempt = 0; attempt < 3; attempt++) {
     const c = await onScreen(p, selector);
+    // Click only once the window really receives the pointer there: a freshly opened window on a cold machine can be
+    // mapped and drawn but not yet taking input, and clicks sent then are lost.
+    await p.evaluate((s) => { (window as any).__over = false; document.querySelector(s)!.addEventListener("mousemove", () => { (window as any).__over = true; }, { once: true }); }, selector);
+    for (let i = 0; i < 25 && !(await p.evaluate(() => (window as any).__over)); i++) { xdo("mousemove", String(c.x + (i % 2)), String(c.y)); await sleep(200); }
     xdo("mousemove", String(c.x), String(c.y)); await sleep(120);
     xdo("click", "--repeat", "3", "--delay", "70", "1"); await sleep(350);
     const want = await p.evaluate((s) => document.querySelector(s)!.textContent!.trim(), selector);
