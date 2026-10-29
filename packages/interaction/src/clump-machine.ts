@@ -3,7 +3,7 @@
 // rebuild the carried object in whichever tab the person moves to. Hosts turn pointer, touch and keys into these events and
 // perform the effects (commit, undo, reconcile) through the core's action lifecycle.
 import {
-  RELATIONS, answerClump, canMerge, checkConsent, chooseClump, mergeClumps, newClump, plan, propose, rankProposals, removeIngredient, resolve, viewClump,
+  RELATIONS, answerClump, canMerge, checkConsent, chooseClump, mergeClumps, newClump, plan, propose, rankProposals, removeIngredient, moveIngredient, replaceIngredient, pieceOfSelection, typeOf, resolve, viewClump,
   type AnswerField, type CapabilityContract, type Clump, type ClumpType, type ClumpView, type Consent, type EventField, type Verification, type Fragment, type Operation, type Receipt,
 } from "@recast/core";
 import { reduceRun, type RecipeRun, type RunEvent } from "./recipe-run.js";
@@ -69,7 +69,7 @@ export interface ClumpState {
   placement: Placement | null;
   destinations: DestinationSpec[];
   /** One short sentence about the last thing that happened, for a live region and a toast. */
-  last: { kind: "captured" | "merged" | "put-down" | "refused" | "cancelled" | "removed" | "placed" | "failed" | "unknown" | "undone" | "on" | "off" | "closed" | "saved"; text: string; at: number } | null;
+  last: { kind: "captured" | "merged" | "put-down" | "refused" | "cancelled" | "removed" | "placed" | "failed" | "unknown" | "undone" | "on" | "off" | "closed" | "saved" | "replaced" | "discarded"; text: string; at: number } | null;
   now: number; timezone: string; seq: number;
   /**
    * How much Recast asks (D24), the person's choice. "high": every placement opens a review first. "none": a complete,
@@ -106,6 +106,8 @@ export type ClumpEvent =
   | { type: "settled"; now: number }
   | { type: "inspect"; id: string | null; now: number }
   | { type: "remove"; objectId: string; ingredientId: string; now: number }
+  | { type: "move"; objectId: string; ingredientId: string; by: -1 | 1; now: number }
+  | { type: "replace"; objectId: string; ingredientId: string; text: string; now: number }
   | { type: "answer"; objectId: string; field: AnswerField; value: string | boolean; now: number }
   | { type: "choose"; objectId: string; field: EventField; ingredientId: string; now: number }
   | { type: "place"; consent: Consent; now: number }
@@ -155,10 +157,10 @@ const LEGAL: Record<ClumpPhase, ClumpEvent["type"][]> = {
   approaching: ["approach", "drop", "cancel", "arm", "disarm"],
   confirmingMerge: ["confirmMerge", "cancel", "arm", "disarm"],
   merging: ["settled"],
-  composed: ["openWheel", "inspect", "capture", "pickUp", "remove", "answer", "choose", "cancel", "dismiss", "discard", "openModule", "arm", "disarm"],
+  composed: ["openWheel", "inspect", "capture", "pickUp", "remove", "move", "replace", "answer", "choose", "cancel", "dismiss", "discard", "openModule", "arm", "disarm"],
   choosing: ["select", "pickDestination", "cancel", "capture", "pickUp", "openModule", "arm", "disarm"],
-  inspecting: ["inspect", "remove", "answer", "choose", "pickUp", "cancel", "discard", "openModule", "arm", "disarm"],
-  previewing: ["answer", "choose", "remove", "place", "cancel", "arm", "disarm"],
+  inspecting: ["inspect", "remove", "move", "replace", "answer", "choose", "pickUp", "cancel", "discard", "openModule", "arm", "disarm"],
+  previewing: ["answer", "choose", "remove", "move", "replace", "place", "cancel", "arm", "disarm"],
   executing: ["committed", "commitFailed", "outcomeUnknown"],
   undoing: ["undone", "undoFailed"],
   succeeded: ["undo", "verified", "dismiss", "capture", "pickUp", "cancel", "openModule", "arm", "disarm"],
@@ -398,6 +400,29 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       if (n.focus === ev.objectId && (!left || left.ingredients.length < 2)) n = { ...n, focus: null, ...(n.phase === "composed" ? { phase: "idle" as const } : {}) };
       return ok(say(n, "removed", `Took ${viewOf(n, releasedId).label} out; it is on its own again`));
     }
+    case "move": {
+      const c = s.objects[ev.objectId]; if (!c || !c.ingredients.some((f) => f.id === ev.ingredientId)) return refuse("no such ingredient");
+      let n: ClumpState = { ...s, objects: { ...s.objects, [ev.objectId]: moveIngredient(c, ev.ingredientId, ev.by) } };
+      if (n.placement?.objectId === ev.objectId) n = repreview(n);
+      return ok(n);
+    }
+    case "replace": {
+      // A correction the person typed: read like any selection, and marked as theirs (not the page's).
+      const c = s.objects[ev.objectId]; const old = c?.ingredients.find((f) => f.id === ev.ingredientId);
+      if (!c || !old) return refuse("no such ingredient");
+      const text = ev.text.replace(/\s+/g, " ").trim().slice(0, 1000); if (!text) return refuse("type what it should be");
+      const norm = (t: string) => t.toLowerCase();
+      if (norm(text) === norm(old.text)) return refuse("that is what it already says");
+      const r = pieceOfSelection(text, ctxOf(s));
+      const f: Fragment = { id: `${old.id}~${s.seq + 1}`, kind: r.kind, text, confidence: r.confidence ?? 1, ...(r.value ? { value: r.value } : {}),
+        evidence: [{ locator: { kind: "user", value: "typed" }, excerpt: text.slice(0, 200) }], source: { app: "Recast", title: "typed by you" } };
+      if (c.ingredients.some((g) => g.id !== old.id && g.kind === f.kind && norm(g.text) === norm(text))) return refuse("that is already in it");
+      const next = replaceIngredient(c, old.id, f); const t = typeOf(next.ingredients);
+      if (typeof t !== "string") return refuse(t.incompatible);
+      let n: ClumpState = { ...s, seq: s.seq + 1, objects: { ...s.objects, [ev.objectId]: next } };
+      if (n.placement?.objectId === ev.objectId) n = repreview(n);
+      return ok(say(n, "replaced", `Replaced ${old.text.slice(0, 40)} with ${text.slice(0, 40)}`));
+    }
     case "answer": case "choose": {
       const c = s.objects[ev.objectId]; if (!c) return refuse("no such object");
       const next = ev.type === "answer" ? answerClump(c, ev.field, ev.value) : chooseClump(c, ev.field, ev.ingredientId);
@@ -462,7 +487,8 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
     }
     case "discard": {
       if (!s.desk.includes(ev.id)) return refuse("no such object on the desk");
-      return ok({ ...s, phase: "idle", inspecting: null, desk: without(s.desk, ev.id), objects: omit(s.objects, ev.id), uncertain: omit(s.uncertain ?? {}, ev.id), ...(s.focus === ev.id ? { focus: null } : {}) });
+      // Nothing anywhere else changes: the pieces leave the desk, and that is all.
+      return ok(say({ ...s, phase: "idle", inspecting: null, desk: without(s.desk, ev.id), objects: omit(s.objects, ev.id), uncertain: omit(s.uncertain ?? {}, ev.id), ...(s.focus === ev.id ? { focus: null } : {}) }, "discarded", `Discarded ${viewOf(s, ev.id).label.slice(0, 60)}; nothing was written anywhere`));
     }
     default: return refuse(`cannot ${ev.type} while ${s.phase}`);   // recipe events outside a run
   }

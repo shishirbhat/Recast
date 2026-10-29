@@ -346,7 +346,8 @@ function broadcastSettings() { for (const w of [library, overlay]) if (w && !w.i
 
 // ---- the library's record --------------------------------------------------------------------------------------------
 interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string }[]; removed?: boolean }
-const history = (): Entry[] => readJson<Entry[]>(historyFile(), []);
+// Removing deletes the text from the file (older copies marked an entry "removed" instead; those are dropped as they are read).
+const history = (): Entry[] => readJson<Entry[]>(historyFile(), []).filter((h) => !h.removed);
 function saveHistory(list: Entry[]) { writePrivate(historyFile(), list.slice(-2000)); library?.webContents.send("recast:history", list); }
 const clean = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) : undefined);
 
@@ -396,7 +397,7 @@ function ipc() {
     writePrivate(workflowsFile(), items); return true;
   });
   ipcMain.handle("recast:save-inbox", (_e, state: unknown) => { if (state && typeof state === "object") writePrivate(inboxFile(), state); return true; });
-  ipcMain.handle("recast:history", () => history().filter((h) => !h.removed));
+  ipcMain.handle("recast:history", () => history());
   ipcMain.handle("recast:history-add", (_e, entry: unknown) => {
     const x = (entry ?? {}) as Partial<Entry>; const id = clean(x.id, 80); const text = clean(x.text, 2000);
     if (!id || !text) return false;
@@ -412,7 +413,9 @@ function ipc() {
     for (const h of list) if (ids.includes(h.id)) (h.placed ??= []).push({ where: where.slice(0, 120), at: new Date().toISOString(), ...(typeof linkUrl === "string" && /^https:\/\//.test(linkUrl) ? { link: linkUrl } : {}) });
     saveHistory(list); return true;
   });
-  ipcMain.handle("recast:history-remove", (_e, id: unknown) => { const list = history(); for (const h of list) if (h.id === id) h.removed = true; saveHistory(list); return true; });
+  ipcMain.handle("recast:history-remove", (_e, id: unknown) => { saveHistory(history().filter((h) => h.id !== id)); return true; });
+  // Only the library may empty the library: the overlay never asks for this.
+  ipcMain.handle("recast:history-clear", (e) => { if (!library || e.sender !== library.webContents) return false; saveHistory([]); return true; });
   ipcMain.handle("recast:clipboard", async () => (await clipboard.readText()).slice(0, 2000));
   ipcMain.handle("recast:copy", (_e, text: unknown) => { if (typeof text === "string") clipboard.writeText(text.slice(0, 20000)); return true; });
   ipcMain.handle("recast:settings", (_e, p: unknown) => {

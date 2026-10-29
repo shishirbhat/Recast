@@ -122,6 +122,27 @@ describe("changing your mind", () => {
     expect(viewOf(r.s, "obj-1").event!.fields.description).toBeUndefined();
     expect((r.s.placement!.op!.dataMoved.find((d) => d.path === "Event.description"))).toBeUndefined();
   });
+  it("a piece can be moved, replaced by what the person types (marked as theirs), and the whole object discarded without a write", () => {
+    const m = mayaDinner(); const ids = m.s.objects["obj-1"]!.ingredients.map((f) => f.id);
+    const moved = run([{ type: "move", objectId: "obj-1", ingredientId: ids[2]!, by: -1 }], m.s);
+    expect(moved.s.objects["obj-1"]!.ingredients.map((f) => f.text)).toEqual(["Dakshin", "7:30 PM", "Maya Rao"]);
+    expect(run([{ type: "move", objectId: "obj-1", ingredientId: ids[0]!, by: -1 }], m.s).s.objects["obj-1"]!.ingredients[0]!.id).toBe(ids[0]);   // already first
+    // The time was wrong: typed again, it is read as a time and marked as typed by the person, in the same place.
+    const fixed = run([{ type: "replace", objectId: "obj-1", ingredientId: ids[2]!, text: "8:15 PM" }], m.s);
+    expect(fixed.errors).toEqual([]);
+    const f = fixed.s.objects["obj-1"]!.ingredients[2]!;
+    expect(f).toMatchObject({ kind: "time", text: "8:15 PM", source: { title: "typed by you" }, evidence: [{ locator: { kind: "user", value: "typed" } }] });
+    expect(viewOf(fixed.s, "obj-1").missing.find((x) => x.field === "start")!.reason).toMatch(/20:15/);
+    expect(fixed.s.last).toMatchObject({ kind: "replaced" });
+    // A replacement that would make it something it cannot be is refused, and nothing changes.
+    const bad = run([{ type: "replace", objectId: "obj-1", ingredientId: ids[0]!, text: "TypeError: x is undefined" }], m.s);
+    expect(bad.errors[0]).toMatch(/is an error/); expect(bad.s).toBe(m.s);
+    expect(run([{ type: "replace", objectId: "obj-1", ingredientId: ids[1]!, text: "  " }], m.s).errors[0]).toMatch(/type what it should be/);
+    // Discarding the composition: gone from the desk, no effect of any kind.
+    const gone = run([{ type: "discard", id: "obj-1" }], m.s);
+    expect(gone.effects).toEqual([]); expect(gone.s.desk).toEqual([]); expect(gone.s.objects).toEqual({}); expect(gone.s.focus).toBeNull();
+    expect(gone.s.last).toMatchObject({ kind: "discarded", text: expect.stringMatching(/nothing was written anywhere/) });
+  });
   it("illegal moves are refused with a reason and change nothing", () => {
     const s = initialClumpState({ now: NOW, timezone: "UTC", destinations: DESTS });
     for (const e of [{ type: "drop" }, { type: "settled" }, { type: "place", consent: { kind: "release" } }, { type: "committed", receipt: receipt(), undoable: true }, { type: "pickUp", id: "nope" }] as const) {

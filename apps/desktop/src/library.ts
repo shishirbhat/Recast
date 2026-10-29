@@ -6,6 +6,7 @@ interface Api {
   boot(): Promise<{ settings: Settings; theme: "dark" | "light" }>;
   history(): Promise<Entry[]>;
   historyRemove(id: string): Promise<boolean>;
+  historyClear(): Promise<boolean>;
   copy(text: string): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
   settings(p: unknown): Promise<Settings>;
@@ -28,6 +29,7 @@ function render() {
   const q = $<HTMLInputElement>("#search").value.trim().toLowerCase();
   const shown = entries.filter((e) => !q || e.text.toLowerCase().includes(q) || (e.source?.app ?? "").toLowerCase().includes(q) || (e.source?.title ?? "").toLowerCase().includes(q)).slice().reverse();
   $("#empty").hidden = entries.length > 0;
+  $("#clear-row").hidden = entries.length === 0; $("#clear-n").textContent = `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`;
   const list = $("#list"); list.replaceChildren();
   let day = "";
   for (const e of shown) {
@@ -44,6 +46,10 @@ function render() {
 // Links in the list open in the person's browser (the app refuses anything but the web).
 $("#list").addEventListener("click", (ev) => { const a = (ev.target as HTMLElement).closest("a"); if (a) { ev.preventDefault(); void api.openExternal(a.href); } });
 $("#search").addEventListener("input", render);
+const asking = (yes: boolean) => { $("#clear-ask").hidden = !yes; $("#btn-clear").hidden = yes; if (yes) $("#btn-clear-no").focus(); };
+$("#btn-clear").addEventListener("click", () => asking(true));
+$("#btn-clear-no").addEventListener("click", () => asking(false));
+$("#btn-clear-yes").addEventListener("click", () => { asking(false); void api.historyClear(); });
 
 const pretty = (a: string) => (MAC ? a.replace("CommandOrControl", "⌘").replace("Control", "⌃").replace("Alt", "⌥").replace("Shift", "⇧").replace(/\+/g, "") : a.replace("CommandOrControl", "Ctrl"));
 function renderSettings() {

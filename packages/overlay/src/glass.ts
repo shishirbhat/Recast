@@ -13,6 +13,7 @@ export type GlassIntent =
   | { type: "turnOff" } | { type: "reopen" } | { type: "close" } | { type: "back" } | { type: "placeIt" }
   | { type: "openWheel" } | { type: "select"; choice: WheelKey } | { type: "pick"; destinationId: string }
   | { type: "inspect" } | { type: "remove"; ingredientId: string }
+  | { type: "move"; ingredientId: string; by: -1 | 1 } | { type: "replace"; ingredientId: string; text: string } | { type: "discard" }
   | { type: "answer"; field: AnswerField; value: string } | { type: "choose"; field: EventField; ingredientId: string }
   | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean }
   | { type: "openRecipe"; recipeId: string } | { type: "toggleStep"; stepId: string } | { type: "runRecipe"; heldMs?: number } | { type: "undoStep"; stepId: string }
@@ -43,6 +44,9 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
     case "pick": return [{ type: "pickDestination", destinationId: i.destinationId }];
     case "inspect": return id ? [{ type: "inspect", id }] : [];
     case "remove": return id ? [{ type: "remove", objectId: id, ingredientId: i.ingredientId }] : [];
+    case "move": return id ? [{ type: "move", objectId: id, ingredientId: i.ingredientId, by: i.by }] : [];
+    case "replace": return id ? [{ type: "replace", objectId: id, ingredientId: i.ingredientId, text: i.text }] : [];
+    case "discard": return id ? [{ type: "discard", id }] : [];
     case "answer": return id ? [{ type: "answer", objectId: id, field: i.field, value: i.value }] : [];
     case "choose": return id ? [{ type: "choose", objectId: id, field: i.field, ingredientId: i.ingredientId }] : [];
     case "place": return [{ type: "place", consent: i.heldMs !== undefined ? { kind: "hold", heldMs: i.heldMs } : { kind: "confirm" } }];
@@ -152,6 +156,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   let holdStart = 0;
   // Saved workflows: the name field is open; the list is open for managing; one entry being renamed or asked about.
   let saving = false, managing = false, renaming: string | null = null, deleting: string | null = null, draft = "", renamePending = false;
+  let replacing: string | null = null, discarding = false;   // a piece being corrected; "discard this?" asked once
   const emit = (i: GlassIntent) => opts.onIntent(i);
 
   // ---- the light: a soft specular highlight that drifts toward the pointer, so the surface reads as curved glass -------
@@ -415,9 +420,19 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "plan": case "running": case "ran": return runView(m, err, close);
       case "choosing": return { title: drill === "more" ? "More places" : drill ? `${esc(m.entries.find((e) => e.key === drill)?.label ?? "")}: which one?` : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
         actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button><button type="button" class="rg-btn ghost" data-act="back">Back</button>` };
-      case "inspecting": return { title: "Inside this object", head: close, facts: "",
-        body: `${err}<ul class="rg-ingredients">${m.object.ingredients.map((f) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${m.object.ingredients.length > 1 ? `<button type="button" class="rg-link" data-remove="${esc(f.id)}" aria-label="Take ${esc(f.text)} out">Take out</button>` : ""}</li>`).join("")}</ul>${detail(m)}`,
-        actions: `${m.object.view.placeableAs.length ? `<button type="button" class="rg-btn" data-act="placeIt">Choose where it goes</button>` : ""}<button type="button" class="rg-btn${m.object.view.placeableAs.length ? " ghost" : ""}" data-act="back">Done</button>` };
+      case "inspecting": {
+        const fs = m.object.ingredients; const many = fs.length > 1;
+        // Each piece can be moved (the order a note is read in), corrected by typing, or taken back out.
+        const tools = (f: (typeof fs)[number], i: number) => `<span class="rg-piece-tools">${many ? `<button type="button" class="rg-mini" data-move="${esc(f.id)}" data-by="-1" aria-label="Move ${esc(f.text)} up"${i === 0 ? " disabled" : ""}>↑</button><button type="button" class="rg-mini" data-move="${esc(f.id)}" data-by="1" aria-label="Move ${esc(f.text)} down"${i === fs.length - 1 ? " disabled" : ""}>↓</button>` : ""}<button type="button" class="rg-link" data-replace-start="${esc(f.id)}" aria-label="Replace ${esc(f.text)}">Replace</button>${many ? `<button type="button" class="rg-link" data-remove="${esc(f.id)}" aria-label="Take ${esc(f.text)} out">Take out</button>` : ""}</span>`;
+        const fix = (f: (typeof fs)[number]) => replacing === f.id ? `<span class="rg-answer rg-replace"><input data-replace="${esc(f.id)}" value="${esc(f.text)}" aria-label="What it should say instead of ${esc(f.text)}" spellcheck="false"><button type="button" class="rg-chip" data-replace-ok="${esc(f.id)}">Use this</button><button type="button" class="rg-chip" data-act="replaceCancel">Cancel</button></span>` : "";
+        const what = many ? "these pieces" : "this piece";
+        const discard = discarding
+          ? `<p class="rg-hint rg-discard">Discard ${what}? They leave your desk; nothing is written anywhere.</p><button type="button" class="rg-btn primary" data-act="discardOk">Discard</button><button type="button" class="rg-btn ghost" data-act="discardCancel">Keep</button>`
+          : `<button type="button" class="rg-btn ghost" data-act="discardStart">Discard</button>`;
+        return { title: "Inside this object", head: close, facts: "",
+          body: `${err}<ul class="rg-ingredients">${fs.map((f, i) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${tools(f, i)}${fix(f)}</li>`).join("")}</ul>${detail(m)}`,
+          actions: discarding ? discard : `${m.object.view.placeableAs.length ? `<button type="button" class="rg-btn" data-act="placeIt">Choose where it goes</button>` : ""}<button type="button" class="rg-btn${m.object.view.placeableAs.length ? " ghost" : ""}" data-act="back">Done</button>${discard}` };
+      }
       case "confirm": return { title: "Combine them?", head: "", facts: "", body: `<p>${esc(m.confirm ?? "")}</p>`,
         actions: `<button type="button" class="rg-btn" data-act="mergeYes">Combine</button><button type="button" class="rg-btn ghost" data-act="mergeNo">Keep apart</button>` };
       case "preview": {
@@ -463,7 +478,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode !== "choosing") drill = null;
     if (m.mode === "plan" || m.mode === "ran" || m.mode === "preview" || m.mode === "succeeded") { if (m.save?.done) { saving = false; draft = ""; } }
     if (renamePending) { renamePending = false; if (!extra.error) renaming = null; }
-    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; if (m.mode !== "composed") managing = false; }
+    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; if (m.mode !== "composed") managing = false; }
+    if (replacing && !(m.mode === "inspecting" && m.object.ingredients.some((f) => f.id === replacing))) replacing = null;
     if (!("mine" in m) || !m.mine?.length) managing = false;
     model = m; el.dataset["mode"] = m.mode; el.hidden = m.mode === "off";
     el.dataset["drill"] = drill ?? "";
@@ -492,7 +508,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (!a || !el.contains(a)) return null;
     if (a.id) return `#${CSS.escape(a.id)}`;
     if (a.classList.contains("rg-drum")) return ".rg-drum";
-    for (const k of ["act", "answer", "submit", "remove", "choose", "wfName", "wfRename"]) if (a.dataset[k]) return `[data-${k}="${CSS.escape(a.dataset[k]!)}"]`;
+    for (const k of ["act", "answer", "submit", "remove", "choose", "wfName", "wfRename", "replaceStart", "replace"]) if (a.dataset[k]) return `[data-${k}="${CSS.escape(a.dataset[k]!)}"]`;
     return null;
   };
 
@@ -525,6 +541,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (b.dataset["submit"]) return submit(b.dataset["submit"]);
     if (b.dataset["choose"]) return emit({ type: "choose", field: b.dataset["choose"] as EventField, ingredientId: b.dataset["ingredient"]! });
     if (b.dataset["remove"]) return emit({ type: "remove", ingredientId: b.dataset["remove"] });
+    if (b.dataset["move"]) { const id = b.dataset["move"]; emit({ type: "move", ingredientId: id, by: b.dataset["by"] === "-1" ? -1 : 1 }); el.querySelector<HTMLElement>(`[data-move="${CSS.escape(id)}"][data-by="${b.dataset["by"]}"]:not(:disabled)`)?.focus(); return; }
+    if (b.dataset["replaceStart"]) { replacing = b.dataset["replaceStart"]; update(model); const i = el.querySelector<HTMLInputElement>("input[data-replace]"); i?.focus(); i?.select(); return; }
+    if (b.dataset["replaceOk"]) return replaceNow(b.dataset["replaceOk"]);
     if (b.dataset["recipe"]) return emit({ type: "openRecipe", recipeId: b.dataset["recipe"] });
     if (b.dataset["undoStep"]) return emit({ type: "undoStep", stepId: b.dataset["undoStep"] });
     if (b.dataset["wfRenameStart"]) { renaming = b.dataset["wfRenameStart"]; deleting = null; update(model); el.querySelector<HTMLInputElement>("input[data-wf-rename]")?.select(); return; }
@@ -555,6 +574,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "manageDone": managing = false; renaming = null; deleting = null; update(model); return;
       case "renameCancel": renaming = null; update(model); return;
       case "deleteCancel": deleting = null; update(model); return;
+      case "replaceCancel": replacing = null; update(model); return;
+      case "discardStart": discarding = true; update(model); el.querySelector<HTMLElement>("[data-act=discardCancel]")?.focus(); return;
+      case "discardCancel": discarding = false; update(model); return;
+      case "discardOk": discarding = false; return emit({ type: "discard" });
     }
   });
   el.addEventListener("change", (e) => {
@@ -565,6 +588,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (e.key === "Enter" && t.matches("input[data-field]")) { e.preventDefault(); submit(t.dataset["field"]!); }
     if (e.key === "Enter" && t.matches("input[data-wf-name]")) { e.preventDefault(); saveNow(); }
     if (e.key === "Enter" && t.matches("input[data-wf-rename]")) { e.preventDefault(); renameNow(t.dataset["wfRename"]!); }
+    if (e.key === "Enter" && t.matches("input[data-replace]")) { e.preventDefault(); replaceNow(t.dataset["replace"]!); }
+    if (e.key === "Escape" && t.matches("input[data-replace]")) { e.preventDefault(); e.stopPropagation(); replacing = null; update(model); return; }
     // Escape in a name field closes the field only, not the review around it.
     if (e.key === "Escape" && t.matches("input[data-wf-name], input[data-wf-rename]")) { e.preventDefault(); e.stopPropagation(); saving = false; renaming = null; update(model); }
   });
@@ -572,6 +597,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   function saveNow() { const v = el.querySelector<HTMLInputElement>("input[data-wf-name]")?.value ?? ""; emit({ type: "saveWorkflow", name: v }); }
   el.addEventListener("input", (e) => { const t = e.target as HTMLInputElement; if (t.matches("input[data-wf-name]")) draft = t.value; });
   function renameNow(id: string) { renamePending = true; const v = el.querySelector<HTMLInputElement>(`input[data-wf-rename="${CSS.escape(id)}"]`)?.value ?? ""; emit({ type: "renameWorkflow", id, name: v }); }
+  function replaceNow(id: string) { const v = el.querySelector<HTMLInputElement>(`input[data-replace="${CSS.escape(id)}"]`)?.value.trim(); if (v) { replacing = null; emit({ type: "replace", ingredientId: id, text: v }); } }
   function submit(field: string) { const i = el.querySelector<HTMLInputElement>(`input[data-field="${CSS.escape(field)}"]`); const v = i?.value.trim(); if (v) emit({ type: "answer", field: field as AnswerField, value: v }); }
   el.addEventListener("pointerdown", (e) => { if ((e.target as HTMLElement).closest("[data-act=hold], [data-act=holdRecipe]")) holdStart = performance.now(); });
   el.addEventListener("pointerup", (e) => {
@@ -767,6 +793,13 @@ export const GLASS_CSS = `
 .rg-what { min-width: 0; overflow-wrap: anywhere; }
 .rg-src { grid-column: 2; font-size: 11px; color: var(--g-muted); }
 .rg-num { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; }
+.rg-piece-tools { grid-column: 3; grid-row: 1 / span 2; display: flex; gap: 2px; align-items: center; }
+.rg-piece-tools .rg-link { padding: 2px 4px; }
+.rg-mini { border: 0; background: none; color: var(--g-ink); cursor: pointer; font: inherit; font-size: 13px; line-height: 1; padding: 3px 5px; border-radius: 6px; }
+.rg-mini:disabled { opacity: .3; cursor: default; }
+.rg-mini:hover:not(:disabled), .rg-mini:focus-visible { background: var(--g-line); }
+.rg-replace { grid-column: 1 / -1; margin-top: 6px; }
+.rg-discard { flex-basis: 100%; margin: 0 0 4px; }
 .rg-link { grid-column: 3; grid-row: 1 / span 2; border: 0; background: none; color: var(--g-ink); text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 12px; }
 .rg-check { color: var(--g-accent); stroke-dasharray: 20; stroke-dashoffset: 0; animation: rg-check 280ms ease-out; }
 @keyframes rg-check { from { stroke-dashoffset: 20; } }

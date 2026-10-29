@@ -184,6 +184,30 @@ describe("pressing pieces into one object (mouse)", () => {
     expect(await page.locator(objectSel(id)).getAttribute("aria-label")).toMatch(/^Meet at Dakshin, /);
     await ctx.close();
   });
+  it("inside an object each piece can be moved, replaced by typing (marked as typed), and the whole object discarded after asking; nothing is written", async () => {
+    const { page, ctx, errors } = await open();
+    const id = await makeDinner(page);
+    await page.locator(objectSel(id)).click();
+    await page.getByRole("button", { name: "Move Friday, 7:30 PM up" }).click();
+    expect((await st(page)).objects[id].ingredients.map((f: any) => f.text)).toEqual(["Dakshin", "Friday, 7:30 PM", "Maya Rao"]);
+    // The time was misread: Replace, type it, Enter. It sits where the old one was, read as a time, "from typed by you".
+    await page.getByRole("button", { name: "Replace Friday, 7:30 PM" }).click();
+    await page.getByRole("textbox", { name: /What it should say instead of Friday, 7:30 PM/ }).fill("Saturday 8 PM");
+    await page.keyboard.press("Enter");
+    const f = (await st(page)).objects[id].ingredients[1];
+    expect(f).toMatchObject({ kind: "time", text: "Saturday 8 PM", source: { title: "typed by you" } });
+    expect(await page.locator(".rg-ingredients").innerText()).toMatch(/time\s*Saturday 8 PM\s*from typed by you/i);
+    // Discard asks once; Keep keeps; Discard removes it from the desk and nothing is sent anywhere.
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
+    await page.getByRole("button", { name: "Keep" }).click();
+    expect((await st(page)).desk).toEqual([id]);
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
+    expect(await page.locator(".rg-discard").innerText()).toMatch(/nothing is written anywhere/);
+    await page.locator("[data-act=discardOk]").click();
+    const s = await st(page); expect(s.desk).toEqual([]); expect(s.objects).toEqual({});
+    expect(errors).toEqual([]);
+    await ctx.close();
+  });
   it("when the calendar does not answer, Recast asks it instead of adding twice", async () => {
     const { page, ctx } = await open();
     const id = await makeDinner(page);

@@ -133,6 +133,23 @@ export function removeIngredient(c: Clump, ingredientId: string, releasedId: str
   return { rest: left.length ? { ...c, ingredients: left, choices } : null, released: newClump(releasedId, f) };
 }
 
+/** Move one ingredient earlier (-1) or later (+1). The order is the order a note's passages are read in. */
+export function moveIngredient(c: Clump, ingredientId: string, by: -1 | 1): Clump {
+  const i = c.ingredients.findIndex((x) => x.id === ingredientId); const j = i + by;
+  if (i < 0) throw new Error(`no ingredient ${ingredientId} in ${c.id}`);
+  if (j < 0 || j >= c.ingredients.length) return c;
+  const fs = [...c.ingredients]; [fs[i], fs[j]] = [fs[j]!, fs[i]!];
+  return { ...c, ingredients: fs };
+}
+
+/** Put a corrected piece where a wrong one was. Choices that trusted the old piece are dropped, so nothing points at it. */
+export function replaceIngredient(c: Clump, ingredientId: string, f: Fragment): Clump {
+  const i = c.ingredients.findIndex((x) => x.id === ingredientId);
+  if (i < 0) throw new Error(`no ingredient ${ingredientId} in ${c.id}`);
+  const fs = [...c.ingredients]; fs[i] = f;
+  return { ...c, ingredients: fs, choices: Object.fromEntries(Object.entries(c.choices).filter(([, v]) => v !== ingredientId)) };
+}
+
 /** Record what the person typed or accepted (a title, a date, an email). Empty clears it. */
 export function answer(c: Clump, field: AnswerField, value: string | boolean): Clump {
   const answers = { ...c.answers }; if (value === "") delete answers[field]; else answers[field] = value;

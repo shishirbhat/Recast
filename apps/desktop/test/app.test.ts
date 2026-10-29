@@ -322,6 +322,17 @@ describe("the Recast app (the library)", () => {
     await shot(library, "library-dark");
     await library.getByRole("button", { name: "Remove" }).click();
     await expect.poll(() => library.locator(".entry").count()).toBe(0);
+    // Removed means gone from this computer, not hidden: the text is no longer in the file.
+    await expect.poll(() => readFileSync(path.join(dir, "history.json"), "utf8")).not.toContain("maya.rao@example.com");
+    // Clear all asks first, then deletes everything.
+    for (const t of ["first note", "second note"]) { await app!.evaluate(({ clipboard }, x) => clipboard.selection?.writeText(x), t); await app!.evaluate(() => (globalThis as any).__recastGrab()); await sleep(300); }
+    await expect.poll(() => library.locator(".entry").count()).toBe(2);
+    await library.getByRole("button", { name: "Clear all" }).click();
+    expect(await library.locator(".entry").count()).toBe(2);
+    await library.getByRole("button", { name: "Delete all" }).click();
+    await expect.poll(() => library.locator(".entry").count()).toBe(0);
+    expect(readFileSync(path.join(dir, "history.json"), "utf8")).toBe("[]");
+    expect(await overlay.evaluate(() => (window as any).recastDesktop.historyClear())).toBe(false);   // only the library may
   });
 
   it("a recipe runs both steps against the person's own Google (Calendar and Tasks), each with its own result", async () => {

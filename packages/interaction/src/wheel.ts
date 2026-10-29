@@ -77,7 +77,7 @@ export type ModuleModel =
 /** What the action module shows for this state. One model, one module: there is never a second panel. */
 export function moduleModel(s: ClumpState, registry: readonly CapabilityContract[]): ModuleModel {
   if (!s.armed && s.phase === "idle") return { mode: "off" };
-  const obj = (id: string): ModuleObject => ({ id, view: viewOf(s, id), ingredients: s.objects[id]!.ingredients.map((f) => ({ id: f.id, kind: f.kind, text: f.text, from: f.source?.title ?? f.source?.url ?? "", confidence: f.confidence })) });
+  const obj = (id: string): ModuleObject => ({ id, view: viewOf(s, id), ingredients: s.objects[id]!.ingredients.map((f) => ({ id: f.id, kind: f.kind, text: f.text, from: f.source?.title ?? f.source?.url ?? f.source?.app ?? "", confidence: f.confidence })) });
   const around = (id: string) => { const entries = wheelEntries(s, id, registry); return { object: obj(id), entries, choice: (entries.some((e) => e.key === s.choice) ? s.choice : firstAvailable(entries)) as WheelKey }; };
   const place = () => {
     const p = s.placement!; const d = s.destinations.find((x) => x.id === p.destinationId);

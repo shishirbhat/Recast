@@ -352,7 +352,7 @@ const fmt = (v: string) => { const d = new Date(v); return isNaN(+d) ? v : d.toL
 
 function renderToast() {
   const t = $("#toast");
-  const show = state.last && ["placed", "undone", "refused", "removed"].includes(state.last.kind) && NOW() - state.last.at < 6000 && moduleClosed();
+  const show = state.last && ["placed", "undone", "refused", "removed", "discarded"].includes(state.last.kind) && NOW() - state.last.at < 6000 && moduleClosed();
   t.hidden = !show; if (show) t.textContent = state.last!.text;
 }
 const moduleClosed = () => { const m = glass.el.dataset["mode"]; return m === "off" || m === "pill"; };

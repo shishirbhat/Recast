@@ -326,7 +326,7 @@ function render() {
   // With the wheel closed, what just happened (or why something was refused) shows briefly by the blob.
   if (glass.el.dataset["mode"] === "pill" || glass.el.dataset["mode"] === "off") {
     if (lastError) toast(lastError.charAt(0).toUpperCase() + lastError.slice(1));
-    else if (state.last && state.last.at !== shownAt && ["refused", "cancelled", "removed", "placed", "undone", "failed"].includes(state.last.kind)) toast(state.last.text);
+    else if (state.last && state.last.at !== shownAt && ["refused", "cancelled", "removed", "discarded", "placed", "undone", "failed"].includes(state.last.kind)) toast(state.last.text);
   }
   shownAt = state.last?.at ?? shownAt;
   requestAnimationFrame(() => { report(); askKeys(); });

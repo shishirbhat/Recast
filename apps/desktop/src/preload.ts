@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("recastDesktop", {
   historyAdd: (entry: unknown) => ipcRenderer.invoke("recast:history-add", entry),
   historyPlaced: (ids: unknown, where: unknown, link?: unknown) => ipcRenderer.invoke("recast:history-placed", ids, where, link),
   historyRemove: (id: string) => ipcRenderer.invoke("recast:history-remove", id),
+  historyClear: () => ipcRenderer.invoke("recast:history-clear"),
   clipboard: () => ipcRenderer.invoke("recast:clipboard"),
   copy: (text: string) => ipcRenderer.invoke("recast:copy", text),
   settings: (p: unknown) => ipcRenderer.invoke("recast:settings", p),
