@@ -107,6 +107,49 @@ export class AgentRuns {
     this.dbPath = dbPath;
     this.adapter = typeof adapter === "string" ? claudeCode(adapter) : adapter;
     ensureLocalExclude(root);
+    this.restore();
+  }
+
+  /** Write a run's current state; every change to a run goes through here so a restart finds it as it was. */
+  private save(run: AgentRun): void {
+    this.relay.db.prepare("INSERT INTO agent_runs (id, task_id, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data").run(run.id, run.taskId, JSON.stringify(run));
+  }
+
+  /**
+   * Bring back the runs and combined worktrees a previous server process left. Unapplied agent work lives in worktrees
+   * on disk, so a restart must not orphan it: finished runs can still be applied, checked together results approved.
+   * A run that was still going when the server stopped is recorded as interrupted (its process is gone); a run whose
+   * worktree has disappeared is marked failed rather than offered for applying; Relay's own checks that were cut off
+   * are run again.
+   */
+  private restore(): void {
+    const rows = this.relay.db.prepare("SELECT data FROM agent_runs ORDER BY seq").all() as { data: string }[];
+    for (const row of rows) {
+      const run = JSON.parse(row.data) as AgentRun;
+      this.runs.set(run.id, run);
+      if (run.status === "starting" || run.status === "running") this.interrupt(run);
+      else if (run.status === "finished" && !existsSync(run.worktree)) {
+        run.status = "failed";
+        run.checking = false;
+        this.push(run, { kind: "error", detail: `The agent's worktree ${run.worktree} no longer exists, so its work can't be applied. Run the task again.` });
+      } else if (run.checking) {
+        run.checking = false;
+        if (run.status === "finished") void this.afterRun(run);
+        else this.save(run);
+      }
+    }
+    for (const c of this.relay.db.prepare("SELECT integration_id, worktree FROM agent_combined").all() as { integration_id: string; worktree: string }[]) {
+      if (existsSync(c.worktree)) this.combined.set(c.integration_id, c.worktree);
+    }
+  }
+
+  /** The server stopped while this run's agent worked: the process is gone, so the run is over. Its worktree is kept. */
+  private interrupt(run: AgentRun): void {
+    run.status = "cancelled";
+    run.endedAt ??= new Date().toISOString();
+    this.push(run, { kind: "error", detail: "Relay's server stopped while this agent was running, so the run was stopped. What it changed so far is kept in its worktree; start the task again to finish it." });
+    const t = this.relay.getTask(run.taskId);
+    if (t?.state === "running") this.relay.transition(run.taskId, "failed", { kind: "system", id: "runner" }, { reason: "agent run interrupted: the server stopped" });
   }
 
   attachDocs(docs: DocStore): void {
@@ -148,6 +191,7 @@ export class AgentRuns {
         startedAt: new Date().toISOString(), endedAt: null, exitCode: null, costUsd: null, changedFiles: [], staleInputs: [], activity: [],
       };
       this.runs.set(runId, run);
+      this.save(run);
       this.relay.record("agent.run_started", actorFor(by), { runId, group, provider: run.provider, snapshot }, id);
       this.spawnAgent(run);
       started.push(run);
@@ -185,6 +229,7 @@ export class AgentRuns {
     const child = spawn(spec.command, spec.args, { cwd: run.worktree, stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...verificationEnv(), ...spec.env } });
     this.procs.set(run.id, child);
     run.status = "running";
+    this.save(run);
     let buf = "";
     child.stdout!.on("data", (chunk: Buffer) => {
       buf += chunk.toString("utf8");
@@ -203,9 +248,10 @@ export class AgentRuns {
       if (this.closed) return;
       run.exitCode = code;
       run.endedAt = new Date().toISOString();
-      if (run.status === "cancelled") return;
+      if (run.status === "cancelled") return this.save(run);
       run.status = code === 0 ? "finished" : "failed";
       if (code !== 0 && stderr) this.push(run, { kind: "error", detail: stderr.slice(-500) });
+      this.save(run);
       void this.afterRun(run);
     });
   }
@@ -215,6 +261,7 @@ export class AgentRuns {
       if (a.kind === "result") {
         run.costUsd = a.costUsd;
         this.push(run, { kind: "result", detail: a.detail });
+        this.save(run);
       } else this.push(run, a);
     }
   }
@@ -223,6 +270,7 @@ export class AgentRuns {
     const item = { at: new Date().toISOString(), ...a };
     run.activity.push(item);
     if (run.activity.length > ACTIVITY_LIMIT) run.activity.shift();
+    if (a.kind !== "text") this.save(run);
     if (a.kind !== "text") this.relay.record(`agent.${a.kind}`, `agent:${this.adapter.id}`, { runId: run.id, ...a }, run.taskId);
   }
 
@@ -232,8 +280,10 @@ export class AgentRuns {
    */
   private async afterRun(run: AgentRun): Promise<void> {
     run.checking = true;
+    this.save(run);
     try {
       run.changedFiles = changedFiles(run.worktree, run.snapshot);
+      this.save(run);
       const task = this.relay.requireTask(run.taskId);
       if (task.state === "review_required") {
         this.relay.diffCheck(run.taskId, run.worktree);
@@ -245,6 +295,7 @@ export class AgentRuns {
       if (!this.closed) this.push(run, { kind: "error", detail: `post-run checks failed: ${(err as Error).message}` });
     } finally {
       run.checking = false;
+      if (!this.closed) this.save(run);
     }
   }
 
@@ -253,6 +304,7 @@ export class AgentRuns {
     const proc = this.procs.get(run.id);
     if (!proc) throw new RelayError("illegal_transition", `The agent on ${taskId} is not running`);
     run.status = "cancelled";
+    this.save(run);
     try {
       process.kill(-proc.pid!, "SIGTERM"); // the whole process group: claude and its tool subprocesses
     } catch {
@@ -272,6 +324,7 @@ export class AgentRuns {
       if (!task || !inScope(task.scope, path) || run.staleInputs.some((s) => s.path === path)) continue;
       const item = { path, by, at: new Date().toISOString() };
       run.staleInputs.push(item);
+      this.save(run);
       this.relay.record("task.input_changed", "system:collab", { runId: run.id, path, by }, run.taskId);
     }
   }
@@ -336,6 +389,7 @@ export class AgentRuns {
       }
       const result = this.mergeInto(run.worktree, run.snapshot, files, `${run.provider}:${run.taskId}`);
       run.status = "applied";
+      this.save(run);
       this.relay.record("agent.changes_applied", actorFor(by), { runId: run.id, ...result, conflicts: result.conflicts.map((c) => c.path), integrationId }, taskId);
       return { ...result, reverified: integrationId !== null, integrationId };
     } finally {
@@ -444,6 +498,7 @@ export class AgentRuns {
     const changedBy = Object.fromEntries(runs.map((r) => [r.taskId, changedFiles(r.worktree, r.snapshot)]));
     const integ = await this.relay.checkIntegrationAsync(taskIds, dir, verify, undefined, { ...(rebased ? { rebasedOnto: snapshot } : {}), changedBy });
     this.combined.set(integ.id, dir);
+    this.relay.db.prepare("INSERT OR REPLACE INTO agent_combined (integration_id, worktree) VALUES (?, ?)").run(integ.id, dir);
     return integ;
   }
 
@@ -472,22 +527,25 @@ export class AgentRuns {
     if (dry.length) return { integration: integ, applied: [], conflicts: dry, skipped: [] };
     const approved = this.relay.approveIntegration(integrationId, actorFor(by), dir);
     const result = this.mergeInto(dir, snapshot, files, `${this.adapter.id}:${integ.tasks.join("+")}`);
-    for (const id of integ.tasks) for (const r of this.runs.values()) if (r.taskId === id && r.status === "finished") r.status = "applied";
+    for (const id of integ.tasks) for (const r of this.runs.values()) if (r.taskId === id && r.status === "finished") {
+      r.status = "applied";
+      this.save(r);
+    }
     this.relay.record("agent.changes_applied", actorFor(by), { integrationId, ...result, conflicts: [] });
     return { integration: approved, ...result };
   }
 
   close(): void {
-    this.closed = true;
     for (const [id, p] of this.procs) {
       const run = this.runs.get(id);
-      if (run) run.status = "cancelled";
+      if (run) this.interrupt(run);
       try {
         process.kill(-p.pid!, "SIGTERM");
       } catch {
         p.kill("SIGTERM");
       }
     }
+    this.closed = true;
   }
 }
 

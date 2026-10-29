@@ -87,6 +87,11 @@ export class DocSession {
     });
   }
 
+  /** How much this browser has typed into the document; compare two readings to tell whether the person typed between. */
+  ownClock(): number {
+    return Y.getState(this.doc.store, this.doc.clientID);
+  }
+
   /** Edits of ours the server hasn't confirmed yet (typed offline, in flight, or lost on a dead connection). */
   unsent(): boolean {
     return Y.getState(this.doc.store, this.doc.clientID) > this.confirmed;

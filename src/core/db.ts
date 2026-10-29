@@ -154,6 +154,18 @@ CREATE TABLE IF NOT EXISTS doc_conflicts (
   resolved_at TEXT
 );
 
+-- Agent runs and the combined worktrees Check Together built: kept so a server restart doesn't orphan unapplied work.
+CREATE TABLE IF NOT EXISTS agent_runs (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT NOT NULL UNIQUE,
+  task_id TEXT NOT NULL,
+  data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agent_combined (
+  integration_id TEXT PRIMARY KEY,
+  worktree TEXT NOT NULL
+);
+
 -- Append-only. Nothing updates or deletes rows here.
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,

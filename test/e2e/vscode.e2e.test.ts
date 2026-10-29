@@ -272,6 +272,41 @@ test("explorer: new file and folder, rename and delete from the context menu; a 
   assert.equal(server.docs.get("src/lib/helper.js"), undefined);
 });
 
+test("typing into a file before it has synced keeps every key: the line is selected on sync only if nothing was typed", { skip }, async () => {
+  const p = await signIn("owner");
+  // Hold the server's messages for this file until the person has typed, as a slow connection would.
+  await p.addInitScript(() => {
+    const held: (() => void)[] = [];
+    let holding = true;
+    (window as unknown as { releaseEarly: () => number }).releaseEarly = () => ((holding = false), held.splice(0).forEach((f) => f()), 0);
+    const Native = WebSocket;
+    window.WebSocket = class extends Native {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        if (!String(url).includes("early.js")) return;
+        let handler: ((e: MessageEvent) => void) | null = null;
+        super.onmessage = (e: MessageEvent) => (holding ? held.push(() => handler?.(e)) : handler?.(e));
+        Object.defineProperty(this, "onmessage", { get: () => handler, set: (h) => (handler = h) });
+      }
+    } as typeof WebSocket;
+  });
+  await p.reload();
+  await p.getByTestId("welcome").waitFor();
+  await p.getByTestId("folder-src").click({ button: "right" });
+  await p.getByRole("menuitem", { name: "New File…" }).click();
+  await p.getByTestId("tree-name-input").fill("early.js");
+  await p.keyboard.press("Enter");
+  await p.getByTestId("tab-src/early.js").waitFor();
+  await p.waitForFunction(() => document.activeElement?.classList.contains("cm-content"));
+  await p.keyboard.type("export const early = 1;");
+  assert.notEqual(await p.getByTestId("sync-status").textContent(), "Synced", "the file hasn't synced yet");
+  await p.evaluate(() => (window as unknown as { releaseEarly: () => number }).releaseEarly());
+  await p.getByTestId("sync-status").filter({ hasText: "Synced" }).waitFor();
+  await p.keyboard.type(" // more");
+  for (let i = 0; i < 50 && !server.docs.get("src/early.js")?.text.toString().includes("// more"); i++) await p.waitForTimeout(100);
+  assert.equal(server.docs.get("src/early.js")?.text.toString(), "export const early = 1; // more");
+});
+
 test("viewers see file actions disabled with a reason", { skip }, async () => {
   const v = await signIn("viewer");
   await v.getByTestId("file-README.md").click({ button: "right" });

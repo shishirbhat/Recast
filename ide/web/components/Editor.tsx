@@ -307,9 +307,11 @@ export function Editor({ session, readOnly, onCursor, reveal, viewHandle, prefs 
       view.focus();
     };
     if (session.status === "synced") return go();
-    // Take focus now so keys typed while the document syncs aren't lost (Yjs merges them); place the line on sync.
+    // Take focus now so keys typed while the document syncs aren't lost (Yjs merges them); place the line on sync,
+    // unless the person has already typed: selecting the line then would put their text under the next keystroke.
     view.focus();
-    return session.subscribe(() => session.status === "synced" && go());
+    const typed = session.ownClock();
+    return session.subscribe(() => session.status === "synced" && session.ownClock() === typed && go());
   }, [reveal, session]);
 
   // Opened from somewhere that hands over the keyboard (Quick Open, Go to Symbol): focus right away, before the
