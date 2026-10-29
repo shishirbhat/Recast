@@ -22,11 +22,12 @@ import { findSpots } from "./spots.js";
 import { createHook, TRIGGER_LABEL } from "./hook.js";
 
 type Theme = "system" | "dark" | "light";
-interface Settings { theme: Theme; shortcuts: { open: string; capture: string } }
+interface Settings { theme: Theme; shortcuts: { open: string; capture: string; keys: string } }
 interface GoogleConfig { clientId: string; clientSecret: string }
 // On a Mac, ⌘⌥Space belongs to Finder (its search window) and never reaches Recast, so opening uses ⌃⌥Space there.
 const OLD_MAC_OPEN = "CommandOrControl+Alt+Space";
-const DEFAULTS: Settings = { theme: "system", shortcuts: { capture: "CommandOrControl+Shift+Space", open: process.platform === "darwin" ? "Control+Alt+Space" : "CommandOrControl+Alt+Space" } };
+// While Recast is on, the keys shortcut moves the keyboard onto its blobs and highlights (and only then: off, the app keeps it).
+const DEFAULTS: Settings = { theme: "system", shortcuts: { capture: "CommandOrControl+Shift+Space", open: process.platform === "darwin" ? "Control+Alt+Space" : "CommandOrControl+Alt+Space", keys: "CommandOrControl+Shift+Enter" } };
 const PORT = 8787;
 const DARK_BG = "#141311", LIGHT_BG = "#faf9f6";
 
@@ -154,6 +155,24 @@ function setInteractive(next: boolean, rects: Rectangle[]) {
   if (next === was) return;
   overlay.setIgnoreMouseEvents(!next, { forward: true });
 }
+// ---- the keyboard: the app in front keeps it unless the person hands it to Recast -----------------------------------------
+// Hovering never takes it. Recast holds the keys only while its wheel is open (a question to type an answer to) or after
+// the keys shortcut; when that ends they go straight back to the app underneath.
+let holdsKeys = false;
+function takeKeys() {
+  if (!overlay || overlay.isDestroyed() || !overlay.isVisible()) return;
+  holdsKeys = true;
+  if (process.platform === "darwin") app.focus({ steal: true });
+  overlay.focus(); overlay.webContents.focus();
+}
+function giveKeysBack() {
+  const had = holdsKeys; holdsKeys = false;
+  if (!overlay || overlay.isDestroyed() || !(had || overlay.isFocused())) return;
+  if (process.platform === "darwin" && !(library?.isVisible() ?? false)) {
+    // A Mac gives the keys to the app that had them only when Recast steps aside; the overlay comes straight back, unfocused.
+    app.hide(); if (on) overlay.showInactive();
+  } else overlay.blur();
+}
 /** Covers the display the pointer is on (Recast comes up where the person is looking). */
 function placeOverlay() {
   const at = screen.getCursorScreenPoint();
@@ -170,7 +189,7 @@ async function turnOn(grab = true) {
     // The screen as it is, read before Recast draws anything on it.
     const shot = await capture(screen.getDisplayNearestPoint(screen.getCursorScreenPoint())).catch(() => null);
     if (!on) return;
-    overlay!.showInactive(); overlay!.moveTop(); overlay!.webContents.send("recast:on", true);
+    overlay!.showInactive(); overlay!.moveTop(); overlay!.webContents.send("recast:on", true); registerKeys();
     void spot(shot);
   }
   if (grab) void grabAt(screen.getCursorScreenPoint(), true);
@@ -203,7 +222,7 @@ function rescanSoon() {
 
 function turnOff() {
   if (!on) return;
-  on = false; ++scanSeq; setInteractive(false, []);
+  on = false; ++scanSeq; setInteractive(false, []); giveKeysBack(); unregisterKeys();
   overlay?.webContents.send("recast:on", false);
   overlay?.hide();
 }
@@ -230,7 +249,8 @@ async function grabAt(point: { x: number; y: number }, fromTrigger: boolean) {
 // ---- the trigger -----------------------------------------------------------------------------------------------------
 const hook = createHook({
   onTrigger: (next) => (next === "on" ? void turnOn(true) : turnOff()),
-  onEscape: () => overlay?.webContents.send("recast:escape"),
+  // With the keys on Recast, its own page hears Escape (and steps back once); the hook would make that twice.
+  onEscape: () => { if (!overlay?.isFocused()) overlay?.webContents.send("recast:escape"); },
   onSelectionEnd: () => { if (!interactive) void grabAt(screen.getCursorScreenPoint(), false); },
   onScreenChanged: () => { if (!interactive) rescanSoon(); },
 }, () => on);
@@ -246,10 +266,12 @@ if (test) Object.assign(globalThis as object, {
   __recastRescan: () => rescanSoon(),
   __recastOn: () => on,
   __recastOverlayInteractive: () => interactive,
+  __recastKeys: () => keysPressed(),
+  __recastHoldsKeys: () => holdsKeys && !!overlay?.isFocused(),
 });
 
 function registerShortcuts() {
-  globalShortcut.unregisterAll(); shortcutProblems.length = 0;
+  globalShortcut.unregisterAll(); shortcutProblems.length = 0; keysRegistered = "";
   const reg = (accel: string, fn: () => void, what: string) => {
     try { if (!globalShortcut.register(accel, fn)) shortcutProblems.push(`${accel} (${what}) is taken by another app`); }
     catch { shortcutProblems.push(`${accel} (${what}) is not a valid shortcut`); }
@@ -257,6 +279,22 @@ function registerShortcuts() {
   reg(settings.shortcuts.open, toggleLibrary, "open the Recast library");
   // The same as the trigger, for keyboards or setups where tapping a key twice is awkward.
   reg(settings.shortcuts.capture, () => void (on ? grabAt(screen.getCursorScreenPoint(), true) : turnOn(true)), "turn Recast on and grab");
+  if (on) registerKeys();
+}
+/** The keys shortcut exists only while Recast is on, so it never shadows the app's own use of it otherwise. */
+let keysRegistered = "";
+function registerKeys() {
+  if (keysRegistered === settings.shortcuts.keys && globalShortcut.isRegistered(keysRegistered)) return;
+  unregisterKeys();
+  try { if (globalShortcut.register(settings.shortcuts.keys, keysPressed)) keysRegistered = settings.shortcuts.keys; else shortcutProblems.push(`${settings.shortcuts.keys} (move the keyboard onto Recast) is taken by another app`); }
+  catch { shortcutProblems.push(`${settings.shortcuts.keys} (move the keyboard onto Recast) is not a valid shortcut`); }
+}
+function unregisterKeys() { if (keysRegistered) { try { globalShortcut.unregister(keysRegistered); } catch { /* already gone */ } keysRegistered = ""; } }
+/** Pressed again while Recast holds the keys, they go back to the app. */
+function keysPressed() {
+  if (!on || !overlay) return;
+  if (holdsKeys && overlay.isFocused()) { overlay.webContents.send("recast:keys", false); giveKeysBack(); return; }
+  takeKeys(); overlay.webContents.send("recast:keys", true);
 }
 
 function openConnections() {
@@ -286,6 +324,7 @@ function buildTray() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Turn Recast on    ${TRIGGER_LABEL} twice`, click: () => void turnOn(false) },
     { label: `Open the library    ${pretty(settings.shortcuts.open)}`, click: showLibrary },
+    { label: `Keyboard onto Recast (while on)    ${pretty(settings.shortcuts.keys)}`, enabled: false },
     { type: "separator" },
     { label: "Try the playground (sample data)", click: openPlayground },
     { label: "Connections…", click: openConnections },
@@ -336,8 +375,12 @@ function ipc() {
   ipcMain.handle("recast:interactive", (e, over: unknown, rects: unknown, own: unknown) => {
     if (!overlay || e.sender !== overlay.webContents) return false;
     setInteractive(!!over, rectList(rects)); ownRects = rectList(own);
-    // Typing in the wheel (a question to answer) needs the keyboard: the overlay takes it only while the pointer is on it.
-    if (over && !overlay.isFocused() && process.platform !== "linux") overlay.focus();
+    return true;
+  });
+  // The overlay asks for the keys (its wheel opened, or the person is moving through it by keyboard) and gives them back.
+  ipcMain.handle("recast:keys", (e, want: unknown) => {
+    if (!overlay || e.sender !== overlay.webContents) return false;
+    if (want === true && on) takeKeys(); else if (want === false) giveKeysBack();
     return true;
   });
   ipcMain.handle("recast:off", (e) => { if (overlay && e.sender === overlay.webContents) turnOff(); return true; });
@@ -375,7 +418,7 @@ function ipc() {
   ipcMain.handle("recast:settings", (_e, p: unknown) => {
     const q = (p ?? {}) as Partial<Settings>; const ok: Partial<Settings> = {};
     if (q.theme === "system" || q.theme === "dark" || q.theme === "light") ok.theme = q.theme;
-    if (q.shortcuts && typeof q.shortcuts.open === "string" && typeof q.shortcuts.capture === "string") ok.shortcuts = { open: q.shortcuts.open, capture: q.shortcuts.capture };
+    if (q.shortcuts && typeof q.shortcuts.open === "string" && typeof q.shortcuts.capture === "string") ok.shortcuts = { open: q.shortcuts.open, capture: q.shortcuts.capture, keys: typeof q.shortcuts.keys === "string" && q.shortcuts.keys ? q.shortcuts.keys : settings.shortcuts.keys };
     setSettings(ok); return publicSettings();
   });
   ipcMain.handle("recast:google", async (_e, g: unknown) => {

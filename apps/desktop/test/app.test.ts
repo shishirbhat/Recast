@@ -236,6 +236,49 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
     await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);   // the same selection is not lifted twice
   });
 
+  it("the app keeps the keyboard: hovering a blob takes nothing; the keys shortcut moves it onto Recast (Space, arrows, Enter press two together, Enter opens the wheel); Esc steps back and hands it back", async () => {
+    const { overlay, errors } = await launch(profile("dark"), false);
+    const other = await otherApp(PAGE);
+    await tapTwice(); await expect.poll(isOn, { timeout: 5000 }).toBe(true);
+    await selectWithMouse(other, "#what");
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
+    await selectWithMouse(other, "#when");
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(2);
+    // The pointer resting on a blob (the overlay takes the mouse there) leaves the keyboard with the app.
+    const b = (await blobs(overlay).first().boundingBox())!;
+    xdo("mousemove", String(Math.round(b.x + b.width / 2)), String(Math.round(b.y + b.height / 2))); await sleep(600);
+    expect(await app!.evaluate(() => (globalThis as any).__recastOverlayInteractive())).toBe(true);
+    expect(await other.evaluate(() => document.hasFocus())).toBe(true);
+    expect(await app!.evaluate(() => (globalThis as any).__recastHoldsKeys())).toBe(false);
+    xdo("mousemove", "5", "5"); await sleep(300);
+    // The keys shortcut (Ctrl+Shift+Enter): the keyboard is on the first blob, and the line at the bottom says how to go on.
+    xdo("key", "ctrl+shift+Return");
+    await expect.poll(() => app!.evaluate(() => (globalThis as any).__recastHoldsKeys()), { timeout: 5000 }).toBe(true);
+    await expect.poll(() => overlay.evaluate(() => document.activeElement?.classList.contains("clay-item"))).toBe(true);
+    await expect.poll(() => overlay.locator("#toast").innerText()).toMatch(/^Keyboard on Recast/);
+    // Space picks it up, an arrow moves to the other, Enter presses them together: an event.
+    xdo("key", "space"); await expect.poll(() => overlay.locator(".clay-item.mode-carried").count()).toBe(1);
+    xdo("key", "Right");
+    await expect.poll(() => overlay.evaluate(() => document.activeElement?.matches(".clay-item.mode-rest"))).toBe(true);
+    xdo("key", "Return");
+    await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);
+    await expect.poll(() => blobs(overlay).first().getAttribute("data-kind")).toBe("event");
+    // Enter on it opens the wheel beside it; Escape closes the wheel and the keyboard is back on the blob.
+    await expect.poll(() => overlay.evaluate(() => document.activeElement?.classList.contains("clay-item"))).toBe(true);
+    xdo("key", "Return");
+    await expect.poll(() => overlay.locator(".rg").isVisible()).toBe(true);
+    xdo("key", "Escape");
+    await expect.poll(() => overlay.evaluate(() => document.activeElement?.classList.contains("clay-item"))).toBe(true);
+    // Escape at rest hands the keys back to the app; Recast stays on until Escape is pressed again, in the app.
+    xdo("key", "Escape");
+    await expect.poll(() => app!.evaluate(() => (globalThis as any).__recastHoldsKeys())).toBe(false);
+    await expect.poll(() => other.evaluate(() => document.hasFocus()), { timeout: 5000 }).toBe(true);
+    expect(await isOn()).toBe(true);
+    xdo("key", "Escape");
+    await expect.poll(isOn).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
   it("Ctrl twice with nothing selected: Recast is on and says so; no blob, no window", async () => {
     const { app: a, overlay } = await launch(profile("dark"), false);
     await a.evaluate(({ clipboard }) => clipboard.selection?.writeText(""));

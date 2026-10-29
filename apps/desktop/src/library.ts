@@ -1,7 +1,7 @@
 // The library: the Recast app proper. Every blob you have grabbed, newest first, with the app (and page) it came from and
 // where it went. It never opens by itself when you grab; you open it from Applications, the Dock or the tray.
 interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string }[] }
-interface Settings { theme: "system" | "dark" | "light"; shortcuts: { open: string; capture: string }; platform: string; trigger: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean; listening: boolean; hookProblem: string; screen: string; spotsNote: string }
+interface Settings { theme: "system" | "dark" | "light"; shortcuts: { open: string; capture: string; keys: string }; platform: string; trigger: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean; listening: boolean; hookProblem: string; screen: string; spotsNote: string }
 interface Api {
   boot(): Promise<{ settings: Settings; theme: "dark" | "light" }>;
   history(): Promise<Entry[]>;
@@ -49,10 +49,10 @@ const pretty = (a: string) => (MAC ? a.replace("CommandOrControl", "⌘").replac
 function renderSettings() {
   if (!settings) return;
   for (const r of document.querySelectorAll<HTMLInputElement>("input[name=theme]")) r.checked = r.value === settings.theme;
-  $<HTMLInputElement>("#sc-open").value = settings.shortcuts.open; $<HTMLInputElement>("#sc-capture").value = settings.shortcuts.capture;
+  $<HTMLInputElement>("#sc-open").value = settings.shortcuts.open; $<HTMLInputElement>("#sc-capture").value = settings.shortcuts.capture; $<HTMLInputElement>("#sc-keys").value = settings.shortcuts.keys;
   $("#sc-problems").textContent = settings.shortcutProblems.join(". ");
   $("#server-note").textContent = settings.serverNote;
-  $("#version").textContent = `Recast ${settings.version}. Also: ${pretty(settings.shortcuts.capture)} turns Recast on and grabs; ${pretty(settings.shortcuts.open)} opens this library.`;
+  $("#version").textContent = `Recast ${settings.version}. Also: ${pretty(settings.shortcuts.capture)} turns Recast on and grabs; ${pretty(settings.shortcuts.open)} opens this library; while Recast is on, ${pretty(settings.shortcuts.keys)} moves the keyboard onto it.`;
   for (const k of document.querySelectorAll(".trigger")) k.textContent = settings.trigger;
   $("#permission").hidden = !(settings.platform === "darwin" && (!settings.grabReady || !settings.listening));
   $("#hook-problem").textContent = [settings.hookProblem, settings.spotsNote].filter(Boolean).join(" ");
@@ -61,7 +61,7 @@ function renderSettings() {
 for (const r of document.querySelectorAll<HTMLInputElement>("input[name=theme]")) r.addEventListener("change", () => void api.settings({ theme: r.value }).then((s) => { settings = s; renderSettings(); }));
 $("#shortcuts-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  void api.settings({ shortcuts: { open: $<HTMLInputElement>("#sc-open").value.trim(), capture: $<HTMLInputElement>("#sc-capture").value.trim() } }).then((s) => { settings = s; renderSettings(); });
+  void api.settings({ shortcuts: { open: $<HTMLInputElement>("#sc-open").value.trim(), capture: $<HTMLInputElement>("#sc-capture").value.trim(), keys: $<HTMLInputElement>("#sc-keys").value.trim() } }).then((s) => { settings = s; renderSettings(); });
 });
 $("#btn-permission").addEventListener("click", () => void api.permission());
 $("#btn-screen").addEventListener("click", () => void api.window("screen-permission"));

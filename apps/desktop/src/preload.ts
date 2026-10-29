@@ -1,7 +1,7 @@
 // The only door between Recast's pages and the app. Each call is narrow; the app checks every argument again.
 import { contextBridge, ipcRenderer } from "electron";
 
-const CHANNELS = ["recast:capture", "recast:spots", "recast:theme", "recast:settings", "recast:grab-problem", "recast:on", "recast:escape", "recast:history"];
+const CHANNELS = ["recast:capture", "recast:spots", "recast:theme", "recast:settings", "recast:grab-problem", "recast:on", "recast:escape", "recast:history", "recast:keys"];
 contextBridge.exposeInMainWorld("recastDesktop", {
   boot: () => ipcRenderer.invoke("recast:boot"),
   status: () => ipcRenderer.invoke("recast:status"),
@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("recastDesktop", {
   saveWorkflows: (items: unknown) => ipcRenderer.invoke("recast:save-workflows", items),
   interactive: (over: boolean, rects: unknown, own: unknown) => ipcRenderer.invoke("recast:interactive", over, rects, own),
   off: () => ipcRenderer.invoke("recast:off"),
+  keys: (want: boolean) => ipcRenderer.invoke("recast:keys", want),
   history: () => ipcRenderer.invoke("recast:history"),
   historyAdd: (entry: unknown) => ipcRenderer.invoke("recast:history-add", entry),
   historyPlaced: (ids: unknown, where: unknown, link?: unknown) => ipcRenderer.invoke("recast:history-placed", ids, where, link),

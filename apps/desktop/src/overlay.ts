@@ -23,6 +23,7 @@ interface OverlayApi {
   saveInbox(state: unknown): Promise<boolean>;
   interactive(over: boolean, rects: { x: number; y: number; width: number; height: number }[], own: { x: number; y: number; width: number; height: number }[]): Promise<boolean>;
   off(): Promise<boolean>;
+  keys(want: boolean): Promise<boolean>;
   historyAdd(entry: unknown): Promise<boolean>;
   historyPlaced(ids: string[], where: string, link?: string): Promise<boolean>;
   on(channel: string, fn: (v: any) => void): void;
@@ -168,7 +169,7 @@ api.on("recast:grab-problem", (v: { reason: string; message: string; at?: Point 
 api.on("recast:on", (next: boolean) => {
   on = next;
   if (next) { state = { ...state, armed: true }; void destinations().then((d) => { state = { ...state, destinations: d }; render(); }); toast(idleLine()); }
-  else { pressCleanup(); spots = []; spotPress = null; renderSpots(); $("#toast").hidden = true; for (const ev of closeAll()) dispatch(ev); }
+  else { pressCleanup(); kbd = false; keysAsked = false; spots = []; spotPress = null; renderSpots(); $("#toast").hidden = true; for (const ev of closeAll()) dispatch(ev); }
   render();
 });
 api.on("recast:escape", () => escape());
@@ -236,6 +237,8 @@ addEventListener("pointermove", (e) => {
 document.documentElement.addEventListener("pointerleave", () => { if (!press && !state.carried && !spotPress) { pointer = { x: -1, y: -1 }; report(); } });
 addEventListener("blur", () => { if (!press && !state.carried && !spotPress) { pointer = { x: -1, y: -1 }; report(); } });
 addEventListener("pointerup", () => {
+  // A click lands the keys on the overlay (a Mac and Windows focus what is clicked); a click that opens nothing hands them back.
+  requestAnimationFrame(() => { if (!wantKeys()) { keysAsked = false; void api.keys(false); } });
   if (spotPress) { const sp = spotPress.spot; spotPress = null; take(sp, false); report(); return; }
   if (press && !press.started) { const id = press.id; press = null; lastAt = pos.get(id) ?? lastAt; dispatch({ type: "inspect", id }); report(); return; }
   press = null;
@@ -278,6 +281,26 @@ function report(force = false) {
   reported = key; void api.interactive(over, shapes, own);
 }
 
+// ---- the keyboard ---------------------------------------------------------------------------------------------------------
+// The app in front keeps the keys. Recast asks for them only while its wheel is open (there may be an answer to type) or
+// after the person moved the keyboard onto it (the keys shortcut); then it hands them straight back.
+let kbd = false, keysAsked = false;
+const wheelOpen = () => !glass.el.hidden && !["off", "pill"].includes(glass.el.dataset["mode"] ?? "off");
+const wantKeys = () => on && (kbd || wheelOpen());
+function askKeys() {
+  const want = wantKeys();
+  if (want !== keysAsked) { keysAsked = want; void api.keys(want); }
+  // Back on the desk after the wheel closed: the keyboard stays on a blob, never lost on the page.
+  if (want && kbd && !wheelOpen() && (document.activeElement === document.body || !document.activeElement)) focusables()[0]?.focus();
+}
+/** What the keyboard moves between: the blobs, then the highlights. */
+const focusables = () => [...document.querySelectorAll<HTMLElement>("#clay .clay-item"), ...document.querySelectorAll<HTMLElement>("#spots .spot")];
+api.on("recast:keys", (take: boolean) => {
+  kbd = take && on; keysAsked = kbd;
+  if (kbd) { focusables()[0]?.focus(); toast(keysLine()); } else toast(idleLine());
+});
+const keysLine = () => `Keyboard on Recast · Tab between pieces · Enter opens · Space picks up · Esc gives the keys back`;
+
 // ---- drawing ------------------------------------------------------------------------------------------------------------
 let inWell: string | null = null;
 function kindOf(id: string): ClayItem["kind"] {
@@ -306,7 +329,7 @@ function render() {
     else if (state.last && state.last.at !== shownAt && ["refused", "cancelled", "removed", "placed", "undone", "failed"].includes(state.last.kind)) toast(state.last.text);
   }
   shownAt = state.last?.at ?? shownAt;
-  requestAnimationFrame(() => report());
+  requestAnimationFrame(() => { report(); askKeys(); });
 }
 let shownAt = 0;
 function renderPass() {
@@ -319,7 +342,7 @@ function renderPass() {
       count: state.objects[id]!.ingredients.length, kind: kindOf(id), mode, proposed: v.proposed, focused: false });
   }
   clay.update(items);
-  for (const it of items) { const el = clay.label(it.id); if (el) { el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-description", "Click to choose where it goes; drag onto another to press them together; Delete to remove"); } }
+  for (const it of items) { const el = clay.label(it.id); if (el) { el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-description", "Enter or click to choose where it goes; Space, or drag, to pick it up and press it into another; Delete to remove"); } }
 }
 let toastTimer = 0;
 /** The status pill, at the bottom centre while Recast is on (like a dictation app's): how to use it, or what just
@@ -332,16 +355,51 @@ function toast(t: string, _at?: Point) {
   report();
 }
 
+// The same path as the try-it page and the extension (D48). On a blob: Enter opens the wheel on it; Space picks it up.
+// With one in hand, Enter on another presses them together, Enter (or Space) on the one in hand puts it back down.
+// Arrows move between blobs and highlights as Tab does. Escape steps back; at rest it gives the keys back to the app.
+let keepTimer = 0;
 addEventListener("keydown", (e) => {
+  clearTimeout(keepTimer);   // the next key wins over a pending "keep the keyboard here"
   const el = e.target as HTMLElement;
-  if (e.key === "Escape") { e.preventDefault(); escape(); return; }
-  if (glass.el.contains(el) || el.matches("input, textarea, button")) return;
-  if (el.classList.contains("clay-item")) {
-    const id = el.dataset["id"]!;
-    if (e.key === "Enter") { e.preventDefault(); dispatch({ type: "inspect", id }); }
-    else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); pos.delete(id); dispatch({ type: "discard", id }); }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    if (state.carried) { const id = state.carried; dispatch({ type: "drop" }); clay.label(id)?.focus(); return; }
+    const ev = escapeEvent(state);
+    if (ev && ev.type !== "disarm") { dispatch(ev); return; }
+    kbd = false; keysAsked = false; toast(idleLine()); void api.keys(false); return;
+  }
+  if (glass.el.contains(el) || el.matches("input, textarea")) return;
+  if (e.key.startsWith("Arrow")) {
+    const all = focusables(); if (!all.length) return;
+    e.preventDefault();
+    const i = all.indexOf(el.classList.contains("clay-item") || el.classList.contains("spot") ? el : clay.label(state.carried ?? "") ?? el), step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
+    const next = all[(i < 0 ? 0 : i + step + all.length) % all.length]!; next.focus();
+    if (state.carried) { const b = next.getBoundingClientRect(); pointer = { x: b.x + b.width / 2, y: b.y + b.height / 2 }; renderPass(); }
+    return;
+  }
+  if (!el.classList.contains("clay-item")) return;
+  const id = el.dataset["id"]!;
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    if (state.carried && state.carried !== id && e.key === "Enter") {
+      lastAt = pos.get(id) ?? lastAt;
+      dispatch({ type: "approach", target: { kind: "object", id } }); dispatch({ type: "drop" });
+    } else if (state.carried === id) dispatch({ type: "drop" });
+    else if (e.key === " ") {
+      if (state.carried || ["merging", "executing", "running", "unknown"].includes(state.phase)) return;
+      if (!["idle", "inspecting", "succeeded", "failed", "composed", "choosing"].includes(state.phase)) for (const ev of intentEvents({ type: "close" }, state)) dispatch(ev);
+      pointer = { ...(pos.get(id) ?? lastAt) }; dispatch({ type: "pickUp", id });
+    } else { lastAt = pos.get(id) ?? lastAt; dispatch({ type: "inspect", id }); setTimeout(() => glass.focus(), 0); return; }
+    // Keep the keyboard on the desk: on what is in hand, or on the blob it went into (again once a fusion has settled).
+    const keep = () => (clay.label(state.carried ?? id) ?? clay.label(state.desk.at(-1) ?? ""))?.focus();
+    keep(); keepTimer = window.setTimeout(keep, 30);
+  } else if (e.key === "Delete" || e.key === "Backspace") {
+    e.preventDefault(); pos.delete(id); dispatch({ type: "discard", id });
+    keepTimer = window.setTimeout(() => focusables()[0]?.focus(), 30);
   }
 });
+addEventListener("blur", () => { if (kbd) { kbd = false; keysAsked = wheelOpen(); } });
 
 // ---- start -----------------------------------------------------------------------------------------------------------------
 function setTheme(t: "dark" | "light") { document.documentElement.dataset["theme"] = t; render(); }
