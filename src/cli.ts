@@ -1,5 +1,7 @@
 import { parseArgs } from "node:util";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Relay } from "./core/engine.ts";
@@ -51,6 +53,10 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay repro --integration ID --command CMD [--run]   the server and says reproduced / different failure / did not reproduce
   relay timeline [--task ID] [--query TEXT] [--limit N] [--json]   the flight recorder from the running server:
                                                 events, edit sessions and commits, newest first
+  relay arena [--json]                          Relay Arena: the same pairs of changes integrated without and with Relay,
+                                                scored (simulated agents, real git/tests/Relay). Exit 1 if Relay let a broken
+                                                change in or blocked a working one
+  relay arena --real --yes [--trials N]         the same with real Claude Code agents (costs model usage; signed-in claude)
   relay ownership [--json]                      changed files with the tasks that own them and who changed them, where
   relay remote join <invite-link>              sign this checkout in to a running Relay server (one-time invite)
   relay remote status | leave                  which server and member this checkout uses / sign out
@@ -97,6 +103,9 @@ const { values: o, positionals: args } = parseArgs({
     integration: { type: "string" },
     command: { type: "string" },
     query: { type: "string" },
+    real: { type: "boolean" },
+    yes: { type: "boolean" },
+    trials: { type: "string" },
     limit: { type: "string" },
     port: { type: "string" },
     host: { type: "string" },
@@ -199,6 +208,7 @@ async function main(): Promise<void> {
   if (cmd === "changeset") return changesetCmd(need(sub, "task id"));
   if (cmd === "repro") return reproCmd(sub);
   if (cmd === "timeline") return timelineCmd();
+  if (cmd === "arena") return arenaCmd();
   if (cmd === "ownership") return ownershipCmd();
   if (cmd === "agent-config") {
     if (sub !== "claude-code") throw new RelayError("usage", `Unknown agent ${sub}`);
@@ -456,6 +466,23 @@ async function timelineCmd(): Promise<void> {
   for (const e of r.entries)
     console.log(`${e.recordedAt}  ${e.kind.padEnd(12)} ${e.summary}  · ${e.actor}${e.tasks.length ? ` · ${e.tasks.join(", ")}` : ""}${e.occurredAt ? `  (happened ${e.occurredAt.from}${e.occurredAt.to ? ` to ${e.occurredAt.to}` : ""})` : ""}`);
   if (r.truncated) console.log(`… more; narrow with --task or --query, or raise --limit`);
+}
+
+/** Relay Arena: runs the benchmark scripts in this checkout and passes their exit code through. */
+function arenaCmd(): void {
+  const scripts = resolve(dirname(fileURLToPath(import.meta.url)), "../scripts");
+  if (o.real) {
+    const trials = Number(o.trials ?? "3");
+    if (!(trials >= 1 && trials <= 20)) throw new RelayError("usage", "--trials is between 1 and 20");
+    if (!o.yes)
+      throw new RelayError("usage", `--real starts real Claude Code agents: 4 agent sessions per trial (2 without Relay, 2 with), ${trials} trial(s). Measured on 2026-10-27 at about $0.45 per trial. It needs a signed-in claude CLI. Add --yes to run it.`);
+    const out = mkdtempSync(join(tmpdir(), "relay-arena-real-"));
+    const r = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", join(scripts, "prove-integration-real.ts"), "--trials", String(trials), "--out", out], { stdio: "inherit" });
+    process.exitCode = r.status ?? 3;
+    return;
+  }
+  const r = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", join(scripts, "arena.ts"), ...(o.json ? ["--json"] : [])], { stdio: "inherit" });
+  process.exitCode = r.status ?? 3;
 }
 
 async function ownershipCmd(): Promise<void> {

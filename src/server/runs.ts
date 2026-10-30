@@ -513,6 +513,7 @@ export class AgentRuns {
     const rebased = runs.some((r) => r.snapshot !== snapshot);
     const dir = join(this.root, ".relay", "worktrees", `integration-${randomUUID().slice(0, 8)}`);
     git(this.root, ["worktree", "add", "--detach", dir, snapshot]);
+    const appliedSoFar: AgentRun[] = [];
     for (const r of runs) {
       const patch = git(r.worktree, ["diff", "--binary", r.snapshot]);
       const untracked = git(r.worktree, ["ls-files", "--others", "--exclude-standard"]).split("\n").filter(Boolean);
@@ -521,9 +522,14 @@ export class AgentRuns {
           execFileSync("git", ["apply", "--3way", "--whitespace=nowarn"], { cwd: dir, input: patch, stdio: ["pipe", "pipe", "pipe"] });
         } catch (e) {
           git(this.root, ["worktree", "remove", "--force", dir]);
-          throw new RelayError("conflict", `${r.taskId}'s changes don't apply cleanly on the newer shared state (${String((e as { stderr?: Buffer }).stderr ?? "").trim().split("\n").at(-1)}); rerun ${taskIds.join(", ")} together`);
+          const detail = String((e as { stderr?: Buffer }).stderr ?? "").trim().split("\n").at(-1);
+          // Say which it is: the tasks conflict with each other, or with how the project moved since they started.
+          const clash = appliedSoFar.filter((p) => p.changedFiles.some((f) => r.changedFiles.includes(f)));
+          if (clash.length && r.snapshot === snapshot) throw new RelayError("conflict", `${r.taskId} and ${clash.map((p) => p.taskId).join(", ")} changed the same lines of ${r.changedFiles.filter((f) => clash.some((p) => p.changedFiles.includes(f))).join(", ")} in different ways (${detail}); one of them has to be redone on top of the other`);
+          throw new RelayError("conflict", `${r.taskId}'s changes don't apply cleanly on the newer shared state (${detail}); rerun ${taskIds.join(", ")} together`);
         }
       }
+      appliedSoFar.push(r);
       for (const u of untracked) {
         mkdirSync(dirname(join(dir, u)), { recursive: true });
         writeFileSync(join(dir, u), readFileSync(join(r.worktree, u)));
