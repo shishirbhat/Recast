@@ -9,4 +9,4 @@ export type { WheelKey, WheelEntry, WheelOption, ModuleModel, ModuleObject } fro
 export type { ClumpPhase, ClumpState, ClumpEvent, ClumpInput, ClumpEffect, ClumpResult, DestinationSpec, Target, Placement, ConfirmLevel } from "./clump-machine.js";
 export { createControlTrigger, createDoubleTap, createTaps, DOUBLE_TAP, type TapInput } from "./double-tap.js";
 export { recipeOffers, reduceRun, type RecipeOffer, type RecipeRun, type RunStep, type StepStatus } from "./recipe-run.js";
-export { saveable, reduceWorkflows, type WorkflowEvent, type WorkflowIssue } from "./workflows.js";
+export { saveable, reduceWorkflows, workflowDefinition, type WorkflowEvent, type WorkflowIssue } from "./workflows.js";

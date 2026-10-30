@@ -18,6 +18,7 @@ export type GlassIntent =
   | { type: "place"; heldMs?: number } | { type: "undo" } | { type: "dismiss" } | { type: "reconcile" } | { type: "confirmMerge"; yes: boolean }
   | { type: "openRecipe"; recipeId: string } | { type: "toggleStep"; stepId: string } | { type: "runRecipe"; heldMs?: number } | { type: "undoStep"; stepId: string }
   | { type: "saveWorkflow"; name: string } | { type: "renameWorkflow"; id: string; name: string } | { type: "deleteWorkflow"; id: string }
+  | { type: "retryStep"; stepId: string } | { type: "importWorkflow"; text: string }
   /** Only where the host offers it (`takePage`): the host captures the page itself, then opens the module on it. */
   | { type: "takePage" };
 
@@ -61,6 +62,8 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
     case "saveWorkflow": return [{ type: "saveWorkflow", name: i.name }];
     case "renameWorkflow": return [{ type: "renameWorkflow", id: i.id, name: i.name }];
     case "deleteWorkflow": return [{ type: "deleteWorkflow", id: i.id }];
+    case "retryStep": return [{ type: "retryStep", stepId: i.stepId }];
+    case "importWorkflow": return [{ type: "importWorkflow", text: i.text }];
     case "takePage": return [];
   }
 }
@@ -158,8 +161,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   let holdStart = 0;
   // Saved workflows: the name field is open; the list is open for managing; one entry being renamed or asked about.
   let saving = false, managing = false, renaming: string | null = null, deleting: string | null = null, draft = "", renamePending = false;
-  let replacing: string | null = null, discarding = false;
-  let copied: "yes" | "no" | null = null;   // "Copy as data": done, or refused (then the data is shown to copy by hand)   // a piece being corrected; "discard this?" asked once
+  let replacing: string | null = null, discarding = false;   // a piece being corrected; "discard this?" asked once
+  let copied: "yes" | "no" | null = null;   // "Copy as data": done, or refused (then the data is shown to copy by hand)
+  let importing = false, wfCopied: string | null = null;   // the import box is open; which definition was just copied
   const emit = (i: GlassIntent) => opts.onIntent(i);
 
   // ---- the light: a soft specular highlight that drifts toward the pointer, so the surface reads as curved glass -------
@@ -331,10 +335,15 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         ? `<div class="rg-answer"><input data-wf-rename="${esc(w.id)}" maxlength="60" value="${esc(w.name)}" aria-label="New name for ${esc(w.name)}" autocomplete="off"><button type="button" class="rg-btn small" data-wf-rename-ok="${esc(w.id)}">Rename</button><button type="button" class="rg-btn small ghost" data-act="renameCancel">Cancel</button></div>`
         : deleting === w.id
           ? `<p class="rg-hint">Delete “${esc(w.name)}”? Nothing it already placed is changed.</p><span class="rg-row-actions"><button type="button" class="rg-btn small" data-wf-delete-ok="${esc(w.id)}">Delete</button><button type="button" class="rg-btn small ghost" data-act="deleteCancel">Keep</button></span>`
-          : `<span class="rg-row-actions">${w.reason ? "" : `<button type="button" class="rg-link" data-wf-rename-start="${esc(w.id)}">Rename</button>`}<button type="button" class="rg-link" data-wf-delete="${esc(w.id)}">Delete</button></span>`;
+          : `<span class="rg-row-actions">${w.reason ? "" : `<button type="button" class="rg-link" data-wf-rename-start="${esc(w.id)}">Rename</button><button type="button" class="rg-link" data-wf-copy="${esc(w.id)}" aria-label="Copy the definition of ${esc(w.name)} to share">${wfCopied === w.id ? "Copied" : "Copy definition"}</button>`}<button type="button" class="rg-link" data-wf-delete="${esc(w.id)}">Delete</button></span>`;
       return `<li class="rg-wf" data-wf="${esc(w.id)}"><span class="rg-step-label">${esc(w.name)}</span>${w.reason ? `<span class="rg-step-why">Cannot be used: ${esc(w.reason)}</span>` : `<span class="rg-step-uses">${esc(w.description)}</span>`}${row}</li>`;
     }).join("");
-    return { title: "Your workflows", head: "", facts: "", body: `${err}<ul class="rg-steps rg-wfs">${items}</ul>`, actions: `<button type="button" class="rg-btn" data-act="manageDone">Done</button>` };
+    // Sharing is the definition only: its steps and the kind of place each goes to. Never what was captured, nor any account.
+    const share = `<p class="rg-hint">A copied definition holds the steps and where each goes, never what you captured or your accounts. Whoever imports it connects their own.</p>`;
+    const imp = importing
+      ? `<div class="rg-import"><textarea class="rg-data" data-wf-import aria-label="A workflow definition to import" placeholder="Paste a workflow definition"></textarea><span class="rg-row-actions"><button type="button" class="rg-btn small" data-act="importOk">Import</button><button type="button" class="rg-btn small ghost" data-act="importCancel">Cancel</button></span></div>`
+      : `<p class="rg-save"><button type="button" class="rg-link" data-act="importStart">Import a workflow</button></p>`;
+    return { title: "Your workflows", head: "", facts: "", body: `${err}<ul class="rg-steps rg-wfs">${items}</ul>${share}${imp}`, actions: `<button type="button" class="rg-btn" data-act="manageDone">Done</button>` };
   }
   const STATUS: Record<string, string> = { ready: "", blocked: "Can't run", skipped: "Left out", waiting: "Waiting", running: "Sending…", done: "Done", failed: "Not added", unknown: "No answer", undoing: "Undoing…", undone: "Removed" };
   /** A recipe: each step, where it goes and what it uses; then each step's own outcome. */
@@ -350,9 +359,12 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         x.reason && x.status === "blocked" ? `<span class="rg-step-why">${esc(x.reason.charAt(0).toUpperCase() + x.reason.slice(1))}</span>` : "",
         x.message ? `<span class="rg-step-why">${esc(x.message)}</span>` : "",
         x.status === "unknown" ? `<span class="rg-step-why">Check ${esc(x.app ?? "it")} before placing it there again. Recast will not send it again.</span>` : "",
+        x.afterLabel && (planning || x.status === "skipped") ? `<span class="rg-step-uses">After: ${esc(x.afterLabel)}</span>` : "",
         x.status === "done" && x.verification ? checked(x.verification, x.app ?? "it") : "",
       ].join("");
-      const undo = m.mode === "ran" && x.status === "done" && x.undoable ? `<button type="button" class="rg-link" data-undo-step="${esc(x.id)}">Undo</button>` : "";
+      // Try again only what certainly did not happen (refused, or not sent): never an unknown outcome.
+      const again = m.mode === "ran" && x.include && (x.status === "failed" || (x.status === "skipped" && x.message)) ? `<button type="button" class="rg-link" data-retry-step="${esc(x.id)}">Try again</button>` : "";
+      const undo = (m.mode === "ran" && x.status === "done" && x.undoable ? `<button type="button" class="rg-link" data-undo-step="${esc(x.id)}">Undo</button>` : "") + again;
       return `<li data-step-id="${esc(x.id)}" data-status="${x.status}"><label class="rg-step">${tick}<span class="rg-step-text"><span class="rg-step-label">${esc(x.label)}</span>${lines}</span></label>${undo}</li>`;
     }).join("");
     const chosen = run.steps.filter((x) => x.include && x.status === "ready");
@@ -362,9 +374,11 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       ? `${hold ? `<button type="button" class="rg-btn primary hold" data-act="holdRecipe" ${chosen.length ? "" : "disabled"}>Hold to run ${chosen.length} ${chosen.length === 1 ? "step" : "steps"}</button>` : `<button type="button" class="rg-btn primary" data-act="runRecipe" ${chosen.length ? "" : "disabled"}>Run ${chosen.length} ${chosen.length === 1 ? "step" : "steps"}</button>`}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>`
       : m.mode === "ran" ? `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` : "";
     const intro = planning ? `<p class="rg-hint">Nothing is written until you run it. Each step goes to its own place and gets its own result.</p>` : "";
+    // What the recipe is (its version) and what it cannot do, before it runs.
+    const about = planning ? `<p class="rg-hint rg-recipe-about">${run.saved ? "Your workflow" : "Recast recipe"} · version ${run.version}</p>${run.limitations?.length ? `<details class="rg-limits"><summary>Limitations</summary><ul>${run.limitations.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></details>` : ""}` : "";
     // The event itself still needs something (a title, a date): asked here, as in a review, then the steps are worked out again.
     const finish = planning && run.steps.some((x) => x.reason?.startsWith("the event is not complete") || x.reason?.startsWith("it is not complete")) ? detail(m) : "";
-    return { title, head: planning ? close : "", facts: "", body: `${err}${intro}${finish}<ul class="rg-steps">${items}</ul>${m.mode === "running" ? "" : saveBlock(m)}`, actions };
+    return { title, head: planning ? close : "", facts: "", body: `${err}${intro}${about}${finish}<ul class="rg-steps">${items}</ul>${m.mode === "running" ? "" : saveBlock(m)}`, actions };
   }
 
   /** The destination's read-back after placing: checking, all fields match, or exactly which differ and what it now holds. */
@@ -486,7 +500,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode !== "choosing") drill = null;
     if (m.mode === "plan" || m.mode === "ran" || m.mode === "preview" || m.mode === "succeeded") { if (m.save?.done) { saving = false; draft = ""; } }
     if (renamePending) { renamePending = false; if (!extra.error) renaming = null; }
-    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; copied = null; if (m.mode !== "composed") managing = false; }
+    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; copied = null; importing = false; wfCopied = null; if (m.mode !== "composed") managing = false; }
     if (replacing && !(m.mode === "inspecting" && m.object.ingredients.some((f) => f.id === replacing))) replacing = null;
     if (!("mine" in m) || !m.mine?.length) managing = false;
     model = m; el.dataset["mode"] = m.mode; el.hidden = m.mode === "off";
@@ -554,6 +568,13 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (b.dataset["replaceOk"]) return replaceNow(b.dataset["replaceOk"]);
     if (b.dataset["recipe"]) return emit({ type: "openRecipe", recipeId: b.dataset["recipe"] });
     if (b.dataset["undoStep"]) return emit({ type: "undoStep", stepId: b.dataset["undoStep"] });
+    if (b.dataset["retryStep"]) return emit({ type: "retryStep", stepId: b.dataset["retryStep"] });
+    if (b.dataset["wfCopy"]) {
+      const id = b.dataset["wfCopy"]; const def = "mine" in model ? model.mine?.find((w) => w.id === id)?.definition : undefined; if (!def) return;
+      const put = opts.copyText ?? ((t: string) => (navigator.clipboard ? navigator.clipboard.writeText(t).then(() => true, () => false) : Promise.resolve(false)));
+      void put(def).then((ok) => { wfCopied = ok ? id : null; if (!ok) { importing = true; update(model); const t = el.querySelector<HTMLTextAreaElement>("[data-wf-import]"); if (t) { t.value = def; t.select(); } return; } update(model); });
+      return;
+    }
     if (b.dataset["wfRenameStart"]) { renaming = b.dataset["wfRenameStart"]; deleting = null; update(model); el.querySelector<HTMLInputElement>("input[data-wf-rename]")?.select(); return; }
     if (b.dataset["wfRenameOk"]) return renameNow(b.dataset["wfRenameOk"]);
     if (b.dataset["wfDelete"]) { deleting = b.dataset["wfDelete"]; renaming = null; update(model); el.querySelector<HTMLElement>("[data-wf-delete-ok]")?.focus(); return; }
@@ -583,6 +604,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "renameCancel": renaming = null; update(model); return;
       case "deleteCancel": deleting = null; update(model); return;
       case "replaceCancel": replacing = null; update(model); return;
+      case "importStart": importing = true; update(model); el.querySelector<HTMLTextAreaElement>("[data-wf-import]")?.focus(); return;
+      case "importCancel": importing = false; update(model); return;
+      case "importOk": { const v = el.querySelector<HTMLTextAreaElement>("[data-wf-import]")?.value.trim() ?? ""; if (v) { importing = false; emit({ type: "importWorkflow", text: v }); } return; }
       case "copyData": {
         const data = "object" in model ? model.object.data : ""; if (!data) return;
         const put = opts.copyText ?? ((t: string) => (navigator.clipboard ? navigator.clipboard.writeText(t).then(() => true, () => false) : Promise.resolve(false)));
@@ -814,6 +838,11 @@ export const GLASS_CSS = `
 .rg-mini:hover:not(:disabled), .rg-mini:focus-visible { background: var(--g-line); }
 .rg-replace { grid-column: 1 / -1; margin-top: 6px; }
 .rg-copy-by-hand { flex-basis: 100%; margin: 4px 0 0; }
+.rg-recipe-about { margin: 0; font-size: 11.5px; }
+.rg-limits { font-size: 12px; color: var(--g-muted); }
+.rg-limits summary { cursor: pointer; color: var(--g-ink); }
+.rg-limits ul { margin: 4px 0 0; padding-left: 18px; }
+.rg-import { display: flex; flex-direction: column; gap: 6px; }
 .rg-data { flex-basis: 100%; min-height: 120px; resize: vertical; border: 0; border-radius: 10px; padding: 8px 10px; background: var(--g-sel); color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); font: 11px/1.4 "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
 .rg-discard { flex-basis: 100%; margin: 0 0 4px; }
 .rg-link { grid-column: 3; grid-row: 1 / span 2; border: 0; background: none; color: var(--g-ink); text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 12px; }

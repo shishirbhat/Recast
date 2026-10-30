@@ -7,7 +7,7 @@
 import { objectData, type CapabilityContract, type ClumpView, type Fragment } from "@recast/core";
 import { aThing, ctxOf, unfit, viewOf, type ClumpState, type Placement } from "./clump-machine.js";
 import { recipeOffers, type RecipeOffer, type RecipeRun } from "./recipe-run.js";
-import { saveable } from "./workflows.js";
+import { saveable, workflowDefinition } from "./workflows.js";
 
 export type WheelKey = "calendar" | "mail" | "tasks" | "documents" | "more";
 export const WHEEL_SLOTS: readonly { key: WheelKey; label: string; kinds: readonly string[] }[] = [
@@ -74,7 +74,7 @@ export type ModuleModel =
       /** Whether what is on screen can be saved as a personal workflow; Save is offered only when it can. */
       save?: { ok: boolean; reason?: string; done?: string };
       /** The person's saved workflows (composed), with the ones that cannot be used and why: for rename and delete. */
-      mine?: { id: string; name: string; description: string; reason?: string }[] };
+      mine?: { id: string; name: string; description: string; reason?: string; /** the definition to share (JSON), for usable ones */ definition?: string }[] };
 
 /** What the action module shows for this state. One model, one module: there is never a second panel. */
 export function moduleModel(s: ClumpState, registry: readonly CapabilityContract[]): ModuleModel {
@@ -88,7 +88,7 @@ export function moduleModel(s: ClumpState, registry: readonly CapabilityContract
   };
   const sv = () => { const r = saveable(s); const done = s.last?.kind === "saved" ? { done: s.last.text } : {}; return { save: r.ok ? { ok: true, ...done } : { ok: false, reason: r.reason } }; };
   const mine = () => {
-    const list = [...(s.workflows ?? []).map((w) => ({ id: w.id, name: w.name, description: w.description })),
+    const list = [...(s.workflows ?? []).map((w) => ({ id: w.id, name: w.name, description: w.description, definition: workflowDefinition(w) })),
       ...(s.workflowIssues ?? []).map((x, i) => ({ id: x.id ?? `#${i}`, name: x.name ?? "A saved workflow", description: "", reason: x.reason }))];
     return list.length ? { mine: list } : {};
   };

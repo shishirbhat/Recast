@@ -10,6 +10,8 @@ let n = 0;
 const frag = (kind: Fragment["kind"], text: string, value?: Fragment["value"]): Fragment => ({ id: `f${++n}`, kind, text, confidence: 0.9, ...(value ? { value } : {}), evidence: [{ locator: { kind: "css", value: `#e${n}` } }], source: { app: "chrome", url: "https://dakshin.example", title: "Dakshin" } });
 const CAL: DestinationSpec = { id: "cal", label: "Calendar", contract: CONTRACTS.googleCalendarEvent, standIn: true };
 const MAIL: DestinationSpec = { id: "mail", label: "Mail", contract: CONTRACTS.gmailMessageDraft, standIn: true };
+const TASKS: DestinationSpec = { id: "tasks", label: "Tasks", contract: CONTRACTS.googleTasksEntry, standIn: true };
+const DOCS: DestinationSpec = { id: "docs", label: "Docs", contract: CONTRACTS.googleDocs, standIn: true };
 type Input = ClumpEvent extends infer E ? (E extends ClumpEvent ? Omit<E, "now"> : never) : never;
 function run(events: Input[], s: ClumpState) {
   const effects: any[] = []; const errors: string[] = [];
@@ -38,6 +40,7 @@ describe("recipes in the state machine", () => {
     expect(recipeOffers(s, "obj-1")).toEqual([
       expect.objectContaining({ id: "plan-and-invite", available: true }),
       expect.objectContaining({ id: "plan-and-prepare", available: true }),   // the event step can still run
+      expect.objectContaining({ id: "plan-prepare-note-invite", available: true }),
     ]);
     const solo = dinner([]);
     expect(recipeOffers(solo, "obj-1")[0]).toMatchObject({ available: false, reason: "a calendar is not connected here" });
@@ -122,5 +125,41 @@ describe("the capture stack holds no accidental copies", () => {
     r = run([{ type: "capture", fragment: { ...piece(), source: { app: "chrome", url: "https://other.example" } } }], r.s);
     expect(Object.keys(r.s.objects)).toHaveLength(2);
   });
-});
 
+  it("the conference recipe: four related objects, each its own operation; the note quotes every piece with its source; version and limitations travel with the run", () => {
+    let { s, errors } = run([{ type: "openRecipe", recipeId: "plan-prepare-note-invite" }], dinner([CAL, MAIL, TASKS, DOCS]));
+    expect(errors).toEqual([]);
+    expect(s.run).toMatchObject({ version: 1, limitations: expect.arrayContaining([expect.stringMatching(/never sent/)]) });
+    expect(s.run!.steps.map((x) => [x.id, x.status, x.destinationLabel, x.after ?? ""])).toEqual([["event", "ready", "Calendar", ""], ["prepare", "ready", "Tasks", "event"], ["note", "ready", "Docs", ""], ["invite", "ready", "Mail", ""]]);
+    const note = s.run!.steps[2]!.op!.dataMoved;
+    expect(note.find((d) => d.path === "Note.title")!.value).toBe("Notes: Dinner with Maya");
+    expect(String(note.find((d) => d.path === "Note.body")!.value)).toBe("“Dakshin”\n— Dakshin, https://dakshin.example\n\n“Maya Rao”\n— Dakshin, https://dakshin.example\n\n“Friday 7:30 PM”\n— Dakshin, https://dakshin.example");
+  });
+  it("a step that waits for another is not run when that one fails, and says why; the failed one can be tried again with the same operation, then the waiting one", () => {
+    let { s, effects } = run([{ type: "openRecipe", recipeId: "plan-and-prepare" }, { type: "runRecipe", consent: { kind: "confirm" } }], dinner([CAL, TASKS]));
+    const op1 = s.run!.steps[0]!.op!;
+    ({ s, effects } = run([{ type: "commitFailed", opId: op1.opId, message: "Calendar said no (403)" }], s));
+    expect(s.phase).toBe("ran"); expect(effects).toEqual([]);                       // the task was never sent
+    expect(s.run!.steps.map((x) => [x.status, x.message])).toEqual([["failed", "Calendar said no (403)"], ["skipped", "\"Add the event to your calendar\" did not succeed, so this was not run"]]);
+    expect(s.last).toMatchObject({ kind: "failed", text: "Plan and prepare: 0 of 2 done" });
+    // The waiting one cannot jump the queue; the failed one is sent again as the same operation (the same id).
+    expect(run([{ type: "retryStep", stepId: "prepare" }], s).errors[0]).toMatch(/has to succeed first/);
+    ({ s, effects } = run([{ type: "retryStep", stepId: "event" }], s));
+    expect(s.phase).toBe("running"); expect(effects).toEqual([expect.objectContaining({ type: "commit", op: expect.objectContaining({ opId: op1.opId }) })]);
+    ({ s } = run([{ type: "committed", receipt: receiptFor(op1, "ev-1"), undoable: true }], s));
+    expect(s.phase).toBe("ran"); expect(s.last!.text).toBe("Plan and prepare: 1 of 2 done");
+    ({ s, effects } = run([{ type: "retryStep", stepId: "prepare" }], s));
+    expect(effects).toEqual([expect.objectContaining({ type: "commit", destinationId: "tasks" })]);
+    ({ s } = run([{ type: "committed", receipt: receiptFor(s.run!.steps[1]!.op!, "t-1"), undoable: true }], s));
+    expect(s.last!.text).toBe("Plan and prepare: all 2 done");
+  });
+  it("an unknown outcome is never tried again; leaving out the step another waits for leaves that one out too, with the reason", () => {
+    let { s } = run([{ type: "openRecipe", recipeId: "plan-and-invite" }, { type: "runRecipe", consent: { kind: "confirm" } }], dinner([CAL, MAIL]));
+    ({ s } = run([{ type: "outcomeUnknown", opId: s.run!.steps[0]!.op!.opId, message: "no answer" }], s));
+    ({ s } = run([{ type: "committed", receipt: receiptFor(s.run!.steps[1]!.op!, "d-1"), undoable: true }], s));
+    expect(run([{ type: "retryStep", stepId: "event" }], s).errors[0]).toMatch(/never sent twice/);
+    let r = run([{ type: "openRecipe", recipeId: "plan-and-prepare" }, { type: "toggleStep", stepId: "event" }, { type: "runRecipe", consent: { kind: "confirm" } }], dinner([CAL, TASKS]));
+    expect(r.effects).toEqual([]); expect(r.s.phase).toBe("ran");
+    expect(r.s.run!.steps[1]).toMatchObject({ status: "skipped", message: expect.stringMatching(/which was left out/) });
+  });
+});

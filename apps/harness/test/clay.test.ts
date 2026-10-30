@@ -706,6 +706,10 @@ describe("a recipe: one composition, several places, each with its own result", 
     await chip.click();
     expect((await st(page)).phase).toBe("planning");
     expect(await page.locator(".rg-title").innerText()).toBe("Recipe: Plan and invite");
+    // What it is and what it cannot do, before it runs.
+    expect(await page.locator(".rg-recipe-about").innerText()).toBe("Recast recipe · version 1");
+    await page.locator(".rg-limits summary").click();
+    expect(await page.locator(".rg-limits").innerText()).toMatch(/saved as a draft, never sent/);
     expect(await page.locator("[data-placed='event'], [data-placed='draft']").count()).toBe(0);      // the review writes nothing
     await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
     const steps = page.locator(".rg-steps li");

@@ -19,6 +19,8 @@ export interface RecipeStepDef {
   destination?: string;
   /** The app that destination belongs to, for the words on screen ("Outlook Calendar is not connected here"). */
   app?: string;
+  /** Runs only after this earlier step is done: if that one fails or is left out, this one is not run (and says why). */
+  after?: string;
 }
 export interface Recipe {
   id: string; version: number; name: string; description: string;
@@ -50,9 +52,22 @@ export const RECIPES: readonly Recipe[] = [
     needs: "Event",
     steps: [
       { id: "event", label: "Add the event to your calendar", targetKind: "Calendar" },
-      { id: "prepare", label: "Add a task to prepare for it", targetKind: "TaskList", worded: true },
+      { id: "prepare", label: "Add a task to prepare for it", targetKind: "TaskList", worded: true, after: "event" },
     ],
-    limitations: ["The task is due on the event's day; Google Tasks keeps only the day."],
+    limitations: ["The task is due on the event's day; Google Tasks keeps only the day.", "The task is added only once the event is in your calendar."],
+  },
+  {
+    // The brief's conference example: one announcement, four related objects, each its own operation and its own receipt.
+    id: "plan-prepare-note-invite", version: 1, name: "Plan, prepare, note and invite",
+    description: "The event in your calendar, a task to prepare for it, a note of everything captured with its sources, and a draft to the people in it.",
+    needs: "Event",
+    steps: [
+      { id: "event", label: "Add the event to your calendar", targetKind: "Calendar" },
+      { id: "prepare", label: "Add a task to prepare for it", targetKind: "TaskList", worded: true, after: "event" },
+      { id: "note", label: "Keep a note of what you captured, with its sources", targetKind: "Docs" },
+      { id: "invite", label: "Draft a message to the people in it", targetKind: "Drafts", worded: true },
+    ],
+    limitations: ["The task is added only once the event is in your calendar.", "The note quotes each piece exactly, with the page it came from; it adds nothing of its own but the title.", "The message is saved as a draft, never sent; it needs an email address for everyone in it."],
   },
 ];
 export const recipeById = (id: string, saved: readonly Recipe[] = []) => RECIPES.find((r) => r.id === id) ?? saved.find((r) => r.id === id);
@@ -61,7 +76,7 @@ export const recipeById = (id: string, saved: readonly Recipe[] = []) => RECIPES
 // A saved workflow is a recipe the person defined: a name and steps (what kind of object it takes, which steps, which
 // destination each goes to). It is a definition only, like every recipe: no captured words, no values, no accounts, no
 // tokens. It runs through the same review, approval, commit, read-back and Undo as any recipe.
-export const STEP_IDS = ["event", "invite", "prepare", "place"] as const;
+export const STEP_IDS = ["event", "invite", "prepare", "note", "place"] as const;
 const CLUMP_TYPES: readonly ClumpType[] = ["Fragment", "Event", "Message", "People", "Document", "Task", "Note", "Issue"];
 const TARGET_KINDS: readonly string[] = ["Calendar", "Drafts", "Task", "Project", "TaskList", "Map", "Docs", "Issues"];
 export const WORKFLOW_NAME_MAX = 60;
@@ -86,12 +101,13 @@ export function checkWorkflow(x: unknown, destinations: readonly string[]): { ok
   const steps: RecipeStepDef[] = [];
   for (const st of o.steps as unknown[]) {
     const t = st && typeof st === "object" ? (st as Record<string, unknown>) : {};
-    if (Object.keys(t).some((k) => !["id", "label", "targetKind", "worded", "destination", "app"].includes(k))) return no("a step has unexpected fields");
+    if (Object.keys(t).some((k) => !["id", "label", "targetKind", "worded", "destination", "app", "after"].includes(k))) return no("a step has unexpected fields");
+    if (t.after !== undefined && (typeof t.after !== "string" || !steps.some((p) => p.id === t.after))) return no("a step waits for a step that does not come before it");
     if (!STEP_IDS.includes(t.id as never)) return no(`a step (${String(t.id)}) is not one Recast can run`);
     if (typeof t.label !== "string" || t.label.length > 120 || !TARGET_KINDS.includes(String(t.targetKind))) return no("a step is not valid");
     if (t.destination !== undefined && (typeof t.destination !== "string" || !destinations.includes(t.destination))) return no(`it goes to ${String(t.destination)}, which Recast cannot place in any more`);
     if (t.app !== undefined && (typeof t.app !== "string" || t.app.length > 40)) return no("a step is not valid");
-    steps.push({ id: t.id as string, label: t.label, targetKind: t.targetKind as TargetKind, ...(t.worded ? { worded: true } : {}), ...(t.destination ? { destination: t.destination as string } : {}), ...(t.app ? { app: t.app as string } : {}) });
+    steps.push({ id: t.id as string, label: t.label, targetKind: t.targetKind as TargetKind, ...(t.worded ? { worded: true } : {}), ...(t.destination ? { destination: t.destination as string } : {}), ...(t.app ? { app: t.app as string } : {}), ...(t.after ? { after: t.after as string } : {}) });
   }
   if (typeof o.description !== "string" || o.description.length > 300) return no("its description is not valid");
   return { ok: true, recipe: { id, version: 1, name: name.trim(), description: o.description, origin: "saved", needs: o.needs as ClumpType, steps, limitations: [] } };
@@ -105,9 +121,10 @@ const describe = (needs: ClumpType, steps: RecipeStepDef[], apps: Record<string,
  * A workflow from what the person just did: the kind of object, the steps they ran (or reviewed), each with the exact
  * destination it went to. Only structure is kept: no step label comes from content, and nothing captured is copied.
  */
-export function workflowFrom(o: { name: string; needs: ClumpType; steps: { id: string; label: string; targetKind: TargetKind; worded?: boolean; destination: string; app: string }[]; now: string }): Recipe {
+export function workflowFrom(o: { name: string; needs: ClumpType; steps: { id: string; label: string; targetKind: TargetKind; worded?: boolean; destination: string; app: string; after?: string }[]; now: string }): Recipe {
   const name = o.name.replace(/\s+/g, " ").trim().slice(0, WORKFLOW_NAME_MAX);
-  const steps: RecipeStepDef[] = o.steps.map((x) => ({ id: x.id, label: x.label, targetKind: x.targetKind, ...(x.worded ? { worded: true } : {}), destination: x.destination, app: x.app }));
+  // A dependency is kept only when the step it waits for is saved too.
+  const steps: RecipeStepDef[] = o.steps.map((x, i) => ({ id: x.id, label: x.label, targetKind: x.targetKind, ...(x.worded ? { worded: true } : {}), destination: x.destination, app: x.app, ...(x.after && o.steps.slice(0, i).some((p) => p.id === x.after) ? { after: x.after } : {}) }));
   const apps = Object.fromEntries(o.steps.map((x) => [x.destination, x.app]));
   return { id: `wf_${hash32(`${name}|${JSON.stringify(steps)}|${o.now}`)}`, version: 1, name, description: describe(o.needs, steps, apps), origin: "saved", needs: o.needs, steps, limitations: [] };
 }
@@ -152,6 +169,17 @@ export function planRecipe(recipe: Recipe, c: Clump, ctx: ComposeContext): StepP
     }
     if (s.id === "event") return { ...base, candidate: needEvent ? null : v.candidate, ...(needEvent ? { reason: needEvent } : {}), uses: eventUses };
     if (needEvent) return { ...base, candidate: null, reason: needEvent, uses: [] };
+    if (s.id === "note") {
+      // Every piece, quoted exactly, each with the page it came from; the title is the event's (the only words not captured).
+      const quote = (f: (typeof c.ingredients)[number]) => { const from = [f.source?.title, f.source?.url].filter(Boolean).join(", "); return `“${f.text.replace(/\s+/g, " ").trim()}”${from ? `\n— ${from}` : ""}`; };
+      const body = c.ingredients.map(quote).join("\n\n");
+      const sources = [...new Set(c.ingredients.map((f) => f.source?.url).filter((u): u is string => !!u))];
+      const byId = new Map(c.ingredients.map((f) => [f.id, f]));
+      const bodyEv = c.ingredients.flatMap((f) => byId.get(f.id)!.evidence.map((e): Evidence => ({ ...e, origin: "extracted", ...(f.source ? { source: f.source } : {}) })));
+      const quoted: FieldMeta = { confidence: Math.min(...c.ingredients.map((f) => f.confidence)), evidence: bodyEv.length ? bodyEv : [{ locator: { kind: "composition", value: "recipe:body" }, origin: "extracted" }] };
+      return { ...base, uses: c.ingredients.map((f) => nameOf(f.value?.name ?? f.text).slice(0, 40)), note: "Quoted exactly, with sources",
+        candidate: { type: "Note", properties: { title: `Notes: ${title}`, body, ...(sources.length ? { sources } : {}) }, fields: { title: composed("title", "the event's title"), body: quoted, ...(sources.length ? { sources: quoted } : {}) }, provenance } };
+    }
     if (s.id === "invite") {
       const people = c.ingredients.filter((f) => f.kind === "person");
       if (!people.length) return { ...base, candidate: null, reason: "there is nobody in it to write to", uses: [] };

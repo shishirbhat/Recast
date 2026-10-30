@@ -88,6 +88,8 @@ export interface ClumpState {
   workflowIssues?: WorkflowIssue[];
   /** Those entries as they were stored, kept as they are until the person deletes them. */
   workflowKept?: unknown[];
+  /** Every destination this build can place in, as the host said when it handed over the stored list (for imports). */
+  workflowKnown?: string[];
 }
 export type ConfirmLevel = "high" | "none";
 

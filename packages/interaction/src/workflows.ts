@@ -11,14 +11,19 @@ export type WorkflowEvent =
   | { type: "setWorkflows"; items: unknown[]; known: string[]; now: number }
   | { type: "saveWorkflow"; name: string; now: number }
   | { type: "renameWorkflow"; id: string; name: string; now: number }
-  | { type: "deleteWorkflow"; id: string; now: number };
+  | { type: "deleteWorkflow"; id: string; now: number }
+  /** A workflow definition someone shared (its JSON). Checked like a stored one; it never carries anyone's data or accounts. */
+  | { type: "importWorkflow"; text: string; now: number };
 
 /** A stored entry that cannot be used (from another version, or for a destination Recast no longer has): shown, never run. */
 export interface WorkflowIssue { id?: string; name?: string; reason: string }
 
 /** Kinds of destination a saved workflow can name: a new thing in a place, never "change that one existing item". */
 const SAVEABLE: readonly TargetKind[] = ["Calendar", "Drafts", "Task", "Project", "TaskList", "Map", "Docs", "Issues"];
-const WF_TYPES = ["setWorkflows", "saveWorkflow", "renameWorkflow", "deleteWorkflow"];
+const WF_TYPES = ["setWorkflows", "saveWorkflow", "renameWorkflow", "deleteWorkflow", "importWorkflow"];
+
+/** A saved workflow as a definition to share: exactly what is stored, which holds no captured words, accounts or tokens. */
+export const workflowDefinition = (w: Recipe) => JSON.stringify({ id: w.id, version: w.version, name: w.name, description: w.description, origin: "saved", needs: w.needs, steps: w.steps }, null, 2);
 
 /** Why what is on screen can or cannot be saved as a workflow. The Save button is only offered when it can. */
 export function saveable(s: ClumpState): { ok: true; from: "run" | "placement" } | { ok: false; reason: string } {
@@ -68,7 +73,7 @@ export function reduceWorkflows(s: ClumpState, ev: ClumpEvent): ClumpResult | nu
         if (r.ok && !workflows.some((w) => w.id === r.recipe.id)) workflows.push(r.recipe);
         else if (!r.ok) { issues.push({ ...(r.id ? { id: r.id } : {}), ...(r.name ? { name: r.name.slice(0, WORKFLOW_NAME_MAX) } : {}), reason: r.reason }); bad.push(x); }
       }
-      return { state: { ...s, now: ev.now, workflows, workflowIssues: issues, workflowKept: bad }, effects: [] };
+      return { state: { ...s, now: ev.now, workflows, workflowIssues: issues, workflowKept: bad, workflowKnown: e.known }, effects: [] };
     }
     case "saveWorkflow": {
       const can = saveable(s); if (!can.ok) return no(`Cannot save this as a workflow: ${can.reason}`);
@@ -80,7 +85,7 @@ export function reduceWorkflows(s: ClumpState, ev: ClumpEvent): ClumpResult | nu
         const base = [...RECIPES, ...list].find((r) => r.id === run.recipeId);
         wf = workflowFrom({ name: e.name, needs: base!.needs, now, steps: run.steps.filter((x) => x.include && x.destinationId).map((x) => {
           const d = s.destinations.find((y) => y.id === x.destinationId)!;
-          return { id: x.id, label: x.label, targetKind: x.targetKind, worded: x.worded, destination: d.contract.destination, app: d.contract.app };
+          return { id: x.id, label: x.label, targetKind: x.targetKind, worded: x.worded, destination: d.contract.destination, app: d.contract.app, ...(x.after ? { after: x.after } : {}) };
         }) });
       } else {
         const p = s.placement!; const d = s.destinations.find((x) => x.id === p.destinationId)!;
@@ -96,6 +101,16 @@ export function reduceWorkflows(s: ClumpState, ev: ClumpEvent): ClumpResult | nu
       const workflows = list.map((x) => (x.id === w.id ? { ...x, name: norm(e.name) } : x));
       // A run of this workflow on screen keeps the name it was opened with.
       return { state: say({ ...s, now: ev.now, workflows }, `Renamed to "${norm(e.name)}"`), effects: [{ type: "storeWorkflows", items: stored(s, workflows, kept) }] };
+    }
+    case "importWorkflow": {
+      if (e.text.length > 20_000) return no("that is too long to be a workflow");
+      let x: unknown; try { x = JSON.parse(e.text); } catch { return no("that is not a workflow definition (it should be the text Copy definition gives)"); }
+      const known = s.workflowKnown ?? s.destinations.map((d) => d.contract.destination);
+      const r = checkWorkflow(x, known); if (!r.ok) return no(`Cannot import it: ${r.reason}`);
+      if (list.some((w) => w.id === r.recipe.id)) return no(`You already have "${list.find((w) => w.id === r.recipe.id)!.name}"`);
+      const problem = nameProblem(s, r.recipe.name); if (problem) return no(problem);
+      const workflows = [...list, r.recipe];
+      return { state: say({ ...s, now: ev.now, workflows }, `Imported "${r.recipe.name}". It runs with your own connections, after its review`), effects: [{ type: "storeWorkflows", items: stored(s, workflows, kept) }] };
     }
     case "deleteWorkflow": {
       if (s.run?.recipeId === e.id && s.phase === "running") return no("it is running: wait for its steps to answer");

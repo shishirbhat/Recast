@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { CONTRACTS, REGISTRY } from "@recast/bridges";
 import type { Fragment, Receipt, Verification } from "@recast/core";
-import { initialClumpState, moduleModel, recipeOffers, reduceClump, saveable, viewOf, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
+import { initialClumpState, moduleModel, recipeOffers, reduceClump, saveable, viewOf, workflowDefinition, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
 
 const NOW = Date.parse("2026-10-19T09:00:00Z");
 const KNOWN = REGISTRY.map((c) => c.destination);
@@ -140,6 +140,28 @@ describe("loading, renaming and deleting", () => {
     ({ s, effects } = run([{ type: "deleteWorkflow", id: good.id }], s));
     expect(s.workflows).toEqual([]); expect(effects).toEqual([{ type: "storeWorkflows", items: [] }]);
     expect(s.last!.text).toMatch(/Nothing already placed was changed/);
+  });
+});
+
+describe("sharing a workflow", () => {
+  it("the shared definition holds steps only; importing checks it, refuses a copy, a clash or anything that is not exactly a workflow", () => {
+    const { s: saved } = savedSingle();
+    const wf = saved.workflows![0]!; const text = workflowDefinition(wf);
+    // Nothing captured travels: no words, people, addresses, links or times.
+    for (const w of ["Maya", "Dakshin", "maya@example.com", "MG Road", "dakshin.example", "7:30", "Dinner with Maya"]) expect(text).not.toContain(w);
+    const fresh = run([{ type: "setWorkflows", items: [], known: KNOWN }], initialClumpState({ now: NOW, timezone: "Asia/Kolkata", destinations: [CAL] })).s;
+    let { s, effects, errors } = run([{ type: "importWorkflow", text }], fresh);
+    expect(errors).toEqual([]); expect(s.workflows!.map((w) => w.name)).toEqual(["Dinner plan"]);
+    expect(effects).toEqual([{ type: "storeWorkflows", items: [expect.objectContaining({ id: wf.id })] }]);
+    expect(s.last!.text).toMatch(/runs with your own connections/);
+    expect(run([{ type: "importWorkflow", text }], s).errors[0]).toMatch(/already have "Dinner plan"/);
+    expect(run([{ type: "importWorkflow", text: "not json" }], fresh).errors[0]).toMatch(/not a workflow definition/);
+    const extra = JSON.stringify({ ...JSON.parse(text), captured: "Maya Rao" });
+    expect(run([{ type: "importWorkflow", text: extra }], fresh).errors[0]).toMatch(/Cannot import it: unexpected captured/);
+    const elsewhere = JSON.stringify({ ...JSON.parse(text), steps: [{ ...JSON.parse(text).steps[0], destination: "evil.example" }] });
+    expect(run([{ type: "importWorkflow", text: elsewhere }], fresh).errors[0]).toMatch(/Cannot import it: it goes to evil.example/);
+    const clash = JSON.stringify({ ...JSON.parse(text), id: "wf_other" });
+    expect(run([{ type: "importWorkflow", text: clash }], s).errors[0]).toMatch(/already a workflow called "Dinner plan"/);
   });
 });
 
