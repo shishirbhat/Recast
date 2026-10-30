@@ -24,6 +24,7 @@ interface OverlayApi {
   interactive(over: boolean, rects: { x: number; y: number; width: number; height: number }[], own: { x: number; y: number; width: number; height: number }[]): Promise<boolean>;
   off(): Promise<boolean>;
   keys(want: boolean): Promise<boolean>;
+  copy(text: string): Promise<boolean>;
   historyAdd(entry: unknown): Promise<boolean>;
   historyPlaced(ids: string[], where: string, link?: string): Promise<boolean>;
   on(channel: string, fn: (v: any) => void): void;
@@ -72,6 +73,7 @@ const glass = createGlass($("#glass"), {
   linkFor: (op) => linkFor(op.proposal.destination.destination)?.url(op),
   openLink: (url) => { void api.openExternal(url); return true; },
   capturedLabel: "grabbed",
+  copyText: (t) => api.copy(t).catch(() => false),
   theme: () => (document.documentElement.dataset["theme"] as "light" | "dark" | undefined),
 });
 

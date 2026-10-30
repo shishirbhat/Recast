@@ -4,8 +4,8 @@
 // The selector lists only what the bridge registry knows (passed in, so this package does not depend on the bridges), in
 // five fixed places. A destination is available only when the composition is the kind it takes AND a destination for it is
 // connected here. Anything else stays visible, disabled, with the reason in words.
-import type { CapabilityContract, ClumpView, Fragment } from "@recast/core";
-import { aThing, unfit, viewOf, type ClumpState, type Placement } from "./clump-machine.js";
+import { objectData, type CapabilityContract, type ClumpView, type Fragment } from "@recast/core";
+import { aThing, ctxOf, unfit, viewOf, type ClumpState, type Placement } from "./clump-machine.js";
 import { recipeOffers, type RecipeOffer, type RecipeRun } from "./recipe-run.js";
 import { saveable } from "./workflows.js";
 
@@ -58,7 +58,9 @@ export function wheelEntries(s: ClumpState, objectId: string, registry: readonly
 /** The first available destination, so opening the selector lands on something that works. */
 export const firstAvailable = (entries: WheelEntry[]) => entries.find((e) => e.available)?.key ?? entries[0]!.key;
 
-export interface ModuleObject { id: string; view: ClumpView; ingredients: { id: string; kind: Fragment["kind"]; text: string; from: string; confidence: number }[] }
+export interface ModuleObject { id: string; view: ClumpView; ingredients: { id: string; kind: Fragment["kind"]; text: string; from: string; confidence: number }[];
+  /** The object as structured data (recast.object/1, JSON), for "Copy as data". */
+  data: string }
 export type ModuleModel =
   | { mode: "off" }
   /** Recast is on and nothing needs choosing: a small pill. `reopen` names a composition the command would bring back. */
@@ -77,7 +79,8 @@ export type ModuleModel =
 /** What the action module shows for this state. One model, one module: there is never a second panel. */
 export function moduleModel(s: ClumpState, registry: readonly CapabilityContract[]): ModuleModel {
   if (!s.armed && s.phase === "idle") return { mode: "off" };
-  const obj = (id: string): ModuleObject => ({ id, view: viewOf(s, id), ingredients: s.objects[id]!.ingredients.map((f) => ({ id: f.id, kind: f.kind, text: f.text, from: f.source?.title ?? f.source?.url ?? f.source?.app ?? "", confidence: f.confidence })) });
+  const obj = (id: string): ModuleObject => ({ id, view: viewOf(s, id), ingredients: s.objects[id]!.ingredients.map((f) => ({ id: f.id, kind: f.kind, text: f.text, from: f.source?.title ?? f.source?.url ?? f.source?.app ?? "", confidence: f.confidence })),
+    data: JSON.stringify(objectData(s.objects[id]!, ctxOf(s)), null, 2) });
   const around = (id: string) => { const entries = wheelEntries(s, id, registry); return { object: obj(id), entries, choice: (entries.some((e) => e.key === s.choice) ? s.choice : firstAvailable(entries)) as WheelKey }; };
   const place = () => {
     const p = s.placement!; const d = s.destinations.find((x) => x.id === p.destinationId);

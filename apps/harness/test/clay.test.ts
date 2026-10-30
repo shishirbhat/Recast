@@ -23,8 +23,9 @@ afterAll(async () => { await browser?.close(); server?.close(); });
 
 // Monday 19 Oct 2026, 09:00 UTC: "Friday" is the 23rd, and so is the calendar's first slot.
 const Q = "now=2026-10-19T09:00:00Z&tz=Asia/Kolkata";
-async function open(o: { theme?: "light" | "dark"; phone?: boolean; motion?: "reduce"; off?: boolean } = {}): Promise<{ page: Page; ctx: BrowserContext; errors: string[] }> {
+async function open(o: { theme?: "light" | "dark"; phone?: boolean; motion?: "reduce"; off?: boolean; clipboard?: boolean } = {}): Promise<{ page: Page; ctx: BrowserContext; errors: string[] }> {
   const ctx = await browser.newContext({
+    ...(o.clipboard ? { permissions: ["clipboard-read", "clipboard-write"] } : {}),
     ...(o.phone ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 } : { viewport: { width: 1200, height: 800 } }),
     colorScheme: o.theme ?? "light", timezoneId: "Asia/Kolkata", ...(o.motion ? { reducedMotion: o.motion } : {}),
   });
@@ -208,6 +209,30 @@ describe("pressing pieces into one object (mouse)", () => {
     expect(errors).toEqual([]);
     await ctx.close();
   });
+  it("Copy as data: the object, its fields and every piece with its page, as JSON on the clipboard; refused, it is shown to copy by hand", async () => {
+    const { page, ctx, errors } = await open({ clipboard: true });
+    const id = await makeDinner(page);
+    await page.locator(objectSel(id)).click();
+    await page.getByRole("button", { name: "Copy as data" }).click();
+    await expect.poll(() => page.getByRole("button", { name: "Copied as data" }).count()).toBe(1);
+    const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+    expect(data).toMatchObject({ format: "recast.object/1", type: "Event", fields: { location: "Dakshin, 12 MG Road, Bengaluru", start: "2026-10-23T19:30" }, missing: ["title"] });
+    expect(data.pieces.map((p: any) => p.text)).toEqual(["Dakshin", "Maya Rao", "Friday, 7:30 PM"]);
+    expect(data.pieces[1].source).toMatchObject({ title: expect.stringMatching(/Maya Rao/) });
+    await ctx.close();
+    // Where the page may not write to the clipboard, nothing is claimed: the data is there to select and copy.
+    const b = await open();
+    const id2 = await makeDinner(b.page);
+    await b.page.locator(objectSel(id2)).click();
+    await b.page.evaluate(() => { Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new Error("denied")) } }); });
+    await b.page.getByRole("button", { name: "Copy as data" }).click();
+    await expect.poll(() => b.page.locator(".rg-data").count()).toBe(1);
+    expect(await b.page.getByRole("button", { name: "Copied as data" }).count()).toBe(0);
+    expect(JSON.parse(await b.page.locator(".rg-data").inputValue())).toMatchObject({ type: "Event" });
+    expect([...errors, ...b.errors]).toEqual([]);
+    await b.ctx.close();
+  });
+
   it("when the calendar does not answer, Recast asks it instead of adding twice", async () => {
     const { page, ctx } = await open();
     const id = await makeDinner(page);

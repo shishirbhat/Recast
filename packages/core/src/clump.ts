@@ -167,6 +167,27 @@ const shortTime = (iso: string) => {
   return `${date}, ${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 };
 
+/** The object as data a person can paste anywhere (a spreadsheet, a script, a ticket): what Recast read, what the person
+ *  typed, what is still missing, and every piece with the page it came from. Versioned, so a reader can tell the shape. */
+export interface ObjectData {
+  format: "recast.object/1";
+  type: ClumpType; label: string;
+  fields: Record<string, string | string[] | boolean>;
+  missing: string[];
+  pieces: { kind: Fragment["kind"]; text: string; value?: Fragment["value"]; confidence: number; source?: Fragment["source"] }[];
+}
+export function objectData(c: Clump, ctx: ComposeContext): ObjectData {
+  const v = viewClump(c, ctx);
+  const fields: ObjectData["fields"] = {};
+  for (const part of [v.event, v.message, v.document, v.task, v.note, v.issue]) {
+    for (const [k, f] of Object.entries(part?.fields ?? {})) if (f && f.value !== undefined) fields[k] = f.value as string | string[] | boolean;
+  }
+  return {
+    format: "recast.object/1", type: v.type, label: v.label, fields, missing: v.missing.map((m) => m.field),
+    pieces: c.ingredients.map((f) => ({ kind: f.kind, text: f.text, ...(f.value ? { value: f.value } : {}), confidence: f.confidence, ...(f.source ? { source: f.source } : {}) })),
+  };
+}
+
 export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   const t = typeOf(c.ingredients); const fs = c.ingredients;
   const people = fs.filter((f) => f.kind === "person").map(nameOf);

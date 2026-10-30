@@ -382,3 +382,9 @@ Consequential architecture and product decisions, so that separate workstreams d
 - The machine events are `move`, `replace` and `discard`. `discard` was already in the machine but only the desktop's Delete key reached it. They are legal where `remove` is; a discard is never legal while a write is in flight.
 - **Desktop library:** Remove now deletes the entry from `history.json`. It used to mark the entry removed and keep the text; such entries are dropped as the file is read. **Clear all** asks once, then empties the file. Only the library window may ask for it.
 - **Evidence:** F (machine unit test, try-it page test, desktop library test).
+
+### D55. Copy as data: the object as versioned JSON, on every surface (2026-10-30)
+- **Decision:** "Ready to place" and "Inside this object" offer **Copy as data**. It puts the object on the clipboard as JSON, `format: "recast.object/1"`, built by `objectData` in core: `type`, `label`, `fields` (what was read or typed, by name), `missing` (field names) and `pieces` (each with its kind, text, value, confidence and source page).
+- It is local: nothing leaves the device, so it needs no connection, review or consent. It is offered for any object, complete or not; `missing` says what is incomplete.
+- "Copied as data" is shown only when the clipboard accepted it. If the page may not write to the clipboard, the JSON is shown in a box to select and copy by hand, and nothing is claimed. The desktop app uses the system clipboard through the app.
+- **Evidence:** F (core unit test, try-it page test with the real browser clipboard and with a refused one).

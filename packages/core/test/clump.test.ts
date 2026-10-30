@@ -1,6 +1,6 @@
 // Clumps: pieces pressed together into one object, recursively, without losing any ingredient.
 import { describe, expect, it } from "vitest";
-import { answerClump, canMerge, looksLikeError, pieceOfSelection, webDocument, chooseClump, mergeClumps, newClump, plan, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
+import { answerClump, canMerge, looksLikeError, pieceOfSelection, webDocument, chooseClump, mergeClumps, moveIngredient, newClump, objectData, plan, replaceIngredient, propose, removeIngredient, resolve, typeOf, viewClump, type Clump, type Fragment } from "../src/index.js";
 import { relationById } from "../src/rules.js";
 
 const CTX = { now: "2026-10-19T09:00:00Z", timezone: "Asia/Kolkata" };   // Monday 19 Oct 2026, 14:30 in Bengaluru
@@ -84,6 +84,26 @@ describe("what does not merge silently", () => {
     let c = merged(merged(newClump("x", t1), one("place", "Dakshin")), newClump("y", t2));
     const v = viewClump(c, CTX); expect(v.conflicts[0]!.field).toBe("start"); expect(v.candidate).toBeNull();
     c = chooseClump(c, "start", t2.id); expect(viewClump(c, CTX).event!.fields.start!.value).toBe("2026-10-24T20:00");
+  });
+});
+
+describe("moving, replacing, and the object as data", () => {
+  it("moving changes only the order; replacing keeps the place and drops a choice that trusted the old piece", () => {
+    const a = frag("text", "First"), b = frag("text", "Second");
+    const c = merged(newClump("n", a), newClump("m", b));
+    expect(moveIngredient(c, b.id, -1).ingredients.map((f) => f.text)).toEqual(["Second", "First"]);
+    expect(moveIngredient(c, a.id, -1)).toBe(c);
+    const t1 = frag("time", "Friday 7 PM"), t2 = frag("time", "Friday 8 PM");
+    const ev = { ...merged(merged(one("place", "Dakshin"), newClump("x", t1)), newClump("y", t2)) }; const chosen = chooseClump(ev, "start", t1.id);
+    const fixed = replaceIngredient(chosen, t1.id, frag("time", "Saturday 9 PM"));
+    expect(fixed.ingredients.map((f) => f.text)).toEqual(["Dakshin", "Saturday 9 PM", "Friday 8 PM"]); expect(fixed.choices).toEqual({});
+  });
+  it("objectData: the type, what was read, what is missing, and each piece with its source", () => {
+    const c = merged(merged(one("place", "Dakshin", { value: { name: "Dakshin" } }), one("person", "Maya Rao")), one("time", "Friday 7:30 PM"));
+    const d = objectData(answerClump(c, "title", "Dinner"), CTX);
+    expect(d).toMatchObject({ format: "recast.object/1", type: "Event", fields: { title: "Dinner", location: "Dakshin", start: "2026-10-23T19:30" }, missing: [] });
+    expect(d.pieces).toEqual([expect.objectContaining({ kind: "place", text: "Dakshin", source: { app: "chrome", url: "https://example.com/place" } }), expect.objectContaining({ kind: "person" }), expect.objectContaining({ kind: "time" })]);
+    expect(JSON.parse(JSON.stringify(d))).toEqual(d);
   });
 });
 

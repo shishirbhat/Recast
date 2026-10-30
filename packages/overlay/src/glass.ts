@@ -138,7 +138,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   /** How this host opens a link (the desktop app: the person's default browser). Returns false when it could not. */
   openLink?: (url: string) => boolean;
   /** How this host names a value taken from what the person captured (the browser: "from the page"). */
-  capturedLabel?: string }): Glass {
+  capturedLabel?: string;
+  /** How this host puts text on the clipboard (the desktop app: the system clipboard). Default: the browser's. */
+  copyText?: (text: string) => Promise<boolean> }): Glass {
   const reduced = opts.reducedMotion ?? (() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const el = document.createElement("div"); el.className = "rg"; el.dataset["mode"] = "off"; el.hidden = true;
   el.setAttribute("role", "region"); el.setAttribute("aria-label", "Recast");
@@ -156,7 +158,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   let holdStart = 0;
   // Saved workflows: the name field is open; the list is open for managing; one entry being renamed or asked about.
   let saving = false, managing = false, renaming: string | null = null, deleting: string | null = null, draft = "", renamePending = false;
-  let replacing: string | null = null, discarding = false;   // a piece being corrected; "discard this?" asked once
+  let replacing: string | null = null, discarding = false;
+  let copied: "yes" | "no" | null = null;   // "Copy as data": done, or refused (then the data is shown to copy by hand)   // a piece being corrected; "discard this?" asked once
   const emit = (i: GlassIntent) => opts.onIntent(i);
 
   // ---- the light: a soft specular highlight that drifts toward the pointer, so the surface reads as curved glass -------
@@ -416,7 +419,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
         return m.text
         ? { title: "Add to it?", head: "", facts: "", body: `<p class="rg-hint">${esc(m.text)}</p>`, actions: "" }
         : { title: "Ready to place", head: `${iconBtn("inspect", "Look inside", LAYERS)}${close}`, facts: "", body: err,
-            actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>${recipeChips(m)}` };
+            actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>${recipeChips(m)}${copyData(m)}` };
       case "plan": case "running": case "ran": return runView(m, err, close);
       case "choosing": return { title: drill === "more" ? "More places" : drill ? `${esc(m.entries.find((e) => e.key === drill)?.label ?? "")}: which one?` : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
         actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button><button type="button" class="rg-btn ghost" data-act="back">Back</button>` };
@@ -431,7 +434,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           : `<button type="button" class="rg-btn ghost" data-act="discardStart">Discard</button>`;
         return { title: "Inside this object", head: close, facts: "",
           body: `${err}<ul class="rg-ingredients">${fs.map((f, i) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${tools(f, i)}${fix(f)}</li>`).join("")}</ul>${detail(m)}`,
-          actions: discarding ? discard : `${m.object.view.placeableAs.length ? `<button type="button" class="rg-btn" data-act="placeIt">Choose where it goes</button>` : ""}<button type="button" class="rg-btn${m.object.view.placeableAs.length ? " ghost" : ""}" data-act="back">Done</button>${discard}` };
+          actions: discarding ? discard : `${m.object.view.placeableAs.length ? `<button type="button" class="rg-btn" data-act="placeIt">Choose where it goes</button>` : ""}<button type="button" class="rg-btn${m.object.view.placeableAs.length ? " ghost" : ""}" data-act="back">Done</button>${discard}${copyData(m)}` };
       }
       case "confirm": return { title: "Combine them?", head: "", facts: "", body: `<p>${esc(m.confirm ?? "")}</p>`,
         actions: `<button type="button" class="rg-btn" data-act="mergeYes">Combine</button><button type="button" class="rg-btn ghost" data-act="mergeNo">Keep apart</button>` };
@@ -469,6 +472,11 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   }
 
   let shown = { title: "", head: "", facts: "", body: "", actions: "" };
+  /** Copy as data: the object as JSON (what was read, typed and is missing, every piece with its page). Nothing leaves the device. */
+  function copyData(m: Extract<ModuleModel, { object: unknown }>) {
+    const b = `<button type="button" class="rg-btn ghost" data-act="copyData">${copied === "yes" ? "Copied as data" : "Copy as data"}</button>`;
+    return copied === "no" ? `${b}<p class="rg-hint rg-copy-by-hand">The clipboard was not available here. Select it and copy it yourself:</p><textarea class="rg-data" readonly aria-label="The object as data">${esc(m.object.data)}</textarea>` : b;
+  }
   function copyBox(url: string, app: string) {
     return `<div class="rg-answer"><input class="rg-url" readonly value="${esc(url)}" aria-label="${esc(app)} address"><button type="button" class="rg-btn small ghost" data-copy="${esc(url)}">Copy</button></div>`;
   }
@@ -478,7 +486,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode !== "choosing") drill = null;
     if (m.mode === "plan" || m.mode === "ran" || m.mode === "preview" || m.mode === "succeeded") { if (m.save?.done) { saving = false; draft = ""; } }
     if (renamePending) { renamePending = false; if (!extra.error) renaming = null; }
-    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; if (m.mode !== "composed") managing = false; }
+    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; copied = null; if (m.mode !== "composed") managing = false; }
     if (replacing && !(m.mode === "inspecting" && m.object.ingredients.some((f) => f.id === replacing))) replacing = null;
     if (!("mine" in m) || !m.mine?.length) managing = false;
     model = m; el.dataset["mode"] = m.mode; el.hidden = m.mode === "off";
@@ -575,6 +583,12 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "renameCancel": renaming = null; update(model); return;
       case "deleteCancel": deleting = null; update(model); return;
       case "replaceCancel": replacing = null; update(model); return;
+      case "copyData": {
+        const data = "object" in model ? model.object.data : ""; if (!data) return;
+        const put = opts.copyText ?? ((t: string) => (navigator.clipboard ? navigator.clipboard.writeText(t).then(() => true, () => false) : Promise.resolve(false)));
+        void put(data).then((ok) => { copied = ok ? "yes" : "no"; update(model); if (!ok) el.querySelector<HTMLTextAreaElement>(".rg-data")?.select(); });
+        return;
+      }
       case "discardStart": discarding = true; update(model); el.querySelector<HTMLElement>("[data-act=discardCancel]")?.focus(); return;
       case "discardCancel": discarding = false; update(model); return;
       case "discardOk": discarding = false; return emit({ type: "discard" });
@@ -799,6 +813,8 @@ export const GLASS_CSS = `
 .rg-mini:disabled { opacity: .3; cursor: default; }
 .rg-mini:hover:not(:disabled), .rg-mini:focus-visible { background: var(--g-line); }
 .rg-replace { grid-column: 1 / -1; margin-top: 6px; }
+.rg-copy-by-hand { flex-basis: 100%; margin: 4px 0 0; }
+.rg-data { flex-basis: 100%; min-height: 120px; resize: vertical; border: 0; border-radius: 10px; padding: 8px 10px; background: var(--g-sel); color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); font: 11px/1.4 "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
 .rg-discard { flex-basis: 100%; margin: 0 0 4px; }
 .rg-link { grid-column: 3; grid-row: 1 / span 2; border: 0; background: none; color: var(--g-ink); text-decoration: underline; cursor: pointer; font-family: inherit; font-size: 12px; }
 .rg-check { color: var(--g-accent); stroke-dasharray: 20; stroke-dashoffset: 0; animation: rg-check 280ms ease-out; }
