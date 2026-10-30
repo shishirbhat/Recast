@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import type { ContractVersion, Integration, Member, ProjectState, RelayEvent, Task, Why } from "@/lib/types";
 import { Button, Pill, SectionLabel, StatePill, timeAgo } from "./ui";
 import { ProofPanel } from "./workbench/Proof";
+import { HandoffPanel } from "./workbench/Handoff";
 
 export type CoordTab = "tasks" | "contracts";
 
@@ -566,6 +567,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act, notify }
         </div>
       </details>
 
+      <HandoffPanel key={`ho:${task.id}:${task.updatedAt}`} taskId={task.id} me={me} members={state.members} closed={task.state === "completed" || task.state === "cancelled"} notify={notify} />
       {task.state !== "proposed" && <ProofPanel key={`${task.id}:${task.updatedAt}:${run?.status ?? ""}`} taskId={task.id} canEdit={canEdit} notify={notify} />}
 
       <details>

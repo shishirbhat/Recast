@@ -35,6 +35,8 @@ export interface AttentionInput {
   conflicts: { id: string; doc: string; createdAt?: string }[];
   tests: { id: string; command: string; status: string; stale: boolean; results: { status: string }[]; endedAt: string | null } | null;
   radar: RadarAlert[];
+  /** Handoffs addressed to this person and still open, and ones they made that were declined. */
+  handoffs?: { id: string; taskId: string; from: { id: string; name: string }; toName: string; status: string; createdAt: string; respondedAt: string | null; response: string | null; packet: { fromGiver: { note: string } } }[];
   db: DatabaseSync;
 }
 
@@ -101,6 +103,10 @@ export function attention(input: AttentionInput): AttentionItem[] {
     out.push({ key: `radar:${a.id}`, level: a.certainty === "known" && a.severity === "high" ? "block" : "review", title: a.title, why: `${a.certainty === "known" ? "Known" : "Suspected"}: ${a.detail}`, forYou: own ? reason(own, "") : "Owners integrate this work", target: a.tasks.length === 1 ? { kind: "task", id: a.tasks[0]! } : { kind: "coordination" }, action: a.tasks.length === 1 ? "Open task" : "Open radar", at: a.since });
   }
 
+  for (const h of input.handoffs ?? []) {
+    if (h.status === "open") out.push({ key: `handoff:${h.id}`, level: "review", title: `${h.from.name} handed you ${h.taskId}`, why: h.packet.fromGiver.note, forYou: "It's addressed to you: acknowledge to take it over, or decline", target: { kind: "task", id: h.taskId }, action: "Open handoff", at: h.createdAt });
+    else if (h.status === "declined") out.push({ key: `handoff-declined:${h.id}`, level: "review", title: `${h.toName} declined ${h.taskId}`, why: h.response ?? "", forYou: "You handed it over", target: { kind: "task", id: h.taskId }, action: "Open task", at: h.respondedAt });
+  }
   ensureAttentionTable(input.db);
   const seen = new Set((input.db.prepare("SELECT key FROM attention_seen WHERE member_id = ?").all(me.id) as { key: string }[]).map((r) => r.key));
   const rank = { block: 0, review: 1, info: 2 };

@@ -22,6 +22,7 @@ import type { TimelineKind } from "../analysis/timeline.ts";
 import { buildChangeset, changesetText, verifyChangeset } from "../analysis/changeset.ts";
 import type { Changeset } from "../analysis/changeset.ts";
 import { reproBundle, reproduce, reproText } from "../analysis/repro.ts";
+import { Handoffs, NEXT_AGENT, handoffText } from "../knowledge/handoff.ts";
 import type { ReproTarget } from "../analysis/repro.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { integrationReport } from "../analysis/explain.ts";
@@ -223,7 +224,19 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     return createHash("sha1").update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest("hex");
   };
   const freshGraph = () => (impact.graph.refresh(listProjectFiles(root)), impact.graph);
-  runs.attachContext((taskId) => records.contextText(taskId, freshGraph()));
+  const handoffs = new Handoffs(relay, root, records, {
+    changeset: (id) => buildChangeset(relay, root, resolve(opts.dbPath), id, runs.forTask(id), "Relay"),
+    repro: (evidenceId) => {
+      try {
+        return reproBundle(relay, root, { kind: "evidence", id: evidenceId });
+      } catch {
+        return null;
+      }
+    },
+    radar: () => computeRadar().alerts,
+  });
+  // An agent's briefing: accepted decisions and contracts, plus a handoff addressed to the next agent on the task.
+  runs.attachContext((taskId, runId) => [records.contextText(taskId, freshGraph()), handoffs.deliverToAgent(taskId, runId)].filter(Boolean).join("\n\n"));
   const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
   const preflight = () => {
     const tasks = relay.listTasks();
@@ -463,13 +476,41 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const kinds = (p.get("kinds") ?? "").split(",").filter(Boolean) as TimelineKind[];
       return json(res, 200, timeline(relay, root, { q: p.get("q") ?? undefined, task: p.get("task") ?? undefined, actor: p.get("actor") ?? undefined, kinds, since: p.get("since") ?? undefined, until: p.get("until") ?? undefined, limit: Number(p.get("limit") ?? 200) || 200 }));
     }
+    if (parts[0] === "handoffs") {
+      // Handoff packets: a task passed on with what is known (frozen from evidence) and the giver's own words.
+      if (method === "GET" && parts.length === 1) {
+        requireMember(req, "read");
+        return json(res, 200, { handoffs: handoffs.list({ taskId: url.searchParams.get("task") ?? undefined }) });
+      }
+      if (method === "GET" && parts[1]) {
+        requireMember(req, "read");
+        const h = handoffs.get(parts[1]);
+        return json(res, 200, { ...h, text: handoffText(h) });
+      }
+      if (method === "POST" && parts.length === 1) {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req);
+        const to = str(b.to, "to", 100);
+        const target = to === NEXT_AGENT ? null : members.get(to);
+        if (to !== NEXT_AGENT && (!target || target.role === "viewer")) throw new HttpError(400, "invalid", "Hand it to a project member who can edit, or to the next agent");
+        docs.flushAll();
+        return json(res, 201, handoffs.create({ taskId: str(b.task, "task", 100), to, toName: target?.name ?? "the next agent", note: typeof b.note === "string" ? b.note : "", questions: strList(b.questions, "questions"), nextSteps: strList(b.nextSteps, "nextSteps") }, m));
+      }
+      if (method === "POST" && parts[2] === "respond") {
+        const m = requireMember(req, "edit");
+        const b = await readBody(req);
+        if (b.status !== "acknowledged" && b.status !== "declined") throw new HttpError(400, "invalid", "status is acknowledged or declined");
+        return json(res, 200, handoffs.respond(parts[1]!, m, b.status, typeof b.reply === "string" ? b.reply : undefined));
+      }
+      if (method === "POST" && parts[2] === "withdraw") return json(res, 200, handoffs.withdraw(parts[1]!, requireMember(req, "edit")));
+    }
     if (parts[0] === "attention") {
       // The attention inbox: what needs this person, and why it is theirs. Seen marks are per member.
       const m = requireMember(req, "read");
       if (method === "GET") {
         const st = snapshot(m);
         const latestTests = tests.latest();
-        const items = attention({ me: m, tasks: st.tasks, contracts: st.contracts, conflicts: st.conflicts, tests: latestTests, radar: computeRadar().alerts, db: relay.db });
+        const items = attention({ me: m, tasks: st.tasks, contracts: st.contracts, conflicts: st.conflicts, tests: latestTests, radar: computeRadar().alerts, handoffs: handoffs.list().filter((h) => (h.status === "open" && h.to === m.id) || (h.status === "declined" && h.from.id === m.id)), db: relay.db });
         return json(res, 200, { computedAt: new Date().toISOString(), items });
       }
       if (method === "POST" && parts[1] === "seen") {

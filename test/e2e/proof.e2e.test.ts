@@ -76,3 +76,32 @@ test("viewers can read the proof but can't rerun or investigate, and are told wh
     assert.equal(await b.getAttribute("title"), "Viewers can't run checks or start investigations");
   }
 });
+
+test("handoff: an owner hands T-ui to an editor, who sees it in Needs you, reads the packet and takes it over", { skip, timeout: 120_000 }, async () => {
+  const ed = s.server.members.invite("Eddie", "editor");
+  const ola = await openTask("owner", "T-ui");
+  await ola.getByTestId("handoff").locator("summary").click();
+  await ola.getByRole("button", { name: "Hand over…" }).click();
+  const form = ola.getByTestId("handoff-form");
+  await form.getByLabel("Hand to").selectOption(ed.member.id);
+  await form.getByLabel("Note").fill("Fails until T-api lands; check them together.");
+  await form.getByLabel("Next steps").fill("Check together with T-api");
+  await form.getByRole("button", { name: "Hand over", exact: true }).click();
+  await ola.getByTestId("toast").filter({ hasText: "Handed T-ui over." }).waitFor();
+
+  const p = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await p.goto(`${s.server.url}/join#${ed.token}`);
+  await p.waitForURL(`${s.server.url}/`);
+  await p.getByTestId("attention").click();
+  await p.getByTestId("attention-item").filter({ hasText: /handed you T-ui/ }).getByRole("button", { name: "Open handoff" }).click();
+  const packet = p.getByTestId("handoff-packet");
+  await packet.waitFor({ timeout: 30_000 });
+  const text = await packet.innerText();
+  assert.match(text, /FAIL {2}node --test src\/ui\.test\.js {2}on exactly this change/);
+  assert.match(text, /Fails until T-api lands; check them together\./);
+  if (SHOTS) await p.screenshot({ path: `${SHOTS}/handoff-recipient.png` });
+  assert.equal(await p.getByRole("button", { name: "Decline" }).isDisabled(), true, "declining needs a reason");
+  await p.getByRole("button", { name: "Acknowledge and take over" }).click();
+  await p.getByTestId("toast").filter({ hasText: "You own T-ui now." }).waitFor();
+  assert.equal(s.server.relay.requireTask("T-ui").owner, ed.member.id);
+});

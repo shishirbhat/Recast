@@ -98,7 +98,7 @@ export class AgentRuns {
   private runs = new Map<string, AgentRun>();
   private procs = new Map<string, ChildProcess>();
   private combined = new Map<string, string>(); // integration id -> combined worktree
-  private context: ((taskId: string) => string) | null = null;
+  private context: ((taskId: string, runId: string) => string) | null = null;
   /** Set on shutdown: output and exits that arrive afterwards must not touch the (closed) database. */
   private closed = false;
   /** Runs being applied right now: a second apply of the same run is refused instead of racing the first. */
@@ -205,7 +205,7 @@ export class AgentRuns {
   }
 
   /** Supplies the task's reference context (accepted decisions, current contracts, warnings) for agent prompts. */
-  attachContext(fn: (taskId: string) => string): void {
+  attachContext(fn: (taskId: string, runId: string) => string): void {
     this.context = fn;
   }
 
@@ -226,7 +226,7 @@ export class AgentRuns {
     ].join(" ");
     let reference = "";
     try {
-      reference = this.context?.(run.taskId) ?? "";
+      reference = this.context?.(run.taskId, run.id) ?? "";
     } catch {
       reference = "";
     }
