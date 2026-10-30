@@ -6,6 +6,7 @@ import { ArrowLeft, Bot, Check, ChevronRight, CircleAlert, FileCode2, GitMerge, 
 import { api, ApiError } from "@/lib/api";
 import type { ContractVersion, Integration, Member, ProjectState, RelayEvent, Task, Why } from "@/lib/types";
 import { Button, Pill, SectionLabel, StatePill, timeAgo } from "./ui";
+import { ProofPanel } from "./workbench/Proof";
 
 export type CoordTab = "tasks" | "contracts";
 
@@ -68,7 +69,7 @@ export function Coordination({
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={task ? `t:${task.id}` : tab} initial={{ opacity: 0, x: task ? 12 : 0, y: task ? 0 : 4 }} animate={{ opacity: 1, x: 0, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }} className="p-3">
             {task ? (
-              <TaskDetail task={task} state={state} onBack={() => setSelected(null)} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} act={act} />
+              <TaskDetail task={task} state={state} onBack={() => setSelected(null)} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} act={act} notify={notify} />
             ) : tab === "tasks" ? (
               <TaskList state={state} onSelect={setSelected} act={act} newTaskNonce={newTaskNonce} />
             ) : (
@@ -300,7 +301,7 @@ function Ladder({ change }: { change: ChangeRec | null }) {
   );
 }
 
-function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task: Task; state: ProjectState; onBack: () => void; onOpenFile: (p: string) => void; onOpenDiff?: (task: string, path: string) => void; act: Act }) {
+function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act, notify }: { task: Task; state: ProjectState; onBack: () => void; onOpenFile: (p: string) => void; onOpenDiff?: (task: string, path: string) => void; act: Act; notify: (msg: string, tone?: "ok" | "danger") => void }) {
   const [why, setWhy] = useState<Why | null>(null);
   const [change, setChange] = useState<ChangeRec | null>(null);
   const [integration, setIntegration] = useState<Integration | null>(null);
@@ -564,6 +565,8 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act }: { task
           <Ladder change={change} />
         </div>
       </details>
+
+      {task.state !== "proposed" && <ProofPanel key={`${task.id}:${task.updatedAt}:${run?.status ?? ""}`} taskId={task.id} canEdit={canEdit} notify={notify} />}
 
       <details>
         <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />Scope{Object.keys(task.contracts).length ? " and contracts" : ""}</summary>

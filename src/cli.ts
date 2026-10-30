@@ -1,11 +1,11 @@
 import { parseArgs } from "node:util";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Relay } from "./core/engine.ts";
 import { RelayError, TASK_STATES } from "./core/types.ts";
 import type { Actor, TaskState } from "./core/types.ts";
-import { resolveCommit } from "./git.ts";
+import { repoRoot, resolveCommit } from "./git.ts";
 import { changeRecord } from "./analysis/change.ts";
 import { ImpactService } from "./analysis/impact.ts";
 import { Records } from "./knowledge/records.ts";
@@ -16,6 +16,8 @@ import { startServer } from "./server/server.ts";
 import { Members } from "./server/auth.ts";
 import { RemoteError, call, errorText, forgetSession, join as remoteJoin, loadSession } from "./remote.ts";
 import type { OwnedFile, Radar } from "./analysis/radar.ts";
+import { changesetText, verifyChangeset } from "./analysis/changeset.ts";
+import type { Changeset } from "./analysis/changeset.ts";
 import type { Integration } from "./core/types.ts";
 import type { Role } from "./server/auth.ts";
 
@@ -40,6 +42,12 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
                                                 Never applies. Exit 0 passed, 1 blocked, 2 usage, 3 could not complete
   relay radar [--json]                          Conflict Radar from the running server: what could go wrong between pieces
                                                 of work, known vs suspected, with evidence. Exit 0 none high, 1 high alerts
+  relay changeset <task> [--out FILE] [--json]  proof-carrying changeset from the running server: base, patch, every check with
+                                                the exact files it ran on, contracts, warnings; --out writes the JSON file
+  relay changeset verify <file> [--cwd DIR]     check a changeset against a clone: digest, base, patch, and which checks ran on
+                                                exactly this change. Exit 0 verified, 1 not verified
+  relay repro <evidence-id> [--run]             rebuild the files a failed check ran on and show how to rerun it; --run reruns it on
+  relay repro --integration ID --command CMD [--run]   the server and says reproduced / different failure / did not reproduce
   relay ownership [--json]                      changed files with the tasks that own them and who changed them, where
   relay remote join <invite-link>              sign this checkout in to a running Relay server (one-time invite)
   relay remote status | leave                  which server and member this checkout uses / sign out
@@ -82,6 +90,9 @@ const { values: o, positionals: args } = parseArgs({
     root: { type: "string" },
     agent: { type: "string" },
     out: { type: "string" },
+    run: { type: "boolean" },
+    integration: { type: "string" },
+    command: { type: "string" },
     port: { type: "string" },
     host: { type: "string" },
     role: { type: "string" },
@@ -179,6 +190,9 @@ async function main(): Promise<void> {
   }
   if (cmd === "integrate" && sub === "together") return integrateTogether(need(a1, "task ids (comma-separated)"));
   if (cmd === "radar") return radarCmd();
+  if (cmd === "changeset" && sub === "verify") return changesetVerify(need(a1, "changeset file"));
+  if (cmd === "changeset") return changesetCmd(need(sub, "task id"));
+  if (cmd === "repro") return reproCmd(sub);
   if (cmd === "ownership") return ownershipCmd();
   if (cmd === "agent-config") {
     if (sub !== "claude-code") throw new RelayError("usage", `Unknown agent ${sub}`);
@@ -392,6 +406,41 @@ async function radarCmd(): Promise<void> {
         .join("\n"),
     );
   process.exitCode = r.alerts.some((a) => a.severity === "high") ? 1 : 0;
+}
+
+async function changesetCmd(task: string): Promise<void> {
+  const cs = await remoteGet<Changeset>(`/tasks/${encodeURIComponent(task)}/changeset`);
+  if (o.out) writeFileSync(o.out, JSON.stringify(cs, null, 2) + "\n");
+  if (o.json && !o.out) console.log(JSON.stringify(cs, null, 2));
+  else console.log(changesetText(cs) + (o.out ? `\n\nWritten to ${o.out}` : ""));
+}
+
+function changesetVerify(file: string): void {
+  let cs: Changeset;
+  try {
+    cs = JSON.parse(readFileSync(file, "utf8")) as Changeset;
+  } catch (e) {
+    throw new RelayError("usage", `Can't read ${file} as a changeset: ${(e as Error).message}`);
+  }
+  if (cs?.format !== "relay.changeset/1") throw new RelayError("usage", `${file} is not a Relay changeset (format relay.changeset/1)`);
+  const check = verifyChangeset(cs, repoRoot(resolve(o.cwd ?? ".")));
+  if (o.json) console.log(JSON.stringify(check, null, 2));
+  else console.log(changesetText(cs, check));
+  process.exitCode = check.verdict === "verified" ? 0 : 1;
+}
+
+async function reproCmd(evidence: string | undefined): Promise<void> {
+  const target: Record<string, string> = o.integration ? { integration: o.integration, command: need(o.command, "--command") } : { evidence: need(evidence, "evidence id (or --integration ID --command CMD)") };
+  const q = new URLSearchParams(target).toString();
+  if (o.run) {
+    const s = loadSession(sessionFile);
+    if (!s) throw new RemoteError(null, "not signed in to a Relay server. Ask an owner for an invite link, then: relay remote join <invite-link>");
+    const r = await call<{ outcome: string; exitCode: number | null; failingTests: string[] }>(s.server, s.cookie, "POST", "/repro/run", target);
+    if (r.status !== 200) throw new RemoteError(r.status, `${s.server} refused (HTTP ${r.status}): ${errorText(r.body, "no reason given")}`);
+  }
+  const b = await remoteGet<{ text: string; reproducibility: string }>(`/repro?${q}`);
+  if (o.json) console.log(JSON.stringify(b, null, 2));
+  else console.log(b.text);
 }
 
 async function ownershipCmd(): Promise<void> {

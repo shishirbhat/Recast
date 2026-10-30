@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { api, join as joinAs } from "./collab-helpers.ts";
@@ -139,5 +139,36 @@ test("CLI: relay radar prints the alerts with known/suspected and evidence, exit
     assert.equal(r.code, 0, r.out);
   } finally {
     await none.server.close();
+  }
+});
+
+test("CLI: relay changeset writes the file and relay changeset verify checks it offline; relay repro --run reruns a failure", async () => {
+  const db = freshDb();
+  const s = await twoAgentTasks(COMPATIBLE);
+  try {
+    const { token } = s.server.members.invite("Cli", "editor");
+    assert.equal((await cli(db, "remote", "join", `${s.server.url}/join#${token}`)).code, 0);
+    const out = join(mkdtempSync(join(tmpdir(), "relay-cs-")), "T-api.json");
+    const r = await cli(db, "changeset", "T-api", "--out", out);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^Relay changeset for T-api: API returns fullName/);
+    assert.match(r.out, /PASS {2}node --test src\/server\.test\.js .* on exactly this change/);
+    const ok = await cli(db, "changeset", "verify", out, "--cwd", s.repo);
+    assert.equal(ok.code, 0, ok.out);
+    assert.match(ok.out, /Verification against this repository: VERIFIED/);
+    const cs = JSON.parse(readFileSync(out, "utf8"));
+    cs.change.patch = cs.change.patch.replace("fullName", "full_name");
+    writeFileSync(out, JSON.stringify(cs));
+    const bad = await cli(db, "changeset", "verify", out, "--cwd", s.repo);
+    assert.equal(bad.code, 1);
+    assert.match(bad.out, /NOT VERIFIED[\s\S]*digest mismatch/);
+
+    const failing = s.server.relay.evidence("T-ui").filter((e) => e.kind === "command" && e.exitCode !== 0).at(-1)!;
+    const rep = await cli(db, "repro", failing.id, "--run");
+    assert.equal(rep.code, 0, rep.err);
+    assert.match(rep.out, /^Failure: node --test src\/ui\.test\.js \(exit 1\) for T-ui/);
+    assert.match(rep.out, /Reproducibility: reproduced \(1 attempt/);
+  } finally {
+    await s.server.close();
   }
 });
