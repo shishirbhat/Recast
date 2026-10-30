@@ -16,6 +16,10 @@ import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { coordination } from "../analysis/coordination.ts";
 import { ownership, radar } from "../analysis/radar.ts";
+import { buildChangeset, changesetText, verifyChangeset } from "../analysis/changeset.ts";
+import type { Changeset } from "../analysis/changeset.ts";
+import { reproBundle, reproduce, reproText } from "../analysis/repro.ts";
+import type { ReproTarget } from "../analysis/repro.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { integrationReport } from "../analysis/explain.ts";
 import { syntaxProblems } from "../analysis/syntax.ts";
@@ -502,6 +506,39 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         }
       }
     }
+    if (method === "POST" && parts[0] === "changesets" && parts[1] === "verify") {
+      // Check a changeset (from this project or another clone of it) against this server's repository.
+      requireMember(req, "read");
+      const cs = (await readBody(req, 32 * 1024 * 1024)) as unknown as Changeset;
+      if (cs?.format !== "relay.changeset/1" || typeof cs.digest !== "string" || !cs.base || !cs.change) throw new HttpError(400, "invalid", "Not a Relay changeset (format relay.changeset/1)");
+      const check = verifyChangeset(cs, root);
+      return json(res, 200, { check, text: changesetText(cs, check) });
+    }
+    if (parts[0] === "repro") {
+      // Reproduction from failure evidence: rebuild the exact files a failed check ran on and run it again.
+      const target = (q: Record<string, unknown>): ReproTarget =>
+        typeof q.evidence === "string" && q.evidence ? { kind: "evidence", id: q.evidence } : typeof q.integration === "string" && typeof q.command === "string" ? { kind: "integration", id: q.integration, command: q.command } : (() => { throw new HttpError(400, "invalid", "Name the failure: evidence, or integration and command"); })();
+      if (method === "GET" && parts.length === 1) {
+        requireMember(req, "read");
+        const b = reproBundle(relay, root, target(Object.fromEntries(url.searchParams)));
+        return json(res, 200, { ...b, text: reproText(b) });
+      }
+      if (method === "POST" && parts[1] === "run") {
+        const m = requireMember(req, "edit");
+        return json(res, 200, await reproduce(relay, root, target(await readBody(req)), m.name));
+      }
+      if (method === "POST" && parts[1] === "investigate") {
+        // Open an investigation that starts from the failure: the reproduction recipe and the failing tests, cited.
+        const m = requireMember(req, "edit");
+        const t = target(await readBody(req));
+        const b = reproBundle(relay, root, t);
+        const inv = records.createInvestigation({ title: `${b.command} failed for ${b.tasks.join(" + ")}`, description: `Started from the failure recorded ${b.recordedAt} (exit ${b.exitCode ?? "timeout"}). Reproducibility: ${b.reproducibility.replace(/-/g, " ")}.`, taskId: b.tasks.length === 1 ? b.tasks[0] : undefined }, m.name);
+        records.addEntry(inv.id, { kind: "repro", body: reproText(b), sources: t.kind === "evidence" ? [{ type: "evidence", ref: t.id }] : [] }, m.name);
+        for (const ft of b.failingTests) records.addEntry(inv.id, { kind: "failing_test", body: `${ft.name}${ft.message ? `: ${ft.message}` : ""}`, sources: ft.file && readText(root, ft.file) !== null ? [{ type: "test", ref: ft.file }] : [] }, m.name);
+        if (b.excerpt.trim()) records.addEntry(inv.id, { kind: "log", body: b.excerpt }, m.name);
+        return json(res, 201, inv);
+      }
+    }
     if (parts[0] === "investigations") {
       const sources = (v: unknown): Source[] => {
         if (v === undefined) return [];
@@ -903,6 +940,13 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         }
         const base = task.baseCommit ?? "HEAD";
         return json(res, 200, { path, before: showAt(root, base, path) ?? "", after: docs.get(path)?.text.toString() ?? readText(root, path) ?? "", beforeLabel: `base ${base.slice(0, 7)}`, afterLabel: "shared workspace" });
+      }
+      if (method === "GET" && parts[2] === "changeset") {
+        // A proof-carrying changeset: the change, its base, and the evidence with the exact tree each check ran on.
+        const m = requireMember(req, "read");
+        docs.flushAll();
+        const cs = buildChangeset(relay, root, resolve(opts.dbPath), id, runs.forTask(id), m.name);
+        return json(res, 200, url.searchParams.get("format") === "text" ? { text: changesetText(cs) } : cs);
       }
       if (method === "GET" && parts[2] === "change") {
         requireMember(req, "read");
