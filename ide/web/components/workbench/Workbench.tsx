@@ -39,6 +39,7 @@ import type { TerminalAvailability } from "./Terminal";
 import { InviteDialog } from "./InviteDialog";
 import { AttentionButton, useAttention } from "./Attention";
 import { TimelineView } from "./Timeline";
+import { SetupView } from "./Setup";
 import { TestingView, TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { WelcomePage } from "./Welcome";
 import { LineHistory, PresenceBar } from "./Presence";
@@ -56,8 +57,9 @@ type View = "explorer" | "search" | "scm" | "run" | "testing" | "extensions" | "
 const WELCOME = "welcome:";
 const COORD = "relay:coordination";
 const TIMELINE = "relay:timeline";
-const isFileTab = (t: string) => !t.startsWith("diff:") && t !== WELCOME && t !== COORD && t !== TIMELINE;
-const tabLabel = (t: string) => (t === WELCOME ? "Welcome" : t === COORD ? "Coordination" : t === TIMELINE ? "Flight Recorder" : parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!);
+const SETUP = "relay:setup";
+const isFileTab = (t: string) => !t.startsWith("diff:") && t !== WELCOME && t !== COORD && t !== TIMELINE && t !== SETUP;
+const tabLabel = (t: string) => (t === WELCOME ? "Welcome" : t === COORD ? "Coordination" : t === TIMELINE ? "Flight Recorder" : t === SETUP ? "Project Setup" : parseDiffTab(t) ? diffTabLabel(parseDiffTab(t)!) : t.split("/").pop()!);
 type RightTab = "agent" | CoordTab | "records";
 
 interface Layout {
@@ -258,6 +260,7 @@ const OPEN_VIEWS: [string, string, string][] = [
   ["Relay", "Agents", "panel.agents"],
   ["Relay", "Coordination", "relay.coordination"],
   ["Relay", "Flight Recorder", "relay.timeline"],
+  ["Relay", "Project Setup", "relay.setup"],
   ["Relay", "Tasks", "relay.tasks"],
   ["Relay", "Contracts", "relay.contracts"],
   ["Relay", "Investigations and Decisions", "relay.records"],
@@ -274,7 +277,7 @@ const MENUS: [string, MenuEntry[]][] = [
   ["File", ["file.newFile", "file.newFolder", "-", "palette.files", "file.openRecent", "-", "file.save", "file.saveAll", "-", "file.autoSave", "view.settings", "preferences.keyboardShortcuts", "preferences.colorTheme", "-", "file.copyRelativePath", "file.revealInExplorer", "-", "view.closeEditor", "view.closeAllEditors", "-", "account.signOut"]],
   ["Edit", ["edit.undo", "edit.redo", "-", "edit.cut", "edit.copy", "edit.paste", "-", "edit.find", "edit.replace", "-", "search.inFiles", "search.replaceInFiles", "-", "edit.toggleLineComment", "edit.toggleBlockComment", "-", "edit.formatDocument", "edit.formatSelection", "edit.trimWhitespace"]],
   ["Selection", ["selection.all", "selection.expand", "selection.shrink", "-", "edit.copyLineUp", "edit.copyLineDown", "edit.moveLineUp", "edit.moveLineDown", "edit.duplicateSelection", "-", "selection.cursorAbove", "selection.cursorBelow", "selection.cursorsLineEnds", "selection.nextOccurrence", "selection.allOccurrences", "-", "selection.line"]],
-  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "editor.split", "editor.moveToOtherGroup", "editor.focusGroup1", "editor.focusGroup2", "editor.closeGroup", "-", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "relay.coordination", "relay.timeline", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
+  ["View", ["palette.commands", "view.openView", "-", "layout.toggleSidebar", "layout.toggleSecondary", "layout.togglePanel", "-", "editor.split", "editor.moveToOtherGroup", "editor.focusGroup1", "editor.focusGroup2", "editor.closeGroup", "-", "editor.toggleMinimap", "editor.toggleLineNumbers", "editor.toggleIndentGuides", "editor.toggleWhitespace", "editor.wrap", "editor.authors", "-", "editor.zoomIn", "editor.zoomOut", "editor.zoomReset", "-", "view.explorer", "view.search", "view.scm", "view.run", "view.testing", "view.extensions", "view.community", "-", "panel.problems", "panel.output", "terminal.toggle", "tests.show", "-", "relay.coordination", "relay.timeline", "relay.setup", "view.relay", "panel.agents", "panel.impact", "attention.show", "-", "theme.toggle"]],
   ["Go", ["go.back", "go.forward", "-", "go.switchEditor", "go.nextEditor", "go.previousEditor", "-", "palette.files", "go.symbol", "go.workspaceSymbol", "-", "go.line", "go.bracket", "-", "go.nextProblem", "go.previousProblem"]],
   ["Run", ["run.debug", "run.withoutDebugging", "-", "run.toggleBreakpoint", "run.addConfiguration", "-", "tests.runAll", "tests.rerunFailed", "tests.stop", "-", "relay.runActiveTask"]],
   ["Terminal", ["terminal.new", "terminal.toggle", "-", "terminal.runTask", "terminal.runActiveFile", "terminal.runSelection"]],
@@ -1136,6 +1139,7 @@ export function Workbench() {
       { id: "relay.tasks", category: "Relay", title: "Show Tasks", run: () => (showRight("tasks"), setSelectedTask(null)) },
       { id: "relay.contracts", category: "Relay", title: "Show Contracts", run: () => (showRight("contracts"), setSelectedTask(null)) },
       { id: "relay.timeline", category: "Relay", title: "Show Flight Recorder", keywords: ["timeline", "history", "log", "audit", "what happened", "events"], run: () => (setTabs((t) => (t.includes(TIMELINE) ? t : [...t, TIMELINE])), setActive(TIMELINE)) },
+      { id: "relay.setup", category: "Relay", title: "Show Project Setup", keywords: ["onboarding", "setup", "discover", "test command", "ci", "install"], run: () => (setTabs((t) => (t.includes(SETUP) ? t : [...t, SETUP])), setActive(SETUP)) },
       { id: "relay.records", category: "Relay", title: "Show Investigations and Decisions", keywords: ["bug", "debug", "investigation", "decision", "adr", "knowledge"], run: () => showRight("records") },
       { id: "relay.newTask", category: "Relay", title: "New Task…", when: () => viewOnly, run: () => (showRight("tasks"), setSelectedTask(null), setNewTaskNonce((n) => n + 1)) },
       {
@@ -1271,6 +1275,8 @@ export function Workbench() {
         )}
         {gActive === COORD ? (
           <CoordinationView tick={events.length} members={s.members} role={me!.role} onOpenTask={showTask} onOpenFile={open} onOpenDiff={(task, p) => openDiff({ kind: "task", task, path: p })} notify={notify} onNewTask={() => (showRight("tasks"), setSelectedTask(null), setNewTaskNonce((n) => n + 1))} />
+        ) : gActive === SETUP ? (
+          <SetupView role={me!.role} onOpenFile={open} notify={notify} />
         ) : gActive === TIMELINE ? (
           <TimelineView tick={events.length} onOpenTask={showTask} />
         ) : gActive === WELCOME ? (

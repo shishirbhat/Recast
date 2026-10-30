@@ -24,6 +24,7 @@ import type { Changeset } from "../analysis/changeset.ts";
 import { reproBundle, reproduce, reproText } from "../analysis/repro.ts";
 import { Handoffs, NEXT_AGENT, handoffText } from "../knowledge/handoff.ts";
 import { Shares, sharePage } from "./shares.ts";
+import { Onboarding, onboardingFiles } from "../analysis/onboarding.ts";
 import type { ShareKind } from "./shares.ts";
 import type { ReproTarget } from "../analysis/repro.ts";
 import { changeRecord } from "../analysis/change.ts";
@@ -238,6 +239,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     radar: () => computeRadar().alerts,
   });
   const shares = new Shares(relay.db);
+  const onboarding = new Onboarding(relay.db, root);
   // An agent's briefing: accepted decisions and contracts, plus a handoff addressed to the next agent on the task.
   runs.attachContext((taskId, runId) => [records.contextText(taskId, freshGraph()), handoffs.deliverToAgent(taskId, runId)].filter(Boolean).join("\n\n"));
   const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
@@ -478,6 +480,28 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const p = url.searchParams;
       const kinds = (p.get("kinds") ?? "").split(",").filter(Boolean) as TimelineKind[];
       return json(res, 200, timeline(relay, root, { q: p.get("q") ?? undefined, task: p.get("task") ?? undefined, actor: p.get("actor") ?? undefined, kinds, since: p.get("since") ?? undefined, until: p.get("until") ?? undefined, limit: Number(p.get("limit") ?? 200) || 200 }));
+    }
+    if (parts[0] === "onboarding") {
+      // Project setup, discovered from the repository and offered as proposals; owners decide, anyone who edits can try.
+      if (method === "GET" && parts.length === 1) {
+        requireMember(req, "read");
+        return json(res, 200, { proposals: onboarding.proposals(onboardingFiles(root)), defaultVerify: onboarding.defaultVerify(onboardingFiles(root)) });
+      }
+      if (method === "POST" && parts[2] === "decide") {
+        const m = requireMember(req, "admin");
+        const b = await readBody(req);
+        if (!["accepted", "dismissed", "proposed"].includes(String(b.status))) throw new HttpError(400, "invalid", "status is accepted, dismissed or proposed");
+        const p = onboarding.decide(decodeURIComponent(parts[1]!), onboardingFiles(root), b.status as "accepted", m.name);
+        relay.record("onboarding.decided", actorFor(m), { id: p.id, kind: p.kind, value: p.value, status: p.status });
+        return json(res, 200, p);
+      }
+      if (method === "POST" && parts[2] === "try") {
+        const m = requireMember(req, "edit");
+        docs.flushAll();
+        const p = await onboarding.tryCommand(decodeURIComponent(parts[1]!), onboardingFiles(root), m.name);
+        relay.record("onboarding.tried", actorFor(m), { id: p.id, command: p.value, exitCode: p.trial?.exitCode ?? null });
+        return json(res, 200, p);
+      }
     }
     if (parts[0] === "shares") {
       // Shareable run reports: owners make, list and revoke read-only links to frozen reports.

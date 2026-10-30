@@ -187,6 +187,9 @@ const inputCls = "h-[26px] w-full rounded-sm border border-rule bg-editor px-2 t
 
 function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone: () => void }) {
   const accepted = state.contracts.filter((c) => c.history.some((h) => h.status === "accepted"));
+  // The project's accepted default checks (Project Setup) start the list; the owner can change it per task.
+  const [defaults, setDefaults] = useState<string[] | null>(null);
+  useEffect(() => void api<{ defaultVerify: string[] }>("GET", "/onboarding").then((r) => setDefaults(r.defaultVerify), () => setDefaults([])), []);
   return (
     <motion.form
       initial={{ opacity: 0, height: 0 }}
@@ -201,7 +204,7 @@ function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone
           objective: String(f.get("objective")).trim(),
           scope: String(f.get("scope")).split(",").map((s) => s.trim()).filter(Boolean),
           contracts: f.getAll("contracts").map(String),
-          ...(state.me.role === "owner" && String(f.get("verify")).trim() ? { verify: [String(f.get("verify")).trim()] } : {}),
+          ...(state.me.role === "owner" && String(f.get("verify") ?? "").trim() ? { verify: String(f.get("verify")).split("\n").map((l) => l.trim()).filter(Boolean) } : {}),
         };
         void act(() => api("POST", "/tasks", body), `Created ${body.id}. An owner approves it before work starts.`).then(onDone);
       }}
@@ -230,8 +233,8 @@ function NewTask({ state, act, onDone }: { state: ProjectState; act: Act; onDone
         </fieldset>
       )}
       {state.me.role === "owner" && (
-        <Field label="Verification command (runs on this machine; owners only)">
-          <input name="verify" placeholder="npm test" className={`${inputCls} font-mono`} />
+        <Field label={`Verification commands, one per line (run on this machine; owners only)${defaults?.length ? " · from Project Setup" : ""}`}>
+          <textarea key={defaults?.join("\n") ?? "loading"} name="verify" rows={2} defaultValue={defaults?.join("\n") ?? ""} placeholder="npm test" className={`${inputCls} h-auto py-1 font-mono`} />
         </Field>
       )}
       <div className="flex justify-end gap-2 pt-1">
