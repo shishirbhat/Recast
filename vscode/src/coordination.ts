@@ -60,6 +60,8 @@ export class CoordinationTree implements vscode.TreeDataProvider<Node> {
   readonly onDidChangeTreeData = this.changed.event;
   private tasks: CoordTask[] | null = null;
   private alerts: RadarAlert[] | null = null;
+  /** Settles when the radar requested by the latest refresh has arrived (or failed). */
+  radarDone: Promise<void> = Promise.resolve();
   private error: string | null = null;
   conn: Connection | null = null;
 
@@ -71,8 +73,15 @@ export class CoordinationTree implements vscode.TreeDataProvider<Node> {
       try {
         this.tasks = (await this.conn.request<{ tasks: CoordTask[] }>("GET", "/coordination")).tasks;
         this.error = null;
-        // The radar is extra: if it can't be read, the tasks still show.
-        this.alerts = await this.conn.request<{ alerts: RadarAlert[] }>("GET", "/radar").then((r) => r.alerts, () => null);
+        // The radar takes longer to compute and is extra: the tasks show (and commands go on) without waiting for it,
+        // and if it can't be read, the tasks still show.
+        const conn = this.conn;
+        this.radarDone = conn.request<{ alerts: RadarAlert[] }>("GET", "/radar").then(
+          (r) => {
+            if (this.conn === conn) (this.alerts = r.alerts), this.changed.fire();
+          },
+          () => {},
+        );
       } catch (e) {
         this.error = (e as Error).message;
       }

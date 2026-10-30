@@ -557,7 +557,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<RelayApi> 
     version: relay.version,
     syncFor: (uri) => relay.syncFor(uri),
     statusText: () => relay.statusText(),
-    refreshCoordination: () => relay.tree.refresh(),
+    refreshCoordination: () => relay.tree.refresh().then(() => relay.tree.radarDone),
     sharedFiles: () => [...relay.files],
     settled: () => relay.settled(),
     compareWithShared: () => relay.compare(),
