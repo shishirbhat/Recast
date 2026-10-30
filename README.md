@@ -6,7 +6,7 @@ Relay is a provider-neutral coordination engine for human developers and coding 
 
 This branch (`relay`) is an orphan branch. It shares no history with Recast.
 
-## Status (2026-10-27)
+## Status (2026-10-30)
 
 | Component | Status |
 |---|---|
@@ -28,6 +28,12 @@ This branch (`relay`) is an orphan branch. It shares no history with Recast.
 | VS Code extension (`vscode/`): join, live shared files, presence, own-edit undo, Coordination view, Apply, Check Together | **Implemented and tested** in a real VS Code against a real server (`cd vscode && npm test`). Check Together's approval step is tested through the API, not by clicking its modal |
 | Explanation of a blocked combined check (confirmed / likely / unknown, from the dependency map, the task diffs, contracts and the failing tests) | **Implemented and tested** (deterministic: `test/explain.test.ts`, `test/integration-proof.test.ts`; real Claude Code: 3 trials in `docs/evidence/integration-proof.md`) |
 | Check Together from the CLI (`relay integrate together`) | **Implemented and tested** (the real CLI binary against a real server, simulated agents) |
+| Conflict Radar and changed-file ownership map (`relay radar`, `relay ownership`, Coordination tab, VS Code Relay view) | **Implemented and tested** (API, CLI, browser E2E, VS Code suite; simulated agents). Interface checks are static (JS/TS only) and marked suspected until a combined check settles them |
+| Proof-carrying changesets (`relay changeset`, `relay changeset verify`) and reproduction from failure evidence (`relay repro`) | **Implemented and tested**, including verification in a fresh clone and a forged patch being caught (simulated agents) |
+| Agent runs and combined worktrees survive a server restart; retried or overlapping apply/approve; failed writes after approval resume | **Implemented and tested** |
+| Flight recorder (`relay timeline`), attention inbox (per person, seen marks), decision changes marking affected tasks | **Implemented and tested** (API, CLI, browser E2E) |
+| Handoff packets, shareable read-only report links, project setup discovery | **Implemented and tested** (API, browser E2E). Not used by real teams yet |
+| Relay Arena (`relay arena`) | **Four simulated scenarios**, ground truth measured by the project's tests: without Relay 1 broken change reaches the project, with Relay 0, no false alarms. `--real` runs the real-agent trials (costs model usage) |
 | Validation with independent users | **None** |
 
 The first milestone (two different real agents, a caught contract mismatch, a verified integrated result, and less coordination effort than the baseline) **has not been reached**. One provider works end to end. The second provider, worktree-based orchestration and the baseline measurement are still open.
@@ -55,6 +61,20 @@ relay check T-ui --cwd . && relay verify T-ui --cwd . && relay task complete T-u
 # tasks that share a contract complete together:
 relay integrate check T-ui,T-api --cwd . --verify "npm run test:integration"
 relay integrate approve <integration-id> --cwd .
+```
+
+### The trust layer from the command line
+
+With a session on a running server (`relay remote join <invite-link>`):
+
+```sh
+relay radar                         # what could go wrong between pieces of work: known vs suspected, with evidence (exit 1 on high)
+relay ownership                     # changed files, the tasks that own them, who changed them and where
+relay changeset T-api --out T-api.json   # base, patch, every check with the exact files it ran on, warnings, digest
+relay changeset verify T-api.json --cwd /any/clone   # offline: rebuilds base + patch and recomputes which checks cover it
+relay repro <evidence-id> --run     # rebuild the exact files a failed check ran on and run it again
+relay timeline --task T-api         # the flight recorder
+relay arena                         # the benchmark: the same pairs of changes without and with Relay, scored
 ```
 
 ### Check Together against a running Relay server

@@ -128,6 +128,27 @@ On editor independence, the core (engine, hook, MCP, CLI, server) has no editor 
    - a second agent (Codex needs an OpenAI key, which is not set up);
    - outcome rates reported rather than single scenarios.
 
+### Progress (2026-10-30)
+
+- **B (rehearsal), hardened.**
+  - Agent runs and combined worktrees survive restarts.
+  - Retries after an uncertain outcome are idempotent.
+  - Apply and approve can't overlap.
+  - A failed write after approval resumes.
+  - The Conflict Radar warns before a rehearsal, and a rehearsal's result settles the radar's suspicions.
+  - The Arena turns the proof into a scored benchmark that also counts false alarms; four simulated scenarios so far.
+- **A (passport), made portable.**
+  - A changeset carries its base, patch and the exact tree every check ran on, and can be verified offline in any clone.
+  - Failures can be rebuilt from their recorded tree and rerun, and are reported as reproduced or not.
+- **C (graph), partly.**
+  - Decision changes now mark the live tasks they touch.
+  - The radar uses the dependency map across agent worktrees.
+  - Relevant-test selection and automatic rechecks are still open.
+- **Still open, and needing the owner:**
+  - real-agent evidence beyond the one designed scenario (spend approval);
+  - a second agent (OpenAI key);
+  - independent users.
+
 ## Moat (hypotheses to test, not facts)
 
 - **Integrations:** Relay works with every agent and editor a team already uses.
