@@ -39,7 +39,18 @@ Principles kept throughout:
 
 ## Results
 
-(Being filled in from the second full regression run, which is in progress.)
+Two full regression runs on 2026-10-30, all three suites each time:
+
+| Run | Unit (`npm test`) | Browser E2E (`RELAY_E2E=1`) | VS Code extension (real VS Code, xvfb) |
+|---|---|---|---|
+| 1 | 149 pass; `terminal.test.ts` timed out once under full load (passes alone, 3/3) | 67/70: three regressions from the new inbox and retry behaviour | 35/36: Check Together picker slow (radar) |
+| 2, after the fixes above | **149/149** | **70/70** | **36/36** |
+
+Over the mission: the unit tests grew from 117 to 149, browser E2E from 60 to 70, and the VS Code suite from 35 to 36. The install harness (`vscode: npm run test:install`) was not rerun; the extension's packaging didn't change.
+
+Relay Arena (simulated agents; ground truth measured): broken changes that reached the project were 1 without Relay and 0 with Relay, with 0 false alarms, over 4 scenarios.
+
+Screenshots: `docs/evidence/{radar-2026-10-29,proof-2026-10-30,recorder-2026-10-30,handoff-2026-10-30,setup-2026-10-30}/`.
 
 ## What is not proven
 
