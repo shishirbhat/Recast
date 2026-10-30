@@ -858,12 +858,13 @@ export function Workbench() {
     [showTask, showRight, openPanel, openDiff],
   );
   const { items: attentionAll, setSeen: setAttentionSeen } = useAttention(`${events.length}:${testRun?.id ?? ""}:${testRun?.status ?? ""}`, attentionGo);
-  const attention = useMemo(() => attentionAll.filter((a) => !a.seen), [attentionAll]);
+  const attention = useMemo(() => (attentionAll ?? []).filter((a) => !a.seen), [attentionAll]);
   // A new situation that needs a person raises one quiet notification; routine activity never does. Items already
   // present when the workbench opened are only listed, not announced.
   const announced = useRef<Set<string> | null>(null);
   useEffect(() => {
-    if (!state) return;
+    // The baseline ("already there when the workbench opened") is taken once the server has answered, not before.
+    if (!state || attentionAll === null) return;
     const keys = attention.filter((a) => a.level !== "info").map((a) => a.key);
     if (announced.current === null) return void (announced.current = new Set(keys));
     for (const a of attention) {
@@ -874,7 +875,7 @@ export function Workbench() {
     // A notice whose situation has been dealt with (approved, resolved, rerun) leaves on its own.
     const live = new Set(attention.map((a) => a.key));
     setToasts((t) => (t.some((x) => x.key && !live.has(x.key)) ? t.filter((x) => !x.key || live.has(x.key)) : t));
-  }, [attention, state, notify]);
+  }, [attention, attentionAll, state, notify]);
   /** The live task whose scope covers a file: mine first, then whatever is moving. */
   const taskFor = useCallback(
     (path: string | null) => {

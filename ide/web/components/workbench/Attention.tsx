@@ -36,16 +36,18 @@ export interface AttentionActions {
 }
 
 /** The server's inbox for this person, refreshed shortly after project activity (`tick`). */
-export function useAttention(tick: unknown, go: AttentionActions): { items: AttentionItem[]; setSeen: (keys: string[], seen: boolean) => void } {
-  const [raw, setRaw] = useState<ServerItem[]>([]);
+export function useAttention(tick: unknown, go: AttentionActions): { items: AttentionItem[] | null; setSeen: (keys: string[], seen: boolean) => void } {
+  // null until the server has answered: "nothing needs you" is a claim, not a default.
+  const [raw, setRaw] = useState<ServerItem[] | null>(null);
   const load = useCallback(() => void api<{ items: ServerItem[] }>("GET", "/attention").then((r) => setRaw(r.items), () => {}), []);
+  const first = raw === null;
   useEffect(() => {
-    const t = setTimeout(load, 600);
+    const t = setTimeout(load, first ? 0 : 600);
     return () => clearTimeout(t);
-  }, [tick, load]);
+  }, [tick, load, first]);
   const items = useMemo(
     () =>
-      raw.map((i): AttentionItem => {
+      raw === null ? null : raw.map((i): AttentionItem => {
         const t = i.target;
         const run = t.kind === "task" ? () => go.openTask(t.id) : t.kind === "contracts" ? go.openContracts : t.kind === "conflict" ? () => go.resolveConflict(t.id, t.path) : t.kind === "tests" ? go.showTests : go.openCoordination;
         return { key: i.key, level: i.level, title: i.title, why: i.why, forYou: i.forYou, seen: i.seen, action: { label: i.action, run } };
@@ -53,7 +55,7 @@ export function useAttention(tick: unknown, go: AttentionActions): { items: Atte
     [raw, go],
   );
   const setSeen = useCallback((keys: string[], seen: boolean) => {
-    setRaw((r) => r.map((i) => (keys.includes(i.key) ? { ...i, seen } : i)));
+    setRaw((r) => r?.map((i) => (keys.includes(i.key) ? { ...i, seen } : i)) ?? r);
     void api("POST", "/attention/seen", { keys, seen }).then(load, load);
   }, [load]);
   return { items, setSeen };
@@ -66,7 +68,9 @@ const ICON = {
 };
 
 /** The title-bar control and its list. Quiet when there is nothing to do. */
-export function AttentionButton({ items, setSeen }: { items: AttentionItem[]; setSeen: (keys: string[], seen: boolean) => void }) {
+export function AttentionButton({ items: maybe, setSeen }: { items: AttentionItem[] | null; setSeen: (keys: string[], seen: boolean) => void }) {
+  const loading = maybe === null;
+  const items = maybe ?? [];
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   // Keyboard: opening moves focus to the first action; Escape closes and returns focus to where it was (the editor).
@@ -120,11 +124,11 @@ export function AttentionButton({ items, setSeen }: { items: AttentionItem[]; se
         onClick={() => setOpen((o) => !o)}
         data-testid="attention"
         aria-expanded={open}
-        aria-label={needs.length ? `${needs.length} need${needs.length === 1 ? "s" : ""} you` : "Nothing needs you"}
+        aria-label={loading ? "Checking what needs you" : needs.length ? `${needs.length} need${needs.length === 1 ? "s" : ""} you` : "Nothing needs you"}
         className={`flex h-[24px] items-center gap-1.5 rounded-sm px-2 text-[12.5px] transition-colors hover:bg-hover ${blocking ? "text-danger" : needs.length ? "text-warn" : "text-muted"}`}
       >
-        {needs.length ? <span className={`size-1.5 rounded-full ${blocking ? "bg-danger" : "bg-warn"}`} /> : <CircleCheck size={13} />}
-        {needs.length ? `${needs.length} need${needs.length === 1 ? "s" : ""} you` : "All clear"}
+        {loading ? null : needs.length ? <span className={`size-1.5 rounded-full ${blocking ? "bg-danger" : "bg-warn"}`} /> : <CircleCheck size={13} />}
+        {loading ? "Checking…" : needs.length ? `${needs.length} need${needs.length === 1 ? "s" : ""} you` : "All clear"}
       </button>
       {open && (
         <div role="dialog" aria-label="What needs you" className="glass absolute right-0 top-full z-50 mt-1.5 w-[420px] max-w-[calc(100vw-24px)] overflow-hidden rounded-md border border-rule-strong" data-testid="attention-list">

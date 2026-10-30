@@ -97,6 +97,8 @@ export function attention(input: AttentionInput): AttentionItem[] {
   const byId = new Map(input.tasks.map((t) => [t.id, t]));
   for (const a of input.radar) {
     if (a.severity !== "high" && a.kind !== "decision-changed") continue;
+    // Already listed as its own item above ("built on vN, but vM is accepted"): one situation, said once.
+    if (a.kind === "contract-mismatch") continue;
     const involved = a.tasks.map((id) => byId.get(id)).filter((t): t is Task & { runs: AgentRun[] } => !!t);
     const own = involved.find(mine);
     if (!isOwner && !own) continue;

@@ -48,6 +48,8 @@ test("needs-you list: real blockers with causes and one next action; the review 
   const p = await signIn("Ada");
   assert.equal(await p.getByTestId("secondary-sidebar").isVisible().catch(() => false), false, "editor first");
   // Seeded state: T-api and T-ui are built on user-api v1 after v2 was accepted; T-docs waits for an owner.
+  // Until the server has answered, the button claims nothing; then it counts.
+  await p.waitForFunction(() => document.querySelector("[data-testid=attention]")?.textContent?.trim() !== "Checking…");
   assert.equal((await p.getByTestId("attention").innerText()).trim(), "3 need you");
   await p.keyboard.press("Control+Shift+A");
   const list = p.getByTestId("attention-list");

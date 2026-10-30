@@ -110,6 +110,9 @@ test("coordination: a verified agent change becomes ready, is applied after conf
   // The workbench's own project state catches up too: the "ready for review" notice leaves once it's resolved.
   await p.getByTestId("toast").filter({ hasText: "T-readme is ready for review" }).waitFor({ state: "detached", timeout: 10000 });
   assert.match(server.docs.open("README.md").text.toString(), /A tiny corner shop/);
-  // Applying twice is refused by the engine, not just hidden in the UI.
-  await assert.rejects(async () => server.runs.apply("T-readme", server.members.invite("x", "owner").member));
+  // Applying twice (a retry) is answered by the engine as already applied, and writes nothing again.
+  const again = await server.runs.apply("T-readme", server.members.invite("x", "owner").member);
+  assert.equal(again.already, true);
+  assert.deepEqual(again.applied, []);
+  assert.equal(server.docs.open("README.md").text.toString().match(/A tiny corner shop/g)?.length, 1);
 });
