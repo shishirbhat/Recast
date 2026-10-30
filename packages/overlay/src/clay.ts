@@ -12,7 +12,7 @@ export interface ClayItem {
   label: string; detail?: string;
   /** How many pieces it is made of: 1 is a fragment, more is a composition. */
   count: number;
-  kind: "person" | "place" | "time" | "text" | "title" | "thing" | "page" | "error" | "event" | "message" | "people" | "note" | "issue";
+  kind: "person" | "place" | "time" | "text" | "title" | "thing" | "page" | "error" | "event" | "message" | "people" | "note" | "issue" | "phone" | "code";
   mode: "rest" | "carried" | "accepts" | "refuses";
   proposed?: boolean;
   focused?: boolean;
@@ -22,7 +22,7 @@ export interface ClayItem {
 
 /** Same numbers as design/tokens.css (--spring-carry-*). */
 const SPRING = { k: 300, c: 24, m: 0.8 };
-const GLYPH: Record<ClayItem["kind"], string> = { person: "●", place: "◆", time: "◷", text: "❝", title: "T", thing: "▣", page: "▤", error: "⚠", event: "▦", message: "✉", people: "●●", note: "❞", issue: "⚑" };
+const GLYPH: Record<ClayItem["kind"], string> = { person: "●", place: "◆", time: "◷", text: "❝", title: "T", thing: "▣", page: "▤", error: "⚠", event: "▦", message: "✉", people: "●●", note: "❞", issue: "⚑", phone: "☏", code: "⌗" };
 
 interface Body { id: string; el: HTMLElement; shape: SVGRectElement; x: number; y: number; vx: number; vy: number; w: number; h: number; s: number; vs: number; tx: number; ty: number; ts: number; gone?: boolean }
 

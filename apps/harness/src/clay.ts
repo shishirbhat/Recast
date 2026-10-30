@@ -206,7 +206,7 @@ let selBlob: HTMLElement | null = null; let selSeq = 0;
 const SEL_MAX = 1000;
 const SEL_GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝", place: "⌖", page: "▤" };
 // A reading Recast is less sure of says so on the blob ("Place?"), before anything is made from it.
-const SEL_KIND: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text", place: "Place?", page: "Document" };
+const SEL_KIND: Record<string, string> = { time: "Time", person: "Person", error: "Error", text: "Text", place: "Place?", page: "Document", phone: "Phone", code: "Code" };
 function selectionInPage(): { range: Range; text: string; tab: HTMLElement } | null {
   const sel = getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
   const range = sel.getRangeAt(0); const node = range.commonAncestorContainer;

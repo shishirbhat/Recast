@@ -388,3 +388,14 @@ Consequential architecture and product decisions, so that separate workstreams d
 - It is local: nothing leaves the device, so it needs no connection, review or consent. It is offered for any object, complete or not; `missing` says what is incomplete.
 - "Copied as data" is shown only when the clipboard accepted it. If the page may not write to the clipboard, the JSON is shown in a box to select and copy by hand, and nothing is claimed. The desktop app uses the system clipboard through the app.
 - **Evidence:** F (core unit test, try-it page test with the real browser clipboard and with a refused one).
+
+### D56. Phone numbers and code references are pieces; an error with a code reference is a bug report (2026-10-30)
+- **Decision:** two new piece kinds, read from a selection (`pieceOfSelection`) and highlighted on the desktop (`findSpots`):
+  - `phone`: an optional +, then 7–15 digits grouped by spaces, dots, hyphens or brackets. `value.phone` keeps the digits; the text stays as captured. A bare run of digits (an order number), a date or a time is never a phone.
+  - `code`: a file path with a known source extension and, optionally, a line and column (`src/app.ts:42`, `lib/x.py:10:4`, `main.go#L12`). `value.path`, `line`, `column`. A bare file name without a folder or line is not a code reference.
+- **Rules (typeOf):**
+  - An error with code references (and notes) is an **Issue**. Its body gains a quoted **Where** section listing them.
+  - A code reference with text is a **Note**. With a time, place, title, person or phone it is refused, and the reason says what would work.
+  - A phone with people (and nothing else) is **People**. In an event it joins "With …" in the description. With text it is a passage (a note, or the message's text). It never decides on its own that something is a message, and it is never dropped.
+- Note and issue bodies stay exactly what was captured. Corrections are a typed title, or replacing a piece (D54).
+- **Evidence:** F (core unit tests, desktop spots unit test).

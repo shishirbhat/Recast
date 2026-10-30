@@ -24,6 +24,10 @@ describe("spots on a screen", () => {
   it("plain numbers, lone weekdays and ordinary prose are not spots", () => {
     expect(findSpots([line("We sold 42 units in 2025 and Friday was busy"), line("The quick brown fox jumps over the lazy dog")], ctx)).toEqual([]);
   });
+  it("a phone number and a file with its line are spots; an order number is not", () => {
+    const spots = findSpots([line("Call Maya on +91 98450 12345 tonight"), line("Fails at src/app/checkout.ts:42 again"), line("Order 1234567890 shipped")], ctx);
+    expect(spots.map((s) => [s.kind, s.text])).toEqual([["phone", "+91 98450 12345"], ["time", "tonight"], ["code", "src/app/checkout.ts:42"]]);
+  });
   it("relative days and dates count", () => {
     const spots = findSpots([line("Standup tomorrow at 9:30 am"), line("Due 2026-11-03")], ctx);
     expect(spots.map((s) => s.text)).toEqual(["tomorrow at 9:30 am", "2026-11-03"]);

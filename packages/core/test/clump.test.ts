@@ -107,6 +107,37 @@ describe("moving, replacing, and the object as data", () => {
   });
 });
 
+describe("phone numbers and code references (D56)", () => {
+  it("are read from a selection; dates, times, amounts and bare words are not mistaken for them", () => {
+    expect(pieceOfSelection("+91 98450 12345", CTX)).toEqual({ kind: "phone", value: { phone: "+919845012345" } });
+    expect(pieceOfSelection("(415) 555-0132", CTX)).toEqual({ kind: "phone", value: { phone: "4155550132" } });
+    expect(pieceOfSelection("src/app/checkout.ts:42", CTX)).toEqual({ kind: "code", value: { path: "src/app/checkout.ts", line: 42 } });
+    expect(pieceOfSelection("lib/sync.py:10:4", CTX)).toEqual({ kind: "code", value: { path: "lib/sync.py", line: 10, column: 4 } });
+    expect(pieceOfSelection("main.go#L12", CTX)).toEqual({ kind: "code", value: { path: "main.go", line: 12 } });
+    for (const t of ["2026-10-23", "23/10/2026", "1234567890", "index.html", "7:30 PM", "₹ 1,200"]) expect(pieceOfSelection(t, CTX).kind, t).not.toMatch(/^(phone|code)$/);
+  });
+  it("an error with a code reference is a bug report: the body says where, quoted", () => {
+    const err = one("error", "TypeError: Cannot read properties of undefined (reading 'total')"), where = one("code", "src/app/checkout.ts:42", { value: { path: "src/app/checkout.ts", line: 42 } });
+    const c = merged(err, where); expect(typeOf(c.ingredients)).toBe("Issue");
+    const v = viewClump(c, CTX); expect(v.placeableAs).toEqual(["Issues"]);
+    expect(v.issue!.fields.body!.value).toMatch(/\*\*Where\*\*\n```text\nsrc\/app\/checkout\.ts:42\n```/);
+  });
+  it("a code reference never joins a time, a place or a person: refused with what would work", () => {
+    const r = canMerge(one("time", "Friday 7 PM"), one("code", "src/a.ts:1"));
+    expect(r).toMatchObject({ ok: false, code: "incompatible", reason: expect.stringMatching(/code reference: press it into an error/) });
+    expect(typeOf([frag("code", "src/a.ts:1"), frag("text", "this line is slow")])).toBe("Note");
+  });
+  it("a phone number is a contact beside a person, joins an event's people, and is a passage beside text", () => {
+    const maya = one("person", "Maya Rao"), phone = one("phone", "+91 98450 12345", { value: { phone: "+919845012345" } });
+    const ppl = merged(maya, phone); expect(viewClump(ppl, CTX)).toMatchObject({ type: "People", label: "Maya Rao + +91 98450 12345" });
+    const ev = merged(merged(one("place", "Dakshin"), one("time", "Friday 7:30 PM")), one("phone", "+91 98450 12345"));
+    expect(viewClump(ev, CTX).event!.fields.description!.value).toBe("With +91 98450 12345");
+    expect(typeOf([frag("phone", "+91 98450 12345"), frag("text", "call before noon")])).toBe("Note");
+    const msg = merged(merged(one("person", "Maya Rao", { value: { email: "maya@example.com" } }), one("text", "Call me")), one("phone", "+91 98450 12345"));
+    expect(viewClump(msg, CTX).message!.fields.snippet!.value).toBe("Call me\n+91 98450 12345");
+  });
+});
+
 describe("pulling apart", () => {
   it("removing an ingredient gives it back as its own object and recalculates the rest", () => {
     const time = frag("time", "Friday 7:30 PM");

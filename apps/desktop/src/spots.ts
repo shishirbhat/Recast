@@ -3,11 +3,11 @@
 // is the exact words, with where they are, so Recast can highlight them in place. Pure: the words in, the spots out.
 // Deliberately cautious: a highlight the person did not want is noise, so plain numbers, lone words and long prose are
 // never spots. Anything not highlighted can still be selected by hand and lifted into a blob.
-import { looksLikeError, readTime } from "@recast/core";
+import { looksLikeError, pieceOfSelection, readTime } from "@recast/core";
 
 export interface Word { text: string; x0: number; y0: number; x1: number; y1: number }
 export interface Line { words: Word[]; /** The whole line's box, when the reader gives one (it includes letters read too faintly to be words). */ box?: { x0: number; y0: number; x1: number; y1: number } }
-export interface Spot { kind: "time" | "person" | "error" | "link"; text: string; x: number; y: number; width: number; height: number }
+export interface Spot { kind: "time" | "person" | "error" | "link" | "phone" | "code"; text: string; x: number; y: number; width: number; height: number }
 
 const EMAIL = /^[(<"']?[\w.+-]+@[\w-]+(\.[\w-]+)+[)>"',;:.]?$/;
 const LINK = /^(https?:\/\/|www\.)\S{4,}$/i;
@@ -34,7 +34,20 @@ export function findSpots(lines: Line[], ctx: { now: string; timezone: string })
       const t = strip(w.text);
       if (EMAIL.test(w.text) && t.includes("@")) { out.push({ kind: "person", text: t.replace(/^mailto:/i, "").toLowerCase(), ...box([w]) }); used.add(i); }
       else if (LINK.test(t)) { out.push({ kind: "link", text: t, ...box([w]) }); used.add(i); }
+      else if (/[/#:]/.test(t) && pieceOfSelection(t, ctx).kind === "code") { out.push({ kind: "code", text: t, ...box([w]) }); used.add(i); }
     });
+    // Phone numbers: up to five words that read as one ("+91 98450 12345", "(415) 555-0132").
+    for (let i = 0; i < words.length; i++) {
+      if (used.has(i) || !/^[+(]?\d/.test(words[i]!.text)) continue;
+      for (let n = Math.min(5, words.length - i); n >= 1; n--) {
+        if (words.slice(i, i + n).some((_, k) => used.has(i + k))) continue;
+        const text = strip(words.slice(i, i + n).map((w) => w.text).join(" "));
+        if (pieceOfSelection(text, ctx).kind !== "phone") continue;
+        out.push({ kind: "phone", text, ...box(words.slice(i, i + n)) });
+        for (let k = i; k < i + n; k++) used.add(k);
+        i += n - 1; break;
+      }
+    }
     // Times: the longest run of words that reads as one, never overlapping another spot.
     for (let i = 0; i < words.length; i++) {
       if (used.has(i)) continue;

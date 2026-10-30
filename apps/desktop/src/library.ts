@@ -17,7 +17,7 @@ interface Api {
 const api = (window as unknown as { recastDesktop: Api }).recastDesktop;
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const MAC = navigator.userAgent.includes("Mac");
-const GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝", place: "⌖" };
+const GLYPH: Record<string, string> = { time: "◷", person: "●", error: "⚠", text: "❝", place: "⌖", phone: "☏", code: "⌗", page: "▤" };
 let entries: Entry[] = [];
 let settings: Settings | null = null;
 

@@ -183,7 +183,7 @@ interface Spot { kind: string; text: string; x: number; y: number; width: number
 let spots: Spot[] = [];
 let spotSource: Origin = {};
 let spotPress: { spot: Spot; x: number; y: number } | null = null;
-const SPOT_WORD: Record<string, string> = { time: "Time", person: "Person", error: "Error", link: "Link" };
+const SPOT_WORD: Record<string, string> = { time: "Time", person: "Person", error: "Error", link: "Link", phone: "Phone", code: "Code" };
 api.on("recast:spots", (v: { spots: Spot[]; source?: Origin; note?: string }) => {
   spots = on ? v.spots ?? [] : []; spotSource = v.source ?? {};
   if (v.note && on) toast(v.note);

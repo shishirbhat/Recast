@@ -82,17 +82,22 @@ export function typeOf(fs: Fragment[]): ClumpType | { incompatible: string } {
   if (fs.length <= 1) return "Fragment";
   // An error, with notes: an issue to track. Nothing else joins an error (a time or a person would change what it is).
   const errors = fs.filter((f) => f.kind === "error");
-  if (errors.length) return fs.every((f) => f.kind === "error" || f.kind === "text") ? "Issue" : { incompatible: `${nameOf(errors[0]!).slice(0, 60)} is an error: add notes (selected text) to it, or place it on its own as an issue` };
+  // A code reference (a file and line) says where: with an error it is a bug report.
+  if (errors.length) return fs.every((f) => f.kind === "error" || f.kind === "text" || f.kind === "code") ? "Issue" : { incompatible: `${nameOf(errors[0]!).slice(0, 60)} is an error: add notes (selected text) to it, or place it on its own as an issue` };
   const pages = fs.filter((f) => f.kind === "page");
   // A page and a date: a task due that day. Anything else with a page is refused, with what would work.
   if (pages.length === 1 && fs.every((f) => f.kind === "page" || f.kind === "time")) return "Task";
   if (pages.length) return { incompatible: pages.length > 1 ? "two pages do not make one object; place each on its own" : `${nameOf(pages[0]!)} is a whole page: add a date to make it a task due that day, or place it on its own` };
   const things = fs.filter((f) => f.kind === "thing");
   if (things.length) return { incompatible: `${nameOf(things[0]!)} can be carried and placed on its own, but it cannot be combined with other pieces yet` };
+  const codes = fs.filter((f) => f.kind === "code");
+  if (codes.length && fs.some((f) => ["time", "place", "title", "person", "phone"].includes(f.kind))) return { incompatible: `${nameOf(codes[0]!).slice(0, 60)} is a code reference: press it into an error for a bug report, or into text for a note` };
   if (has(fs, "time") || has(fs, "place") || has(fs, "title")) return "Event";
-  const people = fs.filter((f) => f.kind === "person").length, texts = fs.filter((f) => f.kind === "text").length;
-  if (people && texts === 0) return "People";
-  if (people && texts) return "Message";
+  // A phone number is a contact beside people, and a passage beside text (it never decides on its own what a message is).
+  const persons = fs.filter((f) => f.kind === "person").length, phones = fs.filter((f) => f.kind === "phone").length;
+  const texts = fs.filter((f) => f.kind === "text" || f.kind === "code").length;
+  if ((persons || phones) && texts === 0) return "People";
+  if (persons && texts) return "Message";
   // Only passages: a note that keeps where each one came from. (A person turns it into a message; a time, into an event.)
   return "Note";
 }
@@ -220,7 +225,8 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
     const n = noteView(c);
     return { ...base, type: "Note", label: n.fields.title?.value ?? n.missing[0]?.suggestions?.[0] ?? "New note", proposed: !n.fields.title, summary: [`${fs.length} passages`, ...(n.sources.length ? [`from ${n.sources.length === 1 ? hostOf(n.sources[0]!) : `${n.sources.length} pages`}`] : [])], note: n, missing: n.missing, placeableAs: ["Docs"], candidate: n.status === "ready" ? noteCandidate(c, n, ctx) : null };
   }
-  if (t === "People") return { ...base, type: "People", label: people.join(" + "), proposed: false, summary: [`${people.length} people`], missing: [{ field: "title", reason: "add a time or place to plan something, or a sentence to write to them" }] };
+  const contacts = fs.filter((f) => f.kind === "person" || f.kind === "phone").map(nameOf);
+  if (t === "People") return { ...base, type: "People", label: contacts.join(" + "), proposed: false, summary: [people.length ? `${people.length} ${people.length === 1 ? "person" : "people"}` : "", fs.some((f) => f.kind === "phone") ? "phone" : ""].filter(Boolean), missing: [{ field: "title", reason: "add a time or place to plan something, or a sentence to write to them" }] };
   if (t === "Message") {
     const m = message(c);
     const first = people[0]!.split(" ")[0];
@@ -235,7 +241,7 @@ export function viewClump(c: Clump, ctx: ComposeContext): ClumpView {
   return { ...base, type: "Event", label, proposed: typeof title !== "string", summary, event, missing: event.missing, conflicts: event.conflicts, assumptions: event.assumptions, placeableAs: ["Calendar"], candidate: event.candidate };
 }
 
-function kindLabel(k: Fragment["kind"]) { return ({ person: "Person", place: "Place", time: "Time", title: "Title", text: "Text", thing: "Thing", page: "Page", error: "Error" } as const)[k]; }
+function kindLabel(k: Fragment["kind"]) { return ({ person: "Person", place: "Place", time: "Time", title: "Title", text: "Text", thing: "Thing", page: "Page", error: "Error", phone: "Phone", code: "Code" } as const)[k]; }
 
 const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url.slice(0, 40); } };
 
@@ -302,7 +308,7 @@ function locationCandidate(f: Fragment, ctx: ComposeContext): Candidate {
 
 /** Each passage in quotation marks, then the page it came from; the body is exactly what the review shows and what is written. */
 function noteView(c: Clump): NoteView {
-  const texts = c.ingredients.filter((f) => f.kind === "text");
+  const texts = c.ingredients.filter((f) => f.kind === "text" || f.kind === "code" || f.kind === "phone");
   const fields: NoteView["fields"] = {};
   const typed = c.answers.title;
   const suggestion = texts.map((f) => f.source?.title?.replace(/\s+/g, " ").trim()).find(Boolean);
@@ -325,11 +331,31 @@ export function pieceOfSelection(text: string, ctx: Pick<ComposeContext, "now" |
   if (/^(mailto:)?[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(t)) return { kind: "person", value: { email: t.replace(/^mailto:/i, "").toLowerCase() } };
   // A web address on its own is a document: a page, or a file such as a PDF, named by its file name or its address.
   const doc = webDocument(t); if (doc) return { kind: "page", value: doc };
+  const code = codeReference(t); if (code) return { kind: "code", value: code };
+  const phone = phoneNumber(t, ctx); if (phone) return { kind: "phone", value: { phone } };
   // A street address is a place. It is a reading of free text, so it carries lower confidence: the review says Recast is
   // not sure and asks the person to check it before anything uses it.
   const place = addressOf(t); if (place) return { kind: "place", value: place, confidence: 0.6 };
   if (t.length <= 60 && t.split(" ").length <= 8 && readTime(t, ctx)) return { kind: "time" };
   return { kind: "text" };
+}
+
+// A file and line, as editors, stack traces and reviews write them: "src/app.ts:42", "lib/x.py:10:4", "main.go#L12".
+const CODE_RE = /^((?:[\w.@-]+\/)*[\w.@-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|hpp|cs|php|scala|sh|sql|vue|svelte|css|scss|html|json|ya?ml|toml))(?:(?::|#L)(\d{1,6})(?::(\d{1,4}))?)?$/;
+function codeReference(t: string): Fragment["value"] | null {
+  const m = CODE_RE.exec(t); if (!m || t.length > 200) return null;
+  // A bare file name with no folder and no line is too often a word ("index.html" in prose); it needs a path or a line.
+  if (!m[1]!.includes("/") && !m[2]) return null;
+  return { path: m[1]!, ...(m[2] ? { line: Number(m[2]) } : {}), ...(m[3] ? { column: Number(m[3]) } : {}) };
+}
+// A phone number: an optional +, then 7 to 15 digits grouped by spaces, dots, hyphens or brackets. Never a date or a time.
+function phoneNumber(t: string, ctx: Pick<ComposeContext, "now" | "timezone">): string | null {
+  if (t.length > 24 || !/^(\+|\()?\d[\d\s().-]{5,}\d$/.test(t)) return null;
+  const digits = t.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return null;
+  if (!/^\+/.test(t) && !/[\s().-]/.test(t)) return null;   // a bare run of digits is an id, an amount, an order number
+  if (readTime(t, ctx) || /^\d{4}-\d{2}-\d{2}$/.test(t) || /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(t)) return null;
+  return `${t.startsWith("+") ? "+" : ""}${digits}`;
 }
 
 // A number, then a street's name and a street word ("12 MG Road", "221B Baker Street"), or a postal code after a comma.
@@ -374,13 +400,13 @@ export const looksLikeError = (text: string) => /\b([A-Z]\w*(Error|Exception)|Tr
  * run of backticks inside it, so a captured "@name", link or image is shown as text: it cannot notify anyone or embed anything.
  */
 function issueView(c: Clump): NoteView {
-  const errs = c.ingredients.filter((f) => f.kind === "error"), notes = c.ingredients.filter((f) => f.kind === "text");
+  const errs = c.ingredients.filter((f) => f.kind === "error"), notes = c.ingredients.filter((f) => f.kind === "text"), where = c.ingredients.filter((f) => f.kind === "code");
   const fence = (t: string) => { const run = Math.max(2, ...[...t.matchAll(/`+/g)].map((m) => m[0].length)); const f = "`".repeat(run + 1); return `${f}text\n${t}\n${f}`; };
   // Lines are tidied the way a stored body is (resolve trims each line), so the review shows exactly what the tracker gets.
   const clean = (f: Fragment) => f.text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[^\S\n]+/g, " ").trim()).join("\n").trim();
   const seen = [...new Map(c.ingredients.filter((f) => f.source?.url).map((f) => [f.source!.url!, [f.source!.title, f.source!.url].filter(Boolean).join(" — ")])).values()];
   const body = ["Captured with Recast. Everything below is quoted exactly as it appeared.", `**Error**\n${fence(errs.map(clean).join("\n\n"))}`,
-    ...(notes.length ? [`**Notes**\n${fence(notes.map(clean).join("\n\n"))}`] : []), ...(seen.length ? [`**Seen on**\n${fence(seen.join("\n"))}`] : [])].join("\n\n");
+    ...(where.length ? [`**Where**\n${fence(where.map(clean).join("\n"))}`] : []), ...(notes.length ? [`**Notes**\n${fence(notes.map(clean).join("\n\n"))}`] : []), ...(seen.length ? [`**Seen on**\n${fence(seen.join("\n"))}`] : [])].join("\n\n");
   const fields: NoteView["fields"] = { body: { value: body, origin: "extracted", fragments: c.ingredients.map((f) => f.id) } };
   const typed = c.answers.title;
   if (typeof typed === "string" && typed.trim()) fields.title = { value: typed.trim(), origin: "user", fragments: [] };
@@ -405,7 +431,7 @@ function noteCandidate(c: Clump, n: NoteView, ctx: ComposeContext, type: "Note" 
 }
 
 function message(c: Clump): MessageView {
-  const fs = c.ingredients; const people = fs.filter((f) => f.kind === "person"); const texts = fs.filter((f) => f.kind === "text");
+  const fs = c.ingredients; const people = fs.filter((f) => f.kind === "person"); const texts = fs.filter((f) => f.kind === "text" || f.kind === "phone");
   const fields: MessageView["fields"] = {}; const missing: MessageView["missing"] = [];
   const typedTo = c.answers.to;
   if (typeof typedTo === "string" && typedTo) fields.to = { value: typedTo.split(/[,;\s]+/).filter(Boolean), origin: "user", fragments: [] };

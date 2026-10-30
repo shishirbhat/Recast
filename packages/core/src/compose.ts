@@ -8,14 +8,18 @@ export type Origin = "extracted" | "inferred" | "default" | "user";
  * `thing`: something recognised but not composable (a product, a paper): it can be carried, never merged.
  * `page`: the page (or file) itself, from its own metadata (title and address): on its own it is a document.
  */
-export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing" | "page" | "error";
+export type FragmentKind = "time" | "place" | "title" | "text" | "person" | "thing" | "page" | "error" | "phone" | "code";
 
 /** One piece the person captured. `text` is exactly what was on screen; `value` is optional structure from extraction. */
 export interface Fragment {
   id: string;
   kind: FragmentKind;
   text: string;
-  value?: { name?: string; address?: string; email?: string; url?: string };
+  value?: { name?: string; address?: string; email?: string; url?: string;
+    /** A phone number as written, digits kept; the text stays exactly as captured. */
+    phone?: string;
+    /** A code reference: the file path, and the line (and column) when given. */
+    path?: string; line?: number; column?: number };
   confidence: number;
   evidence: Evidence[];
   source?: { app: string; url?: string; title?: string };
@@ -199,7 +203,9 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
   // Sort fragments into what they can say.
   const times: { f: Fragment; r: TimeReading }[] = []; const places: Fragment[] = []; const titles: Fragment[] = []; const people: Fragment[] = [];
   for (const f of fragments) {
-    if (f.kind === "person") { people.push(f); continue; }
+    // A phone number is who to reach: it joins the people in the description, never a field of its own.
+    if (f.kind === "person" || f.kind === "phone") { people.push(f); continue; }
+    if (f.kind === "code") continue;   // never in an event: refused before composing (typeOf)
     if (f.kind === "thing") continue;
     if (f.kind === "place") { places.push(f); continue; }
     if (f.kind === "title") { titles.push(f); continue; }
