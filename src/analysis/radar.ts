@@ -24,7 +24,7 @@ import type { ProjectImpact } from "./impact.ts";
  */
 
 export type Certainty = "known" | "suspected";
-export type AlertKind = "same-file" | "scope-crossing" | "project-moved" | "stale-input" | "interface-changed" | "stale-verification" | "contract-mismatch" | "integration-outdated";
+export type AlertKind = "decision-changed" | "same-file" | "scope-crossing" | "project-moved" | "stale-input" | "interface-changed" | "stale-verification" | "contract-mismatch" | "integration-outdated";
 
 export interface AlertEvidence {
   at: string | null;
@@ -384,6 +384,31 @@ export function radar(input: RadarInput): Radar {
         options: [{ label: `Open ${t.id}`, action: { kind: "open-task", task: t.id } }],
       });
     }
+
+  // 6b. A decision this task's work was planned under changed after the work started (agents were briefed with it).
+  for (const t of live) {
+    const r = runs.get(t.id) ?? input.runsFor(t.id).at(-1) ?? null;
+    const started = r?.startedAt ?? null;
+    // Only changes after the latest run started matter: a newer run was briefed with the decisions as they are now.
+    const after = started ?? relay.requireTask(t.id).createdAt;
+    for (const e of relay.events(t.id).filter((x) => x.type === "task.decision_changed" && x.at > after)) {
+      const d = e.data as { decision: string; change: string; reason: string | null; title: string; supersedes?: string };
+      const what = d.change === "accepted" ? (d.supersedes ? `replaced ${d.supersedes}` : "was accepted") : `was ${d.change}`;
+      alerts.push({
+        id: `decision-changed:${t.id}:${d.decision}:${d.change}:${e.at}`,
+        kind: "decision-changed",
+        certainty: "known",
+        severity: d.change === "invalidated" ? "high" : "medium",
+        title: `Decision ${d.decision} ${what} after ${t.id}'s work started`,
+        detail: `"${d.title}"${d.reason ? `: ${d.reason}` : ""}. ${started ? `${t.id}'s agent was briefed before this changed and may have followed the old decision.` : `${t.id} was planned before this changed.`} Review its change against the decision as it stands now.`,
+        tasks: [t.id],
+        files: [],
+        evidence: [{ at: e.at, source: "engine", text: `${e.actor} marked ${d.decision} ${d.change}${d.reason ? ` (${d.reason})` : ""}` }, ...(started ? [{ at: started, source: "agent-run", text: `${t.id}'s agent run started ${started}` } as AlertEvidence] : [])],
+        since: e.at,
+        options: [{ label: `Open ${t.id}`, action: { kind: "open-task", task: t.id } }],
+      });
+    }
+  }
 
   // 7. A passed combined check awaiting approval that approval would now refuse. Known: same checks as the gate.
   const pending = relay.db.prepare("SELECT id FROM integrations WHERE status = 'passed' AND approved_at IS NULL ORDER BY created_at").all() as { id: string }[];

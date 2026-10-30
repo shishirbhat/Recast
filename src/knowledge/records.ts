@@ -324,8 +324,22 @@ export class Records {
       this.relay.db.prepare("UPDATE decisions SET status = ?, status_reason = ?, decided_by = ?, decided_at = ? WHERE id = ?").run(to, reason ?? null, by, now(), id);
       if (to === "accepted" && d.supersedes) this.relay.db.prepare("UPDATE decisions SET status = 'superseded', superseded_by = ?, status_reason = ? WHERE id = ?").run(id, `superseded by ${id}`, d.supersedes);
       this.relay.record(`decision.${to}`, by, { id, reason, supersedes: to === "accepted" ? d.supersedes : undefined });
+      // Work already under way was planned (and agents were briefed) under the old state of this decision: say so on
+      // every live task it touches. A rejected proposal never applied to anyone, so nothing is affected by it.
+      if (to !== "rejected") {
+        const old = to === "accepted" && d.supersedes ? this.getDecision(d.supersedes) : null;
+        for (const t of this.affectedBy([d, ...(old ? [old] : [])]))
+          this.relay.record("task.decision_changed", by, { decision: id, change: to, reason: reason ?? null, title: d.title, ...(old ? { supersedes: old.id } : {}) }, t.id);
+      }
       return this.getDecision(id)!;
     });
+  }
+
+  /** Live tasks a decision touches: a file in its scope overlaps the task's scope, or they share a contract. */
+  affectedBy(decisions: Decision[]): Task[] {
+    return this.relay.listTasks().filter(
+      (t) => ["proposed", "queued", "running", "review_required", "blocked"].includes(t.state) && decisions.some((d) => d.contracts.some((c) => c in t.contracts) || d.scope.some((p) => inScope(t.scope, p) || t.scope.some((ts) => inScope([p], ts)))),
+    );
   }
 
   /**

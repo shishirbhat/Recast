@@ -37,7 +37,7 @@ import { AccountView, ExtensionsView, OutputPanel, RunView, SettingsView } from 
 import { TerminalPanel } from "./Terminal";
 import type { TerminalAvailability } from "./Terminal";
 import { InviteDialog } from "./InviteDialog";
-import { AttentionButton, attentionOf } from "./Attention";
+import { AttentionButton, useAttention } from "./Attention";
 import { TestingView, TestsPanel, failedNames, rerunFailed, runTests, stopTests } from "./Tests";
 import { WelcomePage } from "./Welcome";
 import { LineHistory, PresenceBar } from "./Presence";
@@ -841,19 +841,18 @@ export function Workbench() {
 
   /* ---------------- the command registry ---------------- */
   /* ---------------- what needs a person, and what this file belongs to ---------------- */
-  const attention = useMemo(
-    () =>
-      state
-        ? attentionOf(state, testRun, {
-            openTask: showTask,
-            openContracts: () => (showRight("contracts"), setSelectedTask(null)),
-            openFile: (p) => open(p),
-            resolveConflict: (id, path) => openDiff({ kind: "conflict", id, path }),
-            showTests: () => openPanel("tests"),
-          })
-        : [],
-    [state, testRun, showTask, showRight, open, openPanel, openDiff],
+  const attentionGo = useMemo(
+    () => ({
+      openTask: showTask,
+      openContracts: () => (showRight("contracts"), setSelectedTask(null)),
+      resolveConflict: (id: string, path: string) => openDiff({ kind: "conflict", id, path }),
+      showTests: () => openPanel("tests"),
+      openCoordination: () => (setTabs((t) => (t.includes(COORD) ? t : [...t, COORD])), setActive(COORD)),
+    }),
+    [showTask, showRight, openPanel, openDiff],
   );
+  const { items: attentionAll, setSeen: setAttentionSeen } = useAttention(`${events.length}:${testRun?.id ?? ""}:${testRun?.status ?? ""}`, attentionGo);
+  const attention = useMemo(() => attentionAll.filter((a) => !a.seen), [attentionAll]);
   // A new situation that needs a person raises one quiet notification; routine activity never does. Items already
   // present when the workbench opened are only listed, not announced.
   const announced = useRef<Set<string> | null>(null);
@@ -1354,7 +1353,7 @@ export function Workbench() {
             </button>
           ))}
           <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
-          <AttentionButton items={attention} />
+          <AttentionButton items={attentionAll} setSeen={setAttentionSeen} />
         </div>
       </header>
 

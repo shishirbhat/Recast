@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, Eye, TriangleAlert } from "lucide-react";
-import type { ProjectState } from "@/lib/types";
-import type { TestRunView } from "@/lib/useProject";
+import { api } from "@/lib/api";
 
 /**
- * "Is anything blocking me, and what should I do next?" Only situations that need a person are listed here; routine
- * activity (an agent working, a sync, a passing run) never is. Each item says what happened, why it matters, and offers
- * one next action.
+ * "Is anything blocking me, and what should I do next?" Computed on the server (`src/analysis/attention.ts`) for this
+ * person: only situations that need someone, each with why it is theirs and one next action. Marking an item seen
+ * hides that exact situation for this person; if it changes, it comes back.
  */
 export interface AttentionItem {
   key: string;
@@ -16,47 +15,48 @@ export interface AttentionItem {
   level: "block" | "review" | "info";
   title: string;
   why: string;
+  forYou: string;
+  seen: boolean;
   action: { label: string; run: () => void };
+}
+
+type Target = { kind: "task"; id: string } | { kind: "contracts" } | { kind: "conflict"; id: string; path: string } | { kind: "tests" } | { kind: "coordination" };
+interface ServerItem extends Omit<AttentionItem, "action"> {
+  target: Target;
+  action: string;
+  at: string | null;
 }
 
 export interface AttentionActions {
   openTask: (id: string) => void;
   openContracts: () => void;
-  openFile: (path: string) => void;
   resolveConflict: (id: string, path: string) => void;
   showTests: () => void;
+  openCoordination: () => void;
 }
 
-export function attentionOf(state: ProjectState, tests: TestRunView | null, go: AttentionActions): AttentionItem[] {
-  const out: AttentionItem[] = [];
-  const isOwner = state.me.role === "owner";
-  const accepted = new Map(state.contracts.map((c) => [c.id, c.history.filter((h) => h.status === "accepted").at(-1)?.version]));
-  for (const t of state.tasks) {
-    if (t.state === "completed" || t.state === "cancelled") continue;
-    const open = { label: "Open task", run: () => go.openTask(t.id) };
-    if (t.state === "review_required") out.push({ key: `review:${t.id}`, level: "review", title: `${t.id} is ready for review`, why: t.objective, action: { label: "Review", run: () => go.openTask(t.id) } });
-    if (t.state === "proposed" && isOwner) out.push({ key: `proposed:${t.id}`, level: "review", title: `${t.id} is waiting for approval to start`, why: t.objective, action: { label: "Review plan", run: () => go.openTask(t.id) } });
-    if (t.state === "blocked") out.push({ key: `blocked:${t.id}`, level: "block", title: `${t.id} is blocked`, why: "Work on it can't continue until the cause is resolved; the task shows why.", action: open });
-    const run = t.runs.at(-1);
-    if (t.state === "failed" || run?.status === "failed") out.push({ key: `failed:${t.id}:${run?.id ?? ""}`, level: "block", title: run?.status === "failed" ? `The agent on ${t.id} failed` : `${t.id} failed`, why: "Its log and the last error are in the task. It can be requeued once the cause is fixed.", action: { label: "Investigate", run: () => go.openTask(t.id) } });
-    for (const [cid, v] of Object.entries(t.contracts)) {
-      const cur = accepted.get(cid);
-      if (cur !== undefined && cur > v) out.push({ key: `stale:${t.id}:${cid}:${cur}`, level: "block", title: `${t.id} is built on ${cid} v${v}, but v${cur} is accepted`, why: "Its work may not match what other tasks now expect, so it can't be integrated until it's updated to the current version.", action: open });
-    }
-    for (const s of run?.status === "running" ? run.staleInputs : []) out.push({ key: `input:${t.id}:${s.path}`, level: "info", title: `${s.by} edited ${s.path} while the agent on ${t.id} was working`, why: "The agent's copy is older. Relay checks this again before anything is applied.", action: open });
-  }
-  if (isOwner)
-    for (const c of state.contracts)
-      for (const h of c.history)
-        if (h.status === "proposed") out.push({ key: `contract:${c.id}:${h.version}`, level: "review", title: `${c.id} v${h.version} is proposed`, why: "Tasks that depend on this contract keep building on the accepted version until an owner decides.", action: { label: "Review contract", run: go.openContracts } });
-  for (const c of state.conflicts) {
-    const path = c.doc.replace(/^file:/, "");
-    out.push({ key: `conflict:${c.id}`, level: "block", title: `An outside edit to ${path} conflicted`, why: "Both versions were kept and nothing was overwritten. Compare them and choose which to keep.", action: { label: "Resolve", run: () => go.resolveConflict(c.id, path) } });
-  }
-  const failing = tests && tests.status !== "running" && !tests.stale ? tests.results.filter((r) => r.status === "fail").length : 0;
-  if (failing) out.push({ key: `tests:${tests!.id}`, level: "block", title: `${failing} test${failing === 1 ? "" : "s"} failing`, why: `From ${tests!.command}, run on the current files.`, action: { label: "Show tests", run: go.showTests } });
-  const rank = { block: 0, review: 1, info: 2 };
-  return out.sort((a, b) => rank[a.level] - rank[b.level]);
+/** The server's inbox for this person, refreshed shortly after project activity (`tick`). */
+export function useAttention(tick: unknown, go: AttentionActions): { items: AttentionItem[]; setSeen: (keys: string[], seen: boolean) => void } {
+  const [raw, setRaw] = useState<ServerItem[]>([]);
+  const load = useCallback(() => void api<{ items: ServerItem[] }>("GET", "/attention").then((r) => setRaw(r.items), () => {}), []);
+  useEffect(() => {
+    const t = setTimeout(load, 600);
+    return () => clearTimeout(t);
+  }, [tick, load]);
+  const items = useMemo(
+    () =>
+      raw.map((i): AttentionItem => {
+        const t = i.target;
+        const run = t.kind === "task" ? () => go.openTask(t.id) : t.kind === "contracts" ? go.openContracts : t.kind === "conflict" ? () => go.resolveConflict(t.id, t.path) : t.kind === "tests" ? go.showTests : go.openCoordination;
+        return { key: i.key, level: i.level, title: i.title, why: i.why, forYou: i.forYou, seen: i.seen, action: { label: i.action, run } };
+      }),
+    [raw, go],
+  );
+  const setSeen = useCallback((keys: string[], seen: boolean) => {
+    setRaw((r) => r.map((i) => (keys.includes(i.key) ? { ...i, seen } : i)));
+    void api("POST", "/attention/seen", { keys, seen }).then(load, load);
+  }, [load]);
+  return { items, setSeen };
 }
 
 const ICON = {
@@ -66,7 +66,7 @@ const ICON = {
 };
 
 /** The title-bar control and its list. Quiet when there is nothing to do. */
-export function AttentionButton({ items }: { items: AttentionItem[] }) {
+export function AttentionButton({ items, setSeen }: { items: AttentionItem[]; setSeen: (keys: string[], seen: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   // Keyboard: opening moves focus to the first action; Escape closes and returns focus to where it was (the editor).
@@ -91,8 +91,29 @@ export function AttentionButton({ items }: { items: AttentionItem[] }) {
     window.addEventListener("relay:attention", toggle);
     return () => window.removeEventListener("relay:attention", toggle);
   }, []);
-  const needs = items.filter((i) => i.level !== "info");
+  const needs = items.filter((i) => i.level !== "info" && !i.seen);
+  const [showSeen, setShowSeen] = useState(false);
+  const fresh = items.filter((i) => !i.seen);
+  const seen = items.filter((i) => i.seen);
   const blocking = items.some((i) => i.level === "block");
+  const row = (i: AttentionItem) => (
+    <li key={i.key} className="flex gap-2.5 px-3.5 py-2.5" data-level={i.level} data-testid="attention-item" data-seen={i.seen}>
+      {ICON[i.level]}
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium leading-snug text-ink">{i.title}</p>
+        <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{i.why}</p>
+        <p className="mt-0.5 text-[11.5px] text-faint">{i.forYou}</p>
+      </div>
+      <span className="flex shrink-0 flex-col items-end gap-1 self-center">
+        <button onClick={() => (setOpen(false), i.action.run())} className="h-[24px] rounded-sm border border-rule px-2 text-[12px] text-ink-2 hover:border-rule-strong hover:bg-hover hover:text-ink">
+          {i.action.label}
+        </button>
+        <button onClick={() => setSeen([i.key], !i.seen)} className="text-[11.5px] text-faint hover:text-ink" title={i.seen ? "Show it as new again" : "Hide it until it changes"}>
+          {i.seen ? "Mark unseen" : "Mark seen"}
+        </button>
+      </span>
+    </li>
+  );
   return (
     <div ref={box} className="relative">
       <button
@@ -110,20 +131,18 @@ export function AttentionButton({ items }: { items: AttentionItem[] }) {
           {items.length === 0 ? (
             <p className="px-4 py-4 text-[13px] text-muted">Nothing needs you. Agents and teammates keep working in the background; anything that needs a decision shows up here.</p>
           ) : (
-            <ul className="max-h-[60vh] divide-y divide-rule overflow-y-auto">
-              {items.map((i) => (
-                <li key={i.key} className="flex gap-2.5 px-3.5 py-2.5" data-level={i.level}>
-                  {ICON[i.level]}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium leading-snug text-ink">{i.title}</p>
-                    <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{i.why}</p>
-                  </div>
-                  <button onClick={() => (setOpen(false), i.action.run())} className="h-[24px] shrink-0 self-center rounded-sm border border-rule px-2 text-[12px] text-ink-2 hover:border-rule-strong hover:bg-hover hover:text-ink">
-                    {i.action.label}
+            <div className="max-h-[60vh] overflow-y-auto">
+              {fresh.length === 0 && <p className="px-4 py-3 text-[13px] text-muted">Nothing new. You&apos;ve seen everything below; it comes back here if it changes.</p>}
+              <ul className="divide-y divide-rule">{fresh.map((i) => row(i))}</ul>
+              {seen.length > 0 && (
+                <>
+                  <button onClick={() => setShowSeen((v) => !v)} aria-expanded={showSeen} className="w-full border-t border-rule px-3.5 py-1.5 text-left text-[12px] text-muted hover:bg-hover" data-testid="attention-seen-toggle">
+                    {showSeen ? "Hide" : "Show"} {seen.length} seen
                   </button>
-                </li>
-              ))}
-            </ul>
+                  {showSeen && <ul className="divide-y divide-rule opacity-70">{seen.map((i) => row(i))}</ul>}
+                </>
+              )}
+            </div>
           )}
         </div>
       )}

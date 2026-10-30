@@ -16,6 +16,9 @@ import { CollabService } from "./collab.ts";
 import { DocStore } from "./docs.ts";
 import { coordination } from "../analysis/coordination.ts";
 import { ownership, radar } from "../analysis/radar.ts";
+import { attention, markSeen } from "../analysis/attention.ts";
+import { timeline } from "../analysis/timeline.ts";
+import type { TimelineKind } from "../analysis/timeline.ts";
 import { buildChangeset, changesetText, verifyChangeset } from "../analysis/changeset.ts";
 import type { Changeset } from "../analysis/changeset.ts";
 import { reproBundle, reproduce, reproText } from "../analysis/repro.ts";
@@ -263,6 +266,25 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     }
   }
 
+  /** Conflict Radar over the project as collaborators see it right now. */
+  function computeRadar() {
+    docs.flushAll();
+    const own = relayOwnFiles(root, resolve(opts.dbPath));
+    const impactNow = impact.compute({});
+    const coord = coordination(relay, root, resolve(opts.dbPath), (id) => runs.forTask(id), impactNow);
+    let projectTree: string | null = null;
+    return radar({
+      relay,
+      root,
+      coord,
+      runsFor: (id) => runs.forTask(id),
+      impact: impactNow,
+      projectText: (path) => docs.get(path)?.text.toString() ?? readText(root, path),
+      isRehearsing: (id) => runs.isRehearsing(id),
+      projectMatches: (commit) => treeOf(root, (projectTree ??= snapshotCommit(root))) === treeOf(root, commit),
+      projectTree: () => workspaceFingerprint(root, own),
+    });
+  }
   function snapshot(m: Member) {
     const tasks = relay.listTasks();
     const contracts = [...new Set(tasks.flatMap((t) => Object.keys(t.contracts)))].concat([...relay.currentContracts().keys()]);
@@ -428,25 +450,33 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     if (method === "GET" && (parts[0] === "radar" || parts[0] === "ownership")) {
       // Conflict Radar and the changed-file ownership map: read-only, from the same facts as coordination.
       requireMember(req, "read");
+      if (parts[0] === "radar") return json(res, 200, computeRadar());
       docs.flushAll();
       const own = relayOwnFiles(root, resolve(opts.dbPath));
-      const impactNow = impact.compute({});
-      const coord = coordination(relay, root, resolve(opts.dbPath), (id) => runs.forTask(id), impactNow);
-      const base = { relay, root, coord, runsFor: (id: string) => runs.forTask(id) };
-      if (parts[0] === "ownership") return json(res, 200, { computedAt: coord.computedAt, files: ownership(base, changedFiles(root, "HEAD", own).filter((f) => !own.includes(f))) });
-      let projectTree: string | null = null;
-      return json(
-        res,
-        200,
-        radar({
-          ...base,
-          impact: impactNow,
-          projectText: (path) => docs.get(path)?.text.toString() ?? readText(root, path),
-          isRehearsing: (id) => runs.isRehearsing(id),
-          projectMatches: (commit) => treeOf(root, (projectTree ??= snapshotCommit(root))) === treeOf(root, commit),
-          projectTree: () => workspaceFingerprint(root, own),
-        }),
-      );
+      const coord = coordination(relay, root, resolve(opts.dbPath), (id) => runs.forTask(id), impact.compute({}));
+      return json(res, 200, { computedAt: coord.computedAt, files: ownership({ relay, root, coord, runsFor: (id: string) => runs.forTask(id) }, changedFiles(root, "HEAD", own).filter((f) => !own.includes(f))) });
+    }
+    if (method === "GET" && parts[0] === "timeline") {
+      // The flight recorder: events, edit sessions and commits, searchable; when it happened kept apart from when recorded.
+      requireMember(req, "read");
+      const p = url.searchParams;
+      const kinds = (p.get("kinds") ?? "").split(",").filter(Boolean) as TimelineKind[];
+      return json(res, 200, timeline(relay, root, { q: p.get("q") ?? undefined, task: p.get("task") ?? undefined, actor: p.get("actor") ?? undefined, kinds, since: p.get("since") ?? undefined, until: p.get("until") ?? undefined, limit: Number(p.get("limit") ?? 200) || 200 }));
+    }
+    if (parts[0] === "attention") {
+      // The attention inbox: what needs this person, and why it is theirs. Seen marks are per member.
+      const m = requireMember(req, "read");
+      if (method === "GET") {
+        const st = snapshot(m);
+        const latestTests = tests.latest();
+        const items = attention({ me: m, tasks: st.tasks, contracts: st.contracts, conflicts: st.conflicts, tests: latestTests, radar: computeRadar().alerts, db: relay.db });
+        return json(res, 200, { computedAt: new Date().toISOString(), items });
+      }
+      if (method === "POST" && parts[1] === "seen") {
+        const b = await readBody(req);
+        markSeen(relay.db, m.id, strList(b.keys, "keys"), b.seen !== false);
+        return json(res, 200, { ok: true });
+      }
     }
     if (method === "GET" && parts[0] === "symbols") {
       requireMember(req, "read");

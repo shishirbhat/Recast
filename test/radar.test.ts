@@ -183,3 +183,29 @@ test("radar and ownership need a session", async () => {
     for (const path of ["/api/radar", "/api/ownership"]) assert.equal((await api(s.server, "", "GET", path)).status, 401);
   });
 });
+
+test("a decision changes after an agent started: the tasks it touches are marked, with who changed it and why; others aren't", async () => {
+  await withRadar(COMPATIBLE, async (s, get) => {
+    const rec = s.server.records;
+    const d = rec.proposeDecision({ title: "Names are one field", context: "c", decision: "getUser returns fullName only.", scope: ["src/server.js"], sources: [{ type: "file", ref: "src/server.js" }] }, "Ada");
+    rec.decide(d.id, "accepted", "Ada");
+    const other = rec.proposeDecision({ title: "Docs by hand", context: "c", decision: "x", scope: ["docs/"], sources: [{ type: "file", ref: "src/ui.js" }] }, "Ada");
+    rec.decide(other.id, "accepted", "Ada");
+    let alerts = ofKind(await get(), "decision-changed");
+    assert.deepEqual(alerts.map((a) => a.tasks[0]), ["T-api"], "only the task whose scope the decision covers");
+    assert.equal(alerts[0]!.certainty, "known");
+    assert.equal(alerts[0]!.severity, "medium");
+    assert.match(alerts[0]!.title, new RegExp(`Decision ${d.id} was accepted after T-api's work started`));
+
+    rec.decide(d.id, "invalidated", "Bo", "fullName broke the CSV export");
+    alerts = ofKind(await get(), "decision-changed").filter((a) => /invalidated/.test(a.title));
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0]!.severity, "high");
+    assert.match(alerts[0]!.detail, /fullName broke the CSV export.*briefed before this changed/);
+    assert.ok(alerts[0]!.evidence.some((e) => e.text === `Bo marked ${d.id} invalidated (fullName broke the CSV export)`));
+    // A rejected proposal never applied to anyone.
+    const no = rec.proposeDecision({ title: "Rejected idea", context: "c", decision: "x", scope: ["src/ui.js"], sources: [{ type: "file", ref: "src/ui.js" }] }, "Ada");
+    rec.decide(no.id, "rejected", "Ada");
+    assert.ok(!ofKind(await get(), "decision-changed").some((a) => a.title.includes(no.id)));
+  });
+});
