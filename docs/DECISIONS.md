@@ -407,3 +407,11 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Review:** says whether it is a Recast recipe or the person's own workflow, its version, and its limitations (folded) before it runs. Each waiting step shows "After: …".
 - **Sharing:** in "Your workflows", **Copy definition** gives the stored definition only: the steps and where each goes, never captured words or accounts. **Import a workflow** checks a pasted definition exactly as a stored one (`checkWorkflow`). Unknown fields, unknown destinations, a clash of name or id, or anything that is not JSON are refused with the reason. An imported workflow runs with the importer's own connections, after its review.
 - **Evidence:** F (machine tests for dependency, retry, unknown and import; try-it page test for version and limitations).
+
+### D58. Receipts, context and the inbox; the try-it page says it is a demo (2026-10-30)
+- **Receipts:** the success receipt says what the object was **made from**: each page or app its pieces came from. In the desktop library, a placement carries the destination's own link to the result, read back with it (https only). An undone placement is marked "(undone)" and loses its link. An entry never placed says "not placed yet".
+- **Context:** the state machine stamps each piece with `capturedAt` when the host gives none. "Inside this object" shows it next to the source, and Copy as data includes it.
+- **Inbox:** **Put on screen** in the library turns Recast on with that entry as a blob, using the same piece id. One already on the desk is that blob, not a copy, and the library never lists it twice.
+- **Extension popup:** says what stays in the browser session (cleared when it closes), what is kept in the browser (saved workflows, how much Recast asks), and that placing goes only to connected accounts.
+- **Try-it page:** a demo line above the page: sample pages and stand-ins, nothing reaches a real account, what is picked up stays in the tab and saved workflows in the browser. It also offers a link to the public showcase (**About the real Recast**; there is no public download yet) and **Show me how**: four steps, each ticked off as it is done. The guide is offered, never forced.
+- **Evidence:** F (desktop library tests: link, undone, Put on screen; try-it page test for the banner and the guide).

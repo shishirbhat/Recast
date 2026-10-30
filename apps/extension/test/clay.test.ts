@@ -149,6 +149,8 @@ describe("cross-tab carry in the browser extension", () => {
     // The popup's button does what the shortcut does.
     const extId = new URL(sw.url()).host; const tabId = await tabIdOf(restaurant.url());
     const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);
+    // Where things are kept, said every time the popup opens.
+    expect(await popup.locator("#data-note").innerText()).toMatch(/stays in this browser while it is open.*cleared when the browser closes/);
     await popup.getByRole("button", { name: /Clump things on this page/ }).click();
     await until(async () => (await stored()).armed === true);
     await restaurant.close(); await cal.close();

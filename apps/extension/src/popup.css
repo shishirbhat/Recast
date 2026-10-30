@@ -37,3 +37,6 @@ summary:focus-visible, button:focus-visible { outline: 2px solid var(--accent); 
 .ask p { margin: 0 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
 .ask label { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-xs); margin-top: var(--sp-2); cursor: pointer; }
 .ask input { margin-top: 2px; }
+
+/* Where things are kept: said plainly, every time the popup opens. */
+.data-note { margin: 0; padding: var(--sp-2) var(--sp-4); font-size: var(--fs-xs, 12px); line-height: 1.45; color: var(--text-muted); }
