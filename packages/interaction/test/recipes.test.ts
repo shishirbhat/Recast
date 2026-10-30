@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { CONTRACTS } from "@recast/bridges";
 import type { Fragment, Receipt } from "@recast/core";
-import { initialClumpState, recipeOffers, reduceClump, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
+import { initialClumpState, recipeOffers, reduceClump, viewOf as viewOfFn, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
 
 const NOW = Date.parse("2026-10-19T09:00:00Z");
 let n = 0;
@@ -163,3 +163,33 @@ describe("the capture stack holds no accidental copies", () => {
     expect(r.s.run!.steps[1]).toMatchObject({ status: "skipped", message: expect.stringMatching(/which was left out/) });
   });
 });
+
+describe("the person's defaults (D59)", () => {
+  const OUTLOOK: DestinationSpec = { id: "outlook", label: "Outlook", contract: CONTRACTS.outlookCalendarEvent, standIn: true };
+  it("a default calendar is where the wheel and recipes go; it is stored, shown, cleared; a bad stored value is dropped", async () => {
+    const { wheelEntries } = await import("../src/wheel.js");
+    const { REGISTRY } = await import("@recast/bridges");
+    let s = dinner([CAL, OUTLOOK, MAIL]);
+    expect(wheelEntries(s, "obj-1", REGISTRY)[0]).toMatchObject({ key: "calendar", destinationId: "cal" });
+    let r = run([{ type: "setPreset", key: "calendar", value: CONTRACTS.outlookCalendarEvent.destination }], s);
+    expect(r.effects).toEqual([{ type: "storePresets", presets: { places: { calendar: CONTRACTS.outlookCalendarEvent.destination } } }]);
+    s = r.s;
+    expect(wheelEntries(s, "obj-1", REGISTRY)[0]).toMatchObject({ destinationId: "outlook", preset: CONTRACTS.outlookCalendarEvent.app });
+    expect(run([{ type: "openRecipe", recipeId: "plan-and-invite" }], s).s.run!.steps[0]!.destinationId).toBe("outlook");
+    // An explicit pick for this object is still the person's: choosing Google Calendar goes there.
+    expect(run([{ type: "openWheel" }, { type: "pickDestination", destinationId: "cal" }], s).s.placement!.destinationId).toBe("cal");
+    expect(run([{ type: "setPreset", key: "calendar", value: null }], s).s.presets).toEqual({ places: {} });
+    expect(run([{ type: "loadPresets", presets: { places: { calendar: "<script>", mail: 3 }, durationMin: 61, extra: "x" } }], s).s.presets).toEqual({});
+    expect(run([{ type: "setPreset", key: "duration", value: 61 }], s).errors[0]).toMatch(/choose one of/);
+  });
+  it("a default meeting length is used only when nothing gave an end, and says it is yours", () => {
+    let s = run([{ type: "setPreset", key: "duration", value: 90 }], dinner([CAL])).s;
+    const r = run([{ type: "openWheel" }, { type: "pickDestination", destinationId: "cal" }], s);
+    const end = r.s.placement!.op!.dataMoved.find((d) => d.path === "Event.end")!.value;
+    expect(end).toBe("2026-10-23T21:00");
+    expect(viewOfEvent(r.s).assumptions).toContain("Ends after 90 minutes (your default; change it if needed)");
+    const typed = run([{ type: "answer", objectId: "obj-1", field: "end", value: "2026-10-23T20:00" }], r.s);
+    expect(typed.s.placement!.op!.dataMoved.find((d) => d.path === "Event.end")!.value).toBe("2026-10-23T20:00");
+  });
+});
+function viewOfEvent(s: ClumpState) { return viewOfFn(s, "obj-1").event!; }

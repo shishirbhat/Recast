@@ -19,6 +19,7 @@ export type GlassIntent =
   | { type: "openRecipe"; recipeId: string } | { type: "toggleStep"; stepId: string } | { type: "runRecipe"; heldMs?: number } | { type: "undoStep"; stepId: string }
   | { type: "saveWorkflow"; name: string } | { type: "renameWorkflow"; id: string; name: string } | { type: "deleteWorkflow"; id: string }
   | { type: "retryStep"; stepId: string } | { type: "importWorkflow"; text: string }
+  | { type: "setPreset"; key: "calendar" | "mail" | "tasks" | "documents" | "duration"; value: string | number | null }
   /** Only where the host offers it (`takePage`): the host captures the page itself, then opens the module on it. */
   | { type: "takePage" };
 
@@ -64,6 +65,7 @@ export function intentEvents(i: GlassIntent, s: ClumpState): ClumpInput[] {
     case "deleteWorkflow": return [{ type: "deleteWorkflow", id: i.id }];
     case "retryStep": return [{ type: "retryStep", stepId: i.stepId }];
     case "importWorkflow": return [{ type: "importWorkflow", text: i.text }];
+    case "setPreset": return [{ type: "setPreset", key: i.key, value: i.value }];
     case "takePage": return [];
   }
 }
@@ -166,6 +168,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   let replacing: string | null = null, discarding = false;   // a piece being corrected; "discard this?" asked once
   let copied: "yes" | "no" | null = null;   // "Copy as data": done, or refused (then the data is shown to copy by hand)
   let importing = false, wfCopied: string | null = null;   // the import box is open; which definition was just copied
+  let defaulting = false;   // "Your defaults" is open
   const emit = (i: GlassIntent) => opts.onIntent(i);
 
   // ---- the light: a soft specular highlight that drifts toward the pointer, so the surface reads as curved glass -------
@@ -190,7 +193,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     }
     return m.entries.map((e) => {
       const live = e.options.filter((o) => o.available);
-      const sub = e.available ? `${live.map((o) => o.app).join(" or ")}${e.standIn ? " · stand-in" : ""}` : "Unavailable";
+      const sub = e.available ? `${e.preset ? `${e.preset} (your default)` : live.map((o) => o.app).join(" or ")}${e.standIn ? " · stand-in" : ""}` : "Unavailable";
       return { key: e.key, label: e.label, sub, available: e.available, ...(e.reason ? { reason: e.reason } : {}), ...(e.destinationId ? { destinationId: e.destinationId } : {}), icon: e.key };
     });
   }
@@ -256,7 +259,8 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (r.key === "more") { drill = "more"; update(model); return; }
     if (r.key.endsWith(":back")) { drill = null; update(model); return; }
     const entry = model.entries.find((x) => x.key === r.key);
-    if (entry && entry.options.filter((o) => o.available).length > 1) { drill = entry.key; update(model); return; }
+    // The person's default for this place goes straight there; "Other …" still lists every app, one click away.
+    if (entry && !entry.preset && entry.options.filter((o) => o.available).length > 1) { drill = entry.key; update(model); return; }
     if (!r.available || !r.destinationId) { const line = el.querySelector(".rg-reason"); line?.classList.remove("nudge"); void (line as HTMLElement | null)?.offsetWidth; line?.classList.add("nudge"); return; }
     emit({ type: "pick", destinationId: r.destinationId });
   }
@@ -431,14 +435,16 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     const dIcon = d ? `<span class="rg-dest" aria-hidden="true">${svg(d.key, 16)}</span>` : "";
     const standIn = d?.standIn ? `<p class="rg-note">Stand-in: ${esc(d.app)} here is a local stand-in. Nothing reaches the real ${esc(d.app)}.</p>` : "";
     switch (m.mode) {
-      case "composed": if (managing && m.mine?.length && !m.text) return manageView(m, err);
+      case "composed": if (defaulting && m.defaults) return defaultsView(m, err);
+        if (managing && m.mine?.length && !m.text) return manageView(m, err);
         return m.text
         ? { title: "Add to it?", head: "", facts: "", body: `<p class="rg-hint">${esc(m.text)}</p>`, actions: "" }
         : { title: "Ready to place", head: `${iconBtn("inspect", "Look inside", LAYERS)}${close}`, facts: "", body: err,
-            actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>${recipeChips(m)}${copyData(m)}` };
+            actions: `<button type="button" class="rg-go" data-act="openWheel" aria-label="Choose where it goes (Enter)"><span>Choose where it goes</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg></button>${recipeChips(m)}${copyData(m)}${m.defaults ? `<button type="button" class="rg-link rg-defaults-link" data-act="defaults">Your defaults</button>` : ""}` };
       case "plan": case "running": case "ran": return runView(m, err, close);
-      case "choosing": return { title: drill === "more" ? "More places" : drill ? `${esc(m.entries.find((e) => e.key === drill)?.label ?? "")}: which one?` : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
-        actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button><button type="button" class="rg-btn ghost" data-act="back">Back</button>` };
+      case "choosing": if (defaulting && m.defaults) return defaultsView(m, err);
+        return { title: drill === "more" ? "More places" : drill ? `${esc(m.entries.find((e) => e.key === drill)?.label ?? "")}: which one?` : "Where should it go?", head: close, facts, body: `${err}<p class="rg-reason" aria-live="polite"></p>`,
+        actions: `<button type="button" class="rg-btn" data-act="open">Open <kbd>↵</kbd></button>${othersBtn(m)}<button type="button" class="rg-btn ghost" data-act="back">Back</button>${m.defaults ? `<button type="button" class="rg-link rg-defaults-link" data-act="defaults">Your defaults</button>` : ""}` };
       case "inspecting": {
         const fs = m.object.ingredients; const many = fs.length > 1;
         // Each piece can be moved (the order a note is read in), corrected by typing, or taken back out.
@@ -493,6 +499,19 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     const b = `<button type="button" class="rg-btn ghost" data-act="copyData">${copied === "yes" ? "Copied as data" : "Copy as data"}</button>`;
     return copied === "no" ? `${b}<p class="rg-hint rg-copy-by-hand">The clipboard was not available here. Select it and copy it yourself:</p><textarea class="rg-data" readonly aria-label="The object as data">${esc(m.object.data)}</textarea>` : b;
   }
+  /** With a default chosen for the highlighted place, the other apps there are one click away. */
+  function othersBtn(m: Extract<ModuleModel, { entries: WheelEntry[] }>) {
+    if (drill) return "";
+    const e = m.entries.find((x) => x.key === wRows[target]?.key);
+    return e?.preset && e.options.filter((o) => o.available).length > 1 ? `<button type="button" class="rg-btn ghost" data-act="others" data-key="${esc(e.key)}">Other ${esc(e.label.toLowerCase())} apps</button>` : "";
+  }
+  /** Your defaults: one app per place and a meeting length, each set by the person and shown here; "Ask each time" clears it. */
+  function defaultsView(m: Extract<ModuleModel, { object: unknown }>, err: string) {
+    const d = m.defaults!;
+    const rowsHtml = d.places.map((p) => `<label class="rg-default"><span class="rg-step-label">${esc(p.label)}</span><select data-preset="${esc(p.key)}" ${p.options.length ? "" : "disabled"} aria-label="Default for ${esc(p.label)}"><option value="">${p.options.length ? "Ask each time" : "Nothing connected"}</option>${p.options.map((o) => `<option value="${esc(o.destination)}"${o.destination === p.current ? " selected" : ""}>${esc(o.app)}</option>`).join("")}</select></label>`).join("");
+    const dur = `<label class="rg-default"><span class="rg-step-label">Meeting length</span><select data-preset="duration" aria-label="Default meeting length"><option value="">Recast's (60 minutes)</option>${d.durations.map((n) => `<option value="${n}"${n === d.durationMin ? " selected" : ""}>${n} minutes</option>`).join("")}</select></label>`;
+    return { title: "Your defaults", head: "", facts: "", body: `${err}<p class="rg-hint">Used only when you have not chosen for this object. An end time or a place you pick always wins.</p><div class="rg-defaults">${rowsHtml}${dur}</div>`, actions: `<button type="button" class="rg-btn" data-act="defaultsDone">Done</button>` };
+  }
   /** What a placed object was made from: each page (or app) its pieces came from. */
   function madeFrom(m: Extract<ModuleModel, { object: unknown }>) {
     const from = [...new Set(m.object.ingredients.map((f) => f.from).filter(Boolean))];
@@ -507,7 +526,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     if (m.mode !== "choosing") drill = null;
     if (m.mode === "plan" || m.mode === "ran" || m.mode === "preview" || m.mode === "succeeded") { if (m.save?.done) { saving = false; draft = ""; } }
     if (renamePending) { renamePending = false; if (!extra.error) renaming = null; }
-    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; copied = null; importing = false; wfCopied = null; if (m.mode !== "composed") managing = false; }
+    if (m.mode !== model.mode) { saving = false; draft = ""; renaming = null; deleting = null; replacing = null; discarding = false; copied = null; importing = false; wfCopied = null; defaulting = false; if (m.mode !== "composed") managing = false; }
     if (replacing && !(m.mode === "inspecting" && m.object.ingredients.some((f) => f.id === replacing))) replacing = null;
     if (!("mine" in m) || !m.mine?.length) managing = false;
     model = m; el.dataset["mode"] = m.mode; el.hidden = m.mode === "off";
@@ -611,6 +630,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
       case "renameCancel": renaming = null; update(model); return;
       case "deleteCancel": deleting = null; update(model); return;
       case "replaceCancel": replacing = null; update(model); return;
+      case "defaults": defaulting = true; update(model); el.querySelector<HTMLElement>("select[data-preset]")?.focus(); return;
+      case "defaultsDone": defaulting = false; update(model); return;
+      case "others": drill = b.dataset["key"] as WheelKey; update(model); return;
       case "importStart": importing = true; update(model); el.querySelector<HTMLTextAreaElement>("[data-wf-import]")?.focus(); return;
       case "importCancel": importing = false; update(model); return;
       case "importOk": { const v = el.querySelector<HTMLTextAreaElement>("[data-wf-import]")?.value.trim() ?? ""; if (v) { importing = false; emit({ type: "importWorkflow", text: v }); } return; }
@@ -627,6 +649,10 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   });
   el.addEventListener("change", (e) => {
     const t = e.target as HTMLInputElement; if (t.matches("input[data-step]")) emit({ type: "toggleStep", stepId: t.dataset["step"]! });
+    if (t.matches("select[data-preset]")) {
+      const key = t.dataset["preset"] as "calendar" | "mail" | "tasks" | "documents" | "duration";
+      emit({ type: "setPreset", key, value: t.value === "" ? null : key === "duration" ? Number(t.value) : t.value });
+    }
   });
   el.addEventListener("keydown", (e) => {
     const t = e.target as HTMLElement;
@@ -846,6 +872,10 @@ export const GLASS_CSS = `
 .rg-replace { grid-column: 1 / -1; margin-top: 6px; }
 .rg-copy-by-hand { flex-basis: 100%; margin: 4px 0 0; }
 .rg-recipe-about { margin: 0; font-size: 11.5px; }
+.rg-defaults { display: grid; gap: 8px; }
+.rg-default { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rg-default select { min-width: 0; max-width: 60%; padding: 6px 10px; border: 0; border-radius: 10px; background: var(--g-sel); color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); font: inherit; }
+.rg-defaults-link { grid-column: auto; grid-row: auto; margin-left: auto; padding: 0; }
 .rg-limits { font-size: 12px; color: var(--g-muted); }
 .rg-limits summary { cursor: pointer; color: var(--g-ink); }
 .rg-limits ul { margin: 4px 0 0; padding-left: 18px; }

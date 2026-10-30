@@ -15,8 +15,9 @@ interface Origin { app?: string; title?: string; url?: string }
 interface Settings { trigger: string; platform: string; grabReady: boolean; listening: boolean }
 interface SavedInbox { state: ClumpState; pos: Record<string, Point> }
 interface OverlayApi {
-  boot(): Promise<{ settings: Settings; inbox: SavedInbox | ClumpState | null; theme: "dark" | "light"; on: boolean; workflows?: unknown[] }>;
+  boot(): Promise<{ settings: Settings; inbox: SavedInbox | ClumpState | null; theme: "dark" | "light"; on: boolean; workflows?: unknown[]; presets?: unknown }>;
   saveWorkflows(items: unknown[]): Promise<boolean>;
+  savePresets(p: unknown): Promise<boolean>;
   status(): Promise<Record<string, unknown>>;
   act(route: "commit" | "reconcile" | "undo" | "verify", body: unknown): Promise<{ status: number; body: Record<string, unknown> }>;
   openExternal(url: string): Promise<boolean>;
@@ -104,6 +105,7 @@ const labelOf = (destinationId: string) => state.destinations.find((d) => d.id =
 async function perform(eff: ClumpEffect) {
   // Saved, renamed or deleted by the person: the definitions only, into their own private file.
   if (eff.type === "storeWorkflows") { void api.saveWorkflows(eff.items); return; }
+  if (eff.type === "storePresets") { void api.savePresets(eff.presets); return; }
   const now = () => new Date().toISOString();
   // The object being placed, as this page knows it (a receipt names it by the operation's own id).
   const pieces = piecesOf(state.run?.objectId ?? state.placement?.objectId ?? "");
@@ -422,6 +424,7 @@ void (async () => {
   state = { ...state, armed: true, destinations: await destinations() };
   // The saved workflows live in their own file and are checked as they are read, every start (never trusted from the inbox).
   state = reduceClump(state, { type: "setWorkflows", items: Array.isArray(b.workflows) ? b.workflows : [], known: REGISTRY.map((c) => c.destination), now: Date.now() }).state;
+  state = reduceClump(state, { type: "loadPresets", presets: b.presets ?? {}, now: Date.now() }).state;
   render();
 })();
 

@@ -3,7 +3,10 @@
 // operation, its own receipt and its own outcome, and the run reports exactly that ("2 of 3 done"), never a blanket success.
 // A step whose answer was lost is unknown and is never sent again by the run.
 import { answerClump, checkConsent, chooseClump, plan, planRecipe, propose, rankProposals, recipeById, RECIPES, resolve, viewClump, type Consent, type Operation, type Receipt, type TargetKind, type Verification } from "@recast/core";
-import type { ClumpEffect, ClumpEvent, ClumpResult, ClumpState } from "./clump-machine.js";
+import { ctxOf, type ClumpEffect, type ClumpEvent, type ClumpResult, type ClumpState } from "./clump-machine.js";
+
+/** The wheel place a kind of destination belongs to, for the person's default there (D59). */
+const PLACE_OF: Partial<Record<TargetKind, "calendar" | "mail" | "tasks" | "documents">> = { Calendar: "calendar", Drafts: "mail", Task: "tasks", TaskList: "tasks", Issues: "tasks", Docs: "documents", Project: "documents" };
 
 export type StepStatus = "ready" | "blocked" | "skipped" | "waiting" | "running" | "done" | "failed" | "unknown" | "undoing" | "undone";
 export interface RunStep {
@@ -40,13 +43,16 @@ const KIND_NAME: Partial<Record<TargetKind, string>> = { Calendar: "a calendar",
 function steps(s: ClumpState, recipeId: string, objectId: string): RunStep[] | { error: string } {
   const r = recipeById(recipeId, s.workflows ?? []); if (!r) return { error: "no such recipe" };
   const c = s.objects[objectId]; if (!c) return { error: "no such object" };
-  const ctx = { now: new Date(s.now).toISOString(), timezone: s.timezone };
+  const ctx = ctxOf(s);
   return planRecipe(r, c, ctx).map((p, i): RunStep => {
     // A saved workflow names its exact destination: only that one will do, never a look-alike of the same kind.
     const def = r.steps[i];
     const dep = def?.after ? r.steps.find((x) => x.id === def.after) : undefined;
     const base = { id: p.id, label: p.label, targetKind: p.targetKind, worded: p.worded, uses: p.uses, ...(p.note ? { note: p.note } : {}), ...(dep ? { after: dep.id, afterLabel: dep.label } : {}) };
-    const d = def?.destination ? s.destinations.find((x) => x.contract.destination === def.destination) : s.destinations.find((x) => x.contract.targetKind === p.targetKind);
+    // Otherwise the person's default for that place when it takes this kind, else the first connected one that does.
+    const preferred = s.presets?.places?.[PLACE_OF[p.targetKind] ?? "calendar"];
+    const d = def?.destination ? s.destinations.find((x) => x.contract.destination === def.destination)
+      : s.destinations.find((x) => x.contract.targetKind === p.targetKind && x.contract.destination === preferred) ?? s.destinations.find((x) => x.contract.targetKind === p.targetKind);
     const where = d ? { destinationId: d.id, destinationLabel: d.label, app: d.contract.app, ...(d.standIn ? { standIn: true } : {}) } : {};
     if (!d) return { ...base, include: false, status: "blocked", reason: def?.destination ? `${def.app ?? def.destination} is not connected here` : `${KIND_NAME[p.targetKind] ?? p.targetKind} is not connected here` };
     if (!p.candidate) return { ...base, ...where, include: false, status: "blocked", reason: p.reason ?? "something is missing" };

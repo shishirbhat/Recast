@@ -359,7 +359,7 @@ async function main() {
     };
   };
   async function perform(eff: ClumpEffect) {
-    if (eff.type === "storeWorkflows") return;   // the worker keeps the saved workflows; a page never does
+    if (eff.type === "storeWorkflows" || eff.type === "storePresets") return;   // the worker keeps the saved workflows; a page never does
     const destId = eff.destinationId.split(":").slice(1).join(":"); const bridge = bridgeFor(destId); const now = () => new Date().toISOString();
     if (eff.type === "commit") {
       const opId = eff.op.opId;

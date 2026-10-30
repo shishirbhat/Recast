@@ -5,7 +5,7 @@
 // five fixed places. A destination is available only when the composition is the kind it takes AND a destination for it is
 // connected here. Anything else stays visible, disabled, with the reason in words.
 import { objectData, type CapabilityContract, type ClumpView, type Fragment } from "@recast/core";
-import { aThing, ctxOf, unfit, viewOf, type ClumpState, type Placement } from "./clump-machine.js";
+import { aThing, ctxOf, PRESET_DURATIONS, unfit, viewOf, type ClumpState, type Placement } from "./clump-machine.js";
 import { recipeOffers, type RecipeOffer, type RecipeRun } from "./recipe-run.js";
 import { saveable, workflowDefinition } from "./workflows.js";
 
@@ -31,7 +31,9 @@ export function abilityLine(c: CapabilityContract): string {
   if (c.reliability === "deep-link" || (a.includes("open") && !a.includes("create") && !a.includes("update"))) return "Opens it for you to finish there: Recast can’t check or undo it";
   return [a.includes("verify") ? "Read back after placing" : "Can’t be read back", a.includes("undo") ? "Undo" : "No Undo"].join(" · ");
 }
-export interface WheelEntry { key: WheelKey; label: string; available: boolean; reason?: string; destinationId?: string; standIn?: boolean; options: WheelOption[] }
+export interface WheelEntry { key: WheelKey; label: string; available: boolean; reason?: string; destinationId?: string; standIn?: boolean; options: WheelOption[];
+  /** The app the person made their default for this place, when it takes this object: opening goes straight there. */
+  preset?: string }
 
 export function wheelEntries(s: ClumpState, objectId: string, registry: readonly CapabilityContract[]): WheelEntry[] {
   const v = viewOf(s, objectId);
@@ -45,8 +47,10 @@ export function wheelEntries(s: ClumpState, objectId: string, registry: readonly
   };
   return WHEEL_SLOTS.map((slot) => {
     const options = registry.filter((c) => (slot.key === "more" ? !named.has(c.targetKind) : slot.kinds.includes(c.targetKind))).map(option);
-    const first = options.find((o) => o.available);
-    if (first) return { key: slot.key, label: slot.label, available: true, destinationId: first.destinationId!, ...(first.standIn ? { standIn: true } : {}), options };
+    const preferred = slot.key === "more" ? undefined : s.presets?.places?.[slot.key];
+    const mine = preferred ? options.find((o) => o.available && o.destination === preferred) : undefined;
+    const first = mine ?? options.find((o) => o.available);
+    if (first) return { key: slot.key, label: slot.label, available: true, destinationId: first.destinationId!, ...(first.standIn ? { standIn: true } : {}), options, ...(mine ? { preset: mine.app } : {}) };
     // Several apps would take it but none is connected: name them all ("Google Calendar or Outlook Calendar").
     // The person's own webhook is not an app anyone misses: it is offered when set up, never named as "not connected".
     const unconnected = [...new Set(options.filter((o) => o.reason?.endsWith(" is not connected here") && !o.destination.startsWith("webhook.")).map((o) => o.app))];
@@ -71,6 +75,8 @@ export type ModuleModel =
       recipes?: RecipeOffer[]; run?: RecipeRun;
       placement?: Placement; destination?: { key: WheelKey; label: string; app: string; effect: string; standIn: boolean; opensOnly?: boolean; verifies?: boolean };
       confirm?: string; text?: string;
+      /** The person's defaults, to see and change (D59): per place, the connected apps there and the one chosen; the meeting length. */
+      defaults?: { places: { key: WheelKey; label: string; current?: string; options: { destination: string; app: string }[] }[]; durationMin?: number; durations: readonly number[] };
       /** Whether what is on screen can be saved as a personal workflow; Save is offered only when it can. */
       save?: { ok: boolean; reason?: string; done?: string };
       /** The person's saved workflows (composed), with the ones that cannot be used and why: for rename and delete. */
@@ -87,17 +93,25 @@ export function moduleModel(s: ClumpState, registry: readonly CapabilityContract
     return { ...around(p.objectId), placement: p, ...(d ? { destination: { key: WHEEL_SLOTS.find((w) => w.kinds.includes(d.contract.targetKind))?.key ?? "more", label: d.label, app: d.contract.app, effect: p.op?.proposal.effect ?? d.contract.accepts[0]?.effect ?? "", standIn: !!d.standIn, verifies: !!d.contract.abilities?.includes("verify"), ...(d.contract.reliability === "deep-link" ? { opensOnly: true } : {}) } } : {}), ...(s.last ? { text: s.last.text } : {}) };
   };
   const sv = () => { const r = saveable(s); const done = s.last?.kind === "saved" ? { done: s.last.text } : {}; return { save: r.ok ? { ok: true, ...done } : { ok: false, reason: r.reason } }; };
+  const defaults = () => ({
+    places: WHEEL_SLOTS.filter((w) => w.key !== "more").map((w) => {
+      const options = [...new Map(s.destinations.filter((d) => w.kinds.includes(d.contract.targetKind) && d.contract.reliability !== "deep-link").map((d) => [d.contract.destination, { destination: d.contract.destination, app: d.contract.app }])).values()];
+      const current = s.presets?.places?.[w.key as "calendar"];
+      return { key: w.key, label: w.label, options, ...(current ? { current } : {}) };
+    }),
+    ...(s.presets?.durationMin ? { durationMin: s.presets.durationMin } : {}), durations: PRESET_DURATIONS,
+  });
   const mine = () => {
     const list = [...(s.workflows ?? []).map((w) => ({ id: w.id, name: w.name, description: w.description, definition: workflowDefinition(w) })),
       ...(s.workflowIssues ?? []).map((x, i) => ({ id: x.id ?? `#${i}`, name: x.name ?? "A saved workflow", description: "", reason: x.reason }))];
     return list.length ? { mine: list } : {};
   };
   switch (s.phase) {
-    case "composed": return { mode: "composed", ...around(s.focus!), recipes: recipeOffers(s, s.focus!), ...mine() };
+    case "composed": return { mode: "composed", ...around(s.focus!), recipes: recipeOffers(s, s.focus!), ...mine(), defaults: defaults() };
     case "planning": return { mode: "plan", ...around(s.run!.objectId), run: s.run!, ...(s.run!.saved ? {} : sv()) };
     case "running": return { mode: "running", ...around(s.run!.objectId), run: s.run! };
     case "ran": return { mode: "ran", ...around(s.run!.objectId), run: s.run!, ...(s.last ? { text: s.last.text } : {}), ...(s.run!.saved ? {} : sv()) };
-    case "choosing": return { mode: "choosing", ...around(s.focus!) };
+    case "choosing": return { mode: "choosing", ...around(s.focus!), defaults: defaults() };
     case "inspecting": return { mode: "inspecting", ...around(s.inspecting!) };
     case "confirmingMerge": return { mode: "confirm", ...around(s.pendingMerge!.targetId), confirm: `Pressing these together ${s.pendingMerge!.reason}.` };
     case "previewing": return { mode: "preview", ...place(), ...sv() };

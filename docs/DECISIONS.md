@@ -415,3 +415,13 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Extension popup:** says what stays in the browser session (cleared when it closes), what is kept in the browser (saved workflows, how much Recast asks), and that placing goes only to connected accounts.
 - **Try-it page:** a demo line above the page: sample pages and stand-ins, nothing reaches a real account, what is picked up stays in the tab and saved workflows in the browser. It also offers a link to the public showcase (**About the real Recast**; there is no public download yet) and **Show me how**: four steps, each ticked off as it is done. The guide is offered, never forced.
 - **Evidence:** F (desktop library tests: link, undone, Put on screen; try-it page test for the banner and the guide).
+
+### D59. Your defaults: a place per wheel slot and a meeting length, set only by the person (2026-10-30)
+- **Decision:** "Your defaults" (from Ready to place, and from the wheel) sets one app per place (Calendar, Mail, Tasks, Documents) and a meeting length (15–120 minutes), or "Ask each time" and "Recast's (60 minutes)". Nothing is learned from activity.
+- **Where a default applies:**
+  - The wheel goes straight to the default app for that place, and the row says "(your default)". **Other … apps** still lists the rest, one click away.
+  - Recipes prefer the default when a step names no destination. A saved workflow keeps the exact destination it was saved with.
+  - The meeting length is used only when no end came from the source or the person. The review says "(your default)".
+- An explicit choice for this object always wins: a pick from "which one?", or a typed end.
+- **Stored** as destination names and a number only. The try-it page keeps them in localStorage, the extension in `chrome.storage.local`, and the desktop app in `presets.json` (0600; the main process accepts only what `checkPresets` lets through). Anything else in a stored file is dropped as it is read.
+- **Evidence:** F (machine tests for wheel, recipe, explicit pick, duration and bad stored values; try-it page test for the meeting length, the review and a reload).

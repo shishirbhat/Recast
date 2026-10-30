@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("recastDesktop", {
   openExternal: (url: string) => ipcRenderer.invoke("recast:open-external", url),
   saveInbox: (state: unknown) => ipcRenderer.invoke("recast:save-inbox", state),
   saveWorkflows: (items: unknown) => ipcRenderer.invoke("recast:save-workflows", items),
+  savePresets: (p: unknown) => ipcRenderer.invoke("recast:save-presets", p),
   interactive: (over: boolean, rects: unknown, own: unknown) => ipcRenderer.invoke("recast:interactive", over, rects, own),
   off: () => ipcRenderer.invoke("recast:off"),
   keys: (want: boolean) => ipcRenderer.invoke("recast:keys", want),

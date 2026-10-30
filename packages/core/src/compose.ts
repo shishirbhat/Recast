@@ -40,6 +40,8 @@ export interface ComposeContext {
   choose?: Partial<Record<EventField, string>>;
   /** Shown as a visible default, never silently. Minutes. */
   defaultDurationMin?: number;
+  /** True when that duration is the person's own preset (said so in the review), not Recast's. */
+  durationIsPreset?: boolean;
   app?: string;
 }
 
@@ -317,8 +319,8 @@ export function compose(fragments: Fragment[], ctx: ComposeContext): Composition
     const [date, hm] = fields.start.value.split("T") as [string, string];
     const [y, mo, d] = date.split("-").map(Number) as [number, number, number]; const [h, mi] = hm.split(":").map(Number) as [number, number];
     const t = new Date(Date.UTC(y, mo - 1, d, h, mi + mins));
-    set("end", { value: `${ymd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`, origin: "default", fragments: [], confidence: COMPOSED_CONFIDENCE.default, note: `${mins} minutes, a default` });
-    assumptions.push(`Ends after ${mins} minutes (a default; change it if needed)`);
+    set("end", { value: `${ymd(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`, origin: "default", fragments: [], confidence: COMPOSED_CONFIDENCE.default, note: `${mins} minutes, ${ctx.durationIsPreset ? "your default" : "a default"}` });
+    assumptions.push(`Ends after ${mins} minutes (${ctx.durationIsPreset ? "your default" : "a default"}; change it if needed)`);
   }
 
   // Validate what the person typed, without guessing a fix.

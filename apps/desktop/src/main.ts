@@ -20,6 +20,7 @@ import { canGrab, frontSource, grabSelection } from "./grab.js";
 import { capture, read, screenAccess, stopReading } from "./screen.js";
 import { findSpots } from "./spots.js";
 import { createHook, TRIGGER_LABEL } from "./hook.js";
+import { checkPresets } from "@recast/interaction";
 
 type Theme = "system" | "dark" | "light";
 interface Settings { theme: Theme; shortcuts: { open: string; capture: string; keys: string } }
@@ -47,6 +48,7 @@ const settingsFile = () => path.join(data(), "settings.json");
 const googleFile = () => path.join(secrets(), "google-app.json");
 const microsoftAppFile = () => path.join(secrets(), "microsoft-app.json");
 const workflowsFile = () => path.join(data(), "workflows.json");   // the person's saved workflows: definitions only
+const presetsFile = () => path.join(data(), "presets.json");       // the person's defaults: destination names and minutes
 const inboxFile = () => path.join(data(), "inbox.json");       // the blobs on screen, with where they sit
 const historyFile = () => path.join(data(), "history.json");   // every blob ever grabbed: the library
 
@@ -354,7 +356,7 @@ const clean = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) 
 // ---- the pages' few calls ---------------------------------------------------------------------------------------------
 const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear", "outlook", "todoist", "outlook-mail", "mstodo", "notion", "webhook"]);
 function ipc() {
-  ipcMain.handle("recast:boot", () => ({ settings: publicSettings(), inbox: readJson<unknown>(inboxFile(), null), workflows: readJson<unknown>(workflowsFile(), []), theme: themeName(), on }));
+  ipcMain.handle("recast:boot", () => ({ settings: publicSettings(), inbox: readJson<unknown>(inboxFile(), null), workflows: readJson<unknown>(workflowsFile(), []), presets: readJson<unknown>(presetsFile(), {}), theme: themeName(), on }));
   ipcMain.handle("recast:status", async () => (link ? (await link.direct("status", {})).body : {}));
   ipcMain.handle("recast:act", async (_e, route: unknown, body: unknown) => {
     // Only these operations, only to the destinations this program serves; the program checks the rest.
@@ -395,6 +397,11 @@ function ipc() {
   ipcMain.handle("recast:save-workflows", (e, items: unknown) => {
     if (!overlay || e.sender !== overlay.webContents || !Array.isArray(items) || items.length > 50 || JSON.stringify(items).length > 100_000) return false;
     writePrivate(workflowsFile(), items); return true;
+  });
+  // Checked again here: only the shape the machine produces, small, from the overlay.
+  ipcMain.handle("recast:save-presets", (e, p: unknown) => {
+    if (!overlay || e.sender !== overlay.webContents || !p || typeof p !== "object" || JSON.stringify(p).length > 2000) return false;
+    writePrivate(presetsFile(), checkPresets(p)); return true;
   });
   ipcMain.handle("recast:save-inbox", (_e, state: unknown) => { if (state && typeof state === "object") writePrivate(inboxFile(), state); return true; });
   ipcMain.handle("recast:history", () => history());

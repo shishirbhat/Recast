@@ -251,6 +251,30 @@ describe("pressing pieces into one object (mouse)", () => {
     await ctx.close();
   });
 
+  it("your defaults: a meeting length set here is used in the review as yours, kept in this browser after a reload", async () => {
+    const { page, ctx, errors } = await open();
+    await makeDinner(page);
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "composed");
+    await page.getByRole("button", { name: "Your defaults" }).click();
+    expect(await page.locator(".rg-title").innerText()).toBe("Your defaults");
+    expect(await page.locator("select[data-preset=calendar] option").allInnerTexts()).toEqual(["Ask each time", "Google Calendar"]);
+    await page.getByRole("combobox", { name: "Default meeting length" }).selectOption("90");
+    expect((await st(page)).presets).toEqual({ durationMin: 90 });
+    await page.getByRole("button", { name: "Done" }).click();
+    await page.getByRole("button", { name: /Choose where it goes/ }).click();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => (globalThis as any).recast.state.phase === "previewing");
+    await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
+    await page.waitForFunction(() => !!(globalThis as any).recast.state.placement?.op);
+    const end = (await st(page)).placement.op.dataMoved.find((d: any) => d.path === "Event.end").value;
+    expect(end).toBe("2026-10-23T21:00");
+    expect(await page.locator(".rg-body").innerText()).toMatch(/90 minutes \(your default/);
+    await page.reload(); await page.locator("#recast-trigger").click();
+    expect((await st(page)).presets).toEqual({ durationMin: 90 });
+    expect(errors).toEqual([]);
+    await ctx.close();
+  });
+
   it("when the calendar does not answer, Recast asks it instead of adding twice", async () => {
     const { page, ctx } = await open();
     const id = await makeDinner(page);

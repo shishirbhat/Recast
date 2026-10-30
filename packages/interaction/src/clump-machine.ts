@@ -43,7 +43,16 @@ export interface Placement {
   via?: "module" | "drop";
 }
 
+/**
+ * The person's own defaults (D59): a destination per place on the wheel, by the contract's destination name, and a
+ * meeting length. Set only by the person, shown and editable in "Your defaults"; never learned from activity, and never
+ * over a choice made for this object (an end the source or the person gave, a destination picked from "which one?").
+ */
+export interface Presets { places?: Partial<Record<"calendar" | "mail" | "tasks" | "documents", string>>; durationMin?: number }
+export const PRESET_DURATIONS = [15, 30, 45, 60, 90, 120] as const;
+
 export interface ClumpState {
+  presets?: Presets;
   phase: ClumpPhase;
   /** Capture mode. Off by default: nothing on a page can be picked up until the person turns Recast on. */
   armed: boolean;
@@ -114,6 +123,9 @@ export type ClumpEvent =
   | { type: "choose"; objectId: string; field: EventField; ingredientId: string; now: number }
   | { type: "place"; consent: Consent; now: number }
   | { type: "setConfirm"; level: ConfirmLevel; now: number }
+  /** One default, set or cleared (null) by the person; or the stored set, as the host read it (checked like any input). */
+  | { type: "setPreset"; key: "calendar" | "mail" | "tasks" | "documents" | "duration"; value: string | number | null; now: number }
+  | { type: "loadPresets"; presets: unknown; now: number }
   /** Where the person is now (travel, a system change). Later readings use it; a planned operation keeps its own. */
   | { type: "setTimezone"; timezone: string; now: number }
   // Results of effects. Each names the operation it answers (opId), so a late answer for an earlier operation is ignored.
@@ -142,7 +154,9 @@ export type ClumpEffect =
   /** Read the placement back from the destination and compare it with the plan (destinations that declare "verify"). */
   | { type: "verify"; op: Operation; receipt: Receipt; destinationId: string }
   /** Keep this list as the person's saved workflows (definitions only: no captured content, no credentials). */
-  | { type: "storeWorkflows"; items: unknown[] };
+  | { type: "storeWorkflows"; items: unknown[] }
+  /** Keep the person's defaults (destination names and a number of minutes: nothing captured). */
+  | { type: "storePresets"; presets: Presets };
 
 export interface ClumpResult { state: ClumpState; effects: ClumpEffect[]; error?: string; /** an answer for an earlier operation, ignored: hosts need not show it */ stale?: true;
   /** After a capture: the object it is now (new, or the one already on the desk when it was the same piece). */
@@ -173,7 +187,18 @@ const LEGAL: Record<ClumpPhase, ClumpEvent["type"][]> = {
   planning: [], running: [], ran: [],
 };
 
-export const ctxOf = (s: ClumpState) => ({ now: new Date(s.now).toISOString(), timezone: s.timezone });
+export const ctxOf = (s: ClumpState) => ({ now: new Date(s.now).toISOString(), timezone: s.timezone, ...(s.presets?.durationMin ? { defaultDurationMin: s.presets.durationMin, durationIsPreset: true } : {}) });
+
+const PLACE_KEYS = ["calendar", "mail", "tasks", "documents"] as const;
+/** Presets as stored: only known keys, destination names of a sane shape, a duration from the list. Anything else is dropped. */
+export function checkPresets(x: unknown): Presets {
+  const o = x && typeof x === "object" ? (x as Record<string, unknown>) : {};
+  const places: Presets["places"] = {};
+  const p = o.places && typeof o.places === "object" ? (o.places as Record<string, unknown>) : {};
+  for (const k of PLACE_KEYS) if (typeof p[k] === "string" && /^[\w.-]{1,80}$/.test(p[k] as string)) places[k] = p[k] as string;
+  const d = o.durationMin;
+  return { ...(Object.keys(places).length ? { places } : {}), ...(typeof d === "number" && (PRESET_DURATIONS as readonly number[]).includes(d) ? { durationMin: d } : {}) };
+}
 export const viewOf = (s: ClumpState, id: string): ClumpView => viewClump(s.objects[id]!, ctxOf(s));
 const say = (s: ClumpState, kind: NonNullable<ClumpState["last"]>["kind"], text: string): ClumpState => ({ ...s, last: { kind, text, at: s.now } });
 const without = (desk: string[], id: string) => desk.filter((x) => x !== id);
@@ -286,6 +311,23 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
   if (answers && answers(ev) !== state.placement?.op?.opId) return { state, effects: [], error: "ignored: an answer for an earlier action", stale: true };
   // A setting, not a step: allowed in any phase, and it never changes what is in flight.
   if (ev.type === "setConfirm") return { state: { ...s0, confirm: ev.level }, effects: [] };
+  if (ev.type === "loadPresets") return { state: { ...s0, presets: checkPresets(ev.presets) }, effects: [] };
+  if (ev.type === "setPreset") {
+    const cur = state.presets ?? {};
+    let next: Presets;
+    if (ev.key === "duration") {
+      if (ev.value !== null && !(PRESET_DURATIONS as readonly unknown[]).includes(ev.value)) return { state, effects: [], error: `choose one of ${PRESET_DURATIONS.join(", ")} minutes` };
+      const { durationMin: _, ...rest } = cur; next = ev.value === null ? rest : { ...rest, durationMin: ev.value as number };
+    } else {
+      if (ev.value !== null && (typeof ev.value !== "string" || !/^[\w.-]{1,80}$/.test(ev.value))) return { state, effects: [], error: "not a destination" };
+      const places = { ...(cur.places ?? {}) }; if (ev.value === null) delete places[ev.key]; else places[ev.key] = ev.value;
+      next = { ...cur, places };
+    }
+    let n: ClumpState = { ...s0, presets: next };
+    // An open review uses the new default length at once (it is shown there as "your default").
+    if (n.placement && n.phase === "previewing") n = repreview(n);
+    return { state: n, effects: [{ type: "storePresets", presets: next }] };
+  }
   if (ev.type === "setTimezone") {
     try { new Intl.DateTimeFormat("en", { timeZone: ev.timezone }); } catch { return { state, effects: [], error: `not a time zone: ${ev.timezone}` }; }
     return { state: { ...s0, timezone: ev.timezone }, effects: [] };
