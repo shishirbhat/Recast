@@ -158,8 +158,11 @@ test("two people press Apply at the same time: it is applied once", { timeout: 6
     assert.equal(refused.length, 1);
     assert.match(String(refused[0]!.reason), /already being applied|is applied/);
     assert.equal(server.docs.open("src/ui.js").text.toString().match(/Welcome, /g)?.length, 1, "the change is in the file once");
-    // And applying again afterwards is refused too.
-    await assert.rejects(server.runs.apply("T-ui", owner), /is applied/);
+    // Applying again afterwards (a retry after an uncertain outcome) says it's already applied and writes nothing.
+    const again = await server.runs.apply("T-ui", owner);
+    assert.equal(again.already, true);
+    assert.deepEqual(again.applied, []);
+    assert.equal(server.docs.open("src/ui.js").text.toString().match(/Welcome, /g)?.length, 1, "still in the file once");
   } finally {
     delete process.env.RELAY_SIM_EDITS;
     await server.close();

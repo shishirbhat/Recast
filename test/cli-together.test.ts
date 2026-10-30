@@ -172,3 +172,20 @@ test("CLI: relay changeset writes the file and relay changeset verify checks it 
     await s.server.close();
   }
 });
+
+test("CLI: relay timeline prints the project's history for a task, newest first", async () => {
+  const db = freshDb();
+  const s = await twoAgentTasks(BREAKING);
+  try {
+    const { token } = s.server.members.invite("Cli", "viewer");
+    await cli(db, "remote", "join", `${s.server.url}/join#${token}`);
+    const r = await cli(db, "timeline", "--task", "T-ui", "--limit", "100");
+    assert.equal(r.code, 0, r.err);
+    const lines = r.out.trim().split("\n");
+    assert.match(lines.at(-1)!, /task {9}Task created/);
+    assert.ok(lines.some((l) => /agent {8}Agent \(claude-code\) started from snapshot/.test(l)));
+    assert.ok(lines.every((l) => l.includes("T-ui")));
+  } finally {
+    await s.server.close();
+  }
+});

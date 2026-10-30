@@ -19,7 +19,7 @@ test("the timeline joins agent runs, checks, edits and commits; it searches and 
     // A person edits; a commit written two days ago is committed now.
     const c = await client(s.server, own.cookie, "src/ui.js");
     c.text.insert(0, "Hello ");
-    await until(() => s.server.docs.get("src/ui.js")?.text.toString().startsWith("Hello"), 3000, "edit");
+    await until(() => s.server.docs.get("src/ui.js")?.text.toString().startsWith("Hello") ?? false, 3000, "edit");
     c.close();
     s.server.docs.closeSessions();
     writeFileSync(join(s.repo, "NOTES.md"), "notes\n");
@@ -42,7 +42,8 @@ test("the timeline joins agent runs, checks, edits and commits; it searches and 
     for (let i = 1; i < all.length; i++) assert.ok(all[i - 1]!.recordedAt >= all[i]!.recordedAt, "newest first");
 
     const forTask = (await get("?task=T-ui")).entries;
-    assert.ok(forTask.length > 0 && forTask.every((e) => e.task === "T-ui"));
+    assert.ok(forTask.length > 5 && forTask.every((e) => e.tasks.includes("T-ui")));
+    assert.ok(forTask.some((e) => e.kind === "integration" && e.task === null), "a combined check that names the task is part of its history");
     const searched = (await get("?q=getUser")).entries;
     assert.ok(searched.length === 0 || searched.every((e) => /getuser/i.test(`${e.summary} ${e.actor} ${e.type}`)));
     const checks = (await get("?kinds=integration,check")).entries;

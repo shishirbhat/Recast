@@ -23,6 +23,8 @@ export interface TimelineEntry {
   occurredAt: { from: string; to: string | null } | null;
   actor: string;
   task: string | null;
+  /** Every task the entry concerns (a combined check names several). */
+  tasks: string[];
   summary: string;
 }
 
@@ -40,7 +42,7 @@ function kindOf(type: string): TimelineKind {
   const head = type.split(".")[0]!;
   if (head === "task" || head === "intent") return "task";
   if (head === "agent") return "agent";
-  if (head === "evidence" || head === "tests" || head === "repro" || head === "review") return "check";
+  if (head === "evidence" || head === "tests" || head === "repro" || head === "review" || head === "enforcement") return "check";
   if (head === "integration") return "integration";
   if (head === "decision") return "decision";
   if (head === "contract") return "contract";
@@ -56,7 +58,10 @@ const list = (v: unknown) => (Array.isArray(v) ? v.map(String).join(", ") : "");
 /** One line per event, from its recorded data; unknown types fall back to their type and a few fields. */
 export function summarize(type: string, d: Record<string, unknown>, from: string | null, to: string | null): string {
   switch (type) {
-    case "task.created": return `Created: ${String(d.objective ?? "")}`;
+    case "task.created": return d.objective ? `Created: ${String(d.objective)}` : "Task created";
+    case "task.base_changed": return `Base set to ${String(d.to ?? "").slice(0, 7)}`;
+    case "task.contract_acknowledged": return `Acknowledged contract ${String(d.contract)} v${String(d.to)}`;
+    case "enforcement.diff_check": return "Relay checked which files the task changed";
     case "task.transition": return `${from ?? "?"} → ${to ?? "?"}${d.reason ? ` (${String(d.reason)})` : ""}${d.integrationId ? " by an approved combined check" : ""}`;
     case "task.input_changed": return `${String(d.by)} edited ${String(d.path)} while the agent worked from an older copy`;
     case "task.decision_changed": return `Decision ${String(d.decision)} ${String(d.change)}${d.reason ? `: ${String(d.reason)}` : ""}`;
@@ -101,7 +106,7 @@ function commits(root: string, limit: number): TimelineEntry[] {
     const [sha, authored, committed, author, subject] = l.split("\x1f") as [string, string, string, string, string];
     const a = new Date(authored).toISOString();
     const c = new Date(committed).toISOString();
-    return { id: `commit:${sha}`, kind: "git", type: "git.commit", recordedAt: c, occurredAt: a !== c ? { from: a, to: null } : null, actor: author, task: null, summary: `${sha.slice(0, 7)} ${subject}` };
+    return { id: `commit:${sha}`, kind: "git", type: "git.commit", recordedAt: c, occurredAt: a !== c ? { from: a, to: null } : null, actor: author, task: null, tasks: [], summary: `${sha.slice(0, 7)} ${subject}` };
   });
 }
 
@@ -112,18 +117,19 @@ export function timeline(relay: Relay, root: string, query: TimelineQuery = {}):
   const rows = relay.db.prepare("SELECT seq, id, task_id, type, actor, at, from_state, to_state, data FROM events WHERE type NOT IN ('agent.text') ORDER BY seq DESC LIMIT 5000").all() as { seq: number; id: string; task_id: string | null; type: string; actor: string; at: string; from_state: string | null; to_state: string | null; data: string }[];
   for (const r of rows) {
     const d = JSON.parse(r.data) as Record<string, unknown>;
-    entries.push({ id: `event:${r.seq}`, kind: kindOf(r.type), type: r.type, recordedAt: r.at, occurredAt: null, actor: r.actor, task: r.task_id, summary: summarize(r.type, d, r.from_state, r.to_state) });
+    const tasks = [...new Set([...(r.task_id ? [r.task_id] : []), ...(Array.isArray(d.tasks) ? d.tasks.map(String) : [])])];
+    entries.push({ id: `event:${r.seq}`, kind: kindOf(r.type), type: r.type, recordedAt: r.at, occurredAt: null, actor: r.actor, task: r.task_id, tasks, summary: summarize(r.type, d, r.from_state, r.to_state) });
   }
   const sessions = relay.db.prepare("SELECT id, doc, author, started_at, ended_at, inserted, deleted, edits FROM doc_sessions ORDER BY ended_at DESC LIMIT 2000").all() as { id: string; doc: string; author: string; started_at: string; ended_at: string; inserted: number; deleted: number; edits: number }[];
   for (const s of sessions)
-    entries.push({ id: `edit:${s.id}`, kind: "edit", type: "edit.session", recordedAt: s.ended_at, occurredAt: { from: s.started_at, to: s.ended_at }, actor: s.author, task: null, summary: `Edited ${s.doc.replace(/^file:/, "")}: +${s.inserted} −${s.deleted} characters in ${s.edits} edit${s.edits === 1 ? "" : "s"}` });
+    entries.push({ id: `edit:${s.id}`, kind: "edit", type: "edit.session", recordedAt: s.ended_at, occurredAt: { from: s.started_at, to: s.ended_at }, actor: s.author, task: null, tasks: [], summary: `Edited ${s.doc.replace(/^file:/, "")}: +${s.inserted} −${s.deleted} characters in ${s.edits} edit${s.edits === 1 ? "" : "s"}` });
   entries.push(...commits(root, 200));
 
   const q = query.q?.toLowerCase().trim();
   const filtered = entries
-    .filter((e) => (!query.task || e.task === query.task) && (!query.actor || e.actor.toLowerCase().includes(query.actor.toLowerCase())) && (!query.kinds?.length || query.kinds.includes(e.kind)))
+    .filter((e) => (!query.task || e.tasks.includes(query.task)) && (!query.actor || e.actor.toLowerCase().includes(query.actor.toLowerCase())) && (!query.kinds?.length || query.kinds.includes(e.kind)))
     .filter((e) => (!query.since || e.recordedAt >= query.since) && (!query.until || e.recordedAt <= query.until))
-    .filter((e) => !q || `${e.summary} ${e.actor} ${e.task ?? ""} ${e.type}`.toLowerCase().includes(q))
+    .filter((e) => !q || `${e.summary} ${e.actor} ${e.tasks.join(" ")} ${e.type}`.toLowerCase().includes(q))
     .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt) || b.id.localeCompare(a.id));
   return { entries: filtered.slice(0, limit), truncated: filtered.length > limit };
 }

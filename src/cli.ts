@@ -16,6 +16,7 @@ import { startServer } from "./server/server.ts";
 import { Members } from "./server/auth.ts";
 import { RemoteError, call, errorText, forgetSession, join as remoteJoin, loadSession } from "./remote.ts";
 import type { OwnedFile, Radar } from "./analysis/radar.ts";
+import type { TimelineEntry } from "./analysis/timeline.ts";
 import { changesetText, verifyChangeset } from "./analysis/changeset.ts";
 import type { Changeset } from "./analysis/changeset.ts";
 import type { Integration } from "./core/types.ts";
@@ -48,6 +49,8 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
                                                 exactly this change. Exit 0 verified, 1 not verified
   relay repro <evidence-id> [--run]             rebuild the files a failed check ran on and show how to rerun it; --run reruns it on
   relay repro --integration ID --command CMD [--run]   the server and says reproduced / different failure / did not reproduce
+  relay timeline [--task ID] [--query TEXT] [--limit N] [--json]   the flight recorder from the running server:
+                                                events, edit sessions and commits, newest first
   relay ownership [--json]                      changed files with the tasks that own them and who changed them, where
   relay remote join <invite-link>              sign this checkout in to a running Relay server (one-time invite)
   relay remote status | leave                  which server and member this checkout uses / sign out
@@ -93,6 +96,8 @@ const { values: o, positionals: args } = parseArgs({
     run: { type: "boolean" },
     integration: { type: "string" },
     command: { type: "string" },
+    query: { type: "string" },
+    limit: { type: "string" },
     port: { type: "string" },
     host: { type: "string" },
     role: { type: "string" },
@@ -193,6 +198,7 @@ async function main(): Promise<void> {
   if (cmd === "changeset" && sub === "verify") return changesetVerify(need(a1, "changeset file"));
   if (cmd === "changeset") return changesetCmd(need(sub, "task id"));
   if (cmd === "repro") return reproCmd(sub);
+  if (cmd === "timeline") return timelineCmd();
   if (cmd === "ownership") return ownershipCmd();
   if (cmd === "agent-config") {
     if (sub !== "claude-code") throw new RelayError("usage", `Unknown agent ${sub}`);
@@ -441,6 +447,15 @@ async function reproCmd(evidence: string | undefined): Promise<void> {
   const b = await remoteGet<{ text: string; reproducibility: string }>(`/repro?${q}`);
   if (o.json) console.log(JSON.stringify(b, null, 2));
   else console.log(b.text);
+}
+
+async function timelineCmd(): Promise<void> {
+  const q = new URLSearchParams({ limit: o.limit ?? "50", ...(o.task ? { task: o.task } : {}), ...(o.query ? { q: o.query } : {}) });
+  const r = await remoteGet<{ entries: TimelineEntry[]; truncated: boolean }>(`/timeline?${q}`);
+  if (o.json) return console.log(JSON.stringify(r, null, 2));
+  for (const e of r.entries)
+    console.log(`${e.recordedAt}  ${e.kind.padEnd(12)} ${e.summary}  · ${e.actor}${e.tasks.length ? ` · ${e.tasks.join(", ")}` : ""}${e.occurredAt ? `  (happened ${e.occurredAt.from}${e.occurredAt.to ? ` to ${e.occurredAt.to}` : ""})` : ""}`);
+  if (r.truncated) console.log(`… more; narrow with --task or --query, or raise --limit`);
 }
 
 async function ownershipCmd(): Promise<void> {
