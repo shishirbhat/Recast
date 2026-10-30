@@ -23,6 +23,8 @@ import { buildChangeset, changesetText, verifyChangeset } from "../analysis/chan
 import type { Changeset } from "../analysis/changeset.ts";
 import { reproBundle, reproduce, reproText } from "../analysis/repro.ts";
 import { Handoffs, NEXT_AGENT, handoffText } from "../knowledge/handoff.ts";
+import { Shares, sharePage } from "./shares.ts";
+import type { ShareKind } from "./shares.ts";
 import type { ReproTarget } from "../analysis/repro.ts";
 import { changeRecord } from "../analysis/change.ts";
 import { integrationReport } from "../analysis/explain.ts";
@@ -235,6 +237,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     },
     radar: () => computeRadar().alerts,
   });
+  const shares = new Shares(relay.db);
   // An agent's briefing: accepted decisions and contracts, plus a handoff addressed to the next agent on the task.
   runs.attachContext((taskId, runId) => [records.contextText(taskId, freshGraph()), handoffs.deliverToAgent(taskId, runId)].filter(Boolean).join("\n\n"));
   const github = new GitHub(root, relay.db, resolve(opts.dbPath), opts.github);
@@ -475,6 +478,50 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const p = url.searchParams;
       const kinds = (p.get("kinds") ?? "").split(",").filter(Boolean) as TimelineKind[];
       return json(res, 200, timeline(relay, root, { q: p.get("q") ?? undefined, task: p.get("task") ?? undefined, actor: p.get("actor") ?? undefined, kinds, since: p.get("since") ?? undefined, until: p.get("until") ?? undefined, limit: Number(p.get("limit") ?? 200) || 200 }));
+    }
+    if (parts[0] === "shares") {
+      // Shareable run reports: owners make, list and revoke read-only links to frozen reports.
+      const m = requireMember(req, "admin");
+      if (method === "GET" && parts.length === 1) return json(res, 200, { shares: shares.list() });
+      if (method === "POST" && parts[2] === "revoke") {
+        const sh = shares.revoke(parts[1]!);
+        relay.record("share.revoked", actorFor(m), { id: sh.id, kind: sh.kind, ref: sh.ref });
+        return json(res, 200, sh);
+      }
+      if (method === "POST" && parts.length === 1) {
+        const b = await readBody(req);
+        const kind = str(b.kind, "kind", 20) as ShareKind;
+        const ref = str(b.ref, "ref", 200);
+        const withSource = b.includeSource === true;
+        const days = b.days === undefined ? 7 : Number(b.days);
+        let title: string;
+        let text: string;
+        let data: unknown;
+        docs.flushAll();
+        if (kind === "changeset") {
+          const cs = buildChangeset(relay, root, resolve(opts.dbPath), ref, runs.forTask(ref), m.name);
+          title = `Changeset for ${ref}: ${cs.task.objective}`;
+          data = withSource ? cs : { ...cs, base: { ...cs.base, patch: null }, change: { ...cs.change, patch: null }, evidence: cs.evidence.map((e) => ({ ...e, output: "" })) };
+          text = changesetText(cs) + (withSource ? `\n\nPatch:\n${cs.change.patch}` : "");
+        } else if (kind === "integration") {
+          const integ = relay.getIntegration(ref);
+          if (!integ) throw new HttpError(404, "not_found", "No such integration");
+          const shown = withSource ? integ : { ...integ, results: integ.results.map((r) => ({ ...r, output: "" })) };
+          title = `Check of ${integ.tasks.join(" + ")} together: ${integ.status}`;
+          text = integrationReport(shown);
+          data = shown;
+        } else if (kind === "repro") {
+          const bundle = reproBundle(relay, root, { kind: "evidence", id: ref });
+          const shown = withSource ? bundle : { ...bundle, excerpt: "", attempts: bundle.attempts.map((a) => ({ ...a, excerpt: "" })) };
+          title = `Failure of ${bundle.command} for ${bundle.tasks.join(" + ")}`;
+          text = reproText(shown);
+          data = shown;
+        } else throw new HttpError(400, "invalid", "kind is changeset, integration or repro");
+        const { share, token } = shares.create({ kind, ref, title, text, data, includesSource: withSource, days }, m.name);
+        // The link's secret is returned once and never logged.
+        relay.record("share.created", actorFor(m), { id: share.id, kind, ref, includesSource: withSource, expiresAt: share.expiresAt });
+        return json(res, 201, { share, url: `/share/${token}` });
+      }
     }
     if (parts[0] === "handoffs") {
       // Handoff packets: a task passed on with what is known (frozen from evidence) and the giver's own words.
@@ -1189,6 +1236,15 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://relay.local");
     if (url.pathname === "/downloads/relay-vscode.vsix") return serveVsix(res);
+    const shared = /^\/share\/([A-Za-z0-9_-]{20,64})(\.json)?$/.exec(url.pathname);
+    if (shared && req.method === "GET") {
+      // A shared report: no sign-in, read-only, frozen, revocable. Never cached or indexed.
+      const r = shares.open(shared[1]!);
+      const status = r.ok ? 200 : r.status;
+      const headers = { ...SECURITY_HEADERS, "cache-control": "no-store", "x-robots-tag": "noindex", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" };
+      if (shared[2]) return void (res.writeHead(status, { ...headers, "content-type": "application/json; charset=utf-8" }), res.end(JSON.stringify(r.ok ? { share: r.share, report: r.data } : { error: r.reason })));
+      return void (res.writeHead(status, { ...headers, "content-type": "text/html; charset=utf-8" }), res.end(sharePage(r, project.name)));
+    }
     if (!url.pathname.startsWith("/api/")) return serveStatic(res, url.pathname);
     api(req, res, url).catch((err: unknown) => {
       if (err instanceof HttpError) return json(res, err.status, { error: err.code, message: err.message });

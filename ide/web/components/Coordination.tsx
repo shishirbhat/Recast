@@ -568,7 +568,7 @@ function TaskDetail({ task, state, onBack, onOpenFile, onOpenDiff, act, notify }
       </details>
 
       <HandoffPanel key={`ho:${task.id}:${task.updatedAt}`} taskId={task.id} me={me} members={state.members} closed={task.state === "completed" || task.state === "cancelled"} notify={notify} />
-      {task.state !== "proposed" && <ProofPanel key={`${task.id}:${task.updatedAt}:${run?.status ?? ""}`} taskId={task.id} canEdit={canEdit} notify={notify} />}
+      {task.state !== "proposed" && <ProofPanel key={`${task.id}:${task.updatedAt}:${run?.status ?? ""}`} taskId={task.id} canEdit={canEdit} isOwner={isOwner} notify={notify} />}
 
       <details>
         <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden"><ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />Scope{Object.keys(task.contracts).length ? " and contracts" : ""}</summary>

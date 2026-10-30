@@ -33,12 +33,46 @@ const OUTCOME: Record<Repro["reproducibility"], string> = {
  * exactly this change) and, for each failing check, a rerun on the exact files it saw and an investigation started
  * from it. Everything is computed by the server; buttons the person can't use say why.
  */
-export function ProofPanel({ taskId, canEdit, notify }: { taskId: string; canEdit: boolean; notify: (m: string, tone?: "ok" | "danger") => void }) {
+interface Share {
+  id: string;
+  kind: string;
+  ref: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  views: number;
+  includesSource: boolean;
+}
+
+export function ProofPanel({ taskId, canEdit, isOwner, notify }: { taskId: string; canEdit: boolean; isOwner: boolean; notify: (m: string, tone?: "ok" | "danger") => void }) {
   const [cs, setCs] = useState<Changeset | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [repro, setRepro] = useState<Record<string, Repro>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const q = encodeURIComponent(taskId);
+  const [shares, setShares] = useState<Share[]>([]);
+  const [link, setLink] = useState<string | null>(null);
+  const [withSource, setWithSource] = useState(false);
+  const loadShares = useCallback(() => {
+    if (isOwner) void api<{ shares: Share[] }>("GET", "/shares").then((r) => setShares(r.shares.filter((x) => x.kind === "changeset" && x.ref === taskId)), () => {});
+  }, [isOwner, taskId]);
+  const share = async () => {
+    setBusy("share");
+    try {
+      const r = await api<{ url: string }>("POST", "/shares", { kind: "changeset", ref: taskId, includeSource: withSource, days: 7 });
+      setLink(`${location.origin}${r.url}`);
+      notify("Link made. It's shown only now: copy it.");
+      loadShares();
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : String(e), "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const revoke = async (id: string) => {
+    await api("POST", `/shares/${id}/revoke`).then(() => (notify("Link revoked. Anyone opening it now is told so."), loadShares()), (e) => notify(e instanceof ApiError ? e.message : String(e), "danger"));
+  };
 
   const load = useCallback(() => {
     api<Changeset>("GET", `/tasks/${q}/changeset`).then(
@@ -93,7 +127,7 @@ export function ProofPanel({ taskId, canEdit, notify }: { taskId: string; canEdi
 
   const viewerWhy = canEdit ? undefined : "Viewers can't run checks or start investigations";
   return (
-    <details data-testid="proof" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && !cs && load()}>
+    <details data-testid="proof" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && !cs && (load(), loadShares())}>
       <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
         <ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />
         Proof and failures
@@ -129,6 +163,38 @@ export function ProofPanel({ taskId, canEdit, notify }: { taskId: string; canEdi
             <button onClick={() => void download()} disabled={busy !== null} className="inline-flex h-[26px] items-center gap-1.5 rounded-sm border border-rule px-2 text-[12px] text-ink-2 hover:border-rule-strong hover:text-ink disabled:opacity-40">
               <Download size={12} /> Download changeset
             </button>
+
+            <div className="space-y-1.5" data-testid="share">
+              <span className="flex flex-wrap items-center gap-2">
+                <button onClick={() => void share()} disabled={!isOwner || busy !== null} title={isOwner ? "A read-only link to this report as it is now, for someone outside the project" : "Only owners share reports outside the project"} className="h-[26px] rounded-sm border border-rule px-2 text-[12px] text-ink-2 hover:border-rule-strong hover:text-ink disabled:opacity-40">
+                  Share a read-only link…
+                </button>
+                <label className="flex items-center gap-1 text-[12px] text-muted">
+                  <input type="checkbox" checked={withSource} disabled={!isOwner} onChange={(e) => setWithSource(e.target.checked)} /> include source changes
+                </label>
+              </span>
+              {!isOwner && <p className="text-[11.5px] text-faint">Only owners share reports outside the project.</p>}
+              {link && (
+                <p className="flex items-center gap-1.5">
+                  <input readOnly value={link} aria-label="Share link" data-testid="share-link" onFocus={(e) => e.currentTarget.select()} className="h-[26px] min-w-0 flex-1 rounded-sm border border-rule bg-editor px-2 font-mono text-[11.5px]" />
+                  <button onClick={() => void navigator.clipboard?.writeText(link).then(() => notify("Copied."), () => notify("Couldn't copy; select the link and copy it.", "danger"))} className="h-[26px] rounded-sm border border-rule px-2 text-[12px] text-ink-2">
+                    Copy
+                  </button>
+                </p>
+              )}
+              {shares.map((x) => (
+                <p key={x.id} className="flex items-center gap-2 text-[11.5px] text-faint" data-testid="share-row">
+                  <span className="min-w-0 flex-1">
+                    {x.createdBy} · {new Date(x.createdAt).toLocaleDateString()} · {x.views} view{x.views === 1 ? "" : "s"} · {x.includesSource ? "with source" : "no source"} · {x.revokedAt ? "revoked" : `expires ${new Date(x.expiresAt).toLocaleDateString()}`}
+                  </span>
+                  {!x.revokedAt && (
+                    <button onClick={() => void revoke(x.id)} className="text-ink-2 hover:text-ink hover:underline">
+                      Revoke
+                    </button>
+                  )}
+                </p>
+              ))}
+            </div>
 
             {failing(cs).map((e) => {
               const r = repro[e.id];

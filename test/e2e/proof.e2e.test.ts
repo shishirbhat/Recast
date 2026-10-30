@@ -105,3 +105,22 @@ test("handoff: an owner hands T-ui to an editor, who sees it in Needs you, reads
   await p.getByTestId("toast").filter({ hasText: "You own T-ui now." }).waitFor();
   assert.equal(s.server.relay.requireTask("T-ui").owner, ed.member.id);
 });
+
+test("share: an owner makes a read-only link, a signed-out reader opens it, revoking it ends access", { skip, timeout: 90_000 }, async () => {
+  const p = await openTask("owner", "T-api");
+  await p.getByRole("button", { name: "Share a read-only link…" }).click();
+  const link = await p.getByTestId("share-link").inputValue();
+  assert.match(link, /\/share\/[A-Za-z0-9_-]{32}$/);
+  const reader = await (await browser.newContext()).newPage();
+  const ok = await reader.goto(link);
+  assert.equal(ok!.status(), 200);
+  assert.match(await reader.locator("h1").innerText(), /^Changeset for T-api: API returns fullName$/);
+  assert.match(await reader.locator("p.meta").innerText(), /Source code isn't included/);
+  await p.getByTestId("share-row").getByRole("button", { name: "Revoke" }).click();
+  await p.getByTestId("toast").filter({ hasText: "Link revoked" }).waitFor();
+  const gone = await reader.goto(link);
+  assert.equal(gone!.status(), 410);
+  assert.match(await reader.locator("p.meta").innerText(), /This link was revoked on/);
+  const v = await openTask("viewer", "T-api");
+  assert.equal(await v.getByRole("button", { name: "Share a read-only link…" }).isDisabled(), true);
+});
