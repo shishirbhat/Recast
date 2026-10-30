@@ -15,6 +15,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-29)
+**Update 2026-10-30 (mission run, paused by the owner):** the owner's brief is in `docs/mission.md`; `docs/mission-status.md` tracks each feature's gaps and what closed them. Closed this run: D53 (desktop keyboard: hover never takes focus; Ctrl/⌘+Shift+Enter while on), D54 (capture stack: move, replace, discard; library Remove deletes; Clear all), D55 (Copy as data, `recast.object/1`), D56 (phone and code pieces; error + file:line → bug report), D57 (recipe dependencies, safe retry, note step, "Plan, prepare, note and invite", version and limitations, share/import definitions). The final commit also has: library links to results, "(undone)" and "not placed yet" marks, Put on screen; "Made from …" on the success receipt; capture time on each piece; the try-it page demo banner, storage line, optional guide and a link to the public showcase. These still need a decision entry (D58) and status rows.
 - **29 Oct ("go"):**
   - **Notion** connection: one database, read back, Undo archives (D51; REAL_TEST_PLAN O).
   - **Your own webhook**: signed JSON, once, press-and-hold, no Undo, said so (D52; REAL_TEST_PLAN P).
@@ -113,6 +114,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
+- **Mission run, still to do:** record D58 (receipts, context, inbox, demo banner) and update mission-status; presets (default destination per kind, default duration: `compose.ts` hardcodes 60); design (brand mark in desktop icon, tray and library; "PREVIEW · NOT CREATED YET"; labelled token pill; warm dark shadows; Apple Maps in the extension; stale ENGINEERING_STATUS rows); then a full `pnpm test`, republish the try-it artifact (https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN from `apps/harness/dist/clay-artifact.html`), and give the owner list (real-account runs, Mac trial, Slack, Developer ID, public download page, GitHub Pages, deck figures, outside testers).
 0000. **Owner's real runs for the new connectors:** REAL_TEST_PLAN N (Todoist token), M8–M11 (Microsoft mail and To Do permissions), O (Notion integration + a database), P (any webhook receiver, e.g. a free n8n or Zapier hook).
 000. **Owner tries saved workflows** on the try-it page or in the extension: place something, Save as workflow, then run it on a different object. Report whether Save was easy to find (nothing at P yet).
 00. **Desktop app on the owner's Mac** (see "Desktop app" above): the owner's current priority; respond to their report first.
@@ -135,6 +137,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-30:** worked through the mission brief against the repo (D53–D57 plus receipts/context/banner work); owner said stop mid-run. The unit suites, try-it page (69), desktop (18) and extension (46) passed on the last runs; the extension suite once timed out under load, then passed twice.
 - **2026-10-29:** CI desktop flake traced (cold window, clicks lost) and fixed in the helper; Notion connection (D51); your own webhook (D52); extension test for Outlook drafts and To Do; desktop test for Todoist. Full run 1084/0/0, typecheck clean.
 - **2026-10-28 (cont.):** product work list (visible to-do list): D45–D50, each with its own commit; full run 1064/0/0, typecheck clean.
 - **2026-10-28:** owner asked for a public showcase repo (Thiel Fellowship, investors): created by the owner, filled and pushed from here (demo, Recast and Relay pages, Relay walkthrough, how it works, API docs; no source). Pages, links and walkthrough were checked in Chromium (light, dark, phone). Pages still to be enabled by the owner.

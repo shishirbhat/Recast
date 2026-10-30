@@ -1,12 +1,13 @@
 // The library: the Recast app proper. Every blob you have grabbed, newest first, with the app (and page) it came from and
 // where it went. It never opens by itself when you grab; you open it from Applications, the Dock or the tray.
-interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string }[] }
+interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string; undone?: boolean }[] }
 interface Settings { theme: "system" | "dark" | "light"; shortcuts: { open: string; capture: string; keys: string }; platform: string; trigger: string; shortcutProblems: string[]; serverNote: string; version: string; grabReady: boolean; listening: boolean; hookProblem: string; screen: string; spotsNote: string }
 interface Api {
   boot(): Promise<{ settings: Settings; theme: "dark" | "light" }>;
   history(): Promise<Entry[]>;
   historyRemove(id: string): Promise<boolean>;
   historyClear(): Promise<boolean>;
+  historyRestore(id: string): Promise<boolean>;
   copy(text: string): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
   settings(p: unknown): Promise<Settings>;
@@ -36,10 +37,15 @@ function render() {
     const d = dayOf(e.at); if (d !== day) { day = d; list.append(el("h3", { className: "day", textContent: d })); }
     const from = e.source?.url ? el("a", { href: e.source.url, textContent: e.source.title || e.source.app || e.source.url, title: e.source.url }) : document.createTextNode(e.source?.title ? `${e.source.app ?? ""} · ${e.source.title}` : e.source?.app ?? "");
     const meta = el("p", { className: "meta" }, from, ` · ${new Date(e.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`);
-    for (const p of e.placed ?? []) meta.append(p.link ? el("a", { className: "placed", href: p.link, textContent: `→ ${p.where}` }) : el("span", { className: "placed", textContent: `→ ${p.where}` }));
+    // Where it went, with the destination's own link to the result when it gave one; an undone placement says so.
+    for (const p of e.placed ?? []) meta.append(p.undone ? el("span", { className: "placed undone", textContent: `→ ${p.where} (undone)` })
+      : p.link ? el("a", { className: "placed", href: p.link, textContent: `→ ${p.where}`, title: `Open in ${p.where}` }) : el("span", { className: "placed", textContent: `→ ${p.where}` }));
+    if (!e.placed?.some((p) => !p.undone)) meta.append(el("span", { className: "placed waiting", textContent: "not placed yet" }));
     const copy = el("button", { type: "button", className: "row-act", textContent: "Copy" }); copy.addEventListener("click", () => { void api.copy(e.text); copy.textContent = "Copied"; setTimeout(() => { copy.textContent = "Copy"; }, 1200); });
     const remove = el("button", { type: "button", className: "row-act", textContent: "Remove" }); remove.addEventListener("click", () => void api.historyRemove(e.id));
-    list.append(el("article", { className: "entry" }, el("span", { className: "glyph", textContent: GLYPH[e.kind] ?? "❝", ariaHidden: "true" }), el("p", { className: "text", textContent: e.text }), el("span", { className: "acts" }, copy, remove), meta));
+    // Back on the screen as a blob, to place it (or press it into another) now.
+    const again = el("button", { type: "button", className: "row-act", textContent: "Put on screen", title: "Turn Recast on with this as a blob" }); again.addEventListener("click", () => void api.historyRestore(e.id));
+    list.append(el("article", { className: "entry" }, el("span", { className: "glyph", textContent: GLYPH[e.kind] ?? "❝", ariaHidden: "true" }), el("p", { className: "text", textContent: e.text }), el("span", { className: "acts" }, again, copy, remove), meta));
   }
   if (entries.length && !shown.length) list.append(el("p", { className: "quiet", textContent: "Nothing matches." }));
 }

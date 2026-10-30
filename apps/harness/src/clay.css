@@ -27,6 +27,17 @@ button { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 /* Browser chrome */
+/* The demo line: what this page is, where things are kept, and a path to the real app. Never over the pages. */
+.demo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 16px; background: var(--accent-soft); color: var(--ink); font-size: 13px; line-height: 1.4; }
+.demo p { margin: 0; flex: 1 1 320px; }
+.demo-acts { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.demo-btn { border: 0; border-radius: 999px; padding: 4px 12px; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 600 12.5px var(--font-ui); text-decoration: none; cursor: pointer; }
+.demo-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.guide { flex-basis: 100%; margin: 2px 0 2px; padding-left: 20px; display: grid; gap: 2px; }
+.guide li { color: var(--muted); }
+.guide li[data-state=now] { color: var(--ink); font-weight: 600; }
+.guide li[data-state=done] { color: var(--muted); text-decoration: line-through; }
+.guide li[data-state=done]::marker { content: "✓  "; }
 .chrome { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--chrome); border-bottom: 1px solid var(--line);
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 8px 0; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--chrome); }

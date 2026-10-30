@@ -23,6 +23,8 @@ export interface Fragment {
   confidence: number;
   evidence: Evidence[];
   source?: { app: string; url?: string; title?: string };
+  /** When it was captured (ISO). Stamped by the state machine when the host gives none. */
+  capturedAt?: string;
 }
 
 export type EventField = "title" | "start" | "end" | "allDay" | "timezone" | "location" | "description";

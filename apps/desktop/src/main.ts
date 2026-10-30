@@ -345,7 +345,7 @@ const publicSettings = () => ({ ...settings, platform: process.platform, trigger
 function broadcastSettings() { for (const w of [library, overlay]) if (w && !w.isDestroyed()) w.webContents.send("recast:settings", publicSettings()); }
 
 // ---- the library's record --------------------------------------------------------------------------------------------
-interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string }[]; removed?: boolean }
+interface Entry { id: string; text: string; kind: string; source?: { app?: string; url?: string; title?: string }; at: string; placed?: { where: string; at: string; link?: string; undone?: boolean }[]; removed?: boolean }
 // Removing deletes the text from the file (older copies marked an entry "removed" instead; those are dropped as they are read).
 const history = (): Entry[] => readJson<Entry[]>(historyFile(), []).filter((h) => !h.removed);
 function saveHistory(list: Entry[]) { writePrivate(historyFile(), list.slice(-2000)); library?.webContents.send("recast:history", list); }
@@ -410,7 +410,28 @@ function ipc() {
   ipcMain.handle("recast:history-placed", (_e, ids: unknown, where: unknown, linkUrl: unknown) => {
     if (!Array.isArray(ids) || typeof where !== "string") return false;
     const list = history();
-    for (const h of list) if (ids.includes(h.id)) (h.placed ??= []).push({ where: where.slice(0, 120), at: new Date().toISOString(), ...(typeof linkUrl === "string" && /^https:\/\//.test(linkUrl) ? { link: linkUrl } : {}) });
+    const link = typeof linkUrl === "string" && /^https:\/\//.test(linkUrl) ? linkUrl.slice(0, 2000) : undefined;
+    for (const h of list) if (ids.includes(h.id)) {
+      // The link read back after a placement belongs to that placement, not a new one.
+      const last = h.placed?.at(-1);
+      if (link && last && last.where === where.slice(0, 120) && !last.link && !last.undone && Date.now() - Date.parse(last.at) < 10 * 60_000) last.link = link;
+      else (h.placed ??= []).push({ where: where.slice(0, 120), at: new Date().toISOString(), ...(link ? { link } : {}) });
+    }
+    saveHistory(list); return true;
+  });
+  // From the library: an entry back on the screen as a blob (Recast turns on), to place it now.
+  ipcMain.handle("recast:history-restore", async (e, id: unknown) => {
+    if (!library || e.sender !== library.webContents) return false;
+    const h = history().find((x) => x.id === id); if (!h) return false;
+    await turnOn(false);
+    const b = overlay!.getBounds();
+    overlay?.webContents.send("recast:capture", { text: h.text, id: h.id, ...(h.source ?? {}), at: { x: Math.round(b.width / 2), y: Math.round(b.height / 3) } });
+    return true;
+  });
+  ipcMain.handle("recast:history-undone", (e, ids: unknown, where: unknown) => {
+    if (!overlay || e.sender !== overlay.webContents || !Array.isArray(ids) || typeof where !== "string") return false;
+    const list = history();
+    for (const h of list) if (ids.includes(h.id)) { const p = [...(h.placed ?? [])].reverse().find((x) => x.where === where.slice(0, 120) && !x.undone); if (p) { p.undone = true; delete p.link; } }
     saveHistory(list); return true;
   });
   ipcMain.handle("recast:history-remove", (_e, id: unknown) => { saveHistory(history().filter((h) => h.id !== id)); return true; });

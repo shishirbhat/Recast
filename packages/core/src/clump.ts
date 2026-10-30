@@ -179,7 +179,7 @@ export interface ObjectData {
   type: ClumpType; label: string;
   fields: Record<string, string | string[] | boolean>;
   missing: string[];
-  pieces: { kind: Fragment["kind"]; text: string; value?: Fragment["value"]; confidence: number; source?: Fragment["source"] }[];
+  pieces: { kind: Fragment["kind"]; text: string; value?: Fragment["value"]; confidence: number; source?: Fragment["source"]; capturedAt?: string }[];
 }
 export function objectData(c: Clump, ctx: ComposeContext): ObjectData {
   const v = viewClump(c, ctx);
@@ -189,7 +189,7 @@ export function objectData(c: Clump, ctx: ComposeContext): ObjectData {
   }
   return {
     format: "recast.object/1", type: v.type, label: v.label, fields, missing: v.missing.map((m) => m.field),
-    pieces: c.ingredients.map((f) => ({ kind: f.kind, text: f.text, ...(f.value ? { value: f.value } : {}), confidence: f.confidence, ...(f.source ? { source: f.source } : {}) })),
+    pieces: c.ingredients.map((f) => ({ kind: f.kind, text: f.text, ...(f.value ? { value: f.value } : {}), confidence: f.confidence, ...(f.source ? { source: f.source } : {}), ...(f.capturedAt ? { capturedAt: f.capturedAt } : {}) })),
   };
 }
 

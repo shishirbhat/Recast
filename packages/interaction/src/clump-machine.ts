@@ -328,14 +328,16 @@ function step(state: ClumpState, ev: ClumpEvent): ClumpResult {
       return straightThrough(s, n) ?? ok(n);
     }
     case "capture": {
+      // When it was captured, kept with the piece (context for later: the review, the library, Copy as data).
+      const fragment: Fragment = ev.fragment.capturedAt ? ev.fragment : { ...ev.fragment, capturedAt: new Date(ev.now).toISOString() };
       // The same piece from the same page again (a double tap, a second drag) is the object already on the desk, not a copy.
-      const same = sameAs(s, ev.fragment);
+      const same = sameAs(s, fragment);
       if (same) {
         if (ev.carry && ["idle", "succeeded", "failed", "composed", "choosing"].includes(s.phase)) return { ...ok(say({ ...s, phase: "carrying", carried: same, desk: without(s.desk, same), inspecting: null, placement: null, target: null, verdict: null }, "captured", `${viewOf(s, same).label} is already on your desk: picked that up`)), captured: same };
         return { ...ok(say(s, "captured", `${viewOf(s, same).label} is already on your desk`)), captured: same };
       }
       const id = `obj-${s.seq + 1}`;
-      let n: ClumpState = { ...s, seq: s.seq + 1, objects: { ...s.objects, [id]: newClump(id, ev.fragment) } };
+      let n: ClumpState = { ...s, seq: s.seq + 1, objects: { ...s.objects, [id]: newClump(id, fragment) } };
       // Capturing while carrying puts the new piece down beside you; it never silently merges.
       if (ev.carry && ["idle", "succeeded", "failed", "composed", "choosing"].includes(s.phase)) n = { ...n, phase: "carrying", carried: id, placement: null };
       else n = putDown(n, id);

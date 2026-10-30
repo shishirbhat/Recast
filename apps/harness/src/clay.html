@@ -3,6 +3,16 @@
 <!--@FONTS-->
 <style>/*@CSS*/</style>
 <div class="app">
+  <aside class="demo" aria-label="About this page">
+    <p><b>Demo.</b> Sample pages and stand-in apps: nothing here reaches a real account. What you pick up stays in this tab; saved workflows stay in this browser.</p>
+    <span class="demo-acts"><button type="button" id="guide-open" class="demo-btn" aria-expanded="false" aria-controls="guide">Show me how</button><a class="demo-btn" href="https://github.com/shishirbhat/recast-and-relay" target="_blank" rel="noopener noreferrer">About the real Recast <span aria-hidden="true">↗</span></a></span>
+    <ol id="guide" class="guide" hidden>
+      <li data-step="on">Turn Recast on: the <b>Recast</b> button at the top right, or <kbd>Control</kbd> twice.</li>
+      <li data-step="press">Drag <b>Maya Rao</b> onto the <b>Dakshin</b> tab, then onto Dakshin: one object. Drag the time onto it too.</li>
+      <li data-step="choose">Click the object and choose where it goes. The review shows what would be written; nothing is yet.</li>
+      <li data-step="place">Confirm. The stand-in calendar gets it and Recast reads it back. Undo takes it out again.</li>
+    </ol>
+  </aside>
   <header class="chrome">
     <div class="tabs" role="tablist" aria-label="Browser tabs">
       <button type="button" role="tab" id="tab-profile" data-for="profile" aria-controls="page-profile"><span class="fav" aria-hidden="true">M</span><span class="tname">Maya Rao</span></button>

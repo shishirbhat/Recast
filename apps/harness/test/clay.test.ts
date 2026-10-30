@@ -179,7 +179,7 @@ describe("pressing pieces into one object (mouse)", () => {
     const id = await makeDinner(page);
     await page.locator(objectSel(id)).click();
     expect(await page.locator(".rg-title").innerText()).toBe("Inside this object");
-    expect(await page.locator(".rg-ingredients").innerText()).toMatch(/person\s*Maya Rao\s*from Maya Rao · Profile · sure 90%/i);
+    expect(await page.locator(".rg-ingredients").innerText()).toMatch(/person\s*Maya Rao\s*from Maya Rao · Profile · \d{1,2}:\d{2}\s?[AP]M · sure 90%/i);   // with when it was captured
     await page.getByRole("button", { name: "Take Maya Rao out" }).click();
     const s = await st(page); expect(s.desk).toHaveLength(2); expect(s.objects[id].ingredients.map((f: any) => f.text)).toEqual(["Dakshin", "Friday, 7:30 PM"]);
     expect(await page.locator(objectSel(id)).getAttribute("aria-label")).toMatch(/^Meet at Dakshin, /);
@@ -231,6 +231,24 @@ describe("pressing pieces into one object (mouse)", () => {
     expect(JSON.parse(await b.page.locator(".rg-data").inputValue())).toMatchObject({ type: "Event" });
     expect([...errors, ...b.errors]).toEqual([]);
     await b.ctx.close();
+  });
+
+  it("the page says it is a demo, where things are kept, and how to reach the real app; the guide ticks off each step as it is done", async () => {
+    const { page, ctx, errors } = await open({ off: true });
+    expect(await page.locator(".demo p").innerText()).toMatch(/^Demo\. Sample pages and stand-in apps: nothing here reaches a real account\. What you pick up stays in this tab; saved workflows stay in this browser\.$/);
+    expect(await page.getByRole("link", { name: /About the real Recast/ }).getAttribute("href")).toBe("https://github.com/shishirbhat/recast-and-relay");
+    expect(await page.locator("#guide").isHidden()).toBe(true);                     // offered, never forced
+    await page.getByRole("button", { name: "Show me how" }).click();
+    const states = () => page.locator("#guide li").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset["state"] ?? ""));
+    expect(await states()).toEqual(["now", "", "", ""]);
+    await page.locator("#recast-trigger").click();
+    expect(await states()).toEqual(["done", "now", "", ""]);
+    await makeDinner(page);
+    expect(await states()).toEqual(["done", "done", "now", ""]);
+    await page.getByRole("button", { name: "Hide the steps" }).click();
+    expect(await page.locator("#guide").isHidden()).toBe(true);
+    expect(errors).toEqual([]);
+    await ctx.close();
   });
 
   it("when the calendar does not answer, Recast asks it instead of adding twice", async () => {
@@ -426,7 +444,7 @@ describe("the glass module and the destination selector", () => {
     await page.getByRole("button", { name: "Add to calendar" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "succeeded");
     expect(await page.locator(".rg-title").innerText()).toBe("Added to Calendar");
-    expect(await page.locator(".rg-body").innerText()).toMatch(/^Calendar confirmed it \(stand-in\)\.\s+(Checking Calendar…|Read back from Calendar: (\d+) of \2 fields match\.)\s+Save as workflow$/);
+    expect(await page.locator(".rg-body").innerText()).toMatch(/^Calendar confirmed it \(stand-in\)\.\s+(Checking Calendar…|Read back from Calendar: (\d+) of \2 fields match\.)\s+Made from Dakshin · Restaurant, Maya Rao · Profile\s+Save as workflow$/);
     expect(await page.locator("[data-slot='fri-1930'] [data-placed='event']").innerText()).toBe("Meet Maya at Dakshin · Dakshin");
     await page.getByRole("button", { name: "Undo" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "idle");

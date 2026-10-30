@@ -58,7 +58,7 @@ export function wheelEntries(s: ClumpState, objectId: string, registry: readonly
 /** The first available destination, so opening the selector lands on something that works. */
 export const firstAvailable = (entries: WheelEntry[]) => entries.find((e) => e.available)?.key ?? entries[0]!.key;
 
-export interface ModuleObject { id: string; view: ClumpView; ingredients: { id: string; kind: Fragment["kind"]; text: string; from: string; confidence: number }[];
+export interface ModuleObject { id: string; view: ClumpView; ingredients: { id: string; kind: Fragment["kind"]; text: string; from: string; confidence: number; /** when it was captured (ISO) */ at?: string }[];
   /** The object as structured data (recast.object/1, JSON), for "Copy as data". */
   data: string }
 export type ModuleModel =
@@ -79,7 +79,7 @@ export type ModuleModel =
 /** What the action module shows for this state. One model, one module: there is never a second panel. */
 export function moduleModel(s: ClumpState, registry: readonly CapabilityContract[]): ModuleModel {
   if (!s.armed && s.phase === "idle") return { mode: "off" };
-  const obj = (id: string): ModuleObject => ({ id, view: viewOf(s, id), ingredients: s.objects[id]!.ingredients.map((f) => ({ id: f.id, kind: f.kind, text: f.text, from: f.source?.title ?? f.source?.url ?? f.source?.app ?? "", confidence: f.confidence })),
+  const obj = (id: string): ModuleObject => ({ id, view: viewOf(s, id), ingredients: s.objects[id]!.ingredients.map((f) => ({ id: f.id, kind: f.kind, text: f.text, from: f.source?.title ?? f.source?.url ?? f.source?.app ?? "", confidence: f.confidence, ...(f.capturedAt ? { at: f.capturedAt } : {}) })),
     data: JSON.stringify(objectData(s.objects[id]!, ctxOf(s)), null, 2) });
   const around = (id: string) => { const entries = wheelEntries(s, id, registry); return { object: obj(id), entries, choice: (entries.some((e) => e.key === s.choice) ? s.choice : firstAvailable(entries)) as WheelKey }; };
   const place = () => {

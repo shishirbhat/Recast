@@ -174,13 +174,17 @@ describe.skipIf(process.platform !== "linux" || !hasXdotool)("Recast over anothe
     // (a read-back must never be mistaken for anything else, such as an undo).
     await expect.poll(() => overlay.locator(".rg-verify").innerText().catch(() => "")).toMatch(/^Read back from Google Calendar: (\d+) of \1 fields match\. Open in Google Calendar$/);
     expect((Object.values((await fake()).events)[0] as any).status).toBe("confirmed");
+    // The library keeps the calendar's own link to the event, read back with it.
+    await expect.poll(() => library.locator("a.placed").first().getAttribute("href").catch(() => null)).toMatch(/^https:\/\//);
     await overlay.getByRole("button", { name: "Undo" }).click();
     await expect.poll(async () => (Object.values((await fake()).events)[0] as any).status).toBe("cancelled");
     // The library (still closed) has both pieces, with where they went.
     expect(await visible("library.html")).toBe(false);
     await expect.poll(() => library.locator(".entry").count()).toBe(2);
     expect(await library.locator(".entry").allInnerTexts()).toEqual([expect.stringContaining("Friday 1:00 PM"), expect.stringContaining("Lunch with Arjun")]);
-    expect(await library.locator(".placed").first().innerText()).toBe("→ Google Calendar");
+    // Undone, it says so, and the link to what is no longer there is gone.
+    await expect.poll(() => library.locator(".placed").first().innerText()).toBe("→ Google Calendar (undone)");
+    expect(await library.locator("a.placed").count()).toBe(0);
     expect(errors).toEqual([]);
   });
 
@@ -320,6 +324,12 @@ describe("the Recast app (the library)", () => {
     expect(await library.locator(".entry .text").innerText()).toBe("maya.rao@example.com");
     await expect.poll(() => blobs(overlay).count(), { timeout: 8000 }).toBe(1);               // and the blob is still in hand
     await shot(library, "library-dark");
+    expect(await library.locator(".placed.waiting").innerText()).toBe("not placed yet");
+    // Put on screen: already on the desk, it is that blob (not a second one); the library does not list it twice.
+    await library.getByRole("button", { name: "Put on screen" }).click();
+    await expect.poll(() => app!.evaluate(() => (globalThis as any).__recastOn())).toBe(true);
+    await overlay.waitForTimeout(400);
+    expect(await blobs(overlay).count()).toBe(1); expect(await library.locator(".entry").count()).toBe(1);
     await library.getByRole("button", { name: "Remove" }).click();
     await expect.poll(() => library.locator(".entry").count()).toBe(0);
     // Removed means gone from this computer, not hidden: the text is no longer in the file.

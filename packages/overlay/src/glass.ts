@@ -98,6 +98,8 @@ const ICON: Record<WheelKey, string> = {
 };
 const svg = (k: WheelKey, size = 20) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+/** A capture time as a person reads it on this device: "2:30 PM". */
+const clock = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); };
 
 const FIELD_LABEL: Record<string, string> = { title: "Title", start: "When", end: "Ends", allDay: "All day", timezone: "Time zone", location: "Where", description: "Notes", to: "To", snippet: "Message", subject: "Subject", url: "Link", due: "Due", body: "Text" };
 const ORIGIN: Record<string, string> = { extracted: "from the page", inferred: "Recast's reading", default: "a default", user: "you" };
@@ -447,7 +449,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           ? `<p class="rg-hint rg-discard">Discard ${what}? They leave your desk; nothing is written anywhere.</p><button type="button" class="rg-btn primary" data-act="discardOk">Discard</button><button type="button" class="rg-btn ghost" data-act="discardCancel">Keep</button>`
           : `<button type="button" class="rg-btn ghost" data-act="discardStart">Discard</button>`;
         return { title: "Inside this object", head: close, facts: "",
-          body: `${err}<ul class="rg-ingredients">${fs.map((f, i) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${tools(f, i)}${fix(f)}</li>`).join("")}</ul>${detail(m)}`,
+          body: `${err}<ul class="rg-ingredients">${fs.map((f, i) => `<li><span class="rg-kind">${esc(f.kind)}</span><span class="rg-what">${esc(f.text)}</span><span class="rg-src">from ${esc(f.from)}${f.at ? ` · <time datetime="${esc(f.at)}" title="When it was captured">${esc(clock(f.at))}</time>` : ""} · <span class="rg-conf" title="How sure Recast is about this reading">${sure(f.confidence)} <span class="rg-num">${Math.round(f.confidence * 100)}%</span></span></span>${tools(f, i)}${fix(f)}</li>`).join("")}</ul>${detail(m)}`,
           actions: discarding ? discard : `${m.object.view.placeableAs.length ? `<button type="button" class="rg-btn" data-act="placeIt">Choose where it goes</button>` : ""}<button type="button" class="rg-btn${m.object.view.placeableAs.length ? " ghost" : ""}" data-act="back">Done</button>${discard}${copyData(m)}` };
       }
       case "confirm": return { title: "Combine them?", head: "", facts: "", body: `<p>${esc(m.confirm ?? "")}</p>`,
@@ -475,7 +477,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           body: `<p class="rg-hint">${esc(where)} opened in a new tab with this filled in. Recast cannot see what you do there, so it does not say it was added.</p>${/^https:\/\//.test(m.placement?.receipt?.bridgeRef ?? "") ? `<p class="rg-hint">Did it not open, or open blank? Copy the address into a new tab:</p>${copyBox(m.placement!.receipt!.bridgeRef!, d.app)}` : ""}`,
           actions: `<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
         return { title: `${d ? `<span class="rg-dest done" aria-hidden="true">${svg(d.key, 16)}${checkIcon}</span>` : checkIcon}Added to ${esc(where)}`, head: "", facts: "",
-        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>${checked(m.placement?.verification, where)}${saveBlock(m)}`,
+        body: `${m.placement?.message ? `<p class="rg-error" role="alert">${esc(m.placement.message)}. It is still in ${esc(where)}.</p>` : ""}<p class="rg-hint">${esc(where)} confirmed it${d?.standIn ? " (stand-in)" : ""}.${m.placement?.undoable ? "" : " It cannot be undone from here."}</p>${checked(m.placement?.verification, where)}${madeFrom(m)}${saveBlock(m)}`,
         actions: `${m.placement?.undoable ? `<button type="button" class="rg-btn ghost" data-act="undo">Undo</button>` : ""}<button type="button" class="rg-btn" data-act="dismiss">Done</button>` };
       case "unknown": return { title: `${dIcon}No answer from ${esc(where)}`, head: "", facts: "",
         body: `${err}<p>${esc(m.placement?.message ?? "")}. It may or may not have been added. Recast does not send it again; it asks ${esc(where)} instead.</p>`,
@@ -490,6 +492,11 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
   function copyData(m: Extract<ModuleModel, { object: unknown }>) {
     const b = `<button type="button" class="rg-btn ghost" data-act="copyData">${copied === "yes" ? "Copied as data" : "Copy as data"}</button>`;
     return copied === "no" ? `${b}<p class="rg-hint rg-copy-by-hand">The clipboard was not available here. Select it and copy it yourself:</p><textarea class="rg-data" readonly aria-label="The object as data">${esc(m.object.data)}</textarea>` : b;
+  }
+  /** What a placed object was made from: each page (or app) its pieces came from. */
+  function madeFrom(m: Extract<ModuleModel, { object: unknown }>) {
+    const from = [...new Set(m.object.ingredients.map((f) => f.from).filter(Boolean))];
+    return from.length ? `<p class="rg-hint rg-sources">Made from ${from.map((x) => `<span class="rg-source">${esc(x)}</span>`).join(", ")}</p>` : "";
   }
   function copyBox(url: string, app: string) {
     return `<div class="rg-answer"><input class="rg-url" readonly value="${esc(url)}" aria-label="${esc(app)} address"><button type="button" class="rg-btn small ghost" data-copy="${esc(url)}">Copy</button></div>`;

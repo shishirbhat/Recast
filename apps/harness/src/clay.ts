@@ -267,7 +267,28 @@ function kindOf(id: string): ClayItem["kind"] {
 }
 
 let inWell: string | null = null;
-function render() { renderModule(); renderPass(); renderPass(); updateSelectionBlob(); }   // the module first (it decides the well), then labels, then positions
+function render() { renderModule(); renderPass(); renderPass(); updateSelectionBlob(); renderGuide(); }
+
+// ---- the guide: four steps, offered from the demo line, each ticked off as the person does it --------------------------------
+let placedOnce = false;
+function renderGuide() {
+  const g = document.querySelector<HTMLOListElement>("#guide"); if (!g) return;
+  if (state.phase === "succeeded" || state.run?.steps.some((x) => x.status === "done")) placedOnce = true;
+  const done: Record<string, boolean> = {
+    on: state.armed || placedOnce,
+    press: Object.values(state.objects).some((o) => o.ingredients.length >= 2) || placedOnce,
+    choose: ["previewing", "executing", "succeeded", "planning", "running", "ran"].includes(state.phase) || placedOnce,
+    place: placedOnce,
+  };
+  let now = false;
+  for (const li of g.querySelectorAll<HTMLElement>("li")) {
+    const k = li.dataset["step"]!; li.dataset["state"] = done[k] ? "done" : now ? "" : "now"; if (!done[k]) now = true;
+  }
+}
+$("#guide-open").addEventListener("click", (e) => {
+  const g = $("#guide"); g.hidden = !g.hidden; (e.currentTarget as HTMLElement).setAttribute("aria-expanded", String(!g.hidden));
+  (e.currentTarget as HTMLElement).textContent = g.hidden ? "Show me how" : "Hide the steps"; renderGuide();
+});   // the module first (it decides the well), then labels, then positions
 function renderModule() {
   glass.update(moduleModel(state, REGISTRY), lastError && !state.carried ? { error: lastError } : {});
   const deskH = $("#desk").offsetHeight;

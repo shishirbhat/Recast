@@ -27,6 +27,7 @@ interface OverlayApi {
   copy(text: string): Promise<boolean>;
   historyAdd(entry: unknown): Promise<boolean>;
   historyPlaced(ids: string[], where: string, link?: string): Promise<boolean>;
+  historyUndone(ids: string[], where: string): Promise<boolean>;
   on(channel: string, fn: (v: any) => void): void;
 }
 const api = (window as unknown as { recastDesktop: OverlayApi }).recastDesktop;
@@ -138,10 +139,13 @@ async function perform(eff: ClumpEffect) {
     // Read it back through the program: "verified" is the provider's own answer, never the write's success.
     const r = await api.act("verify", { destination, op: eff.op, receipt: eff.receipt }).catch(() => null);
     const v = r?.body["verification"] as Verification | undefined;
+    // The destination's own link to what was placed, read back with it: the library keeps it beside the entry.
+    if (v?.link && /^https:\/\//.test(v.link)) void api.historyPlaced(pieces, labelOf(eff.destinationId), v.link);
     dispatch({ type: "verified", opId: eff.op.opId, verification: v ?? { ok: false, at: new Date().toISOString(), fields: [], note: "Recast lost the answer, so this was not checked" } });
   } else if (eff.type === "undo") {
     const opId = eff.receipt.opId;
     const r = await api.act("undo", { destination, receipt: eff.receipt }).catch(() => null);
+    if (r?.body["outcome"] === "undone") void api.historyUndone(pieces, labelOf(eff.destinationId));
     dispatch(r?.body["outcome"] === "undone" ? { type: "undone", opId } : { type: "undoFailed", opId, message: String(r?.body["message"] ?? "Recast lost the answer; it may still be there") });
   }
 }
@@ -149,11 +153,12 @@ async function perform(eff: ClumpEffect) {
 // ---- grabbing ----------------------------------------------------------------------------------------------------------
 let seq = 0;
 /** A selection from the app in front, as a piece where it was grabbed: read as a time, a person, an error or text. */
-function capture(text: string, origin: Origin, at: Point, how: { carry?: boolean; from?: "selection" | "highlight" } = {}) {
+function capture(text: string, origin: Origin, at: Point, how: { carry?: boolean; from?: "selection" | "highlight" | "library"; id?: string } = {}) {
   const t = text.replace(/\s+/g, " ").trim(); if (!t) return;
   const { kind, value, confidence } = pieceOfSelection(text, { now: new Date().toISOString(), timezone: TZ });
   const source = { app: origin.app ?? "Another app", ...(origin.url && /^https?:/.test(origin.url) ? { url: origin.url } : {}), ...(origin.title ? { title: origin.title.slice(0, 200) } : {}) };
-  const f: Fragment = { id: `g${Date.now()}-${++seq}`, kind, text: t.slice(0, 1000), confidence: confidence ?? 0.9, ...(value ? { value } : {}),
+  // From the library: the same piece again (its own id), so it is not listed twice and is recognised if already on the desk.
+  const f: Fragment = { id: how.id && /^g[\w-]{1,60}$/.test(how.id) ? how.id : `g${Date.now()}-${++seq}`, kind, text: t.slice(0, 1000), confidence: confidence ?? 0.9, ...(value ? { value } : {}),
     evidence: [{ locator: { kind: "user", value: how.from ?? "selection" }, excerpt: t.slice(0, 200) }], source };
   lastAt = how.carry ? { ...at } : spotNear(at);
   const r = dispatch({ type: "capture", fragment: f, ...(how.carry ? { carry: true } : {}) });
@@ -166,7 +171,7 @@ function spotNear(at: Point): Point {
   for (let i = 0; i < 12 && [...pos.values()].some((q) => Math.abs(q.x - p.x) < 150 && Math.abs(q.y - p.y) < 44); i++) p.y = p.y + 50 > innerHeight - 40 ? 40 : p.y + 50;
   return p;
 }
-api.on("recast:capture", (v: { text: string; at?: Point } & Origin) => { if (v.text.trim()) capture(v.text, v, v.at ?? lastAt); });
+api.on("recast:capture", (v: { text: string; at?: Point; id?: string } & Origin) => { if (v.text.trim()) capture(v.text, v, v.at ?? lastAt, v.id ? { id: v.id, from: "library" } : {}); });
 api.on("recast:grab-problem", (v: { reason: string; message: string; at?: Point }) => toast(v.message, v.at));
 api.on("recast:on", (next: boolean) => {
   on = next;
