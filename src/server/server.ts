@@ -130,6 +130,8 @@ const STATUS_FOR: Record<string, number> = {
   unverified: 409,
   too_large: 413,
   binary: 415,
+  // Approved, but writing the files failed: the server is at fault, and applying again finishes it.
+  apply_incomplete: 500,
 };
 
 function json(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
@@ -1059,6 +1061,9 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
           return json(res, 200, { ...r, report: integrationReport(relay.getIntegration(id)!) });
         }
         docs.flushAll();
+        const prev = relay.getIntegration(id);
+        // A retry after an uncertain outcome gets the recorded approval, not an error.
+        if (prev?.status === "approved") return json(res, 200, { integration: prev, applied: [], conflicts: [], skipped: [], already: true, report: integrationReport(prev) });
         const integ = relay.approveIntegration(id, actorFor(m), root);
         return json(res, 200, { integration: integ, applied: [], conflicts: [], skipped: [], report: integrationReport(integ) });
       }

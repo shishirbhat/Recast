@@ -49,6 +49,11 @@ export interface AgentRun {
   activity: Activity[];
   /** Relay is running its own checks (diff check, verification) on the finished run; it can't be applied yet. */
   checking?: boolean;
+  /**
+   * The change was approved (the task completed) but writing its files into the shared project failed. Applying again
+   * finishes the job; the 3-way merge makes writing a file that already holds the change a no-op.
+   */
+  applyPending?: { error: string; at: string; integrationId: string | null };
 }
 
 function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
@@ -365,8 +370,11 @@ export class AgentRuns {
    * rebuilds the change on the project as it is now, in a temporary worktree, and runs the engine's integration check
    * there (every verify command, recorded); the task completes only if that exact tree passed.
    */
-  async apply(taskId: string, by: Member): Promise<{ applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[]; reverified: boolean; integrationId: string | null }> {
+  async apply(taskId: string, by: Member): Promise<{ applied: string[]; conflicts: { path: string; text: string }[]; skipped: string[]; reverified: boolean; integrationId: string | null; already?: boolean }> {
     const run = this.latest(taskId);
+    // A retry after an uncertain outcome (a timeout, a dropped connection) gets the answer, not an error or a second apply.
+    if (run.status === "applied") return { applied: [], conflicts: [], skipped: [], reverified: false, integrationId: null, already: true };
+    if (run.applyPending && this.relay.requireTask(taskId).state === "completed") return { ...this.finishApply(run, changedFiles(run.worktree, run.snapshot), run.worktree, run.snapshot, `${run.provider}:${run.taskId}`, by, run.applyPending.integrationId), reverified: false, integrationId: run.applyPending.integrationId };
     if (this.rehearsing.has(taskId)) throw new RelayError("illegal_transition", `${taskId} is being checked together with other tasks; nothing can be applied until that check finishes`);
     if (run.status !== "finished") throw new RelayError("illegal_transition", `The agent run on ${taskId} is ${run.status}`);
     if (run.checking) throw new RelayError("illegal_transition", `Relay is still checking the agent's work on ${taskId}; apply once its verification has run`);
@@ -387,11 +395,7 @@ export class AgentRuns {
       } else {
         integrationId = await this.verifyOnCurrent(run, taskId, files, now, by);
       }
-      const result = this.mergeInto(run.worktree, run.snapshot, files, `${run.provider}:${run.taskId}`);
-      run.status = "applied";
-      this.save(run);
-      this.relay.record("agent.changes_applied", actorFor(by), { runId: run.id, ...result, conflicts: result.conflicts.map((c) => c.path), integrationId }, taskId);
-      return { ...result, reverified: integrationId !== null, integrationId };
+      return { ...this.finishApply(run, files, run.worktree, run.snapshot, `${run.provider}:${run.taskId}`, by, integrationId), reverified: integrationId !== null, integrationId };
     } finally {
       this.applying.delete(run.id);
     }
@@ -432,6 +436,34 @@ export class AgentRuns {
     }
   }
 
+  /**
+   * Write an approved change into the shared project. The gate has already completed the task, so a failure here must
+   * not be lost or leave the run looking unapplied-but-ready: it is recorded on the run and as an event, and applying
+   * again resumes (writing a file that already holds the change is a no-op).
+   */
+  private finishApply(run: AgentRun | AgentRun[], files: string[], worktree: string, snapshot: string, label: string, by: Member, integrationId: string | null) {
+    const runs = Array.isArray(run) ? run : [run];
+    let result: ReturnType<AgentRuns["mergeInto"]>;
+    try {
+      result = this.mergeInto(worktree, snapshot, files, label);
+    } catch (e) {
+      const error = (e as Error).message;
+      for (const r of runs) {
+        r.applyPending = { error, at: new Date().toISOString(), integrationId };
+        this.save(r);
+      }
+      this.relay.record("agent.apply_failed", actorFor(by), { runIds: runs.map((r) => r.id), integrationId, error }, runs.length === 1 ? runs[0]!.taskId : null);
+      throw new RelayError("apply_incomplete", `The change was approved, but writing its files into the project failed: ${error}. Nothing is lost: apply again to finish writing it.`);
+    }
+    for (const r of runs) {
+      r.status = "applied";
+      delete r.applyPending;
+      this.save(r);
+    }
+    this.relay.record("agent.changes_applied", actorFor(by), { runIds: runs.map((r) => r.id), ...result, conflicts: result.conflicts.map((c) => c.path), integrationId }, runs.length === 1 ? runs[0]!.taskId : null);
+    return result;
+  }
+
   private dryRun(worktree: string, snapshot: string, files: string[]): { path: string; text: string }[] {
     const out: { path: string; text: string }[] = [];
     for (const f of files) {
@@ -452,6 +484,8 @@ export class AgentRuns {
     const runs = taskIds.map((id) => this.latest(id));
     const busy = taskIds.filter((id) => this.rehearsing.has(id));
     if (busy.length) throw new RelayError("illegal_transition", `${busy.join(", ")} ${busy.length === 1 ? "is" : "are"} already being checked together; wait for that result`);
+    const applying = runs.filter((r) => this.applying.has(r.id));
+    if (applying.length) throw new RelayError("illegal_transition", `${applying.map((r) => r.taskId).join(", ")} ${applying.length === 1 ? "is" : "are"} being applied right now; check again once that finishes`);
     const unfinished = runs.filter((r) => r.status !== "finished" || r.checking);
     if (unfinished.length) throw new RelayError("illegal_transition", unfinished.map((r) => `${r.taskId}'s agent run is ${r.checking ? "still being checked by Relay" : r.status}`).join("; "));
     for (const id of taskIds) this.rehearsing.add(id);
@@ -515,6 +549,15 @@ export class AgentRuns {
     const dir = this.combined.get(integrationId);
     if (!dir) throw new RelayError("not_found", "This integration was not prepared by the agent runner");
     const integ = this.relay.getIntegration(integrationId)!;
+    const taskRuns = integ.tasks.map((id) => [...this.runs.values()].filter((r) => r.taskId === id).at(-1)).filter((r): r is AgentRun => !!r);
+    // Approved already: a retry gets the outcome; if writing the files failed last time, this finishes it.
+    if (integ.status === "approved") {
+      const pending = taskRuns.filter((r) => r.applyPending?.integrationId === integrationId);
+      if (!pending.length) return { integration: integ, applied: [], conflicts: [], skipped: [], already: true };
+      return { integration: integ, ...this.finishApply(pending, changedFiles(dir, integ.baseCommit!), dir, integ.baseCommit!, `${this.adapter.id}:${integ.tasks.join("+")}`, by, integrationId) };
+    }
+    const applying = taskRuns.filter((r) => this.applying.has(r.id));
+    if (applying.length) throw new RelayError("illegal_transition", `${applying.map((r) => r.taskId).join(", ")} ${applying.length === 1 ? "is" : "are"} being applied on ${applying.length === 1 ? "its" : "their"} own right now; approve once that finishes`);
     const busy = integ.tasks.filter((id) => this.rehearsing.has(id));
     if (busy.length) throw new RelayError("illegal_transition", `${busy.join(", ")} ${busy.length === 1 ? "is" : "are"} being checked together again; approve once that check finishes`);
     const snapshot = integ.baseCommit!;
@@ -526,13 +569,7 @@ export class AgentRuns {
     const dry = this.dryRun(dir, snapshot, files);
     if (dry.length) return { integration: integ, applied: [], conflicts: dry, skipped: [] };
     const approved = this.relay.approveIntegration(integrationId, actorFor(by), dir);
-    const result = this.mergeInto(dir, snapshot, files, `${this.adapter.id}:${integ.tasks.join("+")}`);
-    for (const id of integ.tasks) for (const r of this.runs.values()) if (r.taskId === id && r.status === "finished") {
-      r.status = "applied";
-      this.save(r);
-    }
-    this.relay.record("agent.changes_applied", actorFor(by), { integrationId, ...result, conflicts: [] });
-    return { integration: approved, ...result };
+    return { integration: approved, ...this.finishApply(taskRuns.filter((r) => r.status === "finished"), files, dir, snapshot, `${this.adapter.id}:${integ.tasks.join("+")}`, by, integrationId) };
   }
 
   close(): void {

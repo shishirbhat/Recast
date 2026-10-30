@@ -752,6 +752,8 @@ export function describe(e: RelayEvent, members: Member[]): string {
       return `Claude Code · ${d.tool} ${String(d.target ?? "").slice(0, 40)}`;
     case "agent.denied":
       return `Relay blocked an agent action on ${e.taskId}`;
+    case "agent.apply_failed":
+      return `Approved, but writing the files failed (${String(d.error ?? "").slice(0, 80)}); apply again to finish`;
     case "agent.changes_applied":
       return `${who(e.actor)} applied agent changes: ${(d.applied as string[] | undefined)?.join(", ") ?? ""}`;
     case "doc.external_change_merged":
