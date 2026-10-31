@@ -3,7 +3,7 @@ export { selectView, GLYPH } from "./view.js";
 export type { View } from "./view.js";
 export { CHIP_W, CHIP_H, CHIP_GAP, MAGNET, APPROACH, chipRect, center, contains, distanceToRect } from "./geometry.js";
 export type * from "./types.js";
-export { initialClumpState, reduceClump, viewOf, ctxOf, commandEvents, escapeEvent, unfit, checkPresets, PRESET_DURATIONS } from "./clump-machine.js";
+export { initialClumpState, reduceClump, viewOf, ctxOf, commandEvents, escapeEvent, unfit, checkPresets, settleLostWrites, PRESET_DURATIONS } from "./clump-machine.js";
 export { WHEEL_SLOTS, wheelEntries, abilityLine, firstAvailable, moduleModel, doubtNote } from "./wheel.js";
 export type { WheelKey, WheelEntry, WheelOption, ModuleModel, ModuleObject } from "./wheel.js";
 export type { Presets, ClumpPhase, ClumpState, ClumpEvent, ClumpInput, ClumpEffect, ClumpResult, DestinationSpec, Target, Placement, ConfirmLevel } from "./clump-machine.js";

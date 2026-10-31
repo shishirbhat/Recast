@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { CONTRACTS } from "@recast/bridges";
 import type { Fragment, Receipt } from "@recast/core";
-import { initialClumpState, recipeOffers, reduceClump, viewOf as viewOfFn, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
+import { initialClumpState, recipeOffers, reduceClump, settleLostWrites, viewOf as viewOfFn, type ClumpEvent, type ClumpState, type DestinationSpec } from "../src/index.js";
 
 const NOW = Date.parse("2026-10-19T09:00:00Z");
 let n = 0;
@@ -76,7 +76,7 @@ describe("recipes in the state machine", () => {
     ({ s } = run([{ type: "commitFailed", opId: b!.op!.opId, message: "Mail refused it" }], s));
     expect(s.phase).toBe("ran");
     expect(s.run!.steps.map((x) => [x.status, x.message])).toEqual([["unknown", "Calendar did not answer"], ["failed", "Mail refused it"]]);
-    expect(s.last!.text).toBe("Plan and invite: 0 of 2 done");
+    expect(s.last!.text).toBe("Plan and invite: 0 of 2 done, 1 not known yet");   // what is not known is said (D61)
     expect(s.uncertain["obj-1"]).toMatchObject({ destinationId: "cal" });
     expect(run([{ type: "undoStep", stepId: "event" }], s).errors).toEqual(["this step cannot be undone"]);
   });
@@ -193,3 +193,35 @@ describe("the person's defaults (D59)", () => {
   });
 });
 function viewOfEvent(s: ClumpState) { return viewOfFn(s, "obj-1").event!; }
+
+describe("recovery and honest summaries (D61)", () => {
+  it("after a restart mid-run: the step in flight is unknown (never resent), the ones never sent are 'not run' and can be tried again", () => {
+    let { s } = run([{ type: "openRecipe", recipeId: "plan-and-invite" }, { type: "runRecipe", consent: { kind: "confirm" } }], dinner([CAL, MAIL]));
+    expect(s.run!.steps.map((x) => x.status)).toEqual(["running", "waiting"]);
+    const r = settleLostWrites(s, NOW);
+    expect(r.phase).toBe("ran");
+    expect(r.run!.steps.map((x) => [x.status, x.message])).toEqual([["unknown", "Recast closed before the answer came"], ["skipped", "Recast closed before this was sent"]]);
+    expect(r.uncertain!["obj-1"]).toBeDefined();                                     // placing it there again checks first
+    expect(r.last!.text).toBe("Plan and invite: 0 of 2 done, 1 not known yet");
+    expect(run([{ type: "retryStep", stepId: "event" }], r).errors[0]).toMatch(/never sent twice/);
+    const again = run([{ type: "retryStep", stepId: "invite" }], r);
+    expect(again.effects).toEqual([expect.objectContaining({ type: "commit", destinationId: "mail" })]);
+    // A single placement in flight: unknown, with the reason; an undo in flight: not confirmed, still there.
+    const one = run([{ type: "openWheel" }, { type: "pickDestination", destinationId: "cal" }, { type: "place", consent: { kind: "confirm" } }], dinner([CAL])).s;
+    expect(one.phase).toBe("executing");
+    expect(settleLostWrites(one, NOW, "The browser's Recast worker")).toMatchObject({ phase: "unknown", placement: { message: "The browser's Recast worker closed before the answer came" } });
+    const idle = dinner([CAL]); expect(settleLostWrites(idle, NOW)).toBe(idle);   // nothing in flight: unchanged
+  });
+  it("an undone step is not counted as done when the run is summed up again", () => {
+    let { s } = run([{ type: "openRecipe", recipeId: "plan-and-invite" }, { type: "runRecipe", consent: { kind: "confirm" } }], dinner([CAL, MAIL]));
+    ({ s } = run([{ type: "committed", receipt: receiptFor(s.run!.steps[0]!.op!, "ev-1"), undoable: true }], s));
+    ({ s } = run([{ type: "commitFailed", opId: s.run!.steps[1]!.op!.opId, message: "Mail said no (400)" }], s));
+    ({ s } = run([{ type: "undoStep", stepId: "event" }, { type: "undone", opId: s.run!.steps[0]!.op!.opId }], s));
+    ({ s } = run([{ type: "retryStep", stepId: "invite" }], s));
+    ({ s } = run([{ type: "committed", receipt: receiptFor(s.run!.steps[1]!.op!, "d-1"), undoable: true }], s));
+    expect(s.last!.text).toBe("Plan and invite: 1 of 2 done");
+    // An undo in flight when the app closed: not confirmed, the step stays done with the reason.
+    ({ s } = run([{ type: "undoStep", stepId: "invite" }], s));
+    expect(settleLostWrites(s, NOW).run!.steps[1]).toMatchObject({ status: "done", message: "Could not undo: Recast closed before the undo was confirmed" });
+  });
+});

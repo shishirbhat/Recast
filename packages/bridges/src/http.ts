@@ -56,8 +56,11 @@ export class HttpBridge<Target> implements Bridge {
       if (req.method !== "GET" && !(e instanceof DestinationError) && !(e instanceof OutcomeUnknownError)) throw new OutcomeUnknownError(`${new URL(req.url).hostname} could not be reached during the change; it may or may not have been made`);
       throw e;
     }
-    // A gateway timeout on a write means the provider may have applied it: unknown, not failed.
-    if (r.status === 504 && req.method !== "GET") throw new OutcomeUnknownError(`${new URL(req.url).hostname} timed out behind its gateway; the change may have been made`);
+    // A gateway timeout on any write, and a server error (500) or bad gateway (502) on a create (POST), can come after the
+    // provider applied it: unknown, so it is checked, never resent (D61). A create sent twice makes two; a DELETE, PUT or
+    // PATCH sent twice does not, so those stay failures that can be tried again. Refusals that mean "not processed" are
+    // failures everywhere: 4xx (incl. 408 and 429) and 503.
+    if (req.method !== "GET" && (r.status === 504 || (req.method === "POST" && (r.status === 500 || r.status === 502)))) throw new OutcomeUnknownError(`${new URL(req.url).hostname} answered ${r.status} during the change; it may or may not have been made`);
     if (r.status < 200 || r.status >= 300) throw new DestinationError(`${req.method} ${new URL(req.url).hostname} answered ${r.status}`, r.status);
     return r.json;
   };

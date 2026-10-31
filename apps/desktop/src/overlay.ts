@@ -6,7 +6,7 @@
 import { commit, InMemoryEventLog, pieceOfSelection, type Fragment, type Receipt, type Verification } from "@recast/core";
 import { CONTRACTS, REGISTRY } from "@recast/bridges/src/contracts";
 import { appleMapsDirections, googleMapsDirections, LinkBridge, linkFor } from "@recast/bridges/src/links";
-import { doubtNote, escapeEvent, initialClumpState, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
+import { doubtNote, escapeEvent, initialClumpState, settleLostWrites, moduleModel, reduceClump, viewOf, type ClumpEffect, type ClumpEvent, type ClumpInput, type ClumpState, type DestinationSpec, type Target } from "@recast/interaction";
 import { CLAY_CSS, createClay, type ClayItem } from "@recast/overlay/src/clay";
 import { createGlass, GLASS_CSS, intentEvents, type GlassIntent } from "@recast/overlay/src/glass";
 
@@ -436,11 +436,7 @@ function recover(saved: ClumpState): ClumpState {
   let s: ClumpState = { ...saved, now: Date.now(), timezone: TZ, carried: null, target: null, verdict: null, desk: saved.carried ? [...saved.desk, saved.carried] : saved.desk };
   const step = (ev: ClumpInput) => { s = reduceClump(s, { ...ev, now: Date.now() } as ClumpEvent).state; };
   if (s.phase === "merging") step({ type: "settled" });
-  else if (s.phase === "executing" && s.placement?.op) step({ type: "outcomeUnknown", opId: s.placement.op.opId, message: "Recast closed before the answer came" });
-  else if (s.phase === "undoing" && s.placement?.op) step({ type: "undoFailed", opId: s.placement.op.opId, message: "Recast closed before the undo was confirmed" });
-  else if (s.phase === "running" && s.run) {
-    for (const x of s.run.steps) if (x.status === "running" && x.op) step({ type: "outcomeUnknown", opId: x.op.opId, message: "Recast closed before the answer came" });
-    if (s.phase === "running") s = { ...s, phase: "ran", run: { ...s.run!, steps: s.run!.steps.map((x) => (x.status === "waiting" ? { ...x, status: "skipped" } : x)) } };
-  } else if (["carrying", "approaching", "confirmingMerge"].includes(s.phase)) s = { ...s, phase: "idle", pendingMerge: null };
+  else if (["carrying", "approaching", "confirmingMerge"].includes(s.phase)) s = { ...s, phase: "idle", pendingMerge: null };
+  else s = settleLostWrites(s, Date.now());
   return s;
 }

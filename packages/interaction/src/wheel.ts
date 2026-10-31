@@ -63,7 +63,7 @@ export function wheelEntries(s: ClumpState, objectId: string, registry: readonly
 export const firstAvailable = (entries: WheelEntry[]) => entries.find((e) => e.available)?.key ?? entries[0]!.key;
 
 export interface ModuleObject { id: string; view: ClumpView; ingredients: { id: string; kind: Fragment["kind"]; text: string; from: string; confidence: number; /** when it was captured (ISO) */ at?: string }[];
-  /** The object as structured data (recast.object/1, JSON), for "Copy as data". */
+  /** The object as structured data (recast.object/2, JSON), for "Copy as data". */
   data: string }
 export type ModuleModel =
   | { mode: "off" }

@@ -4,6 +4,25 @@ Everything below is already tested against **stand-ins** (fake Google, fixture p
 
 Status levels: nothing here counts as **R** (real provider) until it has been run from this list. Results go in `docs/ENGINEERING_STATUS.md`.
 
+## Coverage on 2026-10-31 (D61)
+| Section | Integration | Real-account result | What a real run needs |
+|---|---|---|---|
+| A | Google Calendar: sign-in, create a test event | **Passed, 2026-10-21** (create only) | done |
+| B, L | Google Calendar from the extension: create, read back, undo, unknown and check | not run | the A setup, and the extension paired |
+| C | Gmail drafts | not run | sign in again ticking Gmail (compose) |
+| E | Google Tasks | not run | sign in again ticking Tasks |
+| F | Google Docs | not run | Docs API and Drive API enabled; sign in again ticking Drive (files Recast creates) |
+| G | Google Maps / Apple Maps (opens a link) | not run | none: a person clicks the link |
+| H | GitHub issues | not run | a fine-grained token with Issues: write for **one test repository** |
+| I | Linear | not run | a Linear API key and a test team |
+| K | Desktop app on a Mac | not run by a person | a Mac; `docs/macos-test-checklist.md` |
+| M | Outlook Calendar, mail drafts, To Do | not run | a Microsoft app registration (README Part 12) |
+| N | Todoist | not run | a Todoist API token |
+| O | Notion | not run | an integration token and one shared database |
+| P | Your webhook | not run | any https receiver (n8n, Zapier, Make) |
+
+Not run in D61 because this environment has no Recast test account or connector credential. The session's own GitHub and cloud credentials belong to the owner's tooling, and using them would write into real repositories without a test account set up for it. For each section, also check what the brief asks for: an expired or revoked token (remove access in the provider's settings, then place again: Recast must say "sign in again", never "added"), a network drop during a write (turn Wi-Fi off just after Confirm: Recast must say "No answer" and offer a check, never resend), and Undo after you changed or deleted the item yourself (Recast must say "Could not undo" if it is gone, never "undone").
+
 ## A. Google Calendar sign-in and test event (`apps/calendar-link`). **Done: R, 2026-10-21**
 See `apps/calendar-link/README.md`, Parts 1–5. All five test-event steps were reported working.
 

@@ -584,3 +584,26 @@ function repreview(s: ClumpState): ClumpState {
 }
 const destLabel = (s: ClumpState) => s.destinations.find((d) => d.id === s.placement?.destinationId)?.label ?? s.placement?.op?.proposal.destination.app ?? "the destination";
 const omit = <T>(o: Record<string, T>, k: string) => { const { [k]: _gone, ...r } = o; return r; };
+
+/**
+ * After whatever was waiting for an answer is gone (the app closed, the extension's worker was stopped): nothing that was
+ * in flight is assumed to have worked or failed. A write whose answer never came is unknown (checked, never resent); an
+ * undo in flight is reported as not confirmed; a recipe step never sent is not run, with the reason, and can be tried
+ * again. Shared by the desktop app and the extension so both recover the same way (D61).
+ */
+export function settleLostWrites(saved: ClumpState, now: number, who = "Recast"): ClumpState {
+  let s = saved;
+  const step = (ev: ClumpInput) => { s = reduceClump(s, { ...ev, now } as ClumpEvent).state; };
+  if (s.phase === "executing" && s.placement?.op) step({ type: "outcomeUnknown", opId: s.placement.op.opId, message: `${who} closed before the answer came` });
+  else if (s.phase === "undoing" && s.placement?.op) step({ type: "undoFailed", opId: s.placement.op.opId, message: `${who} closed before the undo was confirmed` });
+  else if (s.phase === "running" && s.run) {
+    // First what was never sent, so settling the step in flight cannot start another one whose sending would be lost too.
+    s = { ...s, run: { ...s.run, steps: s.run.steps.map((x) => (x.status === "waiting" ? { ...x, status: "skipped", message: `${who} closed before this was sent` } : x)) } };
+    for (const x of s.run!.steps) if (x.status === "running" && x.op) step({ type: "outcomeUnknown", opId: x.op.opId, message: `${who} closed before the answer came` });
+    if (s.phase === "running") s = { ...s, phase: "ran" };
+  } else if (s.phase === "ran" && s.run) {
+    // An undo of one step, sent after the run: not confirmed, so the step stays done (it may still be there).
+    for (const x of s.run.steps) if (x.status === "undoing" && x.op) step({ type: "undoFailed", opId: x.op.opId, message: `${who} closed before the undo was confirmed` });
+  }
+  return s;
+}

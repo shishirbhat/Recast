@@ -2,7 +2,7 @@
 // The state machine is pure (packages/interaction), so the worker only loads it, applies an event, saves it and tells every
 // tab that has the clay layer. State lives in chrome.storage.session: it survives the worker being stopped and restarted,
 // is kept in memory by the browser (never written to disk), and is gone when the browser closes.
-import { commandEvents, initialClumpState, reduceClump, type ClumpEffect, type ClumpState, type ConfirmLevel, type DestinationSpec } from "@recast/interaction";
+import { commandEvents, initialClumpState, reduceClump, settleLostWrites, type ClumpEffect, type ClumpState, type ConfirmLevel, type DestinationSpec } from "@recast/interaction";
 import type { ToBackground, ToTab } from "./clay-messages.js";
 import { CONTRACTS } from "@recast/bridges/src/contracts";
 import { appleMapsDirections, googleMapsDirections, LinkBridge } from "@recast/bridges/src/links";
@@ -20,6 +20,7 @@ const PRESETS = "presets";
 async function storedPresets(): Promise<unknown> { return (await chrome.storage.local.get(PRESETS))[PRESETS] ?? {}; }
 async function storedWorkflows(): Promise<unknown[]> { const v = (await chrome.storage.local.get(WORKFLOWS))[WORKFLOWS]; return Array.isArray(v) ? v : []; }
 
+let freshWorker = true;   // the first load in this worker; an earlier worker's answers in flight are lost
 async function load(): Promise<ClumpState> {
   const r = await chrome.storage.session.get(KEY);
   const level = await confirmLevel();
@@ -31,7 +32,10 @@ async function load(): Promise<ClumpState> {
     const s = reduceClump(initialClumpState({ now: Date.now(), timezone, destinations: [mapsDest, appleMapsDest], ...(level ? { confirm: level } : {}) }), { type: "setWorkflows", items: await storedWorkflows(), known: KNOWN, now: Date.now() }).state;
     return reduceClump(s, { type: "loadPresets", presets: await storedPresets(), now: Date.now() }).state;
   }
-  return kept.timezone === timezone ? kept : reduceClump(kept, { type: "setTimezone", timezone, now: Date.now() }).state;
+  // A new worker: whatever the last one was waiting for will never answer here. Settle it as unknown, never resend (D61).
+  const settled = freshWorker ? settleLostWrites(kept, Date.now(), "The browser's Recast worker") : kept;
+  freshWorker = false;
+  return settled.timezone === timezone ? settled : reduceClump(settled, { type: "setTimezone", timezone, now: Date.now() }).state;
 }
 const save = (s: ClumpState) => chrome.storage.session.set({ [KEY]: s });
 async function tabs(): Promise<number[]> { return ((await chrome.storage.session.get(TABS))[TABS] as number[] | undefined) ?? []; }

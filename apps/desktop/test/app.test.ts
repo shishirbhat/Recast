@@ -420,14 +420,19 @@ describe("the Recast app (the library)", () => {
     expect(errors).toEqual([]);
   });
 
-  it("the pages cannot reach Node, links to anything but the web are refused, and only the overlay may set where it takes the mouse", async () => {
+  it("the pages cannot reach Node, links to anything but the web are refused, and each write comes only from the window that owns it", async () => {
     const { library, overlay } = await launch(profile("dark"));
     for (const p of [library, overlay]) {
       expect(await p.evaluate(() => typeof (globalThis as any).require)).toBe("undefined");
       expect(await p.evaluate(() => (window as any).recastDesktop.openExternal("file:///etc/passwd"))).toBe(false);
       expect(await p.evaluate(() => (window as any).recastDesktop.openExternal("javascript:alert(1)"))).toBe(false);
-      expect(await p.evaluate(() => (window as any).recastDesktop.act("commit", { destination: "anything" }))).toMatchObject({ status: 400 });
     }
+    expect(await overlay.evaluate(() => (window as any).recastDesktop.act("commit", { destination: "anything" }))).toMatchObject({ status: 400 });
     expect(await library.evaluate(() => (window as any).recastDesktop.interactive(true, []))).toBe(false);
+    // Each write only from the window that owns it (D61): the library cannot place, rewrite the inbox, or add history.
+    expect(await library.evaluate(() => (window as any).recastDesktop.act("commit", { destination: "calendar" }))).toMatchObject({ status: 403 });
+    expect(await library.evaluate(() => (window as any).recastDesktop.saveInbox({ state: {} }))).toBe(false);
+    expect(await library.evaluate(() => (window as any).recastDesktop.historyAdd({ id: "x", text: "planted" }))).toBe(false);
+    expect(await overlay.evaluate(() => (window as any).recastDesktop.historyRemove("x"))).toBe(false);
   });
 });

@@ -101,7 +101,8 @@ describe("moving, replacing, and the object as data", () => {
   it("objectData: the type, what was read, what is missing, and each piece with its source", () => {
     const c = merged(merged(one("place", "Dakshin", { value: { name: "Dakshin" } }), one("person", "Maya Rao")), one("time", "Friday 7:30 PM"));
     const d = objectData(answerClump(c, "title", "Dinner"), CTX);
-    expect(d).toMatchObject({ format: "recast.object/1", type: "Event", fields: { title: "Dinner", location: "Dakshin", start: "2026-10-23T19:30" }, missing: [] });
+    expect(d).toMatchObject({ format: "recast.object/2", type: "Event", fields: { title: { value: "Dinner", origin: "user" }, location: { value: "Dakshin", origin: "extracted" }, start: { value: "2026-10-23T19:30", origin: "inferred" }, end: { origin: "default" } }, missing: [] });
+    expect(d.pieces.every((p) => p.origin === "captured")).toBe(true);
     expect(d.pieces).toEqual([expect.objectContaining({ kind: "place", text: "Dakshin", source: { app: "chrome", url: "https://example.com/place" } }), expect.objectContaining({ kind: "person" }), expect.objectContaining({ kind: "time" })]);
     expect(JSON.parse(JSON.stringify(d))).toEqual(d);
   });
@@ -319,4 +320,30 @@ describe("phase two: what a selection is, from its text alone", () => {
     expect(v).toMatchObject({ type: "Document", label: "Q3 report (PDF)" }); expect(v.placeableAs).toContain("Task");
     expect(v.candidate?.properties).toMatchObject({ title: "Q3 report (PDF)", url: "https://example.com/Q3-report.pdf" });
   });
+});
+
+describe("no piece is dropped silently (D61)", () => {
+  const SAMPLE: Record<string, () => Clump> = {
+    text: () => one("text", "Bring the deck"), time: () => one("time", "Friday 7:30 PM"), place: () => one("place", "Dakshin", { value: { name: "Dakshin" } }),
+    phone: () => one("phone", "+91 98450 12345", { value: { phone: "+919845012345" } }), page: () => one("page", "Q3 plan", { value: { name: "Q3 plan", url: "https://example.com/q3" } }),
+    code: () => one("code", "src/app.ts:42", { value: { path: "src/app.ts", line: 42 } }), person: () => one("person", "Maya Rao", { value: { name: "Maya Rao", email: "maya@example.com" } }),
+    error: () => one("error", "TypeError: x is undefined"),
+  };
+  const kinds = Object.keys(SAMPLE);
+  for (const a of kinds) for (const b of kinds) {
+    it(`${a} + ${b}`, () => {
+      const x = SAMPLE[a]!(), y = SAMPLE[b]!();
+      const r = mergeClumps(x, y, { confirmChange: true });
+      if (!r.ok) { expect(r.reason, `${a}+${b}`).toBeTruthy(); return; }
+      const d = objectData(r.clump, CTX);
+      expect(d.pieces).toHaveLength(r.clump.ingredients.length);
+      for (const p of d.pieces) expect(p.source?.url, `${a}+${b}: ${p.text} keeps its source`).toBeTruthy();
+      // Every piece's words reach the object somewhere a person sees: a field, the label, or what is still asked for.
+      const seen = JSON.stringify([d.fields, d.label, viewClump(r.clump, CTX).summary, viewClump(r.clump, CTX).missing, viewClump(r.clump, CTX).conflicts]);
+      // A time is read, not copied: it is used when a date was read from it (start or due), or one is asked for.
+      const v = viewClump(r.clump, CTX);
+      const timeUsed = (id: string) => [v.event?.fields.start, v.task?.fields.due].some((x) => x?.fragments.includes(id)) || v.missing.some((m) => m.field === "start" || m.field === "due");
+      for (const f of r.clump.ingredients) expect(f.kind === "time" ? timeUsed(f.id) : seen.includes(f.value?.name ?? f.text) || seen.includes(f.text), `${a}+${b}: ${f.text} is used`).toBe(true);
+    });
+  }
 });

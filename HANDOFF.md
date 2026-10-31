@@ -15,6 +15,17 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-29)
+**Update 2026-10-31 (D61, reliability and readiness):** an audit of D53–D60 against real-world failure modes; the report is `docs/readiness-d61.md`.
+- **Fixed:**
+  - 500 and 502 to a create (POST) and 504 to any write are now unknown, not failed (bridges), so Try again cannot create a second copy.
+  - `settleLostWrites` (interaction) recovers in-flight writes after a desktop restart, and now also in the extension after its worker is stopped. The extension used to stay "waiting" forever. It also covers recipe steps and undos in flight.
+  - Recipe summaries don't count undone steps and say unknown ones; dependency-skipped steps read "Not run".
+  - Copy as data is `recast.object/2`, with an origin per field and captured or typed per piece.
+  - Desktop IPC writes are accepted only from the owning window.
+  - Highlights re-read the overlay's display.
+  - "Clear all" states its scope.
+- **Checked:** all 64 pairs of piece kinds; no silent drops.
+- **Not possible here:** any real-account test (no Recast test credentials; the session's own GitHub and cloud credentials were deliberately not used). The macOS checklist for a person is `docs/macos-test-checklist.md`.
 **Update 2026-10-31 (mission run done, everything that does not need the owner):** the owner's brief is `docs/mission.md`; `docs/mission-status.md` maps each feature to what closed it. This run added D53–D60:
   - D53: desktop keyboard (hover never takes focus; Ctrl/⌘+Shift+Enter while on).
   - D54: capture stack (move, replace, discard; library Remove deletes; Clear all).
@@ -124,6 +135,7 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
+- **D61 next (in order):** (1) the owner runs `docs/macos-test-checklist.md` on a Mac and REAL_TEST_PLAN A–C and L with their Google account (the cheapest real evidence); (2) a GitHub test repository and token for H; (3) then decide the next milestone from what those runs show. Do not add connectors before then.
 - **Needs the owner (the mission run's list, nothing else is left that does not):**
   1. Real-account runs: `docs/REAL_TEST_PLAN.md` B, C, E–P. Only Google Calendar creation is at R.
   2. Try the desktop app on the Mac: Option twice, the Accessibility and Screen Recording prompts, highlights, the new keys shortcut (⌘⇧↵ on a Mac) and the keys going back to the app after Escape (D53; not testable here).
@@ -152,6 +164,7 @@ The repository's own records stay authoritative for what they cover; this file p
 - (Done) The extension now reads the time zone fresh: a session started in another zone follows the current one (`setTimezone`; a reviewed operation keeps its zone).
 
 ## Session log (newest first, keep each entry short)
+- **2026-10-31 (D61):** reliability audit and fixes (above); readiness report, macOS checklist, real-test coverage table. Test results: see the D61 commit message and the final report of that session.
 - **2026-10-30:** worked through the mission brief against the repo (D53–D57 plus receipts/context/banner work); owner said stop mid-run. The unit suites, try-it page (69), desktop (18) and extension (46) passed on the last runs; the extension suite once timed out under load, then passed twice.
 - **2026-10-29:** CI desktop flake traced (cold window, clicks lost) and fixed in the helper; Notion connection (D51); your own webhook (D52); extension test for Outlook drafts and To Do; desktop test for Todoist. Full run 1084/0/0, typecheck clean.
 - **2026-10-28 (cont.):** product work list (visible to-do list): D45–D50, each with its own commit; full run 1064/0/0, typecheck clean.

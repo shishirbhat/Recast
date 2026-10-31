@@ -175,21 +175,24 @@ const shortTime = (iso: string) => {
 /** The object as data a person can paste anywhere (a spreadsheet, a script, a ticket): what Recast read, what the person
  *  typed, what is still missing, and every piece with the page it came from. Versioned, so a reader can tell the shape. */
 export interface ObjectData {
-  format: "recast.object/1";
+  /** /2 (D61): each field says where its value came from, and each piece whether it was captured or typed. */
+  format: "recast.object/2";
   type: ClumpType; label: string;
-  fields: Record<string, string | string[] | boolean>;
+  /** extracted = read from a piece; inferred = Recast's reading (a relative date); default = Recast's default; user = typed or chosen by the person. */
+  fields: Record<string, { value: string | string[] | boolean; origin: string }>;
   missing: string[];
-  pieces: { kind: Fragment["kind"]; text: string; value?: Fragment["value"]; confidence: number; source?: Fragment["source"]; capturedAt?: string }[];
+  pieces: { kind: Fragment["kind"]; text: string; value?: Fragment["value"]; confidence: number; source?: Fragment["source"]; capturedAt?: string; origin: "captured" | "typed" }[];
 }
 export function objectData(c: Clump, ctx: ComposeContext): ObjectData {
   const v = viewClump(c, ctx);
   const fields: ObjectData["fields"] = {};
   for (const part of [v.event, v.message, v.document, v.task, v.note, v.issue]) {
-    for (const [k, f] of Object.entries(part?.fields ?? {})) if (f && f.value !== undefined) fields[k] = f.value as string | string[] | boolean;
+    for (const [k, f] of Object.entries(part?.fields ?? {})) if (f && f.value !== undefined) fields[k] = { value: f.value as string | string[] | boolean, origin: f.origin };
   }
+  const typed = (f: Fragment) => f.evidence.some((e) => e.locator.kind === "user" && e.locator.value === "typed");
   return {
-    format: "recast.object/1", type: v.type, label: v.label, fields, missing: v.missing.map((m) => m.field),
-    pieces: c.ingredients.map((f) => ({ kind: f.kind, text: f.text, ...(f.value ? { value: f.value } : {}), confidence: f.confidence, ...(f.source ? { source: f.source } : {}), ...(f.capturedAt ? { capturedAt: f.capturedAt } : {}) })),
+    format: "recast.object/2", type: v.type, label: v.label, fields, missing: v.missing.map((m) => m.field),
+    pieces: c.ingredients.map((f) => ({ kind: f.kind, text: f.text, ...(f.value ? { value: f.value } : {}), confidence: f.confidence, ...(f.source ? { source: f.source } : {}), ...(f.capturedAt ? { capturedAt: f.capturedAt } : {}), origin: typed(f) ? "typed" as const : "captured" as const })),
   };
 }
 

@@ -433,3 +433,16 @@ Consequential architecture and product decisions, so that separate workstreams d
 - **Warm dark shadows:** dark theme `--shadow-rgb` is `14 7 4`, not black, and the glass and desktop overlay shadows follow it. Not the light theme's `61 31 20`, which on a #0F0F0F page is lighter than the page and would read as a glow.
 - **Apple Maps in the extension** beside Google Maps (maps.apple.com opens in any browser). Open and prefill: nothing is written, checked or undone. Sessions from before gain it once.
 - Not done from the brief: the top-centre floating badge, tilt while carrying, and the destination's ember highlight after placing.
+
+### D61. Real-world reliability: what a lost or ambiguous answer means, recovery after a restart, provenance in exports, and evidence (2026-10-31)
+- **A 500 or 502 to a create (POST), and a 504 to any write, is unknown, not failed.** A server error or bad gateway can come after the provider applied the change. A DELETE, PUT or PATCH sent twice changes nothing more, so a 500 there stays a failure that can be tried again (an api-core test caught the first, broader version of this rule). Only answers that say nothing was done are failures: 4xx (including 408 and 429) and 503. This matters because D57's Try again is offered for failed steps, and most destinations (everything but the two calendars) have no duplicate key. `packages/bridges/src/http.ts`; a test covers every status.
+- **Recovery is one shared rule, `settleLostWrites`, used by the desktop app after a restart and by the extension's first load in a new service worker.**
+  - A write in flight becomes unknown and is never resent.
+  - A recipe step never sent is "Not run" with the reason, and can be tried again.
+  - An undo in flight is "could not undo": the item may still be there.
+  - Never-sent steps are settled first, so settling the step in flight cannot start another one. A test caught that bug before it shipped.
+  - The extension used to stay "waiting for an answer" forever if its worker was stopped mid-write.
+- **Recipe summaries are honest:** an undone step is not counted as done, and unknown steps are said ("1 of 3 done, 1 not known yet"). A step skipped because its prerequisite failed reads "Not run", not "Left out" (which is the person's choice).
+- **Copy as data is `recast.object/2`:** each field carries its origin (extracted, inferred, default, user), and each piece is `captured` or `typed`. `/1` lost the difference between a value the person typed and one read from a page.
+- **Desktop writes come only from the window that owns them:** placing, the inbox and new library entries from the overlay; removals from the library. Highlights are re-read from the display the overlay covers, not the one the pointer is on (a multi-display mismatch). "Clear all" says its scope: the library, not blobs still on screen.
+- **Evidence:** a test presses every pair of the eight piece kinds together. Each pair keeps every piece with its source or is refused with a reason (64 cases; no silent drop). Per-integration reliability, security findings, metric definitions and limitations are in `docs/readiness-d61.md`; the macOS checklist is in `docs/macos-test-checklist.md`. **No real-account test was possible in this environment;** `REAL_TEST_PLAN.md` says exactly what each needs.

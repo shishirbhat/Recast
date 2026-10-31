@@ -357,7 +357,7 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
     const run = m.run!; const planning = m.mode === "plan";
     const items = run.steps.map((x) => {
       const where = x.app ? `${esc(x.app)}${x.standIn ? " · stand-in" : ""}` : "not connected";
-      const tick = planning ? `<input type="checkbox" data-step="${esc(x.id)}" ${x.include ? "checked" : ""} ${x.status === "ready" ? "" : "disabled"} aria-label="${esc(x.label)}">` : `<span class="rg-step-status" data-status="${x.status}">${STATUS[x.status] ?? x.status}</span>`;
+      const tick = planning ? `<input type="checkbox" data-step="${esc(x.id)}" ${x.include ? "checked" : ""} ${x.status === "ready" ? "" : "disabled"} aria-label="${esc(x.label)}">` : `<span class="rg-step-status" data-status="${x.status}">${x.status === "skipped" && x.message ? "Not run" : STATUS[x.status] ?? x.status}</span>`;
       const lines = [
         `<span class="rg-step-where">${where}</span>`,
         x.uses.length ? `<span class="rg-step-uses">Uses ${esc(x.uses.join(", "))}</span>` : "",

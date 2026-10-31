@@ -216,7 +216,8 @@ describe("pressing pieces into one object (mouse)", () => {
     await page.getByRole("button", { name: "Copy as data" }).click();
     await expect.poll(() => page.getByRole("button", { name: "Copied as data" }).count()).toBe(1);
     const data = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
-    expect(data).toMatchObject({ format: "recast.object/1", type: "Event", fields: { location: "Dakshin, 12 MG Road, Bengaluru", start: "2026-10-23T19:30" }, missing: ["title"] });
+    expect(data).toMatchObject({ format: "recast.object/2", type: "Event", fields: { location: { value: "Dakshin, 12 MG Road, Bengaluru", origin: "extracted" }, start: { value: "2026-10-23T19:30", origin: "inferred" } }, missing: ["title"] });
+    expect(data.pieces.map((p: any) => [p.origin, typeof p.capturedAt])).toEqual([["captured", "string"], ["captured", "string"], ["captured", "string"]]);
     expect(data.pieces.map((p: any) => p.text)).toEqual(["Dakshin", "Maya Rao", "Friday, 7:30 PM"]);
     expect(data.pieces[1].source).toMatchObject({ title: expect.stringMatching(/Maya Rao/) });
     await ctx.close();

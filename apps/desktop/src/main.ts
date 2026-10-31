@@ -219,7 +219,8 @@ function rescanSoon() {
   if (!on) return;
   ++scanSeq; overlay?.webContents.send("recast:spots", { spots: [], scanning: true });
   if (rescanTimer) clearTimeout(rescanTimer);
-  rescanTimer = setTimeout(async () => { rescanTimer = null; if (!on) return; const shot = await capture(screen.getDisplayNearestPoint(screen.getCursorScreenPoint())).catch(() => null); if (on) void spot(shot); }, 700);
+  // The display the overlay covers, not the one the pointer is on: highlights are drawn in the overlay's coordinates (D61).
+  rescanTimer = setTimeout(async () => { rescanTimer = null; if (!on || !overlay) return; const shot = await capture(screen.getDisplayMatching(overlay.getBounds())).catch(() => null); if (on) void spot(shot); }, 700);
 }
 
 function turnOff() {
@@ -358,7 +359,12 @@ const DESTS = new Set(["calendar", "gmail", "tasks", "docs", "github", "linear",
 function ipc() {
   ipcMain.handle("recast:boot", () => ({ settings: publicSettings(), inbox: readJson<unknown>(inboxFile(), null), workflows: readJson<unknown>(workflowsFile(), []), presets: readJson<unknown>(presetsFile(), {}), theme: themeName(), on }));
   ipcMain.handle("recast:status", async () => (link ? (await link.direct("status", {})).body : {}));
-  ipcMain.handle("recast:act", async (_e, route: unknown, body: unknown) => {
+  // Each write comes only from the window that owns it (D61): placing, the inbox and new library entries from the overlay;
+  // removing entries from the library. Other pages are local and trusted, but they have no reason to write these.
+  const fromOverlay = (e: { sender: unknown }) => !!overlay && !overlay.isDestroyed() && e.sender === overlay.webContents;
+  const fromLibrary = (e: { sender: unknown }) => !!library && !library.isDestroyed() && e.sender === library.webContents;
+  ipcMain.handle("recast:act", async (e, route: unknown, body: unknown) => {
+    if (!fromOverlay(e)) return { status: 403, body: { error: "only the overlay places things" } };
     // Only these operations, only to the destinations this program serves; the program checks the rest.
     if (!link || (route !== "commit" && route !== "reconcile" && route !== "undo" && route !== "verify") || !body || typeof body !== "object") return { status: 400, body: { error: "not allowed" } };
     const b = body as Record<string, unknown>;
@@ -403,9 +409,10 @@ function ipc() {
     if (!overlay || e.sender !== overlay.webContents || !p || typeof p !== "object" || JSON.stringify(p).length > 2000) return false;
     writePrivate(presetsFile(), checkPresets(p)); return true;
   });
-  ipcMain.handle("recast:save-inbox", (_e, state: unknown) => { if (state && typeof state === "object") writePrivate(inboxFile(), state); return true; });
+  ipcMain.handle("recast:save-inbox", (e, state: unknown) => { if (!fromOverlay(e)) return false; if (state && typeof state === "object") writePrivate(inboxFile(), state); return true; });
   ipcMain.handle("recast:history", () => history());
-  ipcMain.handle("recast:history-add", (_e, entry: unknown) => {
+  ipcMain.handle("recast:history-add", (e, entry: unknown) => {
+    if (!fromOverlay(e)) return false;
     const x = (entry ?? {}) as Partial<Entry>; const id = clean(x.id, 80); const text = clean(x.text, 2000);
     if (!id || !text) return false;
     const s = (x.source ?? {}) as Entry["source"] & object;
@@ -414,7 +421,8 @@ function ipc() {
       source: { ...(clean(s.app, 120) ? { app: clean(s.app, 120)! } : {}), ...(clean(s.url, 2000) ? { url: clean(s.url, 2000)! } : {}), ...(clean(s.title, 200) ? { title: clean(s.title, 200)! } : {}) } });
     saveHistory(list); return true;
   });
-  ipcMain.handle("recast:history-placed", (_e, ids: unknown, where: unknown, linkUrl: unknown) => {
+  ipcMain.handle("recast:history-placed", (e, ids: unknown, where: unknown, linkUrl: unknown) => {
+    if (!fromOverlay(e)) return false;
     if (!Array.isArray(ids) || typeof where !== "string") return false;
     const list = history();
     const link = typeof linkUrl === "string" && /^https:\/\//.test(linkUrl) ? linkUrl.slice(0, 2000) : undefined;
@@ -441,7 +449,7 @@ function ipc() {
     for (const h of list) if (ids.includes(h.id)) { const p = [...(h.placed ?? [])].reverse().find((x) => x.where === where.slice(0, 120) && !x.undone); if (p) { p.undone = true; delete p.link; } }
     saveHistory(list); return true;
   });
-  ipcMain.handle("recast:history-remove", (_e, id: unknown) => { saveHistory(history().filter((h) => h.id !== id)); return true; });
+  ipcMain.handle("recast:history-remove", (e, id: unknown) => { if (!fromLibrary(e)) return false; saveHistory(history().filter((h) => h.id !== id)); return true; });
   // Only the library may empty the library: the overlay never asks for this.
   ipcMain.handle("recast:history-clear", (e) => { if (!library || e.sender !== library.webContents) return false; saveHistory([]); return true; });
   ipcMain.handle("recast:clipboard", async () => (await clipboard.readText()).slice(0, 2000));

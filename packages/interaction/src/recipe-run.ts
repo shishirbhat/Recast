@@ -93,9 +93,10 @@ function next(s: ClumpState): ClumpResult {
   }
   const w = run.steps.find((x) => x.status === "waiting");
   if (!w) {
+    // Only what is in place now counts as done: an undone step is not (D61). What is not known is said, never counted.
     const ran = run.steps.filter((x) => x.include);
-    const done = ran.filter((x) => x.status === "done" || x.status === "undone").length;
-    const text = done === ran.length ? `${run.name}: all ${done} done` : `${run.name}: ${done} of ${ran.length} done`;
+    const done = ran.filter((x) => x.status === "done").length, unknown = ran.filter((x) => x.status === "unknown").length;
+    const text = done === ran.length ? `${run.name}: all ${done} done` : `${run.name}: ${done} of ${ran.length} done${unknown ? `, ${unknown} not known yet` : ""}`;
     return { state: say({ ...s, phase: "ran" }, done === ran.length ? "placed" : "failed", text), effects: [] };
   }
   const st = withSteps(s, run, (x) => (x.id === w.id ? { ...x, status: "running" } : x));

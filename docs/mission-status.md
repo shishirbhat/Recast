@@ -18,6 +18,17 @@ Audit of 2026-10-29, after D52 and the desktop redesign (D38, D39). Surfaces: **
 | 12 | Playground | Time, place, person, combine, review, stand-in result with Undo, stand-ins labelled per review | No page-wide **demo** banner; **no path to the real app**; no guided first run | D58: demo line, About the real Recast (showcase; no public download yet: owner), Show me how |
 | — | Design (`docs/prompts/ui-polish-from-reel.md`, `design/brand/`) | Tokens, hold-to-confirm, reduced motion, keyboard | Brand mark used nowhere (desktop icon, tray, library header); no "PREVIEW · NOT CREATED YET" line; no labelled token pill; dark shadows are pure black | D60: all four |
 
+## D61: reliability pass (2026-10-31)
+D53–D60 were audited against real-world failure modes (`docs/readiness-d61.md`). Fixed:
+- 500 and 502 to a create and 504 to any write are unknown, not failed, so Try again cannot duplicate them.
+- Recovery after a restart or a stopped extension worker (the extension could stay "waiting" forever).
+- Honest recipe summaries.
+- Provenance in Copy as data (`recast.object/2`).
+- Desktop writes only from the owning window.
+- Multi-display highlights read the overlay's display.
+
+Real-account coverage is unchanged: only Google Calendar creation is at R; `REAL_TEST_PLAN.md` lists what each other integration needs.
+
 ## Definition of done (§17)
 Met at F (2026-10-31, after D53–D60): composition of real captured objects; palette by type and capability; three or more workflows end to end with honest outcomes; Calendar and Mail working; inspectable sources; receipts from read-back; recipes and saved workflows; tests passing. The demonstration has its banner, guide and a path to the showcase (D58); a public download is the owner's call. Only Google Calendar creation has run against the real provider (R).
 
