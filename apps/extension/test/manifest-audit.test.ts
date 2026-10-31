@@ -49,10 +49,10 @@ describe("built code: no dynamic execution, no network, no storage, no unsafe HT
       expect(src, String(pat)).not.toMatch(pat);
     }
     expect(src).toContain("chrome.storage.session");
-    // chrome.storage.local holds exactly two keys, the confirmation setting and the saved workflows (definitions the
-    // machine checked): never objects or page content.
+    // chrome.storage.local holds exactly three keys: the confirmation setting, the saved workflows (definitions the
+    // machine checked) and the person's defaults (destination names and minutes, checked as read): never objects or page content.
     const src2 = read("src/background.ts");
-    expect(src2.match(/chrome\.storage\.local\.(get|set)\([^)]*\)/g)).toEqual(["chrome.storage.local.get(CONFIRM)", "chrome.storage.local.get(WORKFLOWS)", "chrome.storage.local.set({ [WORKFLOWS]: e.items })", "chrome.storage.local.set({ [CONFIRM]: level })"]);
+    expect(src2.match(/chrome\.storage\.local\.(get|set)\([^)]*\)/g)).toEqual(["chrome.storage.local.get(CONFIRM)", "chrome.storage.local.get(PRESETS)", "chrome.storage.local.get(WORKFLOWS)", "chrome.storage.local.set({ [WORKFLOWS]: e.items })", "chrome.storage.local.set({ [PRESETS]: e.presets })", "chrome.storage.local.set({ [CONFIRM]: level })"]);
     expect(src2).toContain('const WORKFLOWS = "workflows"');
     expect(src2).toContain('const CONFIRM = "confirmLevel"');
     // The only tab change it makes: bringing a destination's tab to the front when the person chose it in the module.

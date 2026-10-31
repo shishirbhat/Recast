@@ -475,7 +475,9 @@ export function createGlass(root: HTMLElement | ShadowRoot, opts: { onIntent: (i
           return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${op.risk.reasons.some((r) => r.startsWith("confidence")) ? `<p class="rg-risk">Recast is not sure of part of this reading: check it before you open it.</p>` : ""}<p class="rg-risk">Opens ${esc(d.app)} in a new tab with this filled in. Recast saves nothing; you finish there.</p>${refused}`, actions: `${open}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
         }
         const go = op ? (op.risk.consent === "hold" ? `<button type="button" class="rg-btn primary hold" data-act="hold">Hold to confirm: ${esc(op.proposal.effect.toLowerCase())}</button>` : `<button type="button" class="rg-btn primary" data-act="place">Confirm: ${esc(op.proposal.effect)}</button>`) : `<button type="button" class="rg-btn primary" disabled>Answer what is still needed</button>`;
-        return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${err}${detail(m)}${risk}${after}${standIn}${saveBlock(m)}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
+        // The trust line: always visible in a review, until it is placed.
+        const status = `<p class="rg-status" role="status">PREVIEW · NOT CREATED YET</p>`;
+        return { title: `${dIcon}${esc(where)}: review`, head: close, facts: "", body: `${status}${err}${detail(m)}${risk}${after}${standIn}${saveBlock(m)}`, actions: `${go}<button type="button" class="rg-btn ghost" data-act="back">Cancel</button>` };
       }
       case "executing": return { title: `${dIcon}${d?.opensOnly ? "Opening" : "Adding to"} ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm.</p>${err}`, actions: "" };
       case "undoing": return { title: `${dIcon}Undoing in ${esc(where)}…`, head: "", facts: "", body: `<p class="rg-hint">Waiting for ${esc(where)} to confirm it is removed.</p>${err}`, actions: "" };
@@ -694,7 +696,7 @@ const rgba = (c: readonly number[]) => (c.length === 4 ? `rgba(${c[0]}, ${c[1]},
 const vars = (t: (typeof GLASS_TOKENS)["light" | "dark"], x: { edge: string; edge2: string; line: string; sel: string; shadow: string; sheen: string; well: string }) =>
   `--g-tint: ${rgba(t.tint)}; --g-solid: ${rgba(t.solid)}; --g-ink: ${rgba(t.ink)}; --g-muted: ${rgba(t.muted)}; --g-accent: ${rgba(t.accent)}; --g-edge: ${x.edge}; --g-edge2: ${x.edge2}; --g-line: ${x.line}; --g-sel: ${x.sel}; --g-shadow: ${x.shadow}; --g-sheen: ${x.sheen}; --g-well: ${x.well};`;
 const LIGHT = vars(GLASS_TOKENS.light, { edge: "rgba(255,255,255,.95)", edge2: "rgba(255,255,255,.25)", line: "rgba(60,40,20,.12)", sel: "rgba(255,255,255,.82)", shadow: "rgba(40,28,14,.18)", sheen: "rgba(255,255,255,.55)", well: "rgba(60,40,20,.05)" });
-const DARK = vars(GLASS_TOKENS.dark, { edge: "rgba(255,255,255,.22)", edge2: "rgba(255,255,255,.04)", line: "rgba(255,255,255,.10)", sel: "rgba(255,255,255,.09)", shadow: "rgba(0,0,0,.55)", sheen: "rgba(255,255,255,.10)", well: "rgba(0,0,0,.22)" });
+const DARK = vars(GLASS_TOKENS.dark, { edge: "rgba(255,255,255,.22)", edge2: "rgba(255,255,255,.04)", line: "rgba(255,255,255,.10)", sel: "rgba(255,255,255,.09)", shadow: "rgba(14,7,4,.55)", sheen: "rgba(255,255,255,.10)", well: "rgba(14,7,4,.22)" });
 
 /** Styles for the instrument. Self-contained (a shadow root sees none of the page's styles), light and dark, with fallbacks. */
 export const GLASS_CSS = `
@@ -708,7 +710,7 @@ export const GLASS_CSS = `
   background: linear-gradient(180deg, color-mix(in srgb, var(--g-tint) 100%, white 6%), var(--g-tint) 42%, color-mix(in srgb, var(--g-tint) 100%, black 2%));
   -webkit-backdrop-filter: blur(22px) saturate(180%) brightness(1.04); backdrop-filter: blur(22px) saturate(180%) brightness(1.04);
   box-shadow: inset 0 1px 0 var(--g-edge), inset 0 -1px 0 var(--g-edge2), inset 0 0 0 0.5px var(--g-line),
-    0 1px 1px rgba(0,0,0,.06), 0 6px 14px -4px var(--g-shadow), 0 26px 60px -18px var(--g-shadow);
+    0 1px 1px rgba(14,7,4,.06), 0 6px 14px -4px var(--g-shadow), 0 26px 60px -18px var(--g-shadow);
   pointer-events: auto; -webkit-font-smoothing: antialiased; }
 .rg[hidden] { display: none; }
 .rg *, .rg *::before, .rg *::after { box-sizing: border-box; }
@@ -771,7 +773,7 @@ export const GLASS_CSS = `
 /* The stage: the object on the left (its well), and on the right whatever the instrument is doing with it. */
 .rg-stage { display: none; gap: 12px; padding: 8px 12px 0; align-items: center; }
 .rg-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.rg-well { height: 72px; border-radius: 22px; background: var(--g-well); box-shadow: inset 0 1px 3px rgba(0,0,0,.10), inset 0 0 0 0.5px var(--g-line), 0 1px 0 var(--g-edge2); }
+.rg-well { height: 72px; border-radius: 22px; background: var(--g-well); box-shadow: inset 0 1px 3px rgba(14,7,4,.10), inset 0 0 0 0.5px var(--g-line), 0 1px 0 var(--g-edge2); }
 .rg-facts { display: none; flex-wrap: wrap; justify-content: center; gap: 2px 0; font-size: 12px; color: var(--g-muted); text-align: center; }
 .rg-facts span + span::before { content: "·"; margin: 0 6px; }
 .rg-side { flex: none; }
@@ -789,7 +791,7 @@ export const GLASS_CSS = `
 .rg-body p { margin: 0; }
 .rg-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px 14px; }
 .rg-actions:empty { display: none; }
-.rg-btn { display: inline-flex; align-items: center; gap: 8px; border: 0; text-decoration: none; border-radius: 999px; padding: 9px 16px; background: var(--g-ink); color: var(--g-solid); font-family: inherit; font-weight: 600; font-size: 13px; line-height: 1.1; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.2); }
+.rg-btn { display: inline-flex; align-items: center; gap: 8px; border: 0; text-decoration: none; border-radius: 999px; padding: 9px 16px; background: var(--g-ink); color: var(--g-solid); font-family: inherit; font-weight: 600; font-size: 13px; line-height: 1.1; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(14,7,4,.2); }
 .rg-btn.primary { box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 0 1.5px var(--g-accent), 0 2px 8px color-mix(in srgb, var(--g-accent) 30%, transparent); }
 .rg-btn.ghost { background: transparent; color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); }
 .rg-btn.small { padding: 6px 12px; }
@@ -810,7 +812,7 @@ export const GLASS_CSS = `
 /* The wheel: a short cylinder of destinations behind a fixed glass lens. The lens has an ember rim on its leading edge. */
 .rg-drum { position: relative; width: 210px; border-radius: 20px; outline: none; touch-action: none; perspective: 620px; overflow: hidden;
   background: linear-gradient(180deg, color-mix(in srgb, var(--g-ink) 6%, transparent), transparent 30%, transparent 70%, color-mix(in srgb, var(--g-ink) 6%, transparent));
-  box-shadow: inset 0 0 0 0.5px var(--g-line), inset 0 8px 14px -10px rgba(0,0,0,.18), inset 0 -8px 14px -10px rgba(0,0,0,.18); }
+  box-shadow: inset 0 0 0 0.5px var(--g-line), inset 0 8px 14px -10px rgba(14,7,4,.18), inset 0 -8px 14px -10px rgba(14,7,4,.18); }
 .rg-drum:focus-visible { outline: 1.5px solid color-mix(in srgb, var(--g-accent) 75%, transparent); outline-offset: 3px; }
 .rg-lens { position: absolute; left: 6px; right: 6px; top: 50%; height: ${ROW}px; margin-top: -${ROW / 2}px; border-radius: 14px; z-index: 0;
   background: var(--g-sel); box-shadow: inset 0 1px 0 var(--g-edge), inset 0 0 0 0.5px var(--g-line), 0 4px 12px -4px var(--g-shadow); }
@@ -872,6 +874,7 @@ export const GLASS_CSS = `
 .rg-replace { grid-column: 1 / -1; margin-top: 6px; }
 .rg-copy-by-hand { flex-basis: 100%; margin: 4px 0 0; }
 .rg-recipe-about { margin: 0; font-size: 11.5px; }
+.rg-status { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--g-accent); }
 .rg-defaults { display: grid; gap: 8px; }
 .rg-default { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .rg-default select { min-width: 0; max-width: 60%; padding: 6px 10px; border: 0; border-radius: 10px; background: var(--g-sel); color: var(--g-ink); box-shadow: inset 0 0 0 1px var(--g-line); font: inherit; }

@@ -36,7 +36,7 @@ async function openTab(fixture: string): Promise<Page> {
   return page;
 }
 /** Destinations held by tabs or the local program; Google Maps (open and prefill) is always there and needs neither. */
-const held = (x: any) => (x?.destinations ?? []).filter((d: any) => d.id !== "open:google-maps");
+const held = (x: any) => (x?.destinations ?? []).filter((d: any) => !d.id.startsWith("open:"));   // the maps need no account
 const stored = () => sw.evaluate(async () => (await chrome.storage.session.get("clay"))["clay"]) as Promise<any>;
 const centre = async (p: Page, sel: string) => { const b = (await p.locator(sel).first().boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 const item = (id: string) => `recast-clay >> .clay-item[data-id="${id}"]`;

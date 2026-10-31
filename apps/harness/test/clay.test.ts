@@ -262,13 +262,15 @@ describe("pressing pieces into one object (mouse)", () => {
     expect((await st(page)).presets).toEqual({ durationMin: 90 });
     await page.getByRole("button", { name: "Done" }).click();
     await page.getByRole("button", { name: /Choose where it goes/ }).click();
-    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.querySelector(".rg")!.getAnimations().length === 0);
+    await page.getByRole("button", { name: "Open" }).click();
     await page.waitForFunction(() => (globalThis as any).recast.state.phase === "previewing");
     await page.getByRole("button", { name: "Use “Meet Maya at Dakshin”" }).click();
     await page.waitForFunction(() => !!(globalThis as any).recast.state.placement?.op);
     const end = (await st(page)).placement.op.dataMoved.find((d: any) => d.path === "Event.end").value;
     expect(end).toBe("2026-10-23T21:00");
     expect(await page.locator(".rg-body").innerText()).toMatch(/90 minutes \(your default/);
+    expect(await page.locator(".rg-status").innerText()).toBe("PREVIEW · NOT CREATED YET");   // the trust line, in every review
     await page.reload(); await page.locator("#recast-trigger").click();
     expect((await st(page)).presets).toEqual({ durationMin: 90 });
     expect(errors).toEqual([]);
@@ -808,7 +810,9 @@ describe("a personal saved workflow (stand-ins; kept in this browser's storage)"
     expect(await page.locator(".rg-error").innerText()).toBe("Give it a name");
     await page.getByLabel("Name for this workflow").fill("Dinner plan");
     await page.getByLabel("Name for this workflow").press("Enter");
-    expect(await page.locator(".rg-saved").innerText()).toMatch(/^Saved "Dinner plan"/);
+    // First the machine (so a failure says whether the save happened at all), then what the person sees.
+    await expect.poll(async () => { const x = await st(page); return [x.phase, x.last?.kind, x.workflows?.length ?? 0]; }, { timeout: 10_000 }).toEqual(["previewing", "saved", 1]);
+    await expect.poll(() => page.locator(".rg-saved").innerText().catch(() => ""), { timeout: 10_000 }).toMatch(/^Saved "Dinner plan"/);
     expect((await st(page)).phase).toBe("previewing");                       // saving placed nothing
     expect(await page.locator("[data-placed='event']").count()).toBe(0);
     const stored = (await page.evaluate(() => localStorage.getItem("recast.workflows")))!;

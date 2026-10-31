@@ -74,7 +74,7 @@ export function createClay(host: HTMLElement, opts: { reducedMotion?: () => bool
       b.tx = it.x; b.ty = it.y;
       b.ts = it.mode === "carried" ? 1.06 : it.mode === "accepts" ? 1.1 : 1;
       const el = b.el;
-      el.className = `clay-item mode-${it.mode}${it.count > 1 ? " composed" : ""}${it.proposed ? " proposed" : ""}${it.focused ? " focused" : ""}${it.compact ? " compact" : ""}`;
+      el.className = `clay-item mode-${it.mode}${it.count > 1 ? " composed" : " single"}${it.proposed ? " proposed" : ""}${it.focused ? " focused" : ""}${it.compact ? " compact" : ""}`;
       el.dataset["kind"] = it.kind; el.dataset["count"] = String(it.count);
       const text = `<span class="clay-glyph" aria-hidden="true">${GLYPH[it.kind]}</span><span class="clay-text"><span class="clay-label">${esc(it.label)}</span>${it.detail ? `<span class="clay-detail">${esc(it.detail)}</span>` : ""}</span>${it.count > 1 ? `<span class="clay-count" aria-hidden="true">${it.count}</span>` : ""}${it.mode === "refuses" ? `<span class="clay-no">won't combine</span>` : ""}`;
       if (el.dataset["html"] !== text) { el.innerHTML = text; el.dataset["html"] = text; }
@@ -148,7 +148,7 @@ export const CLAY_CSS = `
 .clay-labels { position: absolute; inset: 0; }
 .clay-item { position: absolute; left: 0; top: 0; transform-origin: center; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; max-width: 280px;
   border-radius: 999px; color: var(--clay-ink, #1a1a1a); font: 500 14px/1.25 var(--font-ui, system-ui, sans-serif); pointer-events: auto; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -4px 10px rgba(120,60,20,.07), 0 1px 0 rgba(0,0,0,.04), 0 6px 18px rgba(26,26,26,.10); background: transparent; outline: none; }
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -4px 10px rgba(120,60,20,.07), 0 1px 0 rgba(14,7,4,.04), 0 6px 18px rgba(26,26,26,.10); background: transparent; outline: none; }
 .clay-item.mode-carried { cursor: grabbing; box-shadow: 0 14px 34px rgba(26,26,26,.22); }
 .clay-item.composed { padding: 12px 18px; }
 .clay-item.compact { padding: 8px 12px; font-size: 13px; max-width: 214px; }
@@ -158,12 +158,14 @@ export const CLAY_CSS = `
 .clay-item .clay-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clay-item.proposed .clay-label::after { content: " ·  proposed"; color: var(--clay-muted, #6b6b6b); font-weight: 400; font-size: 12px; }
 .clay-item .clay-detail { font-size: 12px; font-weight: 400; color: var(--clay-muted, #6b6b6b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A single piece is a token: what kind it is, in small tracked capitals (TIME, PLACE, PERSON), under its value. */
+.clay-item.single .clay-detail { font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .clay-item .clay-count { margin-left: 2px; min-width: 20px; height: 20px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; background: var(--clay-accent, #b83d12); color: #fff; }
 .clay-item.mode-accepts { box-shadow: 0 0 0 2px var(--clay-accent, #b83d12), 0 10px 26px rgba(184,61,18,.22); }
 .clay-item.mode-refuses { box-shadow: 0 0 0 2px var(--clay-muted, #6b6b6b); outline: 2px dashed var(--clay-muted, #6b6b6b); outline-offset: 4px; }
 .clay-item .clay-no { font-size: 11px; color: var(--clay-muted, #6b6b6b); margin-left: 4px; }
 .clay-item.focused, .clay-item:focus-visible { box-shadow: 0 0 0 3px var(--clay-focus, #1a1a1a), 0 6px 18px rgba(26,26,26,.10); }
 .clay-item.fused { animation: clay-fused 220ms ease-out; }
-@keyframes clay-fused { from { box-shadow: 0 0 0 6px var(--clay-accent, #b83d12); } to { box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 6px 18px rgba(26,26,26,.10); } }
+@keyframes clay-fused { from { box-shadow: 0 0 0 6px var(--clay-accent, #b83d12); } to { box-shadow: 0 1px 0 rgba(14,7,4,.04), 0 6px 18px rgba(26,26,26,.10); } }
 @media (prefers-color-scheme: dark) { .clay-shape { fill: var(--clay-fill, #2b2420); } .clay-shape.composed { fill: var(--clay-fill-composed, #3d1f14); } .clay-shape.mode-carried { fill: var(--clay-fill-carried, #33302d); } .clay-item { color: var(--clay-ink, #f3f1ec); } .clay-item .clay-detail, .clay-item.proposed .clay-label::after { color: var(--clay-muted, #b5b0a8); } .clay-item .clay-glyph { color: var(--clay-accent, #ff8a5c); } }
 `;

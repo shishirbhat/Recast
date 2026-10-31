@@ -70,11 +70,12 @@
     --accent: var(--ember-500); --on-accent: var(--ink-950); --accent-soft: var(--ember-950); --accent-ink: var(--ember-500);
     --ok: var(--green-500); --ok-ink: var(--green-500); --warn: var(--amber-500); --warn-ink: var(--amber-500); --danger: var(--red-500); --danger-ink: var(--red-400);
     --focus: var(--ember-500);
-    --shadow-rgb: 0 0 0;
-    --shadow-rest: 0 1px 2px rgb(0 0 0 / .5);
-    --shadow-token: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .5);
-    --shadow-lifted: 0 2px 4px rgb(0 0 0 / .5), 0 22px 44px rgb(0 0 0 / .6);
-    --shadow-toast: 0 1px 2px rgb(0 0 0 / .5), 0 14px 36px rgb(0 0 0 / .55);
+    /* Warm here too, never pure black: a warm black still darker than the page (#0F0F0F), so it reads as shadow, not glow. */
+    --shadow-rgb: 14 7 4;
+    --shadow-rest: 0 1px 2px rgb(14 7 4 / .55);
+    --shadow-token: 0 1px 2px rgb(14 7 4 / .55), 0 10px 28px rgb(14 7 4 / .55);
+    --shadow-lifted: 0 2px 4px rgb(14 7 4 / .55), 0 22px 44px rgb(14 7 4 / .65);
+    --shadow-toast: 0 1px 2px rgb(14 7 4 / .55), 0 14px 36px rgb(14 7 4 / .6);
   }
 }
 :root[data-theme="dark"] {
@@ -84,11 +85,12 @@
   --accent: var(--ember-500); --on-accent: var(--ink-950); --accent-soft: var(--ember-950); --accent-ink: var(--ember-500);
   --ok: var(--green-500); --ok-ink: var(--green-500); --warn: var(--amber-500); --warn-ink: var(--amber-500); --danger: var(--red-500); --danger-ink: var(--red-400);
   --focus: var(--ember-500);
-  --shadow-rgb: 0 0 0;
-  --shadow-rest: 0 1px 2px rgb(0 0 0 / .5);
-  --shadow-token: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .5);
-  --shadow-lifted: 0 2px 4px rgb(0 0 0 / .5), 0 22px 44px rgb(0 0 0 / .6);
-  --shadow-toast: 0 1px 2px rgb(0 0 0 / .5), 0 14px 36px rgb(0 0 0 / .55);
+  /* Warm here too, never pure black: a warm black still darker than the page (#0F0F0F), so it reads as shadow, not glow. */
+  --shadow-rgb: 14 7 4;
+  --shadow-rest: 0 1px 2px rgb(14 7 4 / .55);
+  --shadow-token: 0 1px 2px rgb(14 7 4 / .55), 0 10px 28px rgb(14 7 4 / .55);
+  --shadow-lifted: 0 2px 4px rgb(14 7 4 / .55), 0 22px 44px rgb(14 7 4 / .65);
+  --shadow-toast: 0 1px 2px rgb(14 7 4 / .55), 0 14px 36px rgb(14 7 4 / .6);
 }
 
 /* ---- Component ---- */

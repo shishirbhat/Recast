@@ -27,7 +27,8 @@ kbd { font: 500 11.5px/1 var(--font-ui); padding: 3px 6px; border-radius: 6px; b
 #top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 18px 28px 14px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
 body.mac #top { padding-left: 88px; }
 #top button, #top input { -webkit-app-region: no-drag; }
-.mark { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 60%, white), var(--accent) 70%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+/* The brand mark (design/brand/mark.svg): the R in the ink of the page, the ember dot as given. */
+.mark { width: 22px; height: 22px; flex: none; color: var(--ink); }
 .grow { flex: 1; }
 #search { width: min(280px, 32vw); font: 400 13.5px var(--font-ui); color: var(--ink); background: var(--surface); border: 0; border-radius: 999px; padding: 8px 14px; box-shadow: inset 0 0 0 1px var(--line); }
 #search:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }

@@ -425,3 +425,11 @@ Consequential architecture and product decisions, so that separate workstreams d
 - An explicit choice for this object always wins: a pick from "which one?", or a typed end.
 - **Stored** as destination names and a number only. The try-it page keeps them in localStorage, the extension in `chrome.storage.local`, and the desktop app in `presets.json` (0600; the main process accepts only what `checkPresets` lets through). Anything else in a stored file is dropped as it is read.
 - **Evidence:** F (machine tests for wheel, recipe, explicit pick, duration and bad stored values; try-it page test for the meeting length, the review and a reload).
+
+### D60. Design pass from the reel brief; Apple Maps in the extension (2026-10-31)
+- **Brand mark** (`design/brand/`) is now the desktop app icon (`build/icon.png`, 1024 px with a macOS-style margin), the tray icon on Windows and Linux (the dark rounded square, visible on light and dark taskbars), the macOS menu-bar template (black mark; macOS tints it), and the library header (the R in the page's ink, the ember dot as given). All are rendered from the SVGs.
+- **Every review shows "PREVIEW · NOT CREATED YET"** at the top: the trust line from `docs/prompts/ui-polish-from-reel.md` §4, in the module's accent, about 5:1 on light glass.
+- **A single piece is a token:** its kind (TIME, PLACE, PERSON) in small tracked capitals under its value.
+- **Warm dark shadows:** dark theme `--shadow-rgb` is `14 7 4`, not black, and the glass and desktop overlay shadows follow it. Not the light theme's `61 31 20`, which on a #0F0F0F page is lighter than the page and would read as a glow.
+- **Apple Maps in the extension** beside Google Maps (maps.apple.com opens in any browser). Open and prefill: nothing is written, checked or undone. Sessions from before gain it once.
+- Not done from the brief: the top-centre floating badge, tilt while carrying, and the destination's ember highlight after placing.

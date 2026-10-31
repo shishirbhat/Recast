@@ -5,7 +5,7 @@
 import { commandEvents, initialClumpState, reduceClump, type ClumpEffect, type ClumpState, type ConfirmLevel, type DestinationSpec } from "@recast/interaction";
 import type { ToBackground, ToTab } from "./clay-messages.js";
 import { CONTRACTS } from "@recast/bridges/src/contracts";
-import { googleMapsDirections, LinkBridge } from "@recast/bridges/src/links";
+import { appleMapsDirections, googleMapsDirections, LinkBridge } from "@recast/bridges/src/links";
 import { commit, InMemoryEventLog } from "@recast/core";
 
 const KEY = "clay", TABS = "clayTabs";
@@ -28,7 +28,7 @@ async function load(): Promise<ClumpState> {
   const kept = r[KEY] as ClumpState | undefined;
   // Each stored workflow is checked as it is read: an outdated or unknown one is shown with the reason, never run.
   if (!kept) {
-    const s = reduceClump(initialClumpState({ now: Date.now(), timezone, destinations: [mapsDest], ...(level ? { confirm: level } : {}) }), { type: "setWorkflows", items: await storedWorkflows(), known: KNOWN, now: Date.now() }).state;
+    const s = reduceClump(initialClumpState({ now: Date.now(), timezone, destinations: [mapsDest, appleMapsDest], ...(level ? { confirm: level } : {}) }), { type: "setWorkflows", items: await storedWorkflows(), known: KNOWN, now: Date.now() }).state;
     return reduceClump(s, { type: "loadPresets", presets: await storedPresets(), now: Date.now() }).state;
   }
   return kept.timezone === timezone ? kept : reduceClump(kept, { type: "setTimezone", timezone, now: Date.now() }).state;
@@ -54,12 +54,12 @@ function apply(mutate: (s: ClumpState) => { state: ClumpState; effects?: ClumpEf
       if (e.type === "storeWorkflows") { await chrome.storage.local.set({ [WORKFLOWS]: e.items }); continue; }
       if (e.type === "storePresets") { await chrome.storage.local.set({ [PRESETS]: e.presets }); continue; }
       if (isLink(e.destinationId)) { void viaLink(e); continue; }
-      if (e.destinationId === MAPS) { void opened(e); continue; }
+      if (isMaps(e.destinationId)) { void opened(e); continue; }
       const [tabId] = e.destinationId.split(":"); await tell(Number(tabId), { type: "effect", effect: e });
     }
     // Chosen in the module while looking at another tab: bring the destination's tab to the front, so the review and the
     // write happen where the person can see them.
-    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && !isLink(r.state.placement.destinationId) && r.state.placement.destinationId !== MAPS) {
+    if (r.state.phase === "previewing" && r.state.placement?.via === "module" && (before.phase !== "previewing") && !isLink(r.state.placement.destinationId) && !isMaps(r.state.placement.destinationId)) {
       const tabId = Number(r.state.placement.destinationId.split(":")[0]);
       try { const t = await chrome.tabs.update(tabId, { active: true }); if (t?.windowId !== undefined) await chrome.windows.update(t.windowId, { focused: true }); } catch { /* the tab is gone; the review still shows */ }
     }
@@ -115,7 +115,9 @@ async function linkStatus(): Promise<{ state: "off" | "unreachable" | "pending" 
 async function syncLink() {
   const st = await linkStatus();
   await apply((s) => {
-    const others = s.destinations.filter((d) => !isLink(d.id));
+    const kept = s.destinations.filter((d) => !isLink(d.id));
+    // A session from before Apple Maps was offered gains it here, once.
+    const others = kept.some((d) => d.id === APPLE_MAPS) ? kept : [...kept, appleMapsDest];
     const mine = [...(st.state === "ready" ? [linkDest, ...(st.gmail ? [gmailDest] : []), ...(st.tasks ? [tasksDest, tasksDueDest] : []), ...(st.docs ? [docsDest] : [])] : []), ...(st.outlook ? [outlookDest] : []), ...(st.github ? [githubDest(st.github)] : []), ...(st.linear ? [linearDest(st.linear)] : []), ...(st.todoist ? todoistDests : []), ...(st.outlookMail ? [outlookMailDest] : []), ...(st.mstodo ? msTodoDests : []), ...(st.notion ? [notionDest(st.notion)] : []), ...(st.webhook ? webhookDests(st.webhook) : [])];
     return { state: { ...s, destinations: [...mine, ...others] } };
   });
@@ -162,11 +164,15 @@ async function viaLink(e: ClumpEffect) {
 // directions from the person's own click (so the browser allows the tab). Nothing is written, so nothing is checked or undone.
 export const MAPS = "open:google-maps";
 const mapsDest: DestinationSpec = { id: MAPS, label: "Google Maps", contract: CONTRACTS.googleMaps };
+// Apple Maps opens on the web too (maps.apple.com), so it is offered in every browser beside Google Maps.
+export const APPLE_MAPS = "open:apple-maps";
+const appleMapsDest: DestinationSpec = { id: APPLE_MAPS, label: "Apple Maps", contract: CONTRACTS.appleMaps };
+const isMaps = (id: string) => id === MAPS || id === APPLE_MAPS;
 async function opened(e: ClumpEffect) {
   if (e.type !== "commit") return;
   const now = () => new Date().toISOString();
   try {
-    const receipt = await commit(e.op, e.consent, { bridge: new LinkBridge(googleMapsDirections), log: new InMemoryEventLog(), now });
+    const receipt = await commit(e.op, e.consent, { bridge: new LinkBridge(e.destinationId === APPLE_MAPS ? appleMapsDirections : googleMapsDirections), log: new InMemoryEventLog(), now });
     await apply((s) => reduceClump(s, { type: "committed", receipt, undoable: false, now: Date.now() }));
   } catch (err) { await apply((s) => reduceClump(s, { type: "commitFailed", opId: e.op.opId, message: err instanceof Error ? err.message : String(err), now: Date.now() })); }
 }
