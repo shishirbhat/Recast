@@ -15,7 +15,16 @@ The repository's own records stay authoritative for what they cover; this file p
 - Full check: `pnpm install && pnpm gen && pnpm -r typecheck && pnpm -r test`. One package: `pnpm --filter <name> test`.
 
 ## Current state (2026-10-29)
-**Update 2026-10-30 (mission run, paused by the owner):** the owner's brief is in `docs/mission.md`; `docs/mission-status.md` tracks each feature's gaps and what closed them. Closed this run: D53 (desktop keyboard: hover never takes focus; Ctrl/⌘+Shift+Enter while on), D54 (capture stack: move, replace, discard; library Remove deletes; Clear all), D55 (Copy as data, `recast.object/1`), D56 (phone and code pieces; error + file:line → bug report), D57 (recipe dependencies, safe retry, note step, "Plan, prepare, note and invite", version and limitations, share/import definitions). The final commit also has: library links to results, "(undone)" and "not placed yet" marks, Put on screen; "Made from …" on the success receipt; capture time on each piece; the try-it page demo banner, storage line, optional guide and a link to the public showcase. These still need a decision entry (D58) and status rows.
+**Update 2026-10-31 (mission run done, everything that does not need the owner):** the owner's brief is `docs/mission.md`; `docs/mission-status.md` maps each feature to what closed it. This run added D53–D60:
+  - D53: desktop keyboard (hover never takes focus; Ctrl/⌘+Shift+Enter while on).
+  - D54: capture stack (move, replace, discard; library Remove deletes; Clear all).
+  - D55: Copy as data (`recast.object/1`).
+  - D56: phone and code pieces; error + file:line → bug report.
+  - D57: recipe dependencies, safe retry, the sourced-note step, "Plan, prepare, note and invite", version and limitations, workflow share and import.
+  - D58: library result links, (undone), Put on screen; "Made from"; capture times; storage stated; the try-it demo banner and guide.
+  - D59: Your defaults (a place per slot, meeting length).
+  - D60: brand mark (desktop icon, tray, library), PREVIEW · NOT CREATED YET, kind labels, warm dark shadows, Apple Maps in the extension.
+  - Full `pnpm test` green locally on 2026-10-31; CI green on `fa9caa0`. The try-it artifact is republished (same link).
 - **29 Oct ("go"):**
   - **Notion** connection: one database, read back, Undo archives (D51; REAL_TEST_PLAN O).
   - **Your own webhook**: signed JSON, once, press-and-hold, no Undo, said so (D52; REAL_TEST_PLAN P).
@@ -115,7 +124,12 @@ The repository's own records stay authoritative for what they cover; this file p
    - Still missing: amount raised, use of funds, team slide. Needs the owner's figures and background.
 
 ## Next steps (in order)
-- **Mission run, still to do:** record D58 (receipts, context, inbox, demo banner) and update mission-status; presets (default destination per kind, default duration: `compose.ts` hardcodes 60); design (brand mark in desktop icon, tray and library; "PREVIEW · NOT CREATED YET"; labelled token pill; warm dark shadows; Apple Maps in the extension; stale ENGINEERING_STATUS rows); then a full `pnpm test`, republish the try-it artifact (https://claude.ai/artifact/AavuzTXJUyJenKkLfLCUHN from `apps/harness/dist/clay-artifact.html`), and give the owner list (real-account runs, Mac trial, Slack, Developer ID, public download page, GitHub Pages, deck figures, outside testers).
+- **Needs the owner (the mission run's list, nothing else is left that does not):**
+  1. Real-account runs: `docs/REAL_TEST_PLAN.md` B, C, E–P. Only Google Calendar creation is at R.
+  2. Try the desktop app on the Mac: Option twice, the Accessibility and Screen Recording prompts, highlights, the new keys shortcut (⌃⇧↵ is ⌘⇧↵ on a Mac) and the keys going back to the app after Escape (D53; not testable here).
+  3. Decisions: Slack (send model and which workspace); whether Google Sheets is offered; an Apple Developer ID ($99/yr) for notarisation; a public download page (a GitHub Release was blocked as a public surface); switching on GitHub Pages for the showcase.
+  4. The deck's figures; outsider tester sessions (`docs/23-user-validation.md` §4); share the try-it link.
+  5. Look at the new brand icons in the desktop build (rendered from `design/brand/`) and the warm dark shadow choice (D60).
 0000. **Owner's real runs for the new connectors:** REAL_TEST_PLAN N (Todoist token), M8–M11 (Microsoft mail and To Do permissions), O (Notion integration + a database), P (any webhook receiver, e.g. a free n8n or Zapier hook).
 000. **Owner tries saved workflows** on the try-it page or in the extension: place something, Save as workflow, then run it on a different object. Report whether Save was easy to find (nothing at P yet).
 00. **Desktop app on the owner's Mac** (see "Desktop app" above): the owner's current priority; respond to their report first.

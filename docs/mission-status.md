@@ -19,7 +19,7 @@ Audit of 2026-10-29, after D52 and the desktop redesign (D38, D39). Surfaces: **
 | — | Design (`docs/prompts/ui-polish-from-reel.md`, `design/brand/`) | Tokens, hold-to-confirm, reduced motion, keyboard | Brand mark used nowhere (desktop icon, tray, library header); no "PREVIEW · NOT CREATED YET" line; no labelled token pill; dark shadows are pure black | D60: all four |
 
 ## Definition of done (§17)
-Met at F: composition of real captured objects; palette by type and capability; three or more workflows end to end with honest outcomes; Calendar and Mail working; inspectable sources; receipts from read-back; recipes and saved workflows; tests passing. **Partial:** the demonstration (no banner, no path to the app). Only Google Calendar creation has run against the real provider (R).
+Met at F (2026-10-31, after D53–D60): composition of real captured objects; palette by type and capability; three or more workflows end to end with honest outcomes; Calendar and Mail working; inspectable sources; receipts from read-back; recipes and saved workflows; tests passing. The demonstration has its banner, guide and a path to the showcase (D58); a public download is the owner's call. Only Google Calendar creation has run against the real provider (R).
 
 ## Needs the owner (kept for the end)
-Real-account runs (REAL_TEST_PLAN B, C, E–P), trying the desktop app on the Mac, Slack's send model, an Apple Developer ID, a public download page, GitHub Pages for the showcase, the deck's figures, outsider test sessions.
+See HANDOFF "Next steps" for the full list. In short: real-account runs (REAL_TEST_PLAN B, C, E–P), trying the desktop app on the Mac, Slack's send model, an Apple Developer ID, a public download page, GitHub Pages for the showcase, the deck's figures, outsider test sessions.
