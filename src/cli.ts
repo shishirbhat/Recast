@@ -53,10 +53,10 @@ const USAGE = `relay — coordinate humans and coding agents on one repository
   relay repro --integration ID --command CMD [--run]   the server and says reproduced / different failure / did not reproduce
   relay timeline [--task ID] [--query TEXT] [--limit N] [--json]   the flight recorder from the running server:
                                                 events, edit sessions and commits, newest first
-  relay arena [--json]                          Relay Arena: the same pairs of changes integrated without and with Relay,
-                                                scored (simulated agents, real git/tests/Relay). Exit 1 if Relay let a broken
-                                                change in or blocked a working one
-  relay arena --real --yes [--trials N]         the same with real Claude Code agents (costs model usage; signed-in claude)
+  relay arena [--scenario ID...] [--trials N] [--json]   Relay Arena: 10 scenarios, each pair of changes integrated
+                                                without and with Relay, judged by hidden oracle tests (simulated agents, real
+                                                git/tests/Relay). Methodology: eval/README.md
+  relay arena --agent claude-code|codex --yes [--trials N] [--out DIR]   the same with real agents (costs model usage)
   relay ownership [--json]                      changed files with the tasks that own them and who changed them, where
   relay remote join <invite-link>              sign this checkout in to a running Relay server (one-time invite)
   relay remote status | leave                  which server and member this checkout uses / sign out
@@ -104,6 +104,7 @@ const { values: o, positionals: args } = parseArgs({
     command: { type: "string" },
     query: { type: "string" },
     real: { type: "boolean" },
+    scenario: { type: "string", multiple: true },
     yes: { type: "boolean" },
     trials: { type: "string" },
     limit: { type: "string" },
@@ -468,21 +469,25 @@ async function timelineCmd(): Promise<void> {
   if (r.truncated) console.log(`… more; narrow with --task or --query, or raise --limit`);
 }
 
-/** Relay Arena: runs the benchmark scripts in this checkout and passes their exit code through. */
+/**
+ * Relay Arena: the evaluation in eval/ (eval/run.ts, then eval/report.ts). Simulated by default; real agents need --yes.
+ * Results stay on disk (eval/results/ unless --out) with every trial's raw output.
+ */
 function arenaCmd(): void {
-  const scripts = resolve(dirname(fileURLToPath(import.meta.url)), "../scripts");
-  if (o.real) {
-    const trials = Number(o.trials ?? "3");
-    if (!(trials >= 1 && trials <= 20)) throw new RelayError("usage", "--trials is between 1 and 20");
-    if (!o.yes)
-      throw new RelayError("usage", `--real starts real Claude Code agents: 4 agent sessions per trial (2 without Relay, 2 with), ${trials} trial(s). Measured on 2026-10-27 at about $0.45 per trial. It needs a signed-in claude CLI. Add --yes to run it.`);
-    const out = mkdtempSync(join(tmpdir(), "relay-arena-real-"));
-    const r = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", join(scripts, "prove-integration-real.ts"), "--trials", String(trials), "--out", out], { stdio: "inherit" });
-    process.exitCode = r.status ?? 3;
+  const evalDir = resolve(dirname(fileURLToPath(import.meta.url)), "../eval");
+  const agent = o.agent ?? (o.real ? "claude-code" : "sim");
+  const out = o.out ?? (agent === "sim" ? mkdtempSync(join(tmpdir(), "relay-arena-")) : undefined);
+  const args = ["--agent", agent, ...(o.trials ? ["--trials", o.trials] : []), ...(o.scenario?.length ? ["--scenarios", o.scenario.join(",")] : []), ...(out ? ["--out", out] : []), ...(o.yes ? ["--yes"] : [])];
+  const run = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", join(evalDir, "run.ts"), ...args], { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" });
+  const written = /wrote (.+results\.json)/.exec(run.stdout ?? "")?.[1];
+  if (run.status !== 0 || !written) {
+    process.exitCode = run.status === 2 ? 2 : 3;
     return;
   }
-  const r = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", join(scripts, "arena.ts"), ...(o.json ? ["--json"] : [])], { stdio: "inherit" });
-  process.exitCode = r.status ?? 3;
+  if (o.json) return void console.log(readFileSync(written, "utf8"));
+  const rep = spawnSync(process.execPath, [join(evalDir, "report.ts"), written], { stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" });
+  console.log(rep.stdout);
+  console.log(`Raw results: ${written}`);
 }
 
 async function ownershipCmd(): Promise<void> {

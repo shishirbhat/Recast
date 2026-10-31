@@ -192,6 +192,7 @@ export function openDb(path: string): DatabaseSync {
   // Databases created before a column existed get it added; CREATE TABLE IF NOT EXISTS doesn't change them.
   const cols = (db.prepare("PRAGMA table_info(integrations)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("explanation")) db.exec("ALTER TABLE integrations ADD COLUMN explanation TEXT");
+  if (!cols.includes("assurance")) db.exec("ALTER TABLE integrations ADD COLUMN assurance TEXT");
   return db;
 }
 

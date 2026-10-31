@@ -12,7 +12,7 @@ import { RelayError } from "../core/types.ts";
 import type { Integration } from "../core/types.ts";
 import { changedFiles, relayOwnFiles, workspaceFingerprint } from "../git.ts";
 import { claudeCode } from "../providers/claude-code.ts";
-import type { ProviderAdapter } from "../providers/types.ts";
+import type { ProviderAdapter, Tokens } from "../providers/types.ts";
 import type { Member } from "./auth.ts";
 import { actorFor } from "./auth.ts";
 import type { DocStore } from "./docs.ts";
@@ -44,6 +44,9 @@ export interface AgentRun {
   endedAt: string | null;
   exitCode: number | null;
   costUsd: number | null;
+  /** Token use and model as the provider reported them at the end of the run (absent when it reports none). */
+  tokens?: Tokens | null;
+  model?: string | null;
   changedFiles: string[];
   staleInputs: { path: string; by: string; at: string }[];
   activity: Activity[];
@@ -234,6 +237,8 @@ export class AgentRuns {
     const child = spawn(spec.command, spec.args, { cwd: run.worktree, stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...verificationEnv(), ...spec.env } });
     this.procs.set(run.id, child);
     run.status = "running";
+    // An agent without coordination tools can't claim its task: the runner does it for the agent, and says so.
+    if (this.adapter.capabilities.coordination === "none" && this.relay.requireTask(run.taskId).state === "queued") this.relay.claim(run.taskId, { kind: "agent", id: this.adapter.id });
     this.save(run);
     let buf = "";
     child.stdout!.on("data", (chunk: Buffer) => {
@@ -255,6 +260,9 @@ export class AgentRuns {
       run.endedAt = new Date().toISOString();
       if (run.status === "cancelled") return this.save(run);
       run.status = code === 0 ? "finished" : "failed";
+      // ...and submits it for review when the agent exits cleanly. Relay's own checks follow, as for any agent.
+      if (code === 0 && this.adapter.capabilities.coordination === "none" && this.relay.getTask(run.taskId)?.state === "running")
+        this.relay.transition(run.taskId, "review_required", { kind: "agent", id: this.adapter.id }, { reason: `${this.adapter.displayName} exited cleanly; submitted by Relay's runner (the agent has no coordination tools)` });
       if (code !== 0 && stderr) this.push(run, { kind: "error", detail: stderr.slice(-500) });
       this.save(run);
       void this.afterRun(run);
@@ -265,6 +273,8 @@ export class AgentRuns {
     for (const a of this.adapter.parse(line, run.worktree)) {
       if (a.kind === "result") {
         run.costUsd = a.costUsd;
+        run.tokens = a.tokens ?? null;
+        run.model = a.model ?? null;
         this.push(run, { kind: "result", detail: a.detail });
         this.save(run);
       } else this.push(run, a);

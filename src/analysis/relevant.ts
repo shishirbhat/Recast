@@ -12,6 +12,8 @@ export interface RelevantTests {
   tests: { file: string; chain: string[]; changedItself: boolean }[];
   /** Changed code files that no test reaches through imports. */
   unreached: string[];
+  /** For each changed code file, the test files that reach it. */
+  reachedBy: Record<string, string[]>;
   limits: string[];
 }
 
@@ -21,11 +23,13 @@ export function relevantTests(graph: DependencyGraph, changed: string[]): Releva
   const tests = new Map<string, { file: string; chain: string[]; changedItself: boolean }>();
   for (const t of reached) tests.set(t.file, { file: t.file, chain: t.chain, changedItself: changed.includes(t.file) });
   for (const f of changed) if (isTestFile(f) && !tests.has(f)) tests.set(f, { file: f, chain: [f], changedItself: true });
-  const covered = new Set([...tests.values()].flatMap((t) => t.chain));
+  // Covered means some test reaches the file, judged per file (a test's listed chain is only its shortest one).
+  const reachedBy = new Map(code.filter((f) => !isTestFile(f)).map((f) => [f, graph.testsReaching([f]).map((t) => t.file)]));
   return {
     changed,
     tests: [...tests.values()].sort((a, b) => a.chain.length - b.chain.length || a.file.localeCompare(b.file)),
-    unreached: code.filter((f) => !isTestFile(f) && !covered.has(f)),
+    unreached: [...reachedBy.entries()].filter(([, ts]) => !ts.length).map(([f]) => f),
+    reachedBy: Object.fromEntries(reachedBy),
     limits: ["Found by following imports in JavaScript and TypeScript. Tests that load code dynamically, or through a process they start, aren't found: run the task's full checks before integrating."],
   };
 }

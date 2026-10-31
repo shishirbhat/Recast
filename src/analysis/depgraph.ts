@@ -170,7 +170,9 @@ export function parseModule(path: string, text: string, resolve: (from: string, 
           addExport({ name: d.name.text, line: line(d), kind: "function", signature: fnSignature(d.name.text, init, sf), returnKeys: returnKeysOf(init.body) }, d);
         } else {
           const shape = init && ts.isObjectLiteralExpression(init) ? `{${keysOf(init).join(",")}}` : "";
-          addExport({ name: d.name.text, line: line(d), kind: "variable", signature: norm(`${d.name.text}${d.type ? `: ${d.type.getText(sf)}` : ""}${shape}`), returnKeys: null }, d);
+          // An exported object constant: its keys are its interface, like a function's returned keys.
+          addExport({ name: d.name.text, line: line(d), kind: "variable", signature: norm(`${d.name.text}${d.type ? `: ${d.type.getText(sf)}` : ""}`), returnKeys: init && ts.isObjectLiteralExpression(init) ? keysOf(init).sort() : null }, d);
+          void shape;
         }
       }
     }
@@ -208,6 +210,14 @@ export function parseModule(path: string, text: string, resolve: (from: string, 
         }
       }
       if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && bound.has(n.expression.text)) uses.push({ symbol: bound.get(n.expression.text)!, prop: n.name.text, line: line(n) });
+      // A read straight off an imported object: `config.port`.
+      if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && importedLocal.has(n.expression.text) && !bound.has(n.expression.text)) uses.push({ symbol: importedLocal.get(n.expression.text)!, prop: n.name.text, line: line(n) });
+      // A computed key on an imported value or a call's result: which properties it uses can't be known statically.
+      if (ts.isElementAccessExpression(n) && !ts.isStringLiteral(n.argumentExpression) && !ts.isNumericLiteral(n.argumentExpression)) {
+        const base = ts.isIdentifier(n.expression) ? n.expression.text : null;
+        const sym = base && (importedLocal.get(base) ?? bound.get(base));
+        if (sym) gaps.push(`${path}:${line(n)} reads ${base}[${n.argumentExpression.getText(sf)}] from ${sym}: which keys it uses can't be determined statically`);
+      }
       // A read straight off the call: `f(x).prop`, `(await f(x)).prop`.
       if (ts.isPropertyAccessExpression(n)) {
         let e: ts.Expression = n.expression;
@@ -235,6 +245,8 @@ export interface InterfaceChange {
   removedKeys: string[];
   addedKeys: string[];
   line: number | null;
+  /** The exported thing's kind: a function's keys are what it returns, a constant object's are what it has. */
+  exportKind?: ExportInfo["kind"];
 }
 
 export interface Consumer {
@@ -343,16 +355,20 @@ export class DependencyGraph {
   testsReaching(files: string[]): { file: string; chain: string[] }[] {
     const reverse = new Map<string, string[]>();
     for (const m of this.modules()) for (const i of m.imports) if (i.to && !i.to.startsWith("pkg:")) reverse.set(i.to, [...(reverse.get(i.to) ?? []), m.path]);
+    // One search per starting file: when a module and its test both changed, the test must still be found as reaching
+    // the module (a shared "seen" set would hide that link). Each test keeps its shortest chain.
     const out = new Map<string, string[]>();
-    const queue: string[][] = files.map((f) => [f]);
-    const seen = new Set(files);
-    while (queue.length) {
-      const chain = queue.shift()!;
-      const at = chain.at(-1)!;
-      if (isTestFile(at) && !out.has(at)) out.set(at, chain);
-      for (const imp of reverse.get(at) ?? []) if (!seen.has(imp)) (seen.add(imp), queue.push([...chain, imp]));
+    for (const start of files) {
+      const queue: string[][] = [[start]];
+      const seen = new Set([start]);
+      while (queue.length) {
+        const chain = queue.shift()!;
+        const at = chain.at(-1)!;
+        if (isTestFile(at) && (!out.has(at) || out.get(at)!.length > chain.length)) out.set(at, chain);
+        for (const imp of reverse.get(at) ?? []) if (!seen.has(imp)) (seen.add(imp), queue.push([...chain, imp]));
+      }
     }
-    return [...out.entries()].map(([file, chain]) => ({ file, chain: chain.reverse() }));
+    return [...out.entries()].map(([file, chain]) => ({ file, chain: [...chain].reverse() }));
   }
 
   /**
@@ -377,8 +393,9 @@ export class DependencyGraph {
         }
         const removedKeys = (b.returnKeys ?? []).filter((k) => !(a.returnKeys ?? []).includes(k));
         const addedKeys = (a.returnKeys ?? []).filter((k) => !(b.returnKeys ?? []).includes(k));
-        if (a.signature !== b.signature) interfaces.push({ file, symbol: name, change: "signature", before: b.signature, after: a.signature, removedKeys, addedKeys, line: a.line });
-        else if (removedKeys.length || addedKeys.length) interfaces.push({ file, symbol: name, change: "shape", before: `returns {${(b.returnKeys ?? []).join(", ")}}`, after: `returns {${(a.returnKeys ?? []).join(", ")}}`, removedKeys, addedKeys, line: a.line });
+        const verb = a.kind === "variable" ? "has" : "returns";
+        if (a.signature !== b.signature) interfaces.push({ file, symbol: name, change: "signature", before: b.signature, after: a.signature, removedKeys, addedKeys, line: a.line, exportKind: a.kind });
+        else if (removedKeys.length || addedKeys.length) interfaces.push({ file, symbol: name, change: "shape", before: `${verb} {${(b.returnKeys ?? []).join(", ")}}`, after: `${verb} {${(a.returnKeys ?? []).join(", ")}}`, removedKeys, addedKeys, line: a.line, exportKind: a.kind });
         else if (a.bodyHash !== b.bodyHash) interfaces.push({ file, symbol: name, change: "implementation", before: null, after: null, removedKeys: [], addedKeys: [], line: a.line });
       }
       for (const [name, a] of after) if (!before.has(name)) interfaces.push({ file, symbol: name, change: "added", before: null, after: a.signature, removedKeys: [], addedKeys: [], line: a.line });
@@ -404,7 +421,7 @@ export class DependencyGraph {
           }
           const kind = n.imported === "*" ? (edge.kind === "import" ? "namespace-import" : edge.kind) : "static-import";
           const reads = m.uses.filter((u) => u.symbol === symbol);
-          const breaks = reads.filter((u) => change.removedKeys.includes(u.prop)).map((u) => ({ prop: u.prop, line: u.line, reason: `reads .${u.prop}, which ${symbol}() no longer returns` }));
+          const breaks = reads.filter((u) => change.removedKeys.includes(u.prop)).map((u) => ({ prop: u.prop, line: u.line, reason: change.exportKind === "variable" ? `reads .${u.prop}, which ${symbol} no longer has` : `reads .${u.prop}, which ${symbol}() no longer returns` }));
           if (n.imported === "*" && edge.kind !== "import") gaps.push(`${edge.from}:${edge.line} ${edge.kind} of ${file} can't be narrowed to specific symbols`);
           consumers.push({
             file: edge.from,

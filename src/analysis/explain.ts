@@ -259,6 +259,17 @@ export function integrationReport(integ: Integration): string {
     if (x.uncertain.length) out.push("", "Uncertain:", ...x.uncertain.map((u) => `  - ${u}`));
     out.push("", `To resolve: ${x.resolve}`);
   }
+  const as = integ.assurance;
+  if (as && integ.status !== "blocked")
+    out.push(
+      "",
+      as.level === "verified"
+        ? `Coverage: every changed code file is reached by a test the checks ran (${as.covering.join(", ") || "none needed"}).`
+        : as.level === "verified-with-gaps"
+          ? "Coverage: the checks passed, but they don't reach everything that changed. Decide whether these gaps matter before approving:"
+          : "Coverage: not analysed.",
+      ...as.gaps.map((g) => `  - ${g}`),
+    );
   if (integ.status === "passed") out.push("", "Nothing has been applied. A project owner must approve this integration to apply it; if the project changes first, Relay requires a new check.");
   if (integ.status === "blocked") out.push("", "Nothing was applied: a blocked check never changes the shared project.");
   return out.join("\n");

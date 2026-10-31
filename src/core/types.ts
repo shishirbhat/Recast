@@ -98,6 +98,8 @@ export interface Integration {
   results: { command: string; exitCode: number | null; output: string }[];
   /** Why combined verification failed, from evidence only; null when it passed. Never changes `status`. */
   explanation: Explanation | null;
+  /** How much the checks covered, for a passing check: verified, or verified with named gaps (src/analysis/assurance.ts). */
+  assurance?: { level: "verified" | "verified-with-gaps" | "not-analysed"; gaps: string[]; covering: string[] } | null;
   createdAt: string;
   approvedBy: string | null;
   approvedAt: string | null;

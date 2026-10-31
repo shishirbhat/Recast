@@ -44,6 +44,7 @@ import type { GitHubOptions, MergeMethod } from "./github.ts";
 import { expandReplacement, findMatches, textFingerprint, writeAtomic, gitStatus, listEmptyFolders, listProjectFiles, resolveProjectPath, readText, searchProject, workspaceSymbols } from "./files.ts";
 import type { SearchOptions } from "./files.ts";
 import { AgentRuns, snapshotCommit, treeOf } from "./runs.ts";
+import type { ProviderAdapter } from "../providers/types.ts";
 import { TerminalService } from "./terminal.ts";
 
 export interface ServerOptions {
@@ -59,6 +60,8 @@ export interface ServerOptions {
   recheckQuietMs?: number;
   /** Command used to run Claude Code for agent tasks. */
   claudeBin?: string;
+  /** The agent runner's provider; defaults to Claude Code (using claudeBin). */
+  provider?: ProviderAdapter;
   /** Allow the integrated terminal even when listening on a non-loopback address. */
   allowTerminal?: boolean;
   /** GitHub delivery. The token never leaves the server. */
@@ -198,7 +201,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const root = repoRoot(resolve(opts.root));
   const relay = new Relay(opts.dbPath);
   const members = new Members(relay.db);
-  const runs = new AgentRuns(relay, root, opts.dbPath, opts.claudeBin ?? "claude");
+  const runs = new AgentRuns(relay, root, opts.dbPath, opts.provider ?? opts.claudeBin ?? "claude");
   let recheck: AutoRecheck | null = null;
   const docs = new DocStore(relay.db, root, {
     flushMs: opts.flushMs,

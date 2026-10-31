@@ -6,11 +6,12 @@
  * --mcp-config file the runner wrote, then behaves like a well-behaved agent: claims the task as an agent,
  * applies scripted edits in its worktree, submits for review, and prints Claude-Code-shaped stream-json lines.
  *
- * Scripted with RELAY_SIM_EDITS = {"<task>": {"<path>": [["find", "replace"], ...]}} and RELAY_SIM_MODE=sleep
+ * Scripted with RELAY_SIM_EDITS = {"<task>": {"<path>": [["find", "replace"], ...]}} (a missing file is created from
+ * ["", content]) and RELAY_SIM_MODE=sleep
  * (hang until killed, for cancellation tests).
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Relay } from "../../src/core/engine.ts";
 
 const args = process.argv.slice(2);
@@ -53,8 +54,10 @@ if (process.env.RELAY_SIM_MODE === "sleep") {
   const edits = (JSON.parse(process.env.RELAY_SIM_EDITS ?? "{}") as Record<string, Record<string, [string, string][]>>)[task] ?? {};
   for (const [path, pairs] of Object.entries(edits)) {
     const abs = join(root, path);
-    let text = readFileSync(abs, "utf8");
-    for (const [a, b] of pairs) text = text.replace(a, b);
+    // A file that doesn't exist yet is created: its first pair is ["", content].
+    if (!existsSync(abs)) mkdirSync(dirname(abs), { recursive: true });
+    let text = existsSync(abs) ? readFileSync(abs, "utf8") : "";
+    for (const [a, b] of pairs) text = text.replace(a, () => b); // a function: "$" in b is literal
     writeFileSync(abs, text);
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Edit", input: { file_path: abs } }] } });
   }

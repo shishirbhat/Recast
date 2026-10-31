@@ -17,6 +17,7 @@ export function verificationEnv(): NodeJS.ProcessEnv {
   return env;
 }
 import { changedFiles, repoRoot, workspaceFingerprint } from "../git.ts";
+import { assurance } from "../analysis/assurance.ts";
 import type {
   Actor,
   ContractVersion,
@@ -606,6 +607,16 @@ export class Relay {
       explanation = results.some((r) => r.exitCode !== 0) ? { verdict: "unknown", summary: `Cause unknown: Relay could not analyse this failure (${(e as Error).message}).`, causes: [], failures: [], uncertain: ["analysis failed"], resolve: "Read the failing output.", tree, base } : null;
     }
 
+    // How much the checks covered (passing checks only: a failure is explained above instead).
+    let assured: Integration["assurance"] = null;
+    if (!gaps.length) {
+      try {
+        assured = assurance(cwd, base, commands, own);
+      } catch (e) {
+        assured = { level: "not-analysed", gaps: [`Relay could not analyse coverage: ${(e as Error).message}`], covering: [] };
+      }
+    }
+
     const integration: Integration = {
       id: randomUUID(),
       tasks: tasks.map((t) => t.id),
@@ -616,13 +627,14 @@ export class Relay {
       gaps,
       results,
       explanation,
+      assurance: assured,
       createdAt: now(),
       approvedBy: null,
       approvedAt: null,
     };
     this.db
-      .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, explanation, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-      .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), explanation ? JSON.stringify(explanation) : null, integration.createdAt);
+      .prepare("INSERT INTO integrations (id, tasks, base_commit, tree, contracts, status, gaps, results, explanation, assurance, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      .run(integration.id, JSON.stringify(integration.tasks), base, tree, JSON.stringify(agreed), integration.status, JSON.stringify(gaps), JSON.stringify(results), explanation ? JSON.stringify(explanation) : null, assured ? JSON.stringify(assured) : null, integration.createdAt);
     this.emit({ type: "integration.checked", actor: "system:relay", data: { integrationId: integration.id, tasks: integration.tasks, status: integration.status, gaps, tree, explanation: explanation?.verdict ?? null, ...(prep.rebasedOnto ? { rebasedOnto: prep.rebasedOnto, originalBases: Object.fromEntries(tasks.map((t) => [t.id, t.baseCommit])) } : {}) } });
     return integration;
   }
@@ -640,6 +652,7 @@ export class Relay {
       gaps: JSON.parse(r.gaps as string),
       results: JSON.parse(r.results as string),
       explanation: r.explanation ? JSON.parse(r.explanation as string) : null,
+      assurance: r.assurance ? JSON.parse(r.assurance as string) : null,
       createdAt: r.created_at as string,
       approvedBy: (r.approved_by as string | null) ?? null,
       approvedAt: (r.approved_at as string | null) ?? null,

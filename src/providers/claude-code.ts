@@ -52,7 +52,15 @@ export function claudeCode(bin = "claude"): ProviderAdapter {
           if (c.type === "tool_result" && c.is_error && /Relay blocked/.test(text)) out.push({ kind: "denied", detail: text.slice(0, 300) });
         }
       } else if (ev.type === "result") {
-        out.push({ kind: "result", detail: String(ev.result ?? "").slice(0, 600), costUsd: typeof ev.total_cost_usd === "number" ? ev.total_cost_usd : null });
+        const u = ev.usage as Record<string, number> | undefined;
+        const models = Object.keys((ev.modelUsage as Record<string, unknown> | undefined) ?? {});
+        out.push({
+          kind: "result",
+          detail: String(ev.result ?? "").slice(0, 600),
+          costUsd: typeof ev.total_cost_usd === "number" ? ev.total_cost_usd : null,
+          tokens: u ? { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheCreation: u.cache_creation_input_tokens ?? 0 } : null,
+          model: models.length ? models.join(",") : null,
+        });
       }
       return out;
     },

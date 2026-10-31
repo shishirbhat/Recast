@@ -35,12 +35,20 @@ export interface LaunchSpec {
   env?: Record<string, string>;
 }
 
+/** Token use the provider reported for a run (its own figures; null when it reports none). */
+export interface Tokens {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+}
+
 /** One thing the agent did, as Relay records it: tool calls and outcomes, not prose. */
 export type AgentActivity =
   | { kind: "tool"; tool: string; target: string }
   | { kind: "denied"; detail: string }
   | { kind: "text"; detail: string }
-  | { kind: "result"; detail: string; costUsd: number | null }
+  | { kind: "result"; detail: string; costUsd: number | null; tokens?: Tokens | null; model?: string | null }
   | { kind: "error"; detail: string };
 
 export interface ProviderAdapter {
