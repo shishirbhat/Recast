@@ -126,7 +126,7 @@ The repository's own records stay authoritative for what they cover; this file p
 ## Next steps (in order)
 - **Needs the owner (the mission run's list, nothing else is left that does not):**
   1. Real-account runs: `docs/REAL_TEST_PLAN.md` B, C, E–P. Only Google Calendar creation is at R.
-  2. Try the desktop app on the Mac: Option twice, the Accessibility and Screen Recording prompts, highlights, the new keys shortcut (⌃⇧↵ is ⌘⇧↵ on a Mac) and the keys going back to the app after Escape (D53; not testable here).
+  2. Try the desktop app on the Mac: Option twice, the Accessibility and Screen Recording prompts, highlights, the new keys shortcut (⌘⇧↵ on a Mac) and the keys going back to the app after Escape (D53; not testable here).
   3. Decisions: Slack (send model and which workspace); whether Google Sheets is offered; an Apple Developer ID ($99/yr) for notarisation; a public download page (a GitHub Release was blocked as a public surface); switching on GitHub Pages for the showcase.
   4. The deck's figures; outsider tester sessions (`docs/23-user-validation.md` §4); share the try-it link.
   5. Look at the new brand icons in the desktop build (rendered from `design/brand/`) and the warm dark shadow choice (D60).
