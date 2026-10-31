@@ -143,7 +143,7 @@ On editor independence, the core (engine, hook, MCP, CLI, server) has no editor 
 - **C (graph), partly.**
   - Decision changes now mark the live tasks they touch.
   - The radar uses the dependency map across agent worktrees.
-  - Relevant-test selection and automatic rechecks are still open.
+  - Relevant-test selection (import chains, untested changed code named) and opt-in automatic rechecks: done 2026-10-31.
 - **Still open, and needing the owner:**
   - real-agent evidence beyond the one designed scenario (spend approval);
   - a second agent (OpenAI key);

@@ -34,6 +34,8 @@ export function SetupView({ role, onOpenFile, notify }: { role: "owner" | "edito
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(() => void api<{ proposals: Proposal[]; defaultVerify: string[] }>("GET", "/onboarding").then(setData, (e) => notify(e instanceof ApiError ? e.message : String(e), "danger")), [notify]);
   useEffect(load, [load]);
+  const [auto, setAuto] = useState<boolean | null>(null);
+  useEffect(() => void api<{ autoRecheck: boolean }>("GET", "/settings").then((r) => setAuto(r.autoRecheck), () => {}), []);
   const act = async (key: string, fn: () => Promise<unknown>, ok?: (r: unknown) => string) => {
     setBusy(key);
     try {
@@ -55,6 +57,29 @@ export function SetupView({ role, onOpenFile, notify }: { role: "owner" | "edito
       <div className="mx-auto max-w-[900px] px-6 pb-16 pt-5">
         <h1 className="text-[17px] font-semibold tracking-[-0.01em] text-ink">Project setup</h1>
         <p className="mt-1 text-[12.5px] text-muted">What Relay found in this repository. Each item cites where it came from; nothing is applied until an owner accepts it.</p>
+        {auto !== null && (
+          <section className="mt-5 rounded-md border border-rule bg-editor px-3.5 py-2.5" aria-label="Automatic rechecks" data-testid="auto-recheck">
+            <label className="flex items-start gap-2 text-[13px] text-ink">
+              <input
+                type="checkbox"
+                className="mt-[3px]"
+                checked={auto}
+                disabled={!isOwner || busy === "auto"}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  // Shown at once; put back if the server refuses.
+                  setAuto(on);
+                  void act("auto", () => api<{ autoRecheck: boolean }>("POST", "/settings", { autoRecheck: on }).then((r) => setAuto(r.autoRecheck), (err) => (setAuto(!on), Promise.reject(err))), () => (on ? "Automatic rechecks are on." : "Automatic rechecks are off."));
+                }}
+              />
+              <span>
+                Recheck automatically
+                <span className="mt-0.5 block text-[12px] text-muted">When people have stopped editing for a while, a task under review whose checks no longer match its files gets them run again. Runs the project&apos;s check commands on this machine; agent work is re-checked by Apply instead.</span>
+                {!isOwner && <span className="mt-0.5 block text-[11.5px] text-faint">Only owners change this.</span>}
+              </span>
+            </label>
+          </section>
+        )}
         {!data && <p className="mt-4 text-[13px] text-muted">Reading the repository…</p>}
         {data &&
           GROUPS.map((g) => {

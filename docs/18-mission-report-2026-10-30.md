@@ -52,6 +52,11 @@ Relay Arena (simulated agents; ground truth measured): broken changes that reach
 
 Screenshots: `docs/evidence/{radar-2026-10-29,proof-2026-10-30,recorder-2026-10-30,handoff-2026-10-30,setup-2026-10-30}/`.
 
+## After the report (2026-10-31)
+
+- **Relevant-test selection.** The test files that reach a change through imports, with their chains; changed code that no test reaches is named.
+- **Opt-in automatic rechecks.** An owner turns them on; when edits go quiet, a person's stale task is checked again.
+
 ## What is not proven
 
 - **Every agent result above is from the simulated agent** (deterministic, scripted edits). The only real-agent evidence is still the one designed scenario of 2026-10-27 (3 + 3 trials with Claude Code).

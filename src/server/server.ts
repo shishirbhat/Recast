@@ -26,6 +26,7 @@ import { Handoffs, NEXT_AGENT, handoffText } from "../knowledge/handoff.ts";
 import { Shares, sharePage } from "./shares.ts";
 import { Onboarding, onboardingFiles } from "../analysis/onboarding.ts";
 import { relevantTests } from "../analysis/relevant.ts";
+import { AutoRecheck } from "./recheck.ts";
 import { DependencyGraph } from "../analysis/depgraph.ts";
 import type { ShareKind } from "./shares.ts";
 import type { ReproTarget } from "../analysis/repro.ts";
@@ -54,6 +55,8 @@ export interface ServerOptions {
   /** Directory with the built IDE (ide/web/out). Optional: the API works without it. */
   staticDir?: string;
   flushMs?: number;
+  /** Quiet period before automatic rechecks run (when an owner has turned them on). Default 20 s. */
+  recheckQuietMs?: number;
   /** Command used to run Claude Code for agent tasks. */
   claudeBin?: string;
   /** Allow the integrated terminal even when listening on a non-loopback address. */
@@ -196,10 +199,12 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
   const relay = new Relay(opts.dbPath);
   const members = new Members(relay.db);
   const runs = new AgentRuns(relay, root, opts.dbPath, opts.claudeBin ?? "claude");
+  let recheck: AutoRecheck | null = null;
   const docs = new DocStore(relay.db, root, {
     flushMs: opts.flushMs,
     onEvent: (type, data) => relay.record(type, "system:collab", data),
     onChange: (path, origin) => {
+      recheck?.touched();
       // A human edit (origin = a client connection) to a file an agent is working from makes that run stale.
       if (typeof origin === "object" && origin !== null) runs.noteHumanEdit(path, (origin as { __member?: string }).__member ?? "someone");
     },
@@ -241,6 +246,19 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
     radar: () => computeRadar().alerts,
   });
   const shares = new Shares(relay.db);
+  recheck = new AutoRecheck({
+    relay,
+    root,
+    dbPath: resolve(opts.dbPath),
+    runsFor: (id) => runs.forTask(id),
+    quietMs: opts.recheckQuietMs,
+    // The same check as the task's Run checks button: what is on disk now, recorded against the tree it ran on.
+    check: async (id) => {
+      docs.flushAll();
+      relay.diffCheck(id, root);
+      await relay.runVerificationAsync(id, root);
+    },
+  });
   const onboarding = new Onboarding(relay.db, root);
   // An agent's briefing: accepted decisions and contracts, plus a handoff addressed to the next agent on the task.
   runs.attachContext((taskId, runId) => [records.contextText(taskId, freshGraph()), handoffs.deliverToAgent(taskId, runId)].filter(Boolean).join("\n\n"));
@@ -482,6 +500,18 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       const p = url.searchParams;
       const kinds = (p.get("kinds") ?? "").split(",").filter(Boolean) as TimelineKind[];
       return json(res, 200, timeline(relay, root, { q: p.get("q") ?? undefined, task: p.get("task") ?? undefined, actor: p.get("actor") ?? undefined, kinds, since: p.get("since") ?? undefined, until: p.get("until") ?? undefined, limit: Number(p.get("limit") ?? 200) || 200 }));
+    }
+    if (parts[0] === "settings") {
+      // Project settings. Automatic rechecks run project code on this machine, so only owners turn them on.
+      if (method === "GET") return (requireMember(req, "read"), json(res, 200, { autoRecheck: recheck!.enabled }));
+      if (method === "POST") {
+        const m = requireMember(req, "admin");
+        const b = await readBody(req);
+        if (typeof b.autoRecheck !== "boolean") throw new HttpError(400, "invalid", "autoRecheck is true or false");
+        recheck!.setEnabled(b.autoRecheck);
+        relay.record("settings.changed", actorFor(m), { autoRecheck: b.autoRecheck });
+        return json(res, 200, { autoRecheck: recheck!.enabled });
+      }
     }
     if (parts[0] === "onboarding") {
       // Project setup, discovered from the repository and offered as proposals; owners decide, anyone who edits can try.
@@ -1413,6 +1443,7 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
       relay.onEvent = null;
       terminals.close();
       runs.close();
+      recheck?.close();
       for (const ws of eventClients) ws.terminate();
       collab.close();
       wss.close();

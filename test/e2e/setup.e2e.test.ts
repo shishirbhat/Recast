@@ -51,6 +51,13 @@ test("project setup: a cited proposal is tried, accepted by an owner, and become
   assert.match(await npmTest.getByTestId("trial").innerText(), /Tried by Ola: worked in/);
   await npmTest.getByRole("button", { name: "Accept" }).click();
   await p.locator('[data-testid="proposal"][data-status="accepted"]').filter({ hasText: "Check with npm test" }).waitFor();
+  // Automatic rechecks: off by default, an owner turns them on, and the server says so.
+  const auto = p.getByTestId("auto-recheck").getByRole("checkbox");
+  assert.equal(await auto.isChecked(), false);
+  await auto.check();
+  await p.getByTestId("toast").filter({ hasText: "Automatic rechecks are on." }).waitFor();
+  const settings = await (await fetch(`${server.url}/api/settings`, { headers: { cookie: (await p.context().cookies()).map((c) => `${c.name}=${c.value}`).join("; "), "x-relay": "1" } })).json();
+  assert.equal(settings.autoRecheck, true);
   if (SHOTS) await p.screenshot({ path: `${SHOTS}/project-setup.png` });
 
   await p.keyboard.press("Control+Shift+P");
