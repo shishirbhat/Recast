@@ -48,6 +48,12 @@ test("a failing agent check: rerun on the same files reproduces it, an investiga
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(e.message));
   assert.match(await p.getByTestId("proof-checks").innerText(), /✕ node --test src\/ui\.test\.js on exactly this change/);
+  const rel = p.getByTestId("relevant-tests");
+  await rel.waitFor();
+  assert.match(await rel.innerText(), /1 test file reaches this change through imports:\s*src\/ui\.test\.js\s+via src\/ui\.js/);
+  const runRel = rel.getByRole("button", { name: "Run these 1 test file" });
+  assert.equal(await runRel.isDisabled(), true, "agent work is checked in its worktree, not by the shared test runner");
+  assert.match((await runRel.getAttribute("title"))!, /in the agent's worktree/);
   const f = p.getByTestId("failure");
   await f.getByTestId("reproducibility").waitFor();
   assert.match(await f.getByTestId("reproducibility").innerText(), /Failing: greets the user by name\. Reproducibility: not rerun yet\./);

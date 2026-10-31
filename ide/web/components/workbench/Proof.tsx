@@ -52,6 +52,19 @@ export function ProofPanel({ taskId, canEdit, isOwner, notify }: { taskId: strin
   const [busy, setBusy] = useState<string | null>(null);
   const q = encodeURIComponent(taskId);
   const [shares, setShares] = useState<Share[]>([]);
+  const [relevant, setRelevant] = useState<{ tests: { file: string; chain: string[] }[]; unreached: string[]; limits: string[]; where: string } | null>(null);
+  const runRelevant = async () => {
+    if (!relevant) return;
+    setBusy("tests");
+    try {
+      await api("POST", "/tests/run", { files: relevant.tests.map((t) => t.file) });
+      notify(`Running ${relevant.tests.length} test file${relevant.tests.length === 1 ? "" : "s"}; results are in the Tests panel.`);
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : String(e), "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
   const [link, setLink] = useState<string | null>(null);
   const [withSource, setWithSource] = useState(false);
   const loadShares = useCallback(() => {
@@ -127,7 +140,7 @@ export function ProofPanel({ taskId, canEdit, isOwner, notify }: { taskId: strin
 
   const viewerWhy = canEdit ? undefined : "Viewers can't run checks or start investigations";
   return (
-    <details data-testid="proof" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && !cs && (load(), loadShares())}>
+    <details data-testid="proof" onToggle={(e) => (e.currentTarget as HTMLDetailsElement).open && !cs && (load(), loadShares(), void api<NonNullable<typeof relevant>>("GET", `/tasks/${q}/relevant-tests`).then(setRelevant, () => {}))}>
       <summary className="micro flex cursor-pointer list-none items-center gap-1 text-muted hover:text-ink [&::-webkit-details-marker]:hidden">
         <ChevronRight size={12} className="transition-transform [details[open]>summary>&]:rotate-90" />
         Proof and failures
@@ -159,6 +172,31 @@ export function ProofPanel({ taskId, canEdit, isOwner, notify }: { taskId: strin
                   <li key={w}>· {w}</li>
                 ))}
               </ul>
+            )}
+            {relevant && (
+              <div data-testid="relevant-tests">
+                <p className="text-ink-2">
+                  {relevant.tests.length ? `${relevant.tests.length} test file${relevant.tests.length === 1 ? "" : "s"} reach${relevant.tests.length === 1 ? "es" : ""} this change through imports:` : "No test reaches this change through imports."}
+                </p>
+                <ul className="mt-1 space-y-0.5 font-mono text-[11.5px] text-ink-2">
+                  {relevant.tests.map((t) => (
+                    <li key={t.file} title={t.chain.join(" → ")}>
+                      {t.file} <span className="font-sans text-faint">{t.chain.length > 1 ? `via ${t.chain.slice(1).join(" → ")}` : "changed itself"}</span>
+                    </li>
+                  ))}
+                </ul>
+                {relevant.unreached.length > 0 && <p className="mt-1 text-[12px] text-warn">Changed code no test reaches: {relevant.unreached.join(", ")}</p>}
+                {relevant.tests.length > 0 && (
+                  <button
+                    onClick={() => void runRelevant()}
+                    disabled={!isOwner || relevant.where !== "shared-project" || busy !== null}
+                    title={!isOwner ? "Tests run project code on this machine: owners only" : relevant.where !== "shared-project" ? "This change is in the agent's worktree, where Relay already ran its checks; Apply re-checks it on the project" : relevant.limits[0]}
+                    className="mt-1.5 h-[26px] rounded-sm border border-rule px-2 text-[12px] text-ink-2 hover:border-rule-strong hover:text-ink disabled:opacity-40"
+                  >
+                    Run these {relevant.tests.length} test file{relevant.tests.length === 1 ? "" : "s"}
+                  </button>
+                )}
+              </div>
             )}
             <button onClick={() => void download()} disabled={busy !== null} className="inline-flex h-[26px] items-center gap-1.5 rounded-sm border border-rule px-2 text-[12px] text-ink-2 hover:border-rule-strong hover:text-ink disabled:opacity-40">
               <Download size={12} /> Download changeset

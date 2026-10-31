@@ -25,6 +25,8 @@ import { reproBundle, reproduce, reproText } from "../analysis/repro.ts";
 import { Handoffs, NEXT_AGENT, handoffText } from "../knowledge/handoff.ts";
 import { Shares, sharePage } from "./shares.ts";
 import { Onboarding, onboardingFiles } from "../analysis/onboarding.ts";
+import { relevantTests } from "../analysis/relevant.ts";
+import { DependencyGraph } from "../analysis/depgraph.ts";
 import type { ShareKind } from "./shares.ts";
 import type { ReproTarget } from "../analysis/repro.ts";
 import { changeRecord } from "../analysis/change.ts";
@@ -1084,6 +1086,21 @@ export async function startServer(opts: ServerOptions): Promise<RelayServer> {
         }
         const base = task.baseCommit ?? "HEAD";
         return json(res, 200, { path, before: showAt(root, base, path) ?? "", after: docs.get(path)?.text.toString() ?? readText(root, path) ?? "", beforeLabel: `base ${base.slice(0, 7)}`, afterLabel: "shared workspace" });
+      }
+      if (method === "GET" && parts[2] === "relevant-tests") {
+        // Tests that reach this task's change through imports. Agent work is judged in its worktree, where it lives.
+        requireMember(req, "read");
+        docs.flushAll();
+        const runsHere = runs.forTask(id);
+        const run = runsHere.at(-1);
+        const pending = run && run.status !== "applied" && existsSync(run.worktree) ? run : null;
+        const changed = changeRecord(relay, root, resolve(opts.dbPath), id, { runs: runsHere }).files.map((f) => f.path);
+        let graph = freshGraph();
+        if (pending) {
+          graph = new DependencyGraph(pending.worktree);
+          graph.refresh(listProjectFiles(pending.worktree));
+        }
+        return json(res, 200, { ...relevantTests(graph, changed), where: pending ? "agent-worktree" : "shared-project" });
       }
       if (method === "GET" && parts[2] === "changeset") {
         // A proof-carrying changeset: the change, its base, and the evidence with the exact tree each check ran on.
